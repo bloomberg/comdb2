@@ -1,0 +1,35 @@
+#!/usr/bin/env bash
+bash -n "$0" | exit 1
+
+# Park a live connection to $DBNAME in sockpool under a different database
+# name, then connect to that name and run a query.  The server must reject the
+# query with WRONG_DB.  See tests/tools/sockpool_wrongdb.c.
+
+set -e
+
+dbnm=$1
+wrongdb=wrongdb
+
+# The tool needs the client sockpool.
+if ! pgrep cdb2sockpool; then
+    echo 'SOCKPOOL IS REQUIRED TO RUN THE TEST BUT IS NOT RUNNING.' >&2
+    echo 'TRYING TO BRING IT UP'
+    ${BUILDDIR}/tools/cdb2sockpool/cdb2sockpool
+    sleep 2
+    if ! pgrep cdb2sockpool; then
+        echo 'FAILED BRINGING UP SOCKPOOL' >&2
+        exit 1
+    fi
+fi
+
+# Let cdb2api resolve the fake name to a host list without asking comdb2db.
+# The tool plants a socket in sockpool for this name, so cdb2api takes that
+# socket and never connects to the hosts listed here.
+# A single node test resolves the tier to "local", which needs no host list.
+if [[ -n "$CLUSTER" ]]; then
+    echo "$wrongdb 0 $CLUSTER" >> $CDB2_CONFIG
+fi
+
+${TESTSBUILDDIR}/sockpool_wrongdb $dbnm $wrongdb default
+
+echo "SUCCESS"
