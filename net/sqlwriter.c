@@ -33,6 +33,11 @@
 //send heartbeat if no data every (seconds)
 #define min_hb_time 1
 
+/* Give up on a write that has made no progress for this long while exiting */
+int gbl_exit_flush_timeout_sec = 10;
+
+extern int db_is_exiting(void);
+
 struct sqlwriter {
     sql_dispatch_timeout_fn *dispatch_timeout;
     struct sqlclntstate *clnt;
@@ -225,6 +230,28 @@ static void sql_flush_cb(int fd, short what, void *arg)
     UNLOCK_WR_LOCK_ONLY_IF_NOT_PACKING(writer);
 }
 
+/* A peer that has stopped reading never drains wr_buf, so sql_flush_cb never
+ * disables the poll and we stay here forever.  That is how an exiting node
+ * hangs: clean_exit waits for this thread in thrman_wait_for_all() under a
+ * 300s alarm.  blocked_at is reset by every successful write, so this only
+ * fires when the peer has made no progress at all. */
+static int give_up_on_exit(struct sqlwriter *writer)
+{
+    if (!writer->pollms || !db_is_exiting() || gbl_exit_flush_timeout_sec <= 0)
+        return 0;
+    if (writer->blocked_at == 0 ||
+        (comdb2_time_epochus() - writer->blocked_at) < (gbl_exit_flush_timeout_sec * 1000000LL))
+        return 0;
+
+    logmsg(LOGMSG_WARN, "%s: abandoning stalled write, exiting\n", __func__);
+    LOCK_WR_LOCK_ONLY_IF_NOT_PACKING(writer);
+    writer->bad = 1;
+    sql_disable_flush(writer);
+    update_writer_state(writer, WRITE_FAILED);
+    UNLOCK_WR_LOCK_ONLY_IF_NOT_PACKING(writer);
+    return 1;
+}
+
 static int sql_flush_int(struct sqlwriter *writer)
 {
     sql_enable_flush(writer);
@@ -234,6 +261,7 @@ static int sql_flush_int(struct sqlwriter *writer)
         int rc = poll(&writer->poll_fd, 1, writer->pollms);
         short event = rc == 0 ? EV_TIMEOUT : EV_WRITE;
         sql_flush_cb(writer->poll_fd.fd, event, writer);
+        give_up_on_exit(writer);
     } while (writer->pollms);
     return (writer->wr_continue && !writer->bad) ? 0 : -1;
 }
