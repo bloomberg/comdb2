@@ -9,7 +9,11 @@ SRC="cdb2sql ${SECONDARY_CDB2_OPTIONS} --tabs $src default"
 $SRC "insert into LOCAL_${rem}.t values (1, x'11')" || { echo "remote insert failed"; exit 1; }
 
 # The duplicate fails the remote commit, which replies with an error string
-$SRC "insert into LOCAL_${rem}.t values (1, x'22')"
+out=$($SRC "insert into LOCAL_${rem}.t values (1, x'22')" 2>&1)
+if [[ $? -eq 0 ]] || [[ "$out" != *"failed with rc 299"*"duplicate key"* ]]; then
+    echo "expected duplicate key error from remote commit, got '$out'"
+    exit 1
+fi
 
 for node in ${CLUSTER:-localhost}; do
     $REM --host $node "select 1" > /dev/null || { echo "remote db died on $node"; exit 1; }

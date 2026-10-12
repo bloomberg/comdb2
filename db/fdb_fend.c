@@ -4168,6 +4168,16 @@ void fdb_client_set_identityBlob(sqlclntstate *clnt, cdb2_hndl_tp *hndl)
     }
 }
 
+/* rc is already a client error code, translated by the remote */
+static void fdb_trans_set_remote_error(sqlclntstate *clnt, fdb_tran_t *tran, int rc)
+{
+    bzero(&clnt->osql.xerr, sizeof(clnt->osql.xerr));
+    errstat_set_rc(&clnt->osql.xerr, rc);
+    if (tran->errstr)
+        errstat_set_str(&clnt->osql.xerr, tran->errstr);
+    clnt->osql.error_is_remote = 1;
+}
+
 int fdb_trans_commit(sqlclntstate *clnt, enum trans_clntcomm sideeffects, int *is_distributed)
 {
     fdb_distributed_tran_t *dtran = clnt->dbtran.dtran;
@@ -4254,12 +4264,7 @@ int fdb_trans_commit(sqlclntstate *clnt, enum trans_clntcomm sideeffects, int *i
             logmsg(LOGMSG_ERROR, "%s: failed to commit %s rc %d\n",
                    __func__, tran->fdb->dbname, rc);
 
-            /* pass the error to clnt */
-            bzero(&clnt->osql.xerr, sizeof(clnt->osql.xerr));
-            errstat_set_rc(&clnt->osql.xerr, rc);
-            if (tran->errstr)
-                errstat_set_str(&clnt->osql.xerr, tran->errstr);
-            clnt->osql.error_is_remote = 1;
+            fdb_trans_set_remote_error(clnt, tran, rc);
         }
 
         if (clnt->use_2pc && tran->writes_status == FDB_TRAN_WRITES) {
@@ -4295,6 +4300,7 @@ int fdb_trans_commit(sqlclntstate *clnt, enum trans_clntcomm sideeffects, int *i
             }
 
             if (rc) {
+                fdb_trans_set_remote_error(clnt, tran, rc);
                 break;
             }
         }
