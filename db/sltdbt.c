@@ -74,34 +74,36 @@ const char *req2a(int opcode)
         return "????";
 }
 
+static void req_stats_hdr(struct dbtable *db, int *hdr)
+{
+    if (*hdr)
+        return;
+    if (db->dbtype == DBTYPE_QUEUE || db->dbtype == DBTYPE_QUEUEDB)
+        logmsg(LOGMSG_USER, "REQUEST STATS FOR QUEUE '%s'\n", db->tablename);
+    else
+        logmsg(LOGMSG_USER, "REQUEST STATS FOR DB %d '%s'\n", db->dbnum, db->tablename);
+    *hdr = 1;
+}
+
 void req_stats(struct dbtable *db)
 {
     int ii, jj;
     int hdr = 0;
     for (ii = 0; ii <= MAXTYPCNT; ii++) {
         if (db->typcnt[ii]) {
-            if (hdr == 0) {
-                logmsg(LOGMSG_USER, "REQUEST STATS FOR DB %d '%s'\n", db->dbnum, db->tablename);
-                hdr = 1;
-            }
+            req_stats_hdr(db, &hdr);
             logmsg(LOGMSG_USER, "%-20s %"PRId64"\n", req2a(ii), db->typcnt[ii]);
         }
     }
     for (jj = 0; jj < BLOCK_MAXOPCODE; jj++) {
         if (db->blocktypcnt[jj]) {
-            if (hdr == 0) {
-                logmsg(LOGMSG_USER, "REQUEST STATS FOR DB %d '%s'\n", db->dbnum, db->tablename);
-                hdr = 1;
-            }
+            req_stats_hdr(db, &hdr);
             logmsg(LOGMSG_USER, "    %-20s %"PRId64"\n", breq2a(jj), db->blocktypcnt[jj]);
         }
     }
     for (jj = 0; jj < MAX_OSQL_TYPES; jj++) {
         if (db->blockosqltypcnt[jj]) {
-            if (hdr == 0) {
-                logmsg(LOGMSG_USER, "REQUEST STATS FOR DB %d '%s'\n", db->dbnum, db->tablename);
-                hdr = 1;
-            }
+            req_stats_hdr(db, &hdr);
             logmsg(LOGMSG_USER, "    %-20s %"PRId64"\n", osql_reqtype_str(jj), db->blockosqltypcnt[jj]);
         }
     }
