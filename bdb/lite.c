@@ -769,6 +769,9 @@ int bdb_lite_list_records(bdb_state_type *bdb_state,
     do {
         rc = userfunc(bdb_state, key.data, key.size, data.data, data.size,
                       bdberr);
+        free(key.data);
+        free(data.data);
+        key.data = data.data = NULL;
         if (rc) {
             logmsg(LOGMSG_ERROR, "%s:%d: failed userfunc rc=%d bdberr=%d\n",
                     __FILE__, __LINE__, rc, *bdberr);
@@ -783,6 +786,7 @@ int bdb_lite_list_records(bdb_state_type *bdb_state,
     }
 
 done:
-    dbcp->c_close(dbcp);
+    if (dbcp)
+        dbcp->c_close(dbcp);
     return rc;
 }
