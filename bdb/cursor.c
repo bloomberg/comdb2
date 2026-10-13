@@ -143,6 +143,9 @@ extern uint32_t bdb_latest_commit_gen;
 extern pthread_cond_t bdb_asof_current_lsn_cond;
 
 extern int __txn_commit_map_delete_logfile_txns(DB_ENV *env, int del_log);
+#ifdef COMDB2_TEST
+extern int __txn_commit_map_selftest(void);
+#endif
 
 static int bdb_switch_stripe(bdb_cursor_impl_t *cur, int dtafile, int *bdberr);
 static int bdb_cursor_find_merge(bdb_cursor_impl_t *cur, void *key, int keylen,
@@ -754,6 +757,13 @@ int delete_logfile_txns_commit_lsn_map(bdb_state_type *bdb_state, int file)
 {
     return __txn_commit_map_delete_logfile_txns(bdb_state->dbenv, file);
 }
+
+#ifdef COMDB2_TEST
+int commit_lsn_map_selftest(void)
+{
+    return __txn_commit_map_selftest();
+}
+#endif
 
 int bdb_gbl_asof_modsnap_init(bdb_state_type *bdb_state)
 {
