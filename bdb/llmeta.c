@@ -7467,8 +7467,8 @@ int bdb_llmeta_print_record(bdb_state_type *bdb_state, void *key, int keylen,
                        p_buf_end_key);
 
         logmsg(LOGMSG_USER,
-               "LLMETA_TABLE_PARAMETERS table=\"%s\" value=\"%s\"\n",
-               tblname, (char *)data);
+               "LLMETA_TABLE_PARAMETERS table=\"%s\" value=\"%.*s\"\n",
+               tblname, datalen, (char *)data);
         } break;
     case LLMETA_TABLE_USER_OP: {
         logmsg(LOGMSG_USER, "LLMETA_TABLE_USER_OP\n");
