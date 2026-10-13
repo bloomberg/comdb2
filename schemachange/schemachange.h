@@ -437,6 +437,7 @@ size_t schemachange_packed_size(struct schema_change_type *s);
  * is nothing that would ever clean it up.
  */
 int sc_kind_runs_do_ddl(int kind);
+int sc_kind_uses_existing_table(int kind);
 
 int start_schema_change_tran(struct ireq *, tran_type *tran);
 int start_schema_change(struct schema_change_type *);
