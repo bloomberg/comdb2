@@ -8264,7 +8264,7 @@ retry:
         node_seq = cdb2_random_int() % hndl->num_hosts_sameroom;
         /* Try dbinfo on same room first */
         for (i = 0; i < hndl->num_hosts_sameroom; i++) {
-            if (is_api_call_timedout(hndl))
+            if (CDB2_ENFORCE_API_CALL_TIMEOUT && is_api_call_timedout(hndl))
                 break;
             int try_node = (node_seq + i) % hndl->num_hosts_sameroom;
             // comment out for now. Extra output fails ssl_dbname and ssl_set_cmd test.
@@ -8290,7 +8290,7 @@ retry:
 
     /* Try everything now */
     for (i = 0; i < hndl->num_hosts; i++) {
-        if (is_api_call_timedout(hndl))
+        if (CDB2_ENFORCE_API_CALL_TIMEOUT && is_api_call_timedout(hndl))
             break;
         int try_node = (node_seq + i) % hndl->num_hosts;
         rc = cdb2_dbinfo_query(hndl, hndl->type, hndl->dbname, hndl->dbnum,
@@ -8304,7 +8304,7 @@ retry:
     }
 
     if (rc != 0) {
-        if (is_api_call_timedout(hndl)) {
+        if (CDB2_ENFORCE_API_CALL_TIMEOUT && is_api_call_timedout(hndl)) {
             snprintf(hndl->errstr, sizeof(hndl->errstr), "cdb2_get_dbhosts: timed out doing dbinfo query on %s hosts.",
                      hndl->dbname);
             goto after_callback;
