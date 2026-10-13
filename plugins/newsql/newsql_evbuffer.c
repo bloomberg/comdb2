@@ -982,8 +982,12 @@ static void disable_ssl_evbuffer(struct newsql_appdata_evbuffer *appdata)
     appdata->add_rd_event_fn = add_rd_event_plaintext;
     sql_disable_ssl(appdata->writer);
     if (appdata->ssl_data) {
-        ssl_data_free(appdata->ssl_data);
+        /* comdb2_connections reads ssl data from other threads under state_lk */
+        Pthread_mutex_lock(&appdata->clnt.state_lk);
+        struct ssl_data *ssl_data = appdata->ssl_data;
         appdata->ssl_data = NULL;
+        Pthread_mutex_unlock(&appdata->clnt.state_lk);
+        ssl_data_free(ssl_data);
     }
 }
 
