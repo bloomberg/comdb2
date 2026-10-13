@@ -6741,9 +6741,11 @@ static void gather_connection_int(struct connection_info *c, struct sqlclntstate
     c->state_int = clnt->state;
     c->time_in_state_int = clnt->state_start_time;
     c->is_admin = clnt->admin;
+    c->identity = clnt->externalAuthUser ? strdup(clnt->externalAuthUser) : NULL;
+    Pthread_mutex_lock(&clnt->state_lk);
+    /* state_lk keeps the event thread from freeing ssl data under us */
     c->is_ssl = clnt->plugin.has_ssl(clnt);
     c->has_cert = clnt->plugin.has_x509(clnt);
-    c->identity = clnt->externalAuthUser ? strdup(clnt->externalAuthUser) : NULL;
     if (!c->has_cert) {
         c->common_name = NULL;
     } else {
@@ -6751,7 +6753,6 @@ static void gather_connection_int(struct connection_info *c, struct sqlclntstate
         clnt->plugin.get_x509_attr(clnt, NID_commonName, c->common_name_str, sizeof(c->common_name_str));
         c->common_name = c->common_name_str;
     }
-    Pthread_mutex_lock(&clnt->state_lk);
     if ((clnt->state == CONNECTION_RUNNING || clnt->state == CONNECTION_QUEUED) &&
          clnt->osql.replay == OSQL_RETRY_NONE /* a replaying clnt won't have a clnt->sql */) {
         char zFingerprint[FINGERPRINTSZ * 2 + 1] = {0};
