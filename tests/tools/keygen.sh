@@ -120,7 +120,8 @@ for ip in $(hostname -I); do
   san="$san, DNS: $ip"
 done
 for node in $CLUSTER; do
-  san="$san, DNS:$(ssh -o StrictHostKeyChecking=no $node 'hostname -f')"
+  # Short name too: newer aardvark-dns answers PTR queries with unqualified names
+  san="$san, DNS:$(ssh -o StrictHostKeyChecking=no $node 'hostname'), DNS:$(ssh -o StrictHostKeyChecking=no $node 'hostname -f')"
   for ip in $(ssh -o StrictHostKeyChecking=no $node 'hostname -I'); do
     san="$san, DNS: $ip"
   done
