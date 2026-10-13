@@ -360,12 +360,17 @@ function run_test_per_table_restriction {
     fi
     echo "  $LIMITED_USER can execute 'select 1' (confirmed)"
 
-    if COMDB2_USER=$LIMITED_USER COMDB2_PASSWORD=$LIMITED_PASS \
+    local out
+    if out=$(COMDB2_USER=$LIMITED_USER COMDB2_PASSWORD=$LIMITED_PASS \
            $CDB2SQL_EXE --tabs ${CDB2_OPTIONS} $db --host $master \
-           'select lsn from comdb2_transaction_logs(NULL, NULL, 4) limit 1' \
-           &>/dev/null; then
+           'select lsn from comdb2_transaction_logs(NULL, NULL, 4) limit 1' 2>&1); then
         stop_all_nodes
         failexit "$LIMITED_USER can access comdb2_transaction_logs - expected ACCESS denied"
+    fi
+    # sql_logfill only counts CDB2ERR_ACCESS (-106) toward auto-disable
+    if ! echo "$out" | grep -q "rc -106"; then
+        stop_all_nodes
+        failexit "Expected rc -106 (CDB2ERR_ACCESS) for comdb2_transaction_logs, got: $out"
     fi
     echo "  $LIMITED_USER is blocked from comdb2_transaction_logs (confirmed)"
 
