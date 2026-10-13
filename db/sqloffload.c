@@ -69,6 +69,7 @@
 int scdone_abort_cleanup(struct ireq *iq);
 
 int gbl_master_swing_osql_verbose = 1;
+int gbl_debug_skip_sc_list_delete_on_abort = 0;
 
 int g_osql_ready = 0;
 int tran2netreq(int dbtran)
@@ -746,10 +747,13 @@ static void osql_scdone_abort_callback(struct ireq *iq)
             iq->sc_should_abort = 0;
         }
 
-        int rc = osql_delete_sc_list(iq->scs_uuid, NULL);
-        if (rc) {
-            logmsg(LOGMSG_ERROR, "%s: failed to remove sc list rc %d\n",
-                    __func__, rc);
+        if (gbl_debug_skip_sc_list_delete_on_abort) {
+            logmsg(LOGMSG_WARN, "%s: debug_skip_sc_list_delete_on_abort set, keeping sc list\n", __func__);
+        } else {
+            int rc = osql_delete_sc_list(iq->scs_uuid, NULL);
+            if (rc) {
+                logmsg(LOGMSG_ERROR, "%s: failed to remove sc list rc %d\n", __func__, rc);
+            }
         }
     }
     iq->tranddl = 0;

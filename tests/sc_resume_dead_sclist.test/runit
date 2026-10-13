@@ -1,0 +1,121 @@
+#!/usr/bin/env bash
+bash -n "$0" | exit 1
+
+source ${TESTSROOTDIR}/tools/runit_common.sh
+source ${TESTSROOTDIR}/tools/cluster_utils.sh
+
+# A master that crashes while aborting a failed schema change can leave the
+# sc list in llmeta after the table's sc seed was already removed.  The new
+# master cannot resume such a list; it must remove it instead of failing on
+# it at every election.
+#
+# debug_skip_sc_list_delete_on_abort simulates the crash: the abort cleanup
+# runs, but the sc list is left behind.  The failed schema change is a create
+# table losing the race against a concurrent create of the same table.
+################################################################################
+
+dbnm=$1
+
+OUT="run.log"
+rm -f $OUT
+touch $OUT
+
+cmd="cdb2sql ${CDB2_OPTIONS} $dbnm default"
+cmdt="cdb2sql -tabs ${CDB2_OPTIONS} $dbnm default"
+NROWS=100
+
+function failexit_msg
+{
+    echo "FAILURE: $1"
+    echo "FAILURE: $1" >> $OUT
+    exit 1
+}
+
+function wait_db_up
+{
+    local up=""
+    for i in $(seq 1 120); do
+        up=$($cmdt "select 1" 2>/dev/null)
+        [[ "$up" == "1" ]] && return 0
+        sleep 1
+    done
+    failexit_msg "the database did not come back after the restart"
+}
+
+function grep_logs
+{
+    grep -h "$1" ${TESTDIR}/logs/${DBNAME}*.db* 2>/dev/null
+}
+
+master=$(getmaster)
+mcmd="cdb2sql ${CDB2_OPTIONS} $dbnm --host $master"
+
+$mcmd "put tunable debug_skip_sc_list_delete_on_abort 1" >> $OUT 2>&1 ||
+    failexit_msg "failed to set debug_skip_sc_list_delete_on_abort"
+
+# Session B parses the create while t does not exist yet, commits later
+$cmd - > b.out 2>&1 <<EOS &
+begin
+create table t(a int, b int)\$\$
+select sleep(6)
+commit
+EOS
+bpid=$!
+sleep 2
+
+# Session A creates t while B is still open; B's commit will fail
+$cmd "create table t(a int, b int)" >> $OUT 2>&1 || failexit_msg "session A failed to create t"
+$cmd "insert into t select value, 0 from generate_series(1, $NROWS)" >> $OUT 2>&1 ||
+    failexit_msg "session A failed to populate t"
+
+wait $bpid
+cat b.out >> $OUT
+if ! grep -q "\[commit\] failed" b.out; then
+    failexit_msg "session B duplicate create did not fail: $(cat b.out)"
+fi
+if ! grep_logs "debug_skip_sc_list_delete_on_abort set, keeping sc list" > /dev/null; then
+    failexit_msg "the sc list of the failed create was not left behind"
+fi
+
+# Make sure the sc list write reaches the log before killing the master.
+# Restart it (the tunable is not persisted); the new master finds the dead sc
+# list while resuming schema changes
+$mcmd "exec procedure sys.cmd.send('flush')" >> $OUT 2>&1
+echo "restarting $master" | tee -a $OUT
+kill_restart_node $master 2 0
+wait_db_up
+
+removed=""
+for i in $(seq 1 30); do
+    removed=$(grep_logs "removed sc list that cannot be resumed")
+    [[ -n "$removed" ]] && break
+    sleep 1
+done
+echo "$removed" >> $OUT
+if [[ -z "$removed" ]]; then
+    failexit_msg "the dead sc list was not removed on resume"
+fi
+
+# A second restart must not find it anymore
+nfailed=$(grep_logs "failed to start, rc" | wc -l)
+master=$(getmaster)
+cdb2sql ${CDB2_OPTIONS} $dbnm --host $master "exec procedure sys.cmd.send('flush')" >> $OUT 2>&1
+echo "restarting $master again" | tee -a $OUT
+kill_restart_node $master 2 0
+wait_db_up
+sleep 5
+nfailed2=$(grep_logs "failed to start, rc" | wc -l)
+if (( nfailed2 != nfailed )); then
+    failexit_msg "the dead sc list was resumed again after it was removed"
+fi
+
+# The table survived and schema changes still work
+cnt=$($cmdt "select count(*) from t" 2>&1)
+if [[ "$cnt" != "$NROWS" ]]; then
+    failexit_msg "t lost its data: count=$cnt"
+fi
+$cmd "create table t2(a int)" >> $OUT 2>&1 || failexit_msg "create table t2 failed after the resume"
+$cmd "alter table t add c int" >> $OUT 2>&1 || failexit_msg "alter table t failed after the resume"
+
+echo "SUCCESS" | tee -a $OUT
+exit 0

@@ -1699,6 +1699,16 @@ int resume_sc_multiddl_txn(sc_list_t *scl)
     if (rc && !iq->sc_pending) {
         /* nothing got started, there is nothing to unwind */
         logmsg(LOGMSG_ERROR, "%s uuid %s failed to start, rc %d\n", __func__, us, rc);
+        /* SCDONE marks a failure that is not resumable (anything but a master
+         * downgrade); remove the sc list, otherwise every new master would
+         * try, and fail, to resume it again
+         */
+        if (iq->osql_flags & OSQL_FLAGS_SCDONE) {
+            if (osql_delete_sc_list(scl->uuid, NULL))
+                logmsg(LOGMSG_ERROR, "%s uuid %s failed to remove sc list\n", __func__, us);
+            else
+                logmsg(LOGMSG_INFO, "%s uuid %s removed sc list that cannot be resumed\n", __func__, us);
+        }
         free(iq);
         return -1;
     }
