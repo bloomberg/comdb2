@@ -385,6 +385,14 @@ I started tracking this when I got to more important files (`where.c`,
 
 - **TODO**: Check whether gcc's "`pDest` may be used uninitialized" warning in `OP_Column` (`vdbe.c`, RelWithDebInfo) is real.
 
+- **TODO**: Add a test to `tests/nextsequence.test` that checks `831363a46` hasn't regressed. That commit stopped the comparison opcodes from cutting `Mem.flags` down to u16. If they do it again, this reproducer from its commit message asserts in `sqlite3VdbeSerialType()` on a Debug build:
+
+  ```sql
+  create table t { schema { int a longlong b dbstore=nextsequence }
+                   keys { "b" = b { where b > 50 } } }$$
+  insert into t(a) values(1)
+  ```
+
 ## Post-merge checklist
 
 Loose ends found while merging `sqlite/src`. None of them can be checked
