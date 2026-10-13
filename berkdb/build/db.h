@@ -2980,21 +2980,31 @@ struct __utxnid {
 	LINKC_T(struct __utxnid) lnk;
 };
 
+struct __utxnid_slab;
+
 struct __logfile_txn_list {
 	u_int32_t file_num;
-	hash_t *commit_utxnids;
+	u_int32_t nlive;			/* its transactions still in the map */
+	struct __utxnid_slab *slabs;	/* where they are kept, newest first */
 };
 
 struct __utxnid_track {
-	u_int64_t utxnid;
+	u_int64_t utxnid;		/* 0 once removed */
 	DB_LSN commit_lsn;
+	struct __utxnid_track *next;	/* next in its hash bucket */
 };
 
 struct __txn_commit_map {
 	pthread_mutex_t txmap_mutexp;
 	int64_t highest_logfile;
 	int64_t smallest_logfile;
-	hash_t *transactions;
+	int64_t nentries;
+	int64_t peak_entries;
+	int64_t nresizes;
+	int64_t nslabs;
+	int64_t nslots;			/* slots in all slabs, used or not */
+	UTXNID_TRACK **buckets;		/* utxnid hash, 1 << bits of them */
+	u_int32_t bits;
 	hash_t *logfile_lists;
 };
 
