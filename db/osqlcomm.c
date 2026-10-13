@@ -7387,7 +7387,10 @@ int osql_process_schemachange(struct schema_change_type *sc, uuid_t uuid)
     sc->finalize = 0;
 
     sc->is_osql = 1;
-    if (sc->db == NULL) {
+    /* only schema changes on existing tables get a db; for the rest (add
+     * table, procedures, triggers, functions, views) tablename is not an
+     * existing table, and a same-named table must not be picked up */
+    if (sc->db == NULL && sc_kind_uses_existing_table(sc->kind)) {
         sc->db = get_dbtable_by_name(sc->tablename);
     }
     sc->tran = NULL;
