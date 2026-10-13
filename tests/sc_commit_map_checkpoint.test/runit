@@ -1,0 +1,53 @@
+#!/usr/bin/env bash
+bash -n "$0" || exit 1
+
+source ${TESTSROOTDIR}/tools/runit_common.sh
+set -o pipefail
+
+dbnm=$1
+N=${SC_COMMIT_MAP_ROWS:-2000}
+master=$(getmaster)
+[[ -n "$master" ]] || { echo "FAIL: could not find master"; exit 1; }
+
+run() { cdb2sql --tabs ${CDB2_OPTIONS} --host "$master" "$dbnm" "$1"; }
+fail() { echo "FAIL: $*"; exit 1; }
+map_count() { run "select count(*) from comdb2_transaction_commit"; }
+
+run "create table t(i int, j int)" >/dev/null
+run "insert into t select value, value from generate_series(1, $N)" >/dev/null
+expected_sum=$(run "select sum(j) from t")
+
+before=$(map_count)
+run "rebuild t" >/dev/null || fail "rebuild failed"
+delta=$(( $(map_count) - before ))
+(( delta < N )) || fail "rebuild retained $delta converter map entries"
+grep -q "checkpoint floor .* covers conversion" "$TESTDIR/logs/$dbnm.db" ||
+	fail "rebuild did not establish a verified checkpoint"
+
+fifo=/tmp/sc_commit_map_checkpoint_fifo.$$
+out=/tmp/sc_commit_map_checkpoint_out.$$
+trap 'rm -f "$fifo" "$out"' EXIT
+mkfifo "$fifo"
+cdb2sql --tabs ${CDB2_OPTIONS} --host "$master" "$dbnm" - \
+	<"$fifo" >"$out" 2>&1 &
+pid=$!
+exec 9>"$fifo"
+printf '%s\n' "set transaction snapshot isolation" "begin" \
+	"select count(*) from t" "select sum(j) from t" >&9
+sleep 2
+run "update t set j = j + 1000 where i <= $((N / 2))" >/dev/null ||
+	fail "concurrent update failed"
+printf '%s\n' "select count(*) from t" "select sum(j) from t" "commit" >&9
+exec 9>&-
+wait "$pid" || fail "snapshot client failed"
+
+mapfile -t values < <(grep -vE '^\[' "$out")
+(( ${#values[@]} >= 4 )) || fail "snapshot returned incomplete output"
+(( values[0] == N && values[2] == N )) ||
+	fail "snapshot row count changed: ${values[*]}"
+[[ "${values[1]}" == "$expected_sum" && "${values[3]}" == "$expected_sum" ]] ||
+	fail "snapshot sum changed: ${values[*]}"
+
+do_verify t
+echo "SC_COMMIT_MAP_CHECKPOINT: rows=$N map_delta=$delta"
+echo "Passed test"

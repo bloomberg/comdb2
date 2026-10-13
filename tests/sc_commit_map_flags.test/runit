@@ -1,0 +1,65 @@
+#!/usr/bin/env bash
+bash -n "$0" || exit 1
+
+source ${TESTSROOTDIR}/tools/runit_common.sh
+set -o pipefail
+
+dbnm=$1
+N=${SC_COMMIT_MAP_ROWS:-1000}
+
+master=$(getmaster)
+[[ -n "$master" ]] || { echo "FAIL: could not find master"; exit 1; }
+
+run() {
+	cdb2sql --tabs ${CDB2_OPTIONS} --host "$master" "$dbnm" "$1"
+}
+
+send() {
+	cdb2sql ${CDB2_OPTIONS} --host "$master" "$dbnm" \
+		"exec procedure sys.cmd.send('$1')" >/dev/null 2>&1
+}
+
+fail() { echo "FAIL: $*"; exit 1; }
+
+map_count() {
+	run "select count(*) from comdb2_transaction_commit"
+}
+
+writer=$(run "select value from comdb2_tunables where name='sc_commit_map_skip'")
+[[ "$writer" == "OFF" || "$writer" == "0" ]] ||
+	fail "sc_commit_map_skip must default to OFF, got '$writer'"
+
+trap 'send "sync log-delete on"' EXIT
+send "sync log-delete off 10"
+
+run "create table t(i int)" >/dev/null
+run "insert into t select value from generate_series(1, $N)" >/dev/null
+run "create table app(i int)" >/dev/null
+
+map_before=$(map_count)
+run "rebuild t" >/dev/null || fail "writer-off rebuild failed"
+legacy_map_delta=$(( $(map_count) - map_before ))
+(( legacy_map_delta >= N )) ||
+	fail "writer-off rebuild added only $legacy_map_delta map entries for $N rows"
+
+run "put tunable 'sc_commit_map_skip' 1" >/dev/null ||
+	fail "could not enable sc_commit_map_skip"
+map_before=$(map_count)
+run "rebuild t" >/dev/null || fail "writer-on rebuild failed"
+converter_map_delta=$(( $(map_count) - map_before ))
+(( converter_map_delta < N )) ||
+	fail "writer-on rebuild still added $converter_map_delta map entries for $N rows"
+
+map_before=$(map_count)
+run "insert into app values(1)" >/dev/null || fail "application insert failed"
+app_map_delta=$(( $(map_count) - map_before ))
+(( app_map_delta >= 1 )) ||
+	fail "ordinary application DML added $app_map_delta map entries"
+
+[[ "$(run 'select count(*) from t')" == "$N" ]] ||
+	fail "rebuild changed table contents"
+do_verify t
+
+echo "SC_COMMIT_MAP_FLAGS: rows=$N writer_off_map_delta=$legacy_map_delta" \
+	"writer_on_map_delta=$converter_map_delta app_map_delta=$app_map_delta"
+echo "Passed test"

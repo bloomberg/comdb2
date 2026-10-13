@@ -1,0 +1,95 @@
+#!/usr/bin/env bash
+bash -n "$0" || exit 1
+
+source ${TESTSROOTDIR}/tools/runit_common.sh
+source ${TESTSROOTDIR}/tools/cluster_utils.sh
+set -o pipefail
+
+# Bounce the master in the middle of a rebuild and check that the resumed
+# rebuild establishes its checkpoint before publishing.  multitable_ddl 0
+# resumes through resume_schema_change() and do_ddl(); multitable_ddl 1 resumes
+# through resume_sc_multiddl_txn() and its finalize thread.
+
+dbnm=$1
+N=${SC_COMMIT_MAP_ROWS:-300}
+log=$TESTDIR/logs/$dbnm.db
+lrl=$DBDIR/$DBNAME.lrl
+
+run() { cdb2sql --tabs ${CDB2_OPTIONS} --host "$(getmaster)" "$dbnm" "$1"; }
+fail() { echo "FAIL: $*"; exit 1; }
+
+set_multitable_ddl() {
+	run "put tunable multitable_ddl $1" >/dev/null || fail "failed to set multitable_ddl $1"
+	# a restarted node reads it back from the lrl
+	sed -i '/^multitable_ddl /d' "$lrl"
+	echo "multitable_ddl $1" >>"$lrl"
+}
+
+resume_case() {
+	local mtddl=$1 tbl=$2 i converted up running
+
+	echo "=== resume with multitable_ddl=$mtddl ==="
+	set_multitable_ddl "$mtddl"
+	run "create table $tbl(i int, j int)" >/dev/null || fail "failed to create $tbl"
+	run "insert into $tbl select value, value from generate_series(1, $N)" >/dev/null
+	local expected_sum=$(run "select sum(j) from $tbl")
+
+	# both are needed, and a restart resets them
+	run "exec procedure sys.cmd.send('bdb setattr SC_FORCE_DELAY 1')" >/dev/null || fail "failed to set sc_force_delay"
+	run "exec procedure sys.cmd.send('scdelay 1000')" >/dev/null || fail "failed to set scdelay"
+
+	# not through run(): $! has to be the client itself so the kill below stops it
+	cdb2sql ${CDB2_OPTIONS} --host "$(getmaster)" "$dbnm" "rebuild $tbl" >/dev/null 2>&1 &
+	local rebuild_pid=$!
+	converted=0
+	for ((i = 0; i < 60; i++)); do
+		converted=$(run "select coalesce(max(converted), 0) from comdb2_sc_status where name='$tbl'" 2>/dev/null)
+		(( ${converted:-0} > 0 )) && break
+		sleep 1
+	done
+	(( ${converted:-0} > 0 )) || fail "rebuild of $tbl never started converting"
+	echo "converted $converted of $N rows, bouncing the master"
+
+	# stop the client first, it would resubmit the rebuild once the node is back
+	kill -9 $rebuild_pid 2>/dev/null
+	wait $rebuild_pid 2>/dev/null
+	kill_restart_node "$(getmaster)" 2 0
+
+	up=""
+	for ((i = 0; i < 120; i++)); do
+		up=$(run "select 1" 2>/dev/null)
+		[[ "$up" == "1" ]] && break
+		sleep 1
+	done
+	[[ "$up" == "1" ]] || fail "database did not come back"
+
+	for ((i = 0; i < 120; i++)); do
+		grep -q "checkpoint floor .* covers conversion" "$log" &&
+			running=$(run "select count(*) from comdb2_sc_status where name='$tbl' and status='RUNNING'" 2>/dev/null) &&
+			[[ "$running" == "0" ]] && break
+		sleep 1
+	done
+	grep -q "Resuming schema change" "$log" || fail "multitable_ddl=$mtddl: rebuild of $tbl was not resumed"
+	if [[ "$mtddl" == "0" ]]; then
+		grep -q "resume_schema_change: table: $tbl is in the middle of a schema change" "$log" ||
+			fail "multitable_ddl=0: $tbl did not resume through resume_schema_change()"
+	else
+		grep -q "resume_schema_change: table: $tbl is in the middle" "$log" &&
+			fail "multitable_ddl=1: $tbl resumed through resume_schema_change() instead of the sc list"
+		grep -q "sc_set_running(table=$tbl running=0): from osql_clear_sc_running" "$log" ||
+			fail "multitable_ddl=1: $tbl did not finish through resume_sc_multiddl_txn_finalize()"
+	fi
+	[[ "$(grep -c "checkpoint floor .* covers conversion" "$log")" == "1" ]] ||
+		fail "multitable_ddl=$mtddl: expected exactly one checkpoint, for the resumed rebuild"
+	[[ "$running" == "0" ]] || fail "multitable_ddl=$mtddl: resumed rebuild of $tbl did not finish"
+	grep -q "ASSERT-NOLOCK" "$log" && fail "multitable_ddl=$mtddl: checkpoint polled under the schema lock"
+	[[ "$(run "select count(*) from $tbl")" == "$N" ]] || fail "multitable_ddl=$mtddl: resumed rebuild lost rows"
+	[[ "$(run "select sum(j) from $tbl")" == "$expected_sum" ]] ||
+		fail "multitable_ddl=$mtddl: resumed rebuild changed table contents"
+	echo "multitable_ddl=$mtddl: resumed rebuild of $tbl established its checkpoint"
+}
+
+resume_case 0 t0
+resume_case 1 t1
+
+echo "Passed test"

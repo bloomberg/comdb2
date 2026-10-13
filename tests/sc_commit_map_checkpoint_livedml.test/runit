@@ -1,0 +1,72 @@
+#!/usr/bin/env bash
+bash -n "$0" || exit 1
+
+source ${TESTSROOTDIR}/tools/runit_common.sh
+set -o pipefail
+
+dbnm=$1
+N=${SC_COMMIT_MAP_ROWS:-10000}
+master=$(getmaster)
+[[ -n "$master" ]] || { echo "FAIL: could not find master"; exit 1; }
+
+run() { cdb2sql --tabs ${CDB2_OPTIONS} --host "$master" "$dbnm" "$1"; }
+fail() { echo "FAIL: $*"; exit 1; }
+
+run "create table t(i int, j int)" >/dev/null
+run "insert into t select value, value from generate_series(1, $N)" >/dev/null
+
+writer_log=/tmp/sc_commit_map_checkpoint_livedml_writer.$$
+fifo=/tmp/sc_commit_map_checkpoint_livedml_fifo.$$
+out=/tmp/sc_commit_map_checkpoint_livedml_out.$$
+trap 'rm -f "$writer_log" "$fifo" "$out"' EXIT
+
+writes_ok=0
+run "rebuild t" >/dev/null &
+rebuild_pid=$!
+BATCH=${SC_COMMIT_MAP_BATCH:-250}
+k=0
+while kill -0 "$rebuild_pid" 2>/dev/null; do
+	lo=$((N + k * BATCH + 1))
+	hi=$((N + (k + 1) * BATCH))
+	if run "insert into t select value, value from generate_series($lo, $hi)" \
+		>>"$writer_log" 2>&1; then
+		writes_ok=$((writes_ok + BATCH))
+	fi
+	ulo=$(((k * BATCH) % N + 1))
+	if run "update t set j = j + 1 where i >= $ulo and i < $((ulo + BATCH))" \
+		>>"$writer_log" 2>&1; then
+		writes_ok=$((writes_ok + BATCH))
+	fi
+	k=$((k + 1))
+done
+wait "$rebuild_pid" || fail "rebuild failed"
+
+(( writes_ok > 0 )) || fail "no application write committed during rebuild"
+inserted=$(run "select count(*) from t where i > $N")
+(( inserted > 0 )) || fail "concurrent writer inserted no durable rows"
+total=$(run "select count(*) from t")
+(( total == N + inserted )) || fail "live DML was lost during rebuild"
+expected_sum=$(run "select sum(j) from t")
+
+mkfifo "$fifo"
+cdb2sql --tabs ${CDB2_OPTIONS} --host "$master" "$dbnm" - \
+	<"$fifo" >"$out" 2>&1 &
+snapshot_pid=$!
+exec 9>"$fifo"
+printf '%s\n' "set transaction snapshot isolation" "begin" \
+	"select count(*) from t" "select sum(j) from t" >&9
+sleep 2
+run "update t set j = j + 1000 where i <= $((N / 2))" >/dev/null
+printf '%s\n' "select count(*) from t" "select sum(j) from t" "commit" >&9
+exec 9>&-
+wait "$snapshot_pid" || fail "snapshot client failed"
+
+mapfile -t values < <(grep -vE '^\[' "$out")
+(( values[0] == total && values[2] == total )) ||
+	fail "snapshot count changed across post-target DML"
+[[ "${values[1]}" == "$expected_sum" && "${values[3]}" == "$expected_sum" ]] ||
+	fail "snapshot sum changed across post-target DML"
+
+do_verify t
+echo "SC_COMMIT_MAP_CHECKPOINT_LIVEDML: rows=$total inserted=$inserted writes=$writes_ok"
+echo "Passed test"

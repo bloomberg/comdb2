@@ -22,6 +22,7 @@
 int dryrun_int(struct schema_change_type *, struct dbtable *db, struct dbtable *newdb,
                struct scinfo *);
 int dryrun(struct schema_change_type *s);
+int establish_sc_commit_map_checkpoint(struct schema_change_type *);
 int finalize_schema_change(struct ireq *, tran_type *);
 int do_setcompr(struct ireq *iq, const char *rec, const char *blob);
 int delete_temp_table(struct ireq *iq, struct dbtable *newdb);

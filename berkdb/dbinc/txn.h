@@ -148,6 +148,13 @@ struct __txn_logrec {
 #define	TXN_EXPECTED	6
 #define	TXN_UNEXPECTED	7
 
+#define TXN_OPCODE_MASK 0x000000ffu
+#define TXN_COMMIT_F_SC_SKIP_MAP 0x00000100u
+#define TXN_OPCODE(opcode) ((opcode) & TXN_OPCODE_MASK)
+#define TXN_COMMIT_FLAGS(opcode) ((opcode) & ~TXN_OPCODE_MASK)
+#define TXN_COMMIT_HAS_FLAG(opcode, flag)                                     \
+	((TXN_COMMIT_FLAGS(opcode) & (flag)) != 0)
+
 #include "dbinc_auto/txn_auto.h"
 #include "dbinc_auto/txn_ext.h"
 #include "dbinc_auto/xa_ext.h"

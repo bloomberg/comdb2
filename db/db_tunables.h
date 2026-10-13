@@ -1107,6 +1107,15 @@ REGISTER_TUNABLE("rep_skip_recovery", "Skip recovery if truncate won't unwind a 
                  TUNABLE_BOOLEAN, &gbl_rep_skip_recovery, 0, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("emit_gen_commits", "Emit commit-records which include cluster generation.  (Default: on)",
                  TUNABLE_BOOLEAN, &gbl_emit_gen_commits, 0, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("sc_commit_map_skip", "Omit commit-map entries for schema-change rebuild transactions. (Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_sc_commit_map_skip, 0, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("sc_commit_map_skip_log",
+                 "Mark skipped schema-change commits in the log so replicas and recovery skip them too. Enable only "
+                 "once every node understands the flag; older binaries treat these commits as aborted. (Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_sc_commit_map_skip_log, 0, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("sc_commit_map_checkpoint_timeout_ms",
+                 "Fail a schema change whose conversion checkpoint stays blocked this long. (Default: 600000)",
+                 TUNABLE_INTEGER, &gbl_sc_commit_map_checkpoint_timeout_ms, 0, NULL, NULL, NULL, NULL);
 /* 'retrieve_gen_from_ckp' / 'recovery_ckp' disabled under legacy_defaults until db moves */
 REGISTER_TUNABLE("retrieve_gen_from_ckp", "Retrieve generation from ckp records.  (Default: on)", TUNABLE_BOOLEAN,
                  &gbl_retrieve_gen_from_ckp, 0, NULL, NULL, NULL, NULL);

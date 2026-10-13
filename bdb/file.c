@@ -1680,6 +1680,99 @@ int bdb_flush_noforce(bdb_state_type *bdb_state, int *bdberr)
     return rc;
 }
 
+/* Same floor txn_checkpoint would record now; reported only if below minimum. */
+static void checkpoint_blocker_before(DB_ENV *dbenv, const DB_LSN *minimum, DB_LSN *blocker)
+{
+    DB_LSN floor;
+
+    __log_txn_lsn(dbenv, &floor, NULL, NULL);
+    __txn_checkpoint_floor(dbenv, &floor);
+    if (log_compare(&floor, minimum) < 0)
+        *blocker = floor;
+    else
+        ZERO_LSN(*blocker);
+}
+
+int bdb_schema_change_checkpoint(bdb_state_type *bdb_state, unsigned int minimum_file, unsigned int minimum_offset,
+                                 unsigned int *checkpoint_file, unsigned int *checkpoint_offset,
+                                 unsigned int *floor_file, unsigned int *floor_offset, int timeoutms,
+                                 int (*should_stop)(void *), void *stop_arg, int *bdberr)
+{
+    DB_LSN checkpoint;
+    DB_LSN minimum = {minimum_file, minimum_offset};
+    DB_LSN blocker;
+    DB_TXN_STAT *stats = NULL;
+    int64_t deadline = timeoutms > 0 ? (int64_t)comdb2_time_epochms() + timeoutms : 0;
+    unsigned int attempts = 0;
+    int rc;
+
+    if (bdb_state->parent)
+        bdb_state = bdb_state->parent;
+
+    *bdberr = BDBERR_NOERROR;
+    /* Transactions started after minimum cannot pin the floor below it. */
+    for (;;) {
+        checkpoint_blocker_before(bdb_state->dbenv, &minimum, &blocker);
+        if (gbl_exit || (should_stop && should_stop(stop_arg))) {
+            logmsg(LOGMSG_ERROR, "%s: minimum %u:%u blocker %u:%u stopping\n", __func__, minimum.file, minimum.offset,
+                   blocker.file, blocker.offset);
+            *bdberr = BDBERR_MISC;
+            return -1;
+        }
+        if (IS_ZERO_LSN(blocker))
+            break;
+        if (deadline && (int64_t)comdb2_time_epochms() >= deadline) {
+            logmsg(LOGMSG_ERROR, "%s: transaction at %u:%u blocked conversion checkpoint %u:%u for %d ms\n", __func__,
+                   blocker.file, blocker.offset, minimum.file, minimum.offset, timeoutms);
+            *bdberr = BDBERR_TIMEOUT;
+            return -1;
+        }
+        if (attempts++ % 10 == 0) {
+            logmsg(LOGMSG_INFO, "%s: waiting for transaction at %u:%u before conversion %u:%u\n", __func__,
+                   blocker.file, blocker.offset, minimum.file, minimum.offset);
+        }
+        poll(NULL, 0, 1000);
+    }
+
+    __log_txn_lsn(bdb_state->dbenv, &checkpoint, NULL, NULL);
+    rc = ll_checkpoint(bdb_state, 1);
+    if (rc == 0)
+        rc = bdb_state->dbenv->txn_stat(bdb_state->dbenv, &stats, 0);
+    if (rc != 0 || stats == NULL || gbl_exit || log_compare(&stats->st_ckp_lsn, &minimum) < 0) {
+        logmsg(LOGMSG_ERROR,
+               "%s: rc %d minimum %u:%u attempt %u:%u checkpoint %u:%u "
+               "floor %u:%u exiting %d\n",
+               __func__, rc, minimum.file, minimum.offset, checkpoint.file, checkpoint.offset,
+               stats ? stats->st_last_ckp.file : 0, stats ? stats->st_last_ckp.offset : 0,
+               stats ? stats->st_ckp_lsn.file : 0, stats ? stats->st_ckp_lsn.offset : 0, gbl_exit);
+        free(stats);
+        *bdberr = BDBERR_MISC;
+        return -1;
+    }
+
+    if (checkpoint_file)
+        *checkpoint_file = checkpoint.file;
+    if (checkpoint_offset)
+        *checkpoint_offset = checkpoint.offset;
+    if (floor_file)
+        *floor_file = stats->st_ckp_lsn.file;
+    if (floor_offset)
+        *floor_offset = stats->st_ckp_lsn.offset;
+    free(stats);
+    return 0;
+}
+
+void bdb_get_log_end_lsn(bdb_state_type *bdb_state, unsigned int *file, unsigned int *offset)
+{
+    DB_LSN lsn;
+
+    if (bdb_state->parent)
+        bdb_state = bdb_state->parent;
+    __log_txn_lsn(bdb_state->dbenv, &lsn, NULL, NULL);
+    *file = lsn.file;
+    *offset = lsn.offset;
+}
+
 static int bdb_lock_children_lock(bdb_state_type *bdb_state)
 {
     if (bdb_state->parent)

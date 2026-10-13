@@ -23,4 +23,5 @@ int do_upgrade_table_int(struct schema_change_type *s);
 int finalize_alter_table(struct ireq *iq, struct schema_change_type *s,
                          tran_type *tran);
 int finalize_upgrade_table(struct schema_change_type *s);
+void backout_converted_sc(struct ireq *iq, struct schema_change_type *s);
 #endif

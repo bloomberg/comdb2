@@ -67,6 +67,7 @@ static unsigned int curtran_counter = 0;
 int gbl_flush_on_prepare = 1;
 int gbl_wait_for_prepare_seqnum = 1;
 int gbl_debug_sleep_before_prepare = 0;
+int gbl_sc_commit_map_skip = 0;
 extern int gbl_debug_txn_sleep;
 extern int gbl_debug_disttxn_trace;
 extern int __txn_getpriority(DB_TXN *txnp, int *priority);
@@ -90,6 +91,11 @@ int bdb_tran_set_request_ack(tran_type *tran)
 void bdb_tran_set_is_sc_rebuild(tran_type *tran, int is_sc_rebuild)
 {
     tran->is_sc_rebuild = is_sc_rebuild;
+}
+
+void bdb_tran_set_sc_skip_commit_map(tran_type *tran, int skip)
+{
+    tran->sc_skip_commit_map = skip;
 }
 
 tran_type *bdb_tran_begin_logical_norowlocks_int(bdb_state_type *bdb_state,
@@ -801,9 +807,8 @@ tran_type *bdb_tran_begin_phys(bdb_state_type *bdb_state,
 
     rc = bdb_state->dbenv->txn_begin(bdb_state->dbenv, NULL, &tran->tid, flags);
     if (rc) {
-        logmsg(LOGMSG_ERROR, 
-                "Can't start physical transaction for ltranid %016llx: rc %d\n",
-                logical_tran->logical_tranid, rc);
+        logmsg(LOGMSG_ERROR, "Can't start physical transaction for ltranid %016llx: rc %d\n",
+               logical_tran->logical_tranid, rc);
         free(tran);
         return NULL;
     }
@@ -1024,10 +1029,8 @@ int bdb_tran_abort_phys(bdb_state_type *bdb_state, tran_type *tran)
     return bdb_tran_abort_phys_int(bdb_state, tran, 1);
 }
 
-static tran_type *bdb_tran_begin_ll_int(bdb_state_type *bdb_state,
-                                        tran_type *parent, struct txn_properties *prop, 
-                                        int tranclass, int *bdberr,
-                                        u_int32_t inflags)
+static tran_type *bdb_tran_begin_ll_int(bdb_state_type *bdb_state, tran_type *parent, struct txn_properties *prop,
+                                        int tranclass, int *bdberr, u_int32_t inflags)
 {
     if (gbl_debug_txn_sleep)
         sleep(gbl_debug_txn_sleep);
@@ -1089,7 +1092,7 @@ static tran_type *bdb_tran_begin_ll_int(bdb_state_type *bdb_state,
 
     switch (tran->tranclass) {
     case TRANCLASS_SERIALIZABLE:
-        /* THIS HAS TO BE DONE AT THE MOMENT OF REGISTRATION 
+        /* THIS HAS TO BE DONE AT THE MOMENT OF REGISTRATION
            tran->startgenid = bdb_get_commit_genid(bdb_state); */ /*get_gblcontext(
                                                                  bdb_state);*/
         break;
@@ -1158,7 +1161,7 @@ tran_type *bdb_tran_begin_shadow_int(bdb_state_type *bdb_state, int tranclass,
    SINCE SHADOW TRANSACTIONS (READ COMMITTED/SNAPSHOT/SERIALIZABLE)
    OWN NO BERKDB TRANSACTION, IT IS SAFE TO AVOID GETTING
    AN ADDITIONAL BDB READ LOCK HERE.
-   EACH INDIVIDUAL SQL QUERY REMAINS PROTECTED BY A BDB 
+   EACH INDIVIDUAL SQL QUERY REMAINS PROTECTED BY A BDB
    READ LOCK IN CURTRAN.
    THIS ALSO MAKE USER TRANSACTION SURVIVE MASTER SWINGS
    WITH NO IMPACT.
@@ -1367,7 +1370,7 @@ int llog_ltran_commit_log_wrap(DB_ENV *dbenv, DB_TXN *txnid, DB_LSN *ret_lsnp,
                                DB_LSN *prevllsn, u_int64_t gblcontext,
                                short isabort);
 
-void abort_at_exit(void) 
+void abort_at_exit(void)
 {
     abort();
 }
@@ -1622,9 +1625,7 @@ int bdb_tran_commit_with_seqnum_int(bdb_state_type *bdb_state, tran_type *tran,
             if (iirc) {
                 tran->tid->abort(tran->tid);
                 bdb_osql_trn_repo_unlock();
-                logmsg(LOGMSG_ERROR, 
-                        "%s:update_shadows_beforecommit nonblocking rc %d\n",
-                        __func__, rc);
+                logmsg(LOGMSG_ERROR, "%s:update_shadows_beforecommit nonblocking rc %d\n", __func__, rc);
                 *bdberr = rc;
                 outrc = -1;
                 goto cleanup;
@@ -1641,13 +1642,13 @@ int bdb_tran_commit_with_seqnum_int(bdb_state_type *bdb_state, tran_type *tran,
 
         /* "normal" case for physical transactions. just commit */
         flags = DB_TXN_DONT_GET_REPO_MTX;
+        if (tran->sc_skip_commit_map)
+            flags |= DB_TXN_SC_PRIVATE_SKIP_MAP;
         flags |= (tran->request_ack) ? DB_TXN_REP_ACK : 0;
         rc = tran->tid->commit_getlsn(tran->tid, flags, out_txnsize, &lsn, &commit_gen, tran);
         bdb_osql_trn_repo_unlock();
         if (rc != 0) {
-            logmsg(LOGMSG_ERROR, 
-                   "%s:%d failed commit_getlsn, rc %d\n", __func__,
-                   __LINE__, rc);
+            logmsg(LOGMSG_ERROR, "%s:%d failed commit_getlsn, rc %d\n", __func__, __LINE__, rc);
             *bdberr = BDBERR_MISC;
             outrc = -1;
             goto cleanup;
@@ -1662,7 +1663,7 @@ int bdb_tran_commit_with_seqnum_int(bdb_state_type *bdb_state, tran_type *tran,
                 /*fprintf(stderr, "%s:%d 2 updating my seqnum to %d:%d\n",
                   __func__, __LINE__, lsn.file, lsn.offset);*/
 
-                // TODO not sure if this is necessary anymore 
+                // TODO not sure if this is necessary anymore
                 // I should be setting this from a hook in log-put
                 memcpy(&h->seqnum.lsn, &lsn, sizeof(DB_LSN));
                 h->seqnum.generation = commit_gen > 0 ? commit_gen : generation;
@@ -1731,9 +1732,7 @@ int bdb_tran_commit_with_seqnum_int(bdb_state_type *bdb_state, tran_type *tran,
         if (!needed_to_abort || blkseq) {
             rc = get_physical_transaction(bdb_state, tran, &physical_tran, 0);
             if (!physical_tran) {
-                logmsg(LOGMSG_FATAL, 
-                        "%s %d error getting physical transaction, %d\n",
-                        __FILE__, __LINE__, rc);
+                logmsg(LOGMSG_FATAL, "%s %d error getting physical transaction, %d\n", __FILE__, __LINE__, rc);
                 abort();
             }
         }
@@ -1799,9 +1798,7 @@ int bdb_tran_commit_with_seqnum_int(bdb_state_type *bdb_state, tran_type *tran,
                 rc = get_physical_transaction(bdb_state, tran, &physical_tran,
                                               0);
                 if (!physical_tran) {
-                    logmsg(LOGMSG_FATAL, 
-                            "%s %d error getting physical transaction, %d\n",
-                            __FILE__, __LINE__, rc);
+                    logmsg(LOGMSG_FATAL, "%s %d error getting physical transaction, %d\n", __FILE__, __LINE__, rc);
                     abort();
                 }
             } else if (*bdberr == BDBERR_DEADLOCK) {
@@ -2278,17 +2275,17 @@ int bdb_tran_abort_int_int(bdb_state_type *bdb_state, tran_type *tran,
             /* THIS IS ALWAYS A CHILDLESS TRANSACTION OR A CHILD TRANSACTION */
             if (priority) {
                 __txn_getpriority(tran->tid, priority);
-#if 0           
+#if 0
               int priority_p = 0;
               int priority2 = 0;
 
 
               if (tran->parent)
                  __txn_getpriority(tran->parent->tid, &priority_p);
-               
+
               __txn_getpriority(tran->tid, &priority2);
 
-                printf("%d %s:%d %p ABORT got priority %d parent %d %s\n", 
+                printf("%d %s:%d %p ABORT got priority %d parent %d %s\n",
                       pthread_self(), __FILE__, __LINE__, tran->tid, priority2, priority_p, (!tran->parent)?"NO PARENT":"");
               *priority = priority2;
 #endif
@@ -2550,9 +2547,8 @@ int bdb_put_cursortran(bdb_state_type *bdb_state, cursor_tran_t *curtran,
 
     rc = bdb_state->dbenv->lock_id_free(bdb_state->dbenv, curtran->lockerid);
     if (rc) {
-        logmsg(LOGMSG_ERROR, 
-                "%s:%d:%s: fail returned by lock_id_free lid=%x rc=%d\n",
-                __FILE__, __LINE__, __func__, curtran->lockerid, rc);
+        logmsg(LOGMSG_ERROR, "%s:%d:%s: fail returned by lock_id_free lid=%x rc=%d\n", __FILE__, __LINE__, __func__,
+               curtran->lockerid, rc);
         *bdberr = BDBERR_BUG_KILLME;
         rc = -1;
     }
@@ -2616,7 +2612,7 @@ int bdb_get_lsn_lwm(bdb_state_type *bdb_state, DB_LSN *lsnout)
             LISTC_FOR_EACH_SAFE(&parent->logical_transactions_list, tran, tmp, tranlist_lnk)
             {
                 lsnp = &tran->startlsn;
-                if(prev) 
+                if(prev)
                 {
                     assert(log_compare(prev, lsnp) <= 0 || 0 == lsnp->file);
                 }
@@ -2666,8 +2662,9 @@ int bdb_get_lowest_modsnap_file(bdb_state_type *bdb_state)
     LISTC_FOR_EACH(&dbenv->outstanding_modsnaps, outstanding_modsnap, lnk) {
         if (!outstanding_modsnap->is_allowed_to_open_cursors) { continue; }
 
-        min_file = itr++ == 0 || outstanding_modsnap->prior_checkpoint_lsn.file < min_file 
-        ? outstanding_modsnap->prior_checkpoint_lsn.file : min_file;
+        min_file = itr++ == 0 || outstanding_modsnap->prior_checkpoint_lsn.file < min_file
+                       ? outstanding_modsnap->prior_checkpoint_lsn.file
+                       : min_file;
     }
 
     pthread_mutex_unlock(&dbenv->outstanding_modsnap_lock);
@@ -2723,7 +2720,7 @@ int bdb_register_modsnap(bdb_state_type *bdb_state,
     pthread_mutex_unlock(&dbenv->outstanding_modsnap_lock);
 
     * (void **)registration = (void *) outstanding_modsnap;
-    
+
     return 0;
 }
 
@@ -2737,8 +2734,7 @@ static int get_modsnap_start_lsn(bdb_state_type *bdb_state, bdb_attr_type *bdb_a
     {
         DB_LSN modsnap_start_lsn;
         int bdberr = 0;
-        const int rc = bdb_get_lsn_context_from_timestamp(bdb_state, snapshot_epoch,
-            &modsnap_start_lsn, 0, &bdberr); 
+        const int rc = bdb_get_lsn_context_from_timestamp(bdb_state, snapshot_epoch, &modsnap_start_lsn, 0, &bdberr);
 
         if (rc || bdberr) {
             logmsg(LOGMSG_ERROR, "%s: Failed to get LSN from timestamp with rc %d and bdberr %d\n",

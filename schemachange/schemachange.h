@@ -284,6 +284,9 @@ struct schema_change_type {
 
     int sc_thd_failed;
     int schema_change;
+    int sc_commit_map_checkpoint;
+    unsigned int sc_commit_map_checkpoint_file;
+    unsigned int sc_commit_map_checkpoint_offset;
 
     /*********************** temporary fields for table upgrade
      * ************************/

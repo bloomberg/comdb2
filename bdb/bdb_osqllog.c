@@ -4266,7 +4266,7 @@ static inline int retrieve_start_lsn(DBT *data, u_int32_t rectype, DB_LSN *lsn)
                    __func__, __LINE__, rc, lsn->file, lsn->offset);
             return 1;
         }
-        if (txn_args->opcode != TXN_COMMIT) {
+        if (TXN_OPCODE(txn_args->opcode) != TXN_COMMIT) {
             logmsg(LOGMSG_ERROR,
                    "%s line %d regop opcode not commit, %d "
                    "for %d:%d\n",
@@ -4289,7 +4289,7 @@ static inline int retrieve_start_lsn(DBT *data, u_int32_t rectype, DB_LSN *lsn)
                    __func__, __LINE__, rc, lsn->file, lsn->offset);
             return 1;
         }
-        if (txn_gen_args->opcode != TXN_COMMIT) {
+        if (TXN_OPCODE(txn_gen_args->opcode) != TXN_COMMIT) {
             logmsg(LOGMSG_ERROR,
                    "%s line %d regop_gen opcode not commit, "
                    "%d for %d:%d\n",
@@ -4314,8 +4314,7 @@ static inline int retrieve_start_lsn(DBT *data, u_int32_t rectype, DB_LSN *lsn)
             return 1;
         }
 
-        if (txn_rl_args->opcode != TXN_COMMIT ||
-            !(txn_rl_args->lflags & DB_TXN_LOGICAL_COMMIT)) {
+        if (TXN_OPCODE(txn_rl_args->opcode) != TXN_COMMIT || !(txn_rl_args->lflags & DB_TXN_LOGICAL_COMMIT)) {
             logmsg(LOGMSG_ERROR,
                    "%s line %d regop_rl opcode not commit, %d"
                    "for %d:%d\n",
