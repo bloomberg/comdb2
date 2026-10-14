@@ -5098,9 +5098,12 @@ static void udppfault_do_work(struct thdpool *pool, void *work, void *thddata)
 
     mpf = file_dbp->mpf;
 
-    touch_page(mpf, pgno);
-    if (gbl_prefault_latency > 0)
-        sleep(gbl_prefault_latency);
+    /* skip a btree prefault request whose dbreg id was reused by another file */
+    if (!req->has_ufid || memcmp(file_dbp->fileid, req->ufid, DB_FILE_ID_LEN) == 0) {
+        touch_page(mpf, pgno);
+        if (gbl_prefault_latency > 0)
+            sleep(gbl_prefault_latency);
+    }
 
     __dbreg_prefault_complete(bdb_state->dbenv, fileid);
 }
@@ -5124,32 +5127,6 @@ out:
     return;
 }
 
-static void touch_page_pp(struct thdpool *pool, void *work, void *thddata,
-                          int op)
-{
-
-    DB_MPOOLFILE *mpf = ((touch_pg *)work)->mpf;
-    db_pgno_t pgno = ((touch_pg *)work)->pgno;
-
-    switch (op) {
-    case THD_RUN:
-        touch_page(mpf, pgno);
-        break;
-    }
-    free(work);
-}
-
-int enqueue_touch_page(DB_MPOOLFILE *mpf, db_pgno_t pgno)
-{
-    int rc;
-    touch_pg *work = (touch_pg *)malloc(sizeof(touch_pg));
-    work->mpf = mpf;
-    work->pgno = pgno;
-    rc =
-        thdpool_enqueue(gbl_udppfault_thdpool, touch_page_pp, work, 0, NULL, 0);
-    return rc;
-}
-
 static void udppfault_do_work_pp(struct thdpool *pool, void *work,
                                  void *thddata, int op)
 {
@@ -5161,6 +5138,26 @@ static void udppfault_do_work_pp(struct thdpool *pool, void *work,
         break;
     }
     free(req);
+}
+
+/* Prefault a page for the btree prefaulter, by dbreg id like the requests above,
+ * so that the file cannot be closed under it */
+int enqueue_touch_page(DB_ENV *dbenv, int32_t fileid, const u_int8_t *ufid, db_pgno_t pgno)
+{
+    udppf_rq_t *req = malloc(sizeof(udppf_rq_t));
+    int rc;
+
+    if (req == NULL)
+        return ENOMEM;
+    req->bdb_state = dbenv->app_private;
+    req->fileid = fileid;
+    req->pgno = pgno;
+    req->has_ufid = 1;
+    memcpy(req->ufid, ufid, DB_FILE_ID_LEN);
+    rc = thdpool_enqueue(gbl_udppfault_thdpool, udppfault_do_work_pp, req, 0, NULL, 0);
+    if (rc != 0)
+        free(req);
+    return rc;
 }
 
 int enque_udppfault_filepage(bdb_state_type *bdb_state, unsigned int fileid,

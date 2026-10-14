@@ -33,6 +33,7 @@ BERK_DEF_ATTR(btpf_wndw_inc, "Increment factor for the number of pages read ahea
 BERK_DEF_ATTR(btpf_pg_gap, "Min. number of records to the page limit before read ahead", BERK_ATTR_TYPE_INTEGER, 0)
 BERK_DEF_ATTR(btpf_cu_gap, "How close a cursor should be (pages) to the prefaulted limit before prefaulting again", BERK_ATTR_TYPE_INTEGER, 5)
 BERK_DEF_ATTR(btpf_min_th, "Preload pages only if the tree has heigth less than this parameter", BERK_ATTR_TYPE_INTEGER, 1)
+BERK_DEF_ATTR(btpf_start_after, "Pages a cursor must cross before reading ahead", BERK_ATTR_TYPE_INTEGER, 4)
 BERK_DEF_ATTR(recovery_verify, "After recovery, run a full pass to make sure everything is applied", BERK_ATTR_TYPE_BOOLEAN, 0)
 BERK_DEF_ATTR(recovery_verify_fatal, "Abort if recovery_verify is set, and fails.", BERK_ATTR_TYPE_BOOLEAN, 0)
 BERK_DEF_ATTR(cache_lc, "Collect logs into LSN_COLLECTIONs as they come in", BERK_ATTR_TYPE_BOOLEAN, 0)
