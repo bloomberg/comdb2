@@ -1698,7 +1698,7 @@ __log_c_io(logc, fnum, offset, p, nrp, eofp)
 	 * If we've switched files, discard the current file handle and acquire
 	 * a new one.
 	 */
-	if (logc->c_fhp != NULL && logc->bp_lsn.file != fnum) {
+	if (logc->c_fhp != NULL && logc->c_fnum != fnum) {
 		ret = __os_closehandle(dbenv, logc->c_fhp);
 		logc->c_fhp = NULL;
 		if (ret != 0)
@@ -1725,9 +1725,13 @@ __log_c_io(logc, fnum, offset, p, nrp, eofp)
 			__db_err(dbenv,
 			    "DB_LOGC->get: %s: %s", np, db_strerror(ret));
 			__os_free(dbenv, np);
+			/* so that the next read opens the file and sizes it again */
+			(void)__os_closehandle(dbenv, logc->c_fhp);
+			logc->c_fhp = NULL;
 			return (ret);
 		}
 		__os_free(dbenv, np);
+		logc->c_fnum = fnum;
 	}
 
 	/* Seek to the record's offset. */
