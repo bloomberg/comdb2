@@ -1453,8 +1453,12 @@ int bplog_schemachange_wait(struct ireq *iq, int rc)
             }
             sc = next;
         }
-        if (rc == ERR_NOMASTER)
+        if (rc == ERR_NOMASTER) {
             iq->sc_pending = NULL;
+            /* keep the sc_list in llmeta so the new master resumes it */
+            if (gbl_multitable_ddl)
+                iq->osql_flags &= ~OSQL_FLAGS_SCDONE;
+        }
     }
     logmsg(LOGMSG_INFO, ">>> DDL SCHEMA CHANGE RC %d <<<\n", rc);
 
