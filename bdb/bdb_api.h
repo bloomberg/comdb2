@@ -1212,6 +1212,7 @@ int bdb_temp_table_close(bdb_state_type *bdb_state, struct temp_table *table,
 
 int bdb_temp_table_truncate(bdb_state_type *bdb_state, struct temp_table *tbl,
                             int *bdberr);
+int bdb_temp_table_untouched(struct temp_table *tbl);
 
 struct temp_cursor *bdb_temp_table_cursor(bdb_state_type *bdb_state,
                                           struct temp_table *table,

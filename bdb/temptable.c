@@ -207,6 +207,7 @@ struct temp_table {
     char *sql;
 
     unsigned long long num_mem_entries;
+    int inserted; /* rows inserted since it was created or last truncated */
     int max_mem_entries;
     LISTC_T(struct temp_cursor) cursors;
     void *next;
@@ -472,6 +473,7 @@ static void bdb_temp_table_reset(struct temp_table *tbl)
 {
     tbl->rowid = 0;
     tbl->num_mem_entries = 0;
+    tbl->inserted = 0;
 }
 
 static int bdb_temp_table_reset_cursors( bdb_state_type *bdb_state, struct temp_table *tbl, int *bdberr);
@@ -1393,6 +1395,13 @@ static int bdb_temp_table_truncate_temp_db(bdb_state_type *bdb_state,
 
 int gbl_temptable_recreate_size = 1048576;
 
+/* Nothing was inserted since the table was created or last truncated, so
+ * truncating it would not change anything */
+int bdb_temp_table_untouched(struct temp_table *tbl)
+{
+    return !tbl->inserted;
+}
+
 int bdb_temp_table_truncate(bdb_state_type *bdb_state, struct temp_table *tbl,
                             int *bdberr)
 {
@@ -1446,9 +1455,10 @@ int bdb_temp_table_truncate(bdb_state_type *bdb_state, struct temp_table *tbl,
     }
 
 done:
-    if (rc == 0)
+    if (rc == 0) {
         tbl->num_mem_entries = 0;
-
+        tbl->inserted = 0;
+    }
 
     dbgtrace(3, "temp_table_truncate() = %d", rc);
     return rc;
@@ -2286,6 +2296,8 @@ static int bdb_temp_table_insert_put(bdb_state_type *bdb_state,
     tmptbl_cmp cmpfn;
     arr_elem_t *elem;
     uint8_t *keycopy, *dtacopy;
+
+    tbl->inserted = 1;
 
     if (tbl->temp_table_type == TEMP_TABLE_TYPE_HASH) {
         void *hash_data;

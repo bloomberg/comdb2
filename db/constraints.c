@@ -1932,6 +1932,9 @@ int truncate_constraint_table(void *table)
     int rc = 0;
     if (table == NULL)
         return rc;
+    /* usually unused: skip the truncate, which stats the table's file */
+    if (bdb_temp_table_untouched(table))
+        return rc;
     rc = bdb_temp_table_truncate(thedb->bdb_env, table, &bdberr);
     return rc;
 }
