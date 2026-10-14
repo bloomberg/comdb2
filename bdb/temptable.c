@@ -1354,10 +1354,6 @@ static int bdb_temp_table_truncate_temp_db(bdb_state_type *bdb_state,
     DBC *dbcur;
     DBT dbt_key, dbt_data;
 
-    if (tbl->num_mem_entries == 0) {
-        return 0;
-    }
-
     /*fprintf(stderr, "bdb_temp_table_truncate_temp_db\n");*/
 
     bzero(&dbt_key, sizeof(DBT));
@@ -1431,6 +1427,9 @@ int bdb_temp_table_truncate(bdb_state_type *bdb_state, struct temp_table *tbl,
         break;
 
     case TEMP_TABLE_TYPE_BTREE:
+        if (tbl->num_mem_entries == 0)
+            break;
+
         rc = tbl->tmpdb->size(tbl->tmpdb, &sz);
         if (tbl->num_mem_entries < 100 && (rc == 0 && sz < gbl_temptable_recreate_size))
             rc = bdb_temp_table_truncate_temp_db(bdb_state, tbl, bdberr);
