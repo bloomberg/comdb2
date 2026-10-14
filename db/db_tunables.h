@@ -2762,6 +2762,14 @@ REGISTER_TUNABLE("debug_skip_sc_list_delete_on_abort",
                  "crashed before removing it (Default: OFF)",
                  TUNABLE_BOOLEAN, &gbl_debug_skip_sc_list_delete_on_abort, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL,
                  NULL);
+REGISTER_TUNABLE("test_sc_abort_before_downgrade_ms",
+                 "Test only: when downgrading, wait this long after the schema change stopped so that it finishes "
+                 "aborting before the node goes read-only (Default: 0)",
+                 TUNABLE_INTEGER, &gbl_test_sc_abort_before_downgrade_ms, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL,
+                 NULL);
+REGISTER_TUNABLE("test_sc_finalize_pause_ms",
+                 "Test only: pause this long between finalizing schema changes and committing them (Default: 0)",
+                 TUNABLE_INTEGER, &gbl_test_sc_finalize_pause_ms, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 
 REGISTER_TUNABLE("dohsql_joins", "Enable to support joins in parallel sql execution (default: on)", TUNABLE_BOOLEAN,
                  &gbl_dohsql_joins, 0, NULL, NULL, NULL, NULL);
