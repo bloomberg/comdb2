@@ -162,16 +162,20 @@ static int ssl_verify_cn(const char *hostname, const X509 *cert)
 int ssl_x509_get_attr(const X509 *cert, int nid, char *out, size_t len)
 {
     int fldindx;
-    X509_NAME  *certname;
-    X509_NAME_ENTRY *fld;
-    ASN1_STRING *fldasn1;
+#if OPENSSL_VERSION_NUMBER >= 0x30000000L
+    const X509_NAME *certname;
+#else
+    X509_NAME *certname;
+#endif
+    const X509_NAME_ENTRY *fld;
+    const ASN1_STRING *fldasn1;
     const char *fldstr;
 
     /* Fast return if nid is undefined */
     if (nid == NID_undef)
         return EINVAL;
 
-    certname = X509_get_subject_name((X509 *)cert);
+    certname = X509_get_subject_name(cert);
     if (certname == NULL)
         return EINVAL;
 
