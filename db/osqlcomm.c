@@ -77,6 +77,7 @@ extern int gbl_partial_indexes;
 int gbl_toblock_random_deadlock_trans;
 int gbl_toblock_random_verify_error;
 int gbl_selectv_writelock = 0;
+int gbl_test_sc_finalize_pause_ms = 0;
 int gbl_debug_invalid_genid;
 int gbl_partition_sc_reorder = 1;
 
@@ -7575,6 +7576,12 @@ int osql_finalize_scs(struct ireq *iq, tran_type *trans)
     rc = osql_delete_sc_list(iq->scs_uuid, iq->sc_tran);
     if (rc) {
         error = ERR_SC;
+    }
+
+    if (!error && gbl_test_sc_finalize_pause_ms > 0) {
+        /* test only: leave a window between finalizing and committing */
+        logmsg(LOGMSG_USER, "%s: finalized, pausing %d ms before commit\n", __func__, gbl_test_sc_finalize_pause_ms);
+        poll(NULL, 0, gbl_test_sc_finalize_pause_ms);
     }
 
     return error ? ERR_SC : 0;

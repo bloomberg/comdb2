@@ -32,6 +32,10 @@ delayed_writes()
     if [[ -z "${CLUSTER}" ]] ; then
         echo "Skipping master downgrade test since we are single node"
     else
+        # Let the aborted schema change unwind before mastership is given
+        # away: its abort used to remove the sc_list that the new master
+        # resumes from, which only showed when it ran before the election
+        $CM "put tunable test_sc_abort_before_downgrade_ms 5000"
         echo "Sleeping 10 more seconds finally for master downgrade ${master}"
         sleep 10
         $CM "exec procedure sys.cmd.send('downgrade')"
@@ -224,8 +228,10 @@ echo "alter client output:"
 cat alter2.out
 
 # do not let kill_restart_node wait for us: if the resume takes the database
-# down, waitmach would spin until the testcase times out
-kill_restart_node ${master} 0 0
+# down, waitmach would spin until the testcase times out.  Stay down long
+# enough for the others to elect a master: a restart rereads the lrl, so if
+# this node won again it would resume with multitable_ddl back on.
+kill_restart_node ${master} 10 0
 
 echo "Waiting for the database to come back"
 up=""
@@ -261,6 +267,15 @@ fi
 
 echo "t2 must not be left stuck in a schema change"
 $C "alter table t2 add column c int" || failexit "follow-up schema change on t2 failed"
+
+echo "Waiting for ${master} to come back"
+up=""
+for i in `seq 1 120` ; do
+    up=`cdb2sql --tabs ${CDB2_OPTIONS} ${DBN} --host ${master} "select 1" 2>/dev/null`
+    [[ "${up}" == "1" ]] && break
+    sleep 1
+done
+[[ "${up}" == "1" ]] || failexit "${master} did not come back after the cancelled resume"
 
 for n in `getclusternodes` ; do
     cdb2sql ${CDB2_OPTIONS} ${DBN} --host $n "put tunable multitable_ddl 1"
@@ -337,7 +352,8 @@ if [[ -z "${CLUSTER}" ]] ; then
         failexit "failed to arm debug_retro_resume_fail_shard in the lrl"
 fi
 
-kill_restart_node ${master} 0 0
+# as above, a restarted node that won the election again would not be armed
+kill_restart_node ${master} 10 0
 
 echo "Waiting for the database to come back"
 up=""
@@ -368,6 +384,15 @@ nrows=`${CT} "select count(*) from t3"`
 if [[ "${nrows}" != "60" ]] ; then
     failexit "expected 60 rows in t3, got ${nrows}"
 fi
+
+echo "Waiting for ${master} to come back"
+up=""
+for i in `seq 1 120` ; do
+    up=`cdb2sql --tabs ${CDB2_OPTIONS} ${DBN} --host ${master} "select 1" 2>/dev/null`
+    [[ "${up}" == "1" ]] && break
+    sleep 1
+done
+[[ "${up}" == "1" ]] || failexit "${master} did not come back after the failed resume"
 
 # NOTE: t3 is deliberately left with a stale in_schema_change marker.  The
 # resume dies at the shard add and never reaches t3, and nothing on that path
@@ -488,5 +513,58 @@ fi
 for n in `getclusternodes` ; do
     cdb2sql ${CDB2_OPTIONS} ${DBN} --host $n "put tunable partition_retroactively_start 1"
 done
+
+# A downgrade cannot slip in between finalizing a schema change and committing
+# it: finalize holds the schema lock until the commit, so the downgrade waits
+# for it and the partitioning still completes
+if [[ -n "${CLUSTER}" ]] ; then
+    echo "Checking that a downgrade waits for a finalized schema change to commit"
+    $C "create table t5 { `cat t.csc2` }" || failexit "failed to create t5"
+    $C "insert into t5(a) select * from generate_series(1, 60)" || failexit "failed to fill t5"
+
+    master=`getmaster`
+    CM="cdb2sql ${CDB2_OPTIONS} ${DBN} --host ${master}"
+    $CM "put tunable test_sc_finalize_pause_ms 10000" || failexit "failed to set test_sc_finalize_pause_ms"
+
+    start=`${CT} "select now() + cast(1 as days)"`
+    start=`echo ${start} | sed "s/\"/'/g"`
+    $C "ALTER TABLE t5 PARTITIONED BY TIME PERIOD 'daily' RETENTION 2 START ${start} RETROACTIVELY" &> alter5.out &
+    alterpid=$!
+
+    paused=0
+    for i in `seq 1 60` ; do
+        if grep -q "finalized, pausing" ${TESTDIR}/logs/${DBNAME}.${master}.db ; then
+            paused=1
+            break
+        fi
+        sleep 1
+    done
+    (( paused == 1 )) || failexit "the partitioning of t5 never reached the finalize pause"
+    echo "Finalized, downgrading ${master} before the commit"
+    $CM "exec procedure sys.cmd.send('downgrade')"
+
+    wait ${alterpid}
+    if [[ -s alter5.out ]] ; then
+        cat alter5.out
+        failexit "the partitioning of t5 failed across the downgrade"
+    fi
+
+    newmaster=""
+    for i in `seq 1 30` ; do
+        newmaster=`getmaster`
+        [[ -n "${newmaster}" && "${newmaster}" != "${master}" ]] && break
+        sleep 1
+    done
+    [[ -n "${newmaster}" && "${newmaster}" != "${master}" ]] || failexit "${master} did not downgrade"
+
+    nparts=`${CT} "select count(*) from comdb2_timepartitions where name='t5'"`
+    if [[ "${nparts}" != "1" ]] ; then
+        failexit "t5 should be partitioned, found ${nparts}"
+    fi
+    nrows=`${CT} "select count(*) from t5"`
+    if [[ "${nrows}" != "60" ]] ; then
+        failexit "expected 60 rows in t5, got ${nrows}"
+    fi
+fi
 
 echo "SUCCESS"

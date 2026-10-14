@@ -138,6 +138,7 @@ extern int get_schema_change_in_progress(const char *func, int line);
 int gbl_debug_children_lock = 0;
 int gbl_queuedb_genid_filename = 1;
 int gbl_queuedb_file_threshold = 0;
+int gbl_test_sc_abort_before_downgrade_ms = 0;
 int gbl_queuedb_file_interval = 60000;
 static const char NEW_PREFIX[] = "new.";
 
@@ -5430,6 +5431,13 @@ static int bdb_upgrade_downgrade_reopen_wrap(bdb_state_type *bdb_state, int op,
 
     if (op != UPGRADE) {
         wait_for_sc_to_stop("downgrade", __func__, __LINE__);
+        if (gbl_test_sc_abort_before_downgrade_ms > 0) {
+            /* test only: let the stopped schema change finish aborting while
+             * we can still write, before going read-only */
+            logmsg(LOGMSG_USER, "%s: waiting %d ms before downgrading\n", __func__,
+                   gbl_test_sc_abort_before_downgrade_ms);
+            poll(NULL, 0, gbl_test_sc_abort_before_downgrade_ms);
+        }
         bdb_set_read_only(bdb_state);
     }
 
