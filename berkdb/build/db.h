@@ -719,6 +719,7 @@ struct __db_log_cursor {
 	DB_ENV	 *dbenv;		/* Enclosing dbenv. */
 
 	DB_FH	 *c_fhp;		/* File handle. */
+	u_int32_t c_fnum;		/* File number c_fhp is open on. */
 	DB_LSN	  c_lsn;		/* Cursor: LSN */
 	u_int32_t c_len;		/* Cursor: record length */
 	u_int32_t c_prev;		/* Cursor: previous record's offset */
