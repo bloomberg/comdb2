@@ -43,8 +43,7 @@ or 13 bytes for ```datetimeus``` values).
 The application can specify a datetime value as:
 
 * A string, following the ISO 8601 format (extended to fully support the timezone naming scheme)
-* C structure ```cdb2_client_datetime_t``` or ```cdb2_client_datetimeus_t``` bound to an SQL parameter, which 
-  contains ```struct tm```-like fields and the timezone name
+* C structure ```cdb2_client_datetime_t``` or ```cdb2_client_datetimeus_t``` bound to an SQL parameter. This includes timezone name and `struct cdb2_tm` which is based on `struct tm` from `<time.h>`. Run `man localtime` for more.
 * Numeric types: If the number is an integer, is interpreted as "epoch" seconds.  If the number is a floating 
   point value, the integer part is the "epoch" seconds and the fractional part is the number of milliseconds 
   (rounded to a range of 0.001-0.999). Epoch times supplied this way don't have an associated timezone component,
@@ -67,15 +66,15 @@ The structure definition is:
 
 typedef struct cdb2_tm 
 {
-  int tm_sec;
-  int tm_min;
-  int tm_hour;
-  int tm_mday;
-  int tm_mon;
-  int tm_year;
-  int tm_wday;
-  int tm_yday;
-  int tm_isdst;
+  int tm_sec;    /* Seconds (0-60) */
+  int tm_min;    /* Minutes (0-59) */
+  int tm_hour;   /* Hours (0-23) */
+  int tm_mday;   /* Day of the month (1-31) */
+  int tm_mon;    /* Month (0-11) */
+  int tm_year;   /* Years since 1900 */
+  int tm_wday;   /* Day of the week (0-6, Sunday = 0) */
+  int tm_yday;   /* Day in the year (0-365, 1 Jan = 0) */
+  int tm_isdst;  /* Daylight saving time: positive if DST is in effect, 0 if not, and negative if unknown */
 }
 cdb2_tm_t;
 
