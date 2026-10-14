@@ -507,11 +507,25 @@ See also:
 
 The ```TRUNCATE``` statement deletes all the data in a give table.  It does this very efficiently by creating
 a brand new table and telling the database to use it instead of the old table.  For anything but very small tables
-this is much more efficient than using the [```DELETE``` statement](#delete).  However ```TRUNCATE``` will refuse
-to operate on tables that have foreign key constraints, or are referred to by tables with foreign key constraints.
-This restriction is necessary since it's not possible to quickly verify that no constraints are violated.  If all
-records need to be deleted from a table with/referenced by foreign key constrains, please use the ```DELETE``` 
-statement instead.
+this is much more efficient than using the [```DELETE``` statement](#delete).
+
+A table that has foreign key constraints can always be truncated, since an empty table can't violate its
+constraints.  However, on its own, ```TRUNCATE``` will refuse to operate on a table that is referenced by foreign
+key constraints in other tables.  Truncating it would leave dangling references in the referencing tables, and
+```TRUNCATE``` does not perform cascading actions (such as ```ON DELETE CASCADE```) the way ```DELETE``` does.
+
+A set of tables related by foreign keys can be truncated together in a single transaction, provided that every
+table referencing a truncated table is also truncated (or dropped) in the same transaction:
+
+```sql
+BEGIN
+TRUNCATE TABLE dependent
+TRUNCATE TABLE parent
+COMMIT
+```
+
+Alternatively, use the ```DELETE``` statement to delete all records from a table referenced by foreign key
+constraints.
 
 ### CREATE INDEX
 
