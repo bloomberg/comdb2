@@ -26,7 +26,7 @@ BERK_DEF_ATTR(check_applied_lsns_fatal, "Abort if check_applied_lsns fails", BER
 BERK_DEF_ATTR(check_applied_lsns_debug, "Lots of verbose trace for debugging applied LSNs.", BERK_ATTR_TYPE_BOOLEAN, 0)
 BERK_DEF_ATTR(sgio_enabled, "Do scatter gather I/O", BERK_ATTR_TYPE_BOOLEAN, 0)
 BERK_DEF_ATTR(sgio_max, "Max scatter gather I/O to do at one time", BERK_ATTR_TYPE_INTEGER, 10 * MEGABYTE)
-BERK_DEF_ATTR(btpf_enabled, "Enables index pages read ahead", BERK_ATTR_TYPE_BOOLEAN, 0)
+BERK_DEF_ATTR(btpf_enabled, "Enables index pages read ahead", BERK_ATTR_TYPE_BOOLEAN, 1)
 BERK_DEF_ATTR(btpf_wndw_min, "Minimum number of pages read ahead", BERK_ATTR_TYPE_INTEGER, 100 )
 BERK_DEF_ATTR(btpf_wndw_max, "Maximum number of pages read ahead", BERK_ATTR_TYPE_INTEGER, 1000 )
 BERK_DEF_ATTR(btpf_wndw_inc, "Increment factor for the number of pages read ahead", BERK_ATTR_TYPE_INTEGER, 1)
