@@ -126,7 +126,7 @@ before_inline=$(counter inline)
 expect_rejected "insert into t values(300, 99)" "duplicate-key insert on the inline fallback"
 [ "$(counter inline)" -gt "$before_inline" ] || fail "the rejected write never took the inline fallback"
 
-set_tunable async_dist_commit_max_outstanding_trans 8
+set_tunable async_dist_commit_max_outstanding_trans 1024
 
 ################################################################
 # 6. The waiter behaves like the inline wait around slow or removed
@@ -231,7 +231,7 @@ else
         lag $victim 0
         lag $replicant 0
         set_rep_timeout 10000
-        set_tunable async_dist_commit_max_outstanding_trans 8
+        set_tunable async_dist_commit_max_outstanding_trans 1024
         got=""
         [ "$(count "$(demoted $victim)")" -gt "$bv" ] && got="$got $victim"
         [ "$(count "$(demoted $replicant)")" -gt "$br" ] && got="$got $replicant"

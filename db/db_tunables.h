@@ -2841,7 +2841,7 @@ REGISTER_TUNABLE("async_dist_commit",
                  TUNABLE_BOOLEAN, &gbl_async_dist_commit, 0, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("async_dist_commit_max_outstanding_trans",
                  "Maximum number of transactions that may be waiting on asynchronous distributed "
-                 "commit at once; beyond this, commits wait inline. (Default: 8)",
+                 "commit at once; beyond this, commits wait inline. (Default: 1024)",
                  TUNABLE_INTEGER, &gbl_async_dist_commit_max_outstanding_trans, 0, NULL, NULL, NULL, NULL);
 
 #endif /* _DB_TUNABLES_H */
