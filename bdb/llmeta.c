@@ -764,7 +764,9 @@ int bdb_llmeta_set_schema_change_list(tran_type *input_trans, char *key,
 {
     tran_type *trans = input_trans;
     int rc = 0;
+    int retries = 0;
 
+retry:
     if(!input_trans) {
         trans = bdb_tran_begin(llmeta_bdb_state, NULL, bdberr);
         if (!trans) /* TODO: consider adding a retry */
@@ -785,10 +787,16 @@ int bdb_llmeta_set_schema_change_list(tran_type *input_trans, char *key,
 
 err:
     if (!input_trans) {
-        rc = bdb_tran_abort(llmeta_bdb_state, trans, bdberr);
+        /* keep the error that failed the write, not the abort's */
+        int abort_bdberr = 0;
+        rc = bdb_tran_abort(llmeta_bdb_state, trans, &abort_bdberr);
         if (rc) {
-            logmsg(LOGMSG_ERROR, "%s failed to abort txn rc %d bdberr %d\n",
-                   __func__, rc, *bdberr);
+            logmsg(LOGMSG_ERROR, "%s failed to abort txn rc %d bdberr %d\n", __func__, rc, abort_bdberr);
+        } else if (*bdberr == BDBERR_DEADLOCK && ++retries < gbl_maxretries) {
+            int dp = gbl_llmeta_deadlock_poll;
+            if (dp > 1)
+                poll(NULL, 0, rand() % dp);
+            goto retry;
         }
     }
 

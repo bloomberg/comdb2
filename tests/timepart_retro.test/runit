@@ -32,9 +32,14 @@ delayed_writes()
     if [[ -z "${CLUSTER}" ]] ; then
         echo "Skipping master downgrade test since we are single node"
     else
-        echo "Sleeping 10 more seconds finally for master downgrade ${master}"
+        # Stop the schema change first, while this node is certainly still
+        # the master, the way a downgrade stops it.  Its abort used to remove
+        # the sc_list that the new master resumes from, which only showed when
+        # the abort ran before the election.  The downgrade comes once the
+        # alter has returned.
+        echo "Sleeping 10 more seconds finally for stopping the schema change on ${master}"
         sleep 10
-        $CM "exec procedure sys.cmd.send('downgrade')"
+        $CM "exec procedure sys.cmd.send('scforceabort')"
     fi
 }
 
@@ -109,6 +114,11 @@ fi
 
 echo "make sure subprocess is gone"
 wait
+
+if [[ -n "${CLUSTER}" ]] ; then
+    echo "Downgrading master ${master}, the new master has to resume the partitioning"
+    $CM "exec procedure sys.cmd.send('downgrade')"
+fi
 
 echo "waiting 30 seconds to allow schema to finish"
 sleep 30
@@ -224,8 +234,10 @@ echo "alter client output:"
 cat alter2.out
 
 # do not let kill_restart_node wait for us: if the resume takes the database
-# down, waitmach would spin until the testcase times out
-kill_restart_node ${master} 0 0
+# down, waitmach would spin until the testcase times out.  Stay down long
+# enough for the others to elect a master: a restart rereads the lrl, so if
+# this node won again it would resume with multitable_ddl back on.
+kill_restart_node ${master} 10 0
 
 echo "Waiting for the database to come back"
 up=""
@@ -261,6 +273,15 @@ fi
 
 echo "t2 must not be left stuck in a schema change"
 $C "alter table t2 add column c int" || failexit "follow-up schema change on t2 failed"
+
+echo "Waiting for ${master} to come back"
+up=""
+for i in `seq 1 120` ; do
+    up=`cdb2sql --tabs ${CDB2_OPTIONS} ${DBN} --host ${master} "select 1" 2>/dev/null`
+    [[ "${up}" == "1" ]] && break
+    sleep 1
+done
+[[ "${up}" == "1" ]] || failexit "${master} did not come back after the cancelled resume"
 
 for n in `getclusternodes` ; do
     cdb2sql ${CDB2_OPTIONS} ${DBN} --host $n "put tunable multitable_ddl 1"
@@ -337,7 +358,8 @@ if [[ -z "${CLUSTER}" ]] ; then
         failexit "failed to arm debug_retro_resume_fail_shard in the lrl"
 fi
 
-kill_restart_node ${master} 0 0
+# as above, a restarted node that won the election again would not be armed
+kill_restart_node ${master} 10 0
 
 echo "Waiting for the database to come back"
 up=""
@@ -368,6 +390,15 @@ nrows=`${CT} "select count(*) from t3"`
 if [[ "${nrows}" != "60" ]] ; then
     failexit "expected 60 rows in t3, got ${nrows}"
 fi
+
+echo "Waiting for ${master} to come back"
+up=""
+for i in `seq 1 120` ; do
+    up=`cdb2sql --tabs ${CDB2_OPTIONS} ${DBN} --host ${master} "select 1" 2>/dev/null`
+    [[ "${up}" == "1" ]] && break
+    sleep 1
+done
+[[ "${up}" == "1" ]] || failexit "${master} did not come back after the failed resume"
 
 # NOTE: t3 is deliberately left with a stale in_schema_change marker.  The
 # resume dies at the shard add and never reaches t3, and nothing on that path

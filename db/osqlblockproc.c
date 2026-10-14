@@ -1452,8 +1452,13 @@ int bplog_schemachange_wait(struct ireq *iq, int rc)
             }
             sc = next;
         }
-        if (rc == ERR_NOMASTER)
+        if (rc == ERR_NOMASTER) {
             iq->sc_pending = NULL;
+            /* The new master resumes these: the abort callback must not
+             * remove the sc_list it resumes them from, as the start paths
+             * also ensure for SC_MASTER_DOWNGRADE */
+            iq->osql_flags &= ~OSQL_FLAGS_SCDONE;
+        }
     }
     logmsg(LOGMSG_INFO, ">>> DDL SCHEMA CHANGE RC %d <<<\n", rc);
 
