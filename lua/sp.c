@@ -188,7 +188,7 @@ static const int dbq_delay_ms = 1000; // ms
 static struct timespec setup_dbq_ts(int delay_ms)
 {
     struct timeval a, b, c;
-    if (delay_ms > dbq_delay_ms) {
+    if (delay_ms > dbq_delay_ms && !debug_switch_test_trigger_reopen()) {
         delay_ms = dbq_delay_ms;
     }
     a.tv_sec = delay_ms / 1000;
@@ -758,7 +758,9 @@ again:  status = *q->status;
 static int dbconsumer_get_int(Lua L, dbconsumer_t *q)
 {
     int rc;
-    while ((rc = dbq_poll(L, q, dbq_delay_ms)) == 0)
+    /* The test switch keeps an idle consumer waiting until something wakes it */
+    int delay_ms = debug_switch_test_trigger_reopen() ? 30000 : dbq_delay_ms;
+    while ((rc = dbq_poll(L, q, delay_ms)) == 0)
         ;
     return rc;
 }
