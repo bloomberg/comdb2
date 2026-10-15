@@ -102,7 +102,7 @@
 (name='bulk_sql_rowlocks', description='', type='BOOLEAN', value='ON', read_only='N')
 (name='bulk_sql_threshold', description='', type='INTEGER', value='2', read_only='N')
 (name='cache_flush_interval', description='Save bufferpool once every this many seconds.  (Default: 30)', type='INTEGER', value='30', read_only='N')
-(name='cache_lc', description='Collect logs into LSN_COLLECTIONs as they come in', type='BOOLEAN', value='OFF', read_only='N')
+(name='cache_lc', description='Collect logs into LSN_COLLECTIONs as they come in', type='BOOLEAN', value='ON', read_only='N')
 (name='cache_lc_check', description='Check LC cache system on every transaction', type='BOOLEAN', value='OFF', read_only='N')
 (name='cache_lc_debug', description='Lots of verbose messages out of LC cache system', type='BOOLEAN', value='OFF', read_only='N')
 (name='cache_lc_max', description='Keep this many transactions around in LC cache', type='INTEGER', value='16', read_only='N')
