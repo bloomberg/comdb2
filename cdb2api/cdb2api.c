@@ -2016,7 +2016,8 @@ static void read_comdb2db_cfg(cdb2_hndl_tp *hndl, COMDB2BUF *s, const char *comd
                     hndl->api_call_timeout = atoi(tok);
                 else if (tok)
                     CDB2_API_CALL_TIMEOUT = atoi(tok);
-            } else if (!cdb2_api_call_timeout_set_from_env && (strcasecmp("enforce_api_call_timeout", tok) == 0)) {
+            } else if (!cdb2_enforce_api_call_timeout_set_from_env &&
+                       (strcasecmp("enforce_api_call_timeout", tok) == 0)) {
                 tok = strtok_r(NULL, " :,", &last);
                 CDB2_ENFORCE_API_CALL_TIMEOUT = value_on_off(tok, &err);
 #ifdef CDB2API_SERVER
@@ -4212,6 +4213,7 @@ retry:
             snprintf(hndl->errstr, sizeof(hndl->errstr), "%s:%d Timed out reading response from the db\n", __func__,
                      __LINE__);
             rc = -1;
+            goto after_callback;
         }
         cdb2buf_settimeout(sb, socket_timeout, socket_timeout);
     }
