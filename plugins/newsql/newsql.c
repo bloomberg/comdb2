@@ -751,8 +751,24 @@ static int newsql_row(struct sqlclntstate *clnt, struct response_data *arg,
             break;
         }
         case SQLITE_TEXT: {
+            /* text before bytes, then check for a conversion error the way
+             * fastsql does, so the client gets the engine's message */
+            const unsigned char *text = column_text(clnt, stmt, i);
+            const char *errstr = NULL;
+            /* fdb_push rows have no stmt: the values come from the remote db */
+            int sqlrc = stmt ? sqlite_error(clnt, stmt, &errstr) : SQLITE_OK;
+            if (sqlrc && sqlrc != SQLITE_ROW && sqlrc != SQLITE_DONE) {
+                errstat_set_rcstrf(arg->err, ERR_CONVERSION_DT, "%s",
+                                   errstr ? errstr : "can't convert value to string");
+                return -1;
+            }
+            /* failed without recording an error */
+            if (text == NULL) {
+                errstat_set_rcstrf(arg->err, ERR_CONVERSION_DT, "%s", "can't convert value to string");
+                return -1;
+            }
             cols[i].value.len = column_bytes(clnt, stmt, i) + 1;
-            cols[i].value.data = (uint8_t *)column_text(clnt, stmt, i);
+            cols[i].value.data = (uint8_t *)text;
             break;
         }
         case SQLITE_BLOB: {
