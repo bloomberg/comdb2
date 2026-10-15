@@ -428,8 +428,6 @@ typedef struct sc_list sc_list_t;
  */
 int sc_list_create(sc_list_t *scl, void *vscs, uuid_t uuid);
 
-size_t schemachange_packed_size(struct schema_change_type *s);
-
 /* Returns 1 if schema changes of this kind run through do_ddl(), which is the
  * only path that marks the schema change in llmeta and, on completion, calls
  * mark_schemachange_over_tran() to remove those objects.  Kinds that return 0
@@ -478,10 +476,7 @@ void free_schema_change_type(struct schema_change_type *s);
 int pack_schema_change_protobuf(struct schema_change_type *s, void **packed_sc, size_t *packed_len);
 int unpack_schema_change_protobuf(struct schema_change_type *s, void *packed_sc, size_t *plen);
 
-void *buf_put_schemachange(struct schema_change_type *s, void *p_buf, void *p_buf_end);
 void *buf_get_schemachange(struct schema_change_type *s, void *p_buf, void *p_buf_end);
-
-void *buf_put_schemachange_protobuf(struct schema_change_type *s, void *p_buf, void *p_buf_end);
 void *buf_get_schemachange_protobuf(struct schema_change_type *s, void *p_buf, void *p_buf_end);
 void *buf_get_schemachange_v1(struct schema_change_type *s, void *p_buf, void *p_buf_end);
 void *buf_get_schemachange_v2(struct schema_change_type *s, void *p_buf,
