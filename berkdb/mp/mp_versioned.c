@@ -233,6 +233,10 @@ int __mempv_fget(mpf, dbc, pgno, ret_page, flags)
 	mempv_debug = dbenv->attr.mempv_debug;
 	Pthread_mutex_lock(&dbenv->txmap->txmap_mutexp);
 	smallest_logfile = dbenv->txmap->smallest_logfile;
+	/* After an early purge, a gap file past the purge point may still need lookups */
+	if (smallest_logfile != -1 && dbenv->txmap->purge_file != -1 && dbenv->txmap->purge_file < smallest_logfile) {
+		smallest_logfile = dbenv->txmap->purge_file;
+	}
 	Pthread_mutex_unlock(&dbenv->txmap->txmap_mutexp);
 
 	Pthread_mutex_lock(&caller_id_mutex);

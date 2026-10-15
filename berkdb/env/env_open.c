@@ -412,6 +412,7 @@ __dbenv_open(dbenv, db_home, flags, mode)
 
 	listc_init(&dbenv->outstanding_modsnaps, offsetof(MODSNAP_TXN, lnk));
 	Pthread_mutex_init(&dbenv->outstanding_modsnap_lock, NULL);
+	ZERO_LSN(dbenv->modsnap_purge_lsn);
 
 	if (LF_ISSET(DB_INIT_LOCK) && LF_ISSET(DB_INIT_LOG) && LF_ISSET(DB_INIT_REP)) {
 		if ((ret = __mempv_init(dbenv)) != 0) {

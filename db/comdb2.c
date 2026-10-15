@@ -489,6 +489,10 @@ int gbl_utxnid_log = 1;
  * commit-LSN (utxnid) map, which is a per-committed-transaction memory cost
  * that only snapshot isolation needs. */
 int gbl_snapshot_isolation = 1;
+/* Point-in-time (BEGIN ... AS OF) snapshots.  With these off ('disable_asof_snapshot'),
+ * commit-LSN map entries older than commit_map_retain_secs can be purged. */
+int gbl_asof_snapshot = 1;
+int gbl_commit_map_retain_secs = 300;
 int gbl_log_cksum_prev = 1;
 int gbl_test_commit_lsn_map = 0;
 

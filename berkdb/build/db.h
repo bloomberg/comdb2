@@ -2968,6 +2968,8 @@ struct __db_env {
 
 	pthread_mutex_t outstanding_modsnap_lock;
 	LISTC_T(MODSNAP_TXN) outstanding_modsnaps;
+	/* Commit-map purge horizon; modsnaps with an older prior checkpoint are refused */
+	DB_LSN modsnap_purge_lsn;
 };
 
 struct __modsnap_txn
@@ -2997,6 +2999,7 @@ struct __txn_commit_map {
 	pthread_mutex_t txmap_mutexp;
 	int64_t highest_logfile;
 	int64_t smallest_logfile;
+	int64_t purge_file; /* buckets below this were purged early, or -1 */
 	hash_t *transactions;
 	hash_t *logfile_lists;
 };
