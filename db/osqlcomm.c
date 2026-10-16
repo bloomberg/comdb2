@@ -6561,8 +6561,9 @@ static int start_schema_change_tran_wrapper(const char *tblname,
 
     /* user suspended sc */
     if (rc != SC_OK || sc->preempted == SC_ACTION_RESUME || sc->kind == SC_ALTERTABLE_PENDING) {
+        int freed = !iq->sc; /* start frees sc on early failures */
         iq->sc = NULL;
-        if (sc->nothrevent) {
+        if (!freed && sc->nothrevent) {
             /* we need to link the sc into sc_pending so that backout
              * picks it up
              */
@@ -6689,10 +6690,12 @@ static int start_schema_change_tran_wrapper_merge(const char *tblname,
 
     rc = start_schema_change_tran(iq, NULL);
 
-    /* link the alter */
-    iq->sc->sc_next = iq->sc_pending;
-    iq->sc_pending = iq->sc;
-    iq->sc->newdb = NULL; /* lose ownership, otherwise double free */
+    /* link the alter, unless start freed it */
+    if (iq->sc) {
+        iq->sc->sc_next = iq->sc_pending;
+        iq->sc_pending = iq->sc;
+        iq->sc->newdb = NULL; /* lose ownership, otherwise double free */
+    }
 
     if (arg->lockless) {
         *pview = timepart_reaquire_view(arg->part_name);
@@ -6737,8 +6740,10 @@ static int _process_single_table_sc_merge(struct ireq *iq)
 
     rc = start_schema_change_tran(iq, NULL);
 
-    iq->sc->sc_next = iq->sc_pending;
-    iq->sc_pending = iq->sc;
+    if (iq->sc) {
+        iq->sc->sc_next = iq->sc_pending;
+        iq->sc_pending = iq->sc;
+    }
     /* mark scdone so that cleanup removes llmeta */
     if (rc != SC_OK) {
         if (rc != SC_MASTER_DOWNGRADE)
@@ -6810,6 +6815,11 @@ static int _process_partitioned_table_merge(struct ireq *iq)
 
         /* mark scdone so that cleanup removes llmeta */
         if (rc != SC_OK) {
+            /* link so backout clears its running state, unless start freed it */
+            if (iq->sc) {
+                iq->sc->sc_next = iq->sc_pending;
+                iq->sc_pending = iq->sc;
+            }
             if (rc != SC_MASTER_DOWNGRADE)
                 iq->osql_flags |= OSQL_FLAGS_SCDONE;
             else
@@ -6831,6 +6841,11 @@ static int _process_partitioned_table_merge(struct ireq *iq)
 
         /* mark scdone so that cleanup removes llmeta */
         if (rc != SC_OK) {
+            /* link so backout clears its running state, unless start freed it */
+            if (iq->sc) {
+                iq->sc->sc_next = iq->sc_pending;
+                iq->sc_pending = iq->sc;
+            }
             if (rc != SC_MASTER_DOWNGRADE)
                 iq->osql_flags |= OSQL_FLAGS_SCDONE;
             else
@@ -7103,8 +7118,10 @@ static int _process_single_table_sc_partitioning(struct ireq *iq)
 
             rc = start_schema_change_tran(iq, NULL);
 
-            iq->sc->sc_next = iq->sc_pending;
-            iq->sc_pending = iq->sc;
+            if (iq->sc) {
+                iq->sc->sc_next = iq->sc_pending;
+                iq->sc_pending = iq->sc;
+            }
 
             /* mark scdone so that cleanup removes llmeta */
             if (rc != SC_OK) {
@@ -7228,13 +7245,14 @@ static int _process_partition_retention(struct ireq *iq)
         iq->sc = cur;
         rc = start_schema_change_tran(iq, NULL);
         if (rc != SC_OK || cur->preempted == SC_ACTION_RESUME || cur->kind == SC_ALTERTABLE_PENDING) {
+            int freed = !iq->sc; /* start frees cur on early failures */
             iq->sc = NULL;
             /* link even on failure so backout frees cur and clears any running
              * state it registered (matches start_schema_change_tran_wrapper) */
-            if (cur->nothrevent) {
+            if (!freed && cur->nothrevent) {
                 cur->sc_next = iq->sc_pending;
                 iq->sc_pending = cur;
-            } else if (cur != sc) {
+            } else if (!freed && cur != sc) {
                 free_schema_change_type(cur);
             }
             if (rc != SC_OK) {

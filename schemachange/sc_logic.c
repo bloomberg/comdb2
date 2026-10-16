@@ -49,6 +49,7 @@ void comdb2_cheapstack_sym(FILE *f, char *fmt, ...);
 extern int gbl_is_physical_replicant;
 
 int gbl_multitable_ddl = 0;
+int gbl_test_fail_partition_merge_sc = 0;
 
 /**** Utility functions */
 
@@ -709,7 +710,11 @@ static int do_schema_change_tran_int(sc_arg_t *arg)
      */
     s->done_type = do_schema_change_if[s->kind].type;
 
-    if (do_schema_change_if[s->kind].run_do_ddl) {
+    if (gbl_test_fail_partition_merge_sc > 0 && s->partition.type == PARTITION_MERGE) {
+        gbl_test_fail_partition_merge_sc--;
+        sc_errf(s, "test_fail_partition_merge_sc forced a failure\n");
+        rc = SC_INTERNAL_ERROR;
+    } else if (do_schema_change_if[s->kind].run_do_ddl) {
         rc = do_ddl(do_schema_change_if[s->kind].pre,
                     do_schema_change_if[s->kind].post, iq, s, trans);
     } else {
