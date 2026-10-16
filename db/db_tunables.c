@@ -308,6 +308,7 @@ extern int gbl_blocking_enque;
 extern int gbl_master_req_waitms;
 extern int gbl_commit_delay_trace;
 extern int gbl_elect_priority_bias;
+extern int gbl_debug_elect_lose_round;
 extern int gbl_abort_on_reconstruct_failure;
 extern int gbl_rand_elect_timeout;
 extern uint32_t gbl_rand_elect_min_ms;

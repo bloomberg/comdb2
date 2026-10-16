@@ -1132,6 +1132,7 @@ static void abort_election_on_exit(bdb_state_type *bdb_state)
 }
 
 int gbl_elect_priority_bias = 0;
+int gbl_debug_elect_lose_round = 0;
 
 int gbl_rand_elect_timeout = 1;
 uint32_t gbl_rand_elect_min_ms = 1000;
@@ -1225,8 +1226,16 @@ elect_again:
     abort_election_on_exit(bdb_state);
 
     /* Poll so we don't send whomaster reqs in a tight loop */
-    if (elect_again)
+    if (elect_again) {
         poll(NULL, 0, 100);
+        /* A NEWMASTER accepted since the failed round (bdb_setmaster) settles
+         * it: another round would discard that master and elect a second one. */
+        char *known = bdb_state->repinfo->master_host;
+        if (known != db_eid_invalid && known != bdb_master_dupe) {
+            logmsg(LOGMSG_WARN, "elect_thread: master %s accepted, not retrying election\n", known);
+            goto give_up;
+        }
+    }
 
     if (bdb_state->callback->electsettings_rtn) {
         int elect_time_microsecs = 0;
@@ -1320,12 +1329,21 @@ elect_again:
 
     int already_master = 0;
 
-    /* Should be holding bdb readlock .. */
-    BDB_READLOCK("rep_elect");
+    if (gbl_debug_elect_lose_round) {
+        /* Test hook: sit this round out while the other nodes elect a master,
+         * then fail it as a timeout would. */
+        gbl_debug_elect_lose_round = 0;
+        logmsg(LOGMSG_WARN, "elect_thread: debug_elect_lose_round, failing this round\n");
+        poll(NULL, 0, 5000);
+        rc = DB_REP_UNAVAIL;
+    } else {
+        /* Should be holding bdb readlock .. */
+        BDB_READLOCK("rep_elect");
 
-    rc = bdb_state->dbenv->rep_elect(bdb_state->dbenv, elect_count, rep_pri, elect_time, &newgen, &already_master,
-                                     &master_host);
-    BDB_RELLOCK();
+        rc = bdb_state->dbenv->rep_elect(bdb_state->dbenv, elect_count, rep_pri, elect_time, &newgen, &already_master,
+                                         &master_host);
+        BDB_RELLOCK();
+    }
 
     if (rc != 0) {
         if (rc == DB_REP_UNAVAIL)
