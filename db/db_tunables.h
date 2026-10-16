@@ -2350,6 +2350,11 @@ REGISTER_TUNABLE("debug_add_replication_latency",
                  "Sleep 5 seconds after a commit, before waiting for replicants.  (Default: off)", TUNABLE_BOOLEAN,
                  &gbl_debug_add_replication_latency, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 
+REGISTER_TUNABLE("debug_osql_send_queue_full",
+                 "Treat every osql send to another node as if its queue were full, so the sender backs off and "
+                 "retries.  (Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_debug_osql_send_queue_full, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+
 REGISTER_TUNABLE("ref_sync_pollms",
                  "Set pollms for ref_sync thread.  "
                  "(Default: 250)",
@@ -2829,4 +2834,14 @@ REGISTER_TUNABLE("rep_verify_peer_hostname_warn",
                  "anyway, logging the ones enabling that tunable would turn "
                  "away. (Default: on)",
                  TUNABLE_BOOLEAN, &gbl_rep_verify_peer_hostname_warn, 0, NULL, NULL, NULL, NULL);
+
+REGISTER_TUNABLE("async_dist_commit",
+                 "Hand the wait for replicant acks off to a background thread so that block "
+                 "processor threads are not tied up. (Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_async_dist_commit, 0, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("async_dist_commit_max_outstanding_trans",
+                 "Maximum number of transactions that may be waiting on asynchronous distributed "
+                 "commit at once; beyond this, commits wait inline. (Default: 1024)",
+                 TUNABLE_INTEGER, &gbl_async_dist_commit_max_outstanding_trans, 0, NULL, NULL, NULL, NULL);
+
 #endif /* _DB_TUNABLES_H */

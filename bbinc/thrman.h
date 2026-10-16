@@ -76,6 +76,7 @@ char *thrman_describe(struct thr_handle *thr, char *buf, size_t szbuf);
 void thrman_dump(void);
 int thrman_count_type(enum thrtype type);
 struct reqlogger *thrman_get_reqlogger(struct thr_handle *thr);
+struct reqlogger *thrman_detach_reqlogger(struct thr_handle *thr);
 void thrman_stop_sql_connections(void);
 int thrman_wait_type_exit(enum thrtype type);
 

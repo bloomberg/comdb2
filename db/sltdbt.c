@@ -38,6 +38,11 @@
 #include "comdb2_plugin.h"
 #include "comdb2_opcode.h"
 #include "sc_util.h"
+#include "seqnum_wait.h"
+#include "comdb2_atomic.h"
+
+extern int64_t gbl_async_dist_commit_enqueued;
+extern int64_t gbl_async_dist_commit_inline;
 
 static void pack_tail(struct ireq *iq);
 extern int glblroute_get_buffer_capacity(int *bf);
@@ -253,7 +258,7 @@ done:
        this ensures no requests replays will be left stuck
        papers around other short returns in toblock jic
        */
-    if (rc)
+    if (rc && !iq->should_enqueue) /* else once the ack wait is over */
         osql_blkseq_unregister(iq);
 
     if (totpen) {
@@ -403,6 +408,89 @@ static int tablename_implicit(int opcode)
     return opcode < OP_FNDKLESS;
 }
 
+/* Send the replicant (the sql thread that sent this request) its result.
+ * Also called by the seqnum-wait thread for requests handed to it. */
+void sorese_send_rc(struct ireq *iq, int rc)
+{
+    /* we don't have a socket or a buffer for that matter,
+     * instead, we need to send back the result of transaction from rc
+     */
+
+    /*
+       hack alert
+       override the extended code (which we don't care about, with
+       the primary error code
+       */
+    if (rc && (!iq->sorese->rcout || rc == ERR_NOT_DURABLE))
+        iq->sorese->rcout = rc;
+
+    int sorese_rc = rc;
+    if (rc == 0 && iq->sorese->rcout == 0 && iq->errstat.errval == COMDB2_SCHEMACHANGE_OK) {
+        // pretend error happend to get errstat shipped to replicant
+        sorese_rc = 1;
+    } else {
+        iq->errstat.errval = iq->sorese->rcout;
+    }
+
+    if (iq->debug) {
+        uuidstr_t us;
+        reqprintf(iq,
+                  "sorese returning rqid=%llu uuid=%s node=%s type=%d "
+                  "nops=%d rcout=%d retried=%d RC=%d errval=%d\n",
+                  iq->sorese->rqid, comdb2uuidstr(iq->sorese->uuid, us), iq->sorese->target_host, iq->sorese->type,
+                  iq->sorese->nops, iq->sorese->rcout, iq->sorese->verify_retries, rc, iq->errstat.errval);
+    }
+
+    if (iq->sorese->rqid == 0)
+        abort();
+    osql_comm_signal_sqlthr_rc(iq->sorese->target_host, iq->sorese->rqid, iq->sorese->uuid, iq->sorese->nops,
+                               &iq->errstat, IQ_SNAPINFO(iq), sorese_rc);
+
+    iq->timings.req_sentrc = osql_log_time();
+}
+
+/* What is left of a request once its reply is sent.  Also called by the
+ * seqnum-wait thread for requests handed to it. */
+int handle_ireq_finish(struct ireq *iq, int rc)
+{
+    /* Unblock anybody waiting for stuff that was added in this transaction. */
+    clear_trans_from_repl_list(iq->repl_list);
+
+    /* records were added to queues, and we committed successfully.  wake
+     * up queue consumers. */
+    if (rc == 0 && iq->num_queues_hit > 0) {
+        if (iq->num_queues_hit > MAX_QUEUE_HITS_PER_TRANS) {
+            /* good heavens.  wake up all consumers */
+            dbqueuedb_wake_all_consumers_all_queues(iq->dbenv, 0);
+        } else {
+            unsigned ii;
+            for (ii = 0; ii < iq->num_queues_hit; ii++)
+                dbqueuedb_wake_all_consumers(iq->queues_hit[ii], 0);
+        }
+    }
+
+    if (iq->sorese) {
+        /* Finish off logging. */
+        osql_sess_reqlogquery(iq->sorese, iq->reqlogger);
+        /* Free the sorese transaction buffer */
+        free(iq->p_buf_out_start);
+        reqlog_end_request(iq->reqlogger, rc, __func__, __LINE__);
+    } else {
+        /* reqlog_end_request() dereferences iq->rawnodestats (see
+         * update_api_history()), which points into the refcounted clientstats
+         * entry. Keep the reference held across reqlog_end_request() and only
+         * release it afterwards; otherwise a concurrent add_clientstats() can
+         * evict and free the entry once our ref hits 0, leaving a dangling
+         * pointer and a destroyed rawnodestats->lk mutex. */
+        reqlog_end_request(iq->reqlogger, rc, __func__, __LINE__);
+        release_node_stats(iq->origin_argv0 ? iq->origin_argv0 : NULL, NULL, iq->frommach);
+    }
+    if (gbl_print_deadlock_cycles)
+        osql_snap_info = NULL;
+
+    return rc;
+}
+
 int handle_ireq(struct ireq *iq)
 {
     int rc, fd = -1, has_ssl = 0;
@@ -482,45 +570,39 @@ int handle_ireq(struct ireq *iq)
         pack_tail(iq);
 
         if (iq->sorese) {
-            /* we don't have a socket or a buffer for that matter,
-             * instead, we need to send back the result of transaction from rc
-             */
+            /* trans_commit_int() deferred the wait for replicant acks.  Hand
+             * the request to the seqnum-wait thread, which replies and
+             * finishes it once the acks are in; if it can't take it, wait
+             * inline after all. */
+            if (iq->should_enqueue) {
+                iq->should_enqueue = 0;
+                iq->handoff = seqnum_wait_prepare(thedb->bdb_env, &iq->commit_seqnum, iq, rc);
+                if (iq->handoff) {
+                    ATOMIC_ADD64(gbl_async_dist_commit_enqueued, 1);
+                    /* the block processor gives the request to the waiter
+                     * when it is done with it (thd_req()) */
+                    reqlog_keep_thread_stats(iq->reqlogger);
+                    if (gbl_print_deadlock_cycles)
+                        osql_snap_info = NULL;
+                    return rc;
+                }
 
-            /*
-               hack alert
-               override the extended code (which we don't care about, with
-               the primary error code
-               */
-            if (rc && (!iq->sorese->rcout || rc == ERR_NOT_DURABLE))
-                iq->sorese->rcout = rc;
-
-            int sorese_rc = rc;
-            if (rc == 0 && iq->sorese->rcout == 0 &&
-                iq->errstat.errval == COMDB2_SCHEMACHANGE_OK) {
-                // pretend error happend to get errstat shipped to replicant
-                sorese_rc = 1;
-            } else {
-                iq->errstat.errval = iq->sorese->rcout;
+                /* Queue full: wait here after all, then do what toblock()
+                 * left to the end of the wait, and decide the rc as the
+                 * waiter does. */
+                ATOMIC_ADD64(gbl_async_dist_commit_inline, 1);
+                int startms = comdb2_time_epochms();
+                /* the source toblock() commits with for a sql session */
+                char *source_host = iq->frommach ? iq->frommach : gbl_myhostname;
+                int wait_rc = trans_wait_for_seqnum_int(thedb->bdb_env, thedb, iq, source_host, -1, 1 /*adaptive*/,
+                                                        &iq->commit_seqnum);
+                seqnum_wait_done(iq, comdb2_time_epochms() - startms, wait_rc);
+                if (wait_rc == BDBERR_NOT_DURABLE && durable_change_rcode(iq))
+                    rc = ERR_NOT_DURABLE;
+                osql_blkseq_unregister(iq);
             }
 
-            if (iq->debug) {
-                uuidstr_t us;
-                reqprintf(iq,
-                          "sorese returning rqid=%llu uuid=%s node=%s type=%d "
-                          "nops=%d rcout=%d retried=%d RC=%d errval=%d\n",
-                          iq->sorese->rqid, comdb2uuidstr(iq->sorese->uuid, us),
-                          iq->sorese->target_host, iq->sorese->type,
-                          iq->sorese->nops, iq->sorese->rcout,
-                          iq->sorese->verify_retries, rc, iq->errstat.errval);
-            }
-
-            if (iq->sorese->rqid == 0)
-                abort();
-            osql_comm_signal_sqlthr_rc(
-                iq->sorese->target_host, iq->sorese->rqid, iq->sorese->uuid,
-                iq->sorese->nops, &iq->errstat, IQ_SNAPINFO(iq), sorese_rc);
-
-            iq->timings.req_sentrc = osql_log_time();
+            sorese_send_rc(iq, rc);
 
         } else if (iq->is_dumpresponse) {
             signal_buflock(iq->request_data);
@@ -573,42 +655,7 @@ int handle_ireq(struct ireq *iq)
         }
     }
 
-    /* Unblock anybody waiting for stuff that was added in this transaction. */
-    clear_trans_from_repl_list(iq->repl_list);
-
-    /* records were added to queues, and we committed successfully.  wake
-     * up queue consumers. */
-    if (rc == 0 && iq->num_queues_hit > 0) {
-        if (iq->num_queues_hit > MAX_QUEUE_HITS_PER_TRANS) {
-            /* good heavens.  wake up all consumers */
-            dbqueuedb_wake_all_consumers_all_queues(iq->dbenv, 0);
-        } else {
-            unsigned ii;
-            for (ii = 0; ii < iq->num_queues_hit; ii++)
-                dbqueuedb_wake_all_consumers(iq->queues_hit[ii], 0);
-        }
-    }
-
-    if (iq->sorese) {
-        /* Finish off logging. */
-        osql_sess_reqlogquery(iq->sorese, iq->reqlogger);
-        /* Free the sorese transaction buffer */
-        free(iq->p_buf_out_start);
-        reqlog_end_request(iq->reqlogger, rc, __func__, __LINE__);
-    } else {
-        /* reqlog_end_request() dereferences iq->rawnodestats (see
-         * update_api_history()), which points into the refcounted clientstats
-         * entry. Keep the reference held across reqlog_end_request() and only
-         * release it afterwards; otherwise a concurrent add_clientstats() can
-         * evict and free the entry once our ref hits 0, leaving a dangling
-         * pointer and a destroyed rawnodestats->lk mutex. */
-        reqlog_end_request(iq->reqlogger, rc, __func__, __LINE__);
-        release_node_stats(iq->origin_argv0 ? iq->origin_argv0 : NULL, NULL, iq->frommach);
-    }
-    if (gbl_print_deadlock_cycles)
-        osql_snap_info = NULL;
-
-    return rc;
+    return handle_ireq_finish(iq, rc);
 }
 
 static void pack_tail(struct ireq *iq)
