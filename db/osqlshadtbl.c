@@ -1695,6 +1695,7 @@ int osql_shadtbl_cleartbls(struct sqlclntstate *clnt)
     if (osql->sc_tbl) {
         truncate_tablecursor(thedb->bdb_env, &osql->sc_cur, osql->sc_tbl,
                              &bdberr);
+        osql->sc_seq = 0;
     }
     /* reset the bpfunc */
     if (osql->bpfunc_tbl) {
@@ -3062,7 +3063,6 @@ static int process_local_shadtbl_recgenids(struct sqlclntstate *clnt,
 int osql_save_schemachange(struct sql_thread *thd,
                            struct schema_change_type *sc, int usedb)
 {
-    struct sqlclntstate *clnt = thd->clnt;
     osqlstate_t *osql = &thd->clnt->osql;
     int rc = 0;
     int bdberr = 0;
@@ -3092,10 +3092,7 @@ int osql_save_schemachange(struct sql_thread *thd,
                __func__, sc->tablename);
         return -1;
     }
-    if (clnt->ddl_tables) {
-        hash_info(clnt->ddl_tables, NULL, NULL, NULL, NULL, &(packed_sc_key[0]),
-                  NULL, NULL);
-    }
+    packed_sc_key[0] = osql->sc_seq++;
     if (usedb) {
         packed_sc_key[1] = comdb2_table_version(sc->tablename);
     }
@@ -3407,6 +3404,7 @@ static int osql_create_schemachange_temptbl(bdb_state_type *bdb_state,
 {
     osqlstate_t *osql = &clnt->osql;
     osql->running_ddl = 1;
+    osql->sc_seq = 0;
     return osql_create_temptbl(bdb_state, &osql->sc_tbl, &osql->sc_cur, bdberr);
 }
 
