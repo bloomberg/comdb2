@@ -18,7 +18,6 @@ insert_lots,UNKNOWN,180779489
 insert_lots_ssl_generated,UNKNOWN,180779489
 incoh_remsql,UNKNOWN,180788122
 incoh_remsql_rte_connect_generated,UNKNOWN,180788122
-truncatesc,DB_BUG,180801974
 truncatesc_offline_generated,DB_BUG,180801974
 sc_partial_datacopy_logicalsc_generated,UNKNOWN,180802210
 lock_stat_inversion,UNKNOWN,180915326
