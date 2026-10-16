@@ -49,17 +49,37 @@ function timepart_stats
     gorun "select * from comdb2_logical_cron"
 }
 
-# wait until the master has queued the rollout event for epoch $2
+function partitions_on
+{
+    cdb2sql -tabs ${CDB2_OPTIONS} --host $1 $dbnm default "exec procedure sys.cmd.send('partitions')" | egrep -v "SOURCE_ID"
+}
+
+# wait until the master queues epoch $2 and every node has applied the rollout
 function wait_for_rollout
 {
-    local i epoch
+    local i epoch node want got
     for (( i = 0; i < 60; i++ )); do
         epoch=$(cdb2sql -tabs ${CDB2_OPTIONS} --host ${master} $dbnm default "select epoch from comdb2_cron_events where name='Truncate' and type='$1'")
-        [[ "$epoch" == "$2" ]] && return 0
+        [[ "$epoch" == "$2" ]] && break
         sleep 1
     done
-    echo "FAILURE: $1 did not roll out to epoch $2, epoch is '$epoch'"
-    exit 1
+    if [[ "$epoch" != "$2" ]]; then
+        echo "FAILURE: $1 did not roll out to epoch $2, epoch is '$epoch'"
+        exit 1
+    fi
+
+    want=$(partitions_on ${master})
+    for node in ${CLUSTER}; do
+        for (( i = 0; i < 60; i++ )); do
+            got=$(partitions_on $node)
+            [[ "$got" == "$want" ]] && break
+            sleep 1
+        done
+        if [[ "$got" != "$want" ]]; then
+            echo "FAILURE: $node did not apply the $1 rollout"
+            exit 1
+        fi
+    done
 }
 
 test_max_retention() {
