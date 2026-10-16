@@ -367,13 +367,166 @@ dofree:
 }
 
 /*
+ * Everything in the commit LSN map comes from one allocator, which shows up as
+ * "commit_map" in memstat.  It is shared by every map in the process (the
+ * selftest builds private ones), so it locks.
+ */
+static comdb2ma commit_map_ma;
+static pthread_once_t commit_map_ma_once = PTHREAD_ONCE_INIT;
+
+static void commit_map_ma_init(void)
+{
+	commit_map_ma = comdb2ma_create(0, 0, "commit_map", COMDB2MA_MT_SAFE);
+}
+
+static void *commit_map_malloc(size_t size)
+{
+	return comdb2_malloc(commit_map_ma, size);
+}
+
+static void *commit_map_calloc(size_t n, size_t size)
+{
+	return comdb2_calloc(commit_map_ma, n, size);
+}
+
+static void commit_map_free(void *ptr)
+{
+	comdb2_free(ptr);
+}
+
+static hash_t *commit_map_hash_init(int keyoff, int keylen)
+{
+	return hash_setalloc_init(commit_map_malloc, commit_map_free, keyoff, keylen);
+}
+
+/*
+ * Transactions are kept in slabs, a chain of them per logfile, so that a
+ * transaction needs no allocation of its own and a purge frees a few large
+ * blocks.  A transaction removed on its own (recovery undoing its commit) only
+ * has its utxnid cleared; its slot goes with the rest of the logfile.  A
+ * logfile's first slab is small and each one after it twice the size of the last, so a quiet
+ * database does not pay for large slabs.
+ */
+#define COMMIT_MAP_SLAB_MIN 256
+#define COMMIT_MAP_SLAB_MAX 16384
+
+struct __utxnid_slab {
+	struct __utxnid_slab *next;
+	u_int32_t ntracks;
+	u_int32_t nused;
+	UTXNID_TRACK tracks[];
+};
+
+/*
+ * The utxnid hash is chained through the transactions themselves.  It doubles
+ * once it holds more than one transaction per bucket, and shrinks once it is
+ * down to fewer than one per eight, so that a purge gives back the buckets
+ * too.  A resize relinks every transaction into the new table at once, walking
+ * the slabs.
+ */
+#define COMMIT_MAP_MIN_BITS 10
+
+static inline u_int64_t __txn_commit_map_bucket(u_int64_t utxnid, u_int32_t bits)
+{
+	return (utxnid * 0x9E3779B97F4A7C15ULL) >> (64 - bits);
+}
+
+/* Returns the link that points to the transaction, or NULL */
+static UTXNID_TRACK **__txn_commit_map_findp(DB_TXN_COMMIT_MAP *txmap, u_int64_t utxnid)
+{
+	UTXNID_TRACK **pp;
+
+	for (pp = &txmap->buckets[__txn_commit_map_bucket(utxnid, txmap->bits)]; *pp; pp = &(*pp)->next) {
+		if ((*pp)->utxnid == utxnid) {
+			return pp;
+		}
+	}
+	return NULL;
+}
+
+static void __txn_commit_map_link(DB_TXN_COMMIT_MAP *txmap, UTXNID_TRACK *txn)
+{
+	const u_int64_t b = __txn_commit_map_bucket(txn->utxnid, txmap->bits);
+
+	txn->next = txmap->buckets[b];
+	txmap->buckets[b] = txn;
+}
+
+static int __txn_commit_map_relink(void *obj, void *arg)
+{
+	LOGFILE_TXN_LIST * const list = (LOGFILE_TXN_LIST *) obj;
+	DB_TXN_COMMIT_MAP * const txmap = arg;
+	struct __utxnid_slab *slab;
+	u_int32_t i;
+
+	for (slab = list->slabs; slab; slab = slab->next) {
+		for (i = 0; i < slab->nused; i++) {
+			if (slab->tracks[i].utxnid != 0) {
+				__txn_commit_map_link(txmap, &slab->tracks[i]);
+			}
+		}
+	}
+	return 0;
+}
+
+/* Grow or shrink the hash if it has drifted out of range */
+static void __txn_commit_map_maybe_resize(DB_TXN_COMMIT_MAP *txmap)
+{
+	const u_int64_t nbuckets = (u_int64_t) 1 << txmap->bits;
+	const u_int64_t nentries = txmap->nentries;
+	UTXNID_TRACK **buckets;
+	u_int32_t bits;
+
+	if (nentries > nbuckets) {
+		bits = txmap->bits + 1;
+	} else if (txmap->bits > COMMIT_MAP_MIN_BITS && nentries < nbuckets / 8) {
+		for (bits = COMMIT_MAP_MIN_BITS; ((u_int64_t) 1 << bits) < 2 * nentries; bits++)
+			;
+	} else {
+		return;
+	}
+	/* if this fails, keep using the table we have */
+	if ((buckets = commit_map_calloc((size_t) 1 << bits, sizeof(*buckets))) == NULL) {
+		return;
+	}
+	commit_map_free(txmap->buckets);
+	txmap->buckets = buckets;
+	txmap->bits = bits;
+	txmap->nresizes++;
+	hash_for(txmap->logfile_lists, __txn_commit_map_relink, txmap);
+}
+
+
+static UTXNID_TRACK *__txn_commit_map_slot(DB_TXN_COMMIT_MAP *txmap, LOGFILE_TXN_LIST *list)
+{
+	struct __utxnid_slab *slab = list->slabs;
+
+	if (slab == NULL || slab->nused == slab->ntracks) {
+		u_int32_t n = COMMIT_MAP_SLAB_MIN;
+		if (slab) {
+			n = slab->ntracks < COMMIT_MAP_SLAB_MAX / 2 ? slab->ntracks * 2 : COMMIT_MAP_SLAB_MAX;
+		}
+		if ((slab = commit_map_malloc(offsetof(struct __utxnid_slab, tracks) + n * sizeof(UTXNID_TRACK))) == NULL) {
+			return NULL;
+		}
+		slab->ntracks = n;
+		slab->nused = 0;
+		slab->next = list->slabs;
+		list->slabs = slab;
+		txmap->nslabs++;
+		txmap->nslots += n;
+	}
+	return &slab->tracks[slab->nused++];
+}
+
+/*
  * __txn_commit_map_init --
  *	Initialize commit LSN map.
  *
  * PUBLIC: int __txn_commit_map_init
  * PUBLIC:	   __P((DB_ENV *));
  */
-int __txn_commit_map_init(dbenv) 
+int __txn_commit_map_init(dbenv)
 	DB_ENV *dbenv;
 {
 	int ret;
@@ -385,10 +538,17 @@ int __txn_commit_map_init(dbenv)
 		goto err;
 	}
 
-	txmap->transactions = hash_init_o(offsetof(UTXNID_TRACK, utxnid), sizeof(u_int64_t));
-	txmap->logfile_lists = hash_init_o(offsetof(LOGFILE_TXN_LIST, file_num), sizeof(u_int32_t));
+	pthread_once(&commit_map_ma_once, commit_map_ma_init);
+	if (commit_map_ma == NULL) {
+		ret = ENOMEM;
+		goto err;
+	}
 
-	if (txmap->transactions == NULL || txmap->logfile_lists == NULL) {
+	txmap->bits = COMMIT_MAP_MIN_BITS;
+	txmap->buckets = commit_map_calloc((size_t) 1 << COMMIT_MAP_MIN_BITS, sizeof(UTXNID_TRACK *));
+	txmap->logfile_lists = commit_map_hash_init(offsetof(LOGFILE_TXN_LIST, file_num), sizeof(u_int32_t));
+
+	if (txmap->buckets == NULL || txmap->logfile_lists == NULL) {
 		ret = ENOMEM;
 		goto err;
 	}
@@ -404,31 +564,28 @@ err:
 	return ret;
 }
 
+static void __txn_commit_map_free_slabs(DB_TXN_COMMIT_MAP *txmap, LOGFILE_TXN_LIST *list)
+{
+	struct __utxnid_slab *slab, *next;
+
+	for (slab = list->slabs; slab; slab = next) {
+		next = slab->next;
+		txmap->nslabs--;
+		txmap->nslots -= slab->ntracks;
+		commit_map_free(slab);
+	}
+	list->slabs = NULL;
+}
+
 static int free_logfile_list_elt(obj, arg)
 		void *obj;
 		void *arg;
 {
 	LOGFILE_TXN_LIST * const to_delete = (LOGFILE_TXN_LIST * const) obj;
-	DB_ENV * const dbenv = (DB_ENV * const) arg;
 
-	hash_clear(to_delete->commit_utxnids);
-	hash_free(to_delete->commit_utxnids);
-	__os_free(dbenv, to_delete);
+	__txn_commit_map_free_slabs(((DB_ENV *) arg)->txmap, to_delete);
+	commit_map_free(to_delete);
 	return 0;
-}
-
-static int free_transactions(obj, arg)
-		void *obj;
-		void *arg;
-{
-		UTXNID_TRACK *elt;
-		DB_ENV *dbenv;
-
-		elt = (UTXNID_TRACK *) obj;
-		dbenv = (DB_ENV *) arg;
-
-		__os_free(dbenv, elt);
-		return 0;
 }
 
 /*
@@ -442,13 +599,10 @@ int __txn_commit_map_destroy(dbenv)
 		DB_ENV *dbenv;
 {
 		if (dbenv->txmap) {
-				hash_for(dbenv->txmap->transactions, &free_transactions, (void *) dbenv);
-				hash_clear(dbenv->txmap->transactions);
-				hash_free(dbenv->txmap->transactions);
-
 				hash_for(dbenv->txmap->logfile_lists, &free_logfile_list_elt, (void *) dbenv);
 				hash_clear(dbenv->txmap->logfile_lists);
 				hash_free(dbenv->txmap->logfile_lists);
+				commit_map_free(dbenv->txmap->buckets);
 
 				Pthread_mutex_destroy(&dbenv->txmap->txmap_mutexp);
 				__os_free(dbenv, dbenv->txmap);
@@ -460,6 +614,8 @@ int __txn_commit_map_destroy(dbenv)
 
 /*
  * __txn_commit_map_delete_logfile_list --
+ *	Remove a logfile's list from the map, along with every transaction still
+ *	on it.
  *
  * PUBLIC: static int __txn_commit_map_delete_logfile_list
  * PUBLIC:	   __P((DB_ENV *, LOGFILE_TXN_LIST * const));
@@ -469,6 +625,8 @@ static void __txn_commit_map_delete_logfile_list(DB_ENV *dbenv, LOGFILE_TXN_LIST
 	const u_int32_t del_log = to_delete->file_num;
 	const int i_am_highest_logfile = del_log == txmap->highest_logfile;
 	const int i_am_smallest_logfile = del_log == txmap->smallest_logfile;
+	struct __utxnid_slab *slab;
+	u_int32_t i;
 
 	if (i_am_highest_logfile && i_am_smallest_logfile)
 	{
@@ -494,24 +652,45 @@ static void __txn_commit_map_delete_logfile_list(DB_ENV *dbenv, LOGFILE_TXN_LIST
 		assert(successor);
 	}
 
-	hash_del(txmap->logfile_lists, to_delete);
-	hash_clear(to_delete->commit_utxnids);
-	hash_free(to_delete->commit_utxnids);
-	__os_free(dbenv, to_delete);
-}
+	for (slab = to_delete->slabs; slab; slab = slab->next) {
+		for (i = 0; i < slab->nused; i++) {
+			UTXNID_TRACK * const txn = &slab->tracks[i];
+			UTXNID_TRACK **pp;
 
+			if (txn->utxnid == 0) {
+				continue;
+			}
+			if (dbenv->attr.commit_map_debug) {
+				logmsg(LOGMSG_DEBUG, "%s: Deleting utxnid %"PRIu64"\n",
+						__func__, txn->utxnid);
+			}
+			pp = __txn_commit_map_findp(txmap, txn->utxnid);
+			if (pp == NULL || *pp != txn) {
+				/* the slab is about to be freed: carrying on would leave the hash pointing into it */
+				logmsg(LOGMSG_FATAL, "%s: utxnid %"PRIu64" of logfile %"PRIu32" is not in the hash\n",
+						__func__, txn->utxnid, del_log);
+				abort();
+			}
+			*pp = txn->next;
+			txmap->nentries--;
+		}
+	}
+
+	__txn_commit_map_free_slabs(txmap, to_delete);
+	hash_del(txmap->logfile_lists, to_delete);
+	commit_map_free(to_delete);
+}
 
 /*
  * __txn_commit_map_remove_nolock --
  *	Remove a transaction from the commit LSN map without locking.
  *
  * PUBLIC: static int __txn_commit_map_remove_nolock
- * PUBLIC:	   __P((DB_ENV *, u_int64_t, int));
+ * PUBLIC:	   __P((DB_ENV *, u_int64_t));
  */
-static int __txn_commit_map_remove_nolock(dbenv, utxnid, delete_from_logfile_lists)
+static int __txn_commit_map_remove_nolock(dbenv, utxnid)
 	DB_ENV *dbenv;
 	u_int64_t utxnid;
-	int delete_from_logfile_lists;
 {
 	if (dbenv->attr.commit_map_debug) {
 		logmsg(LOGMSG_DEBUG, "%s: Deleting utxnid %"PRIu64"\n",
@@ -528,8 +707,8 @@ static int __txn_commit_map_remove_nolock(dbenv, utxnid, delete_from_logfile_lis
 	int ret = 0;
 	DB_TXN_COMMIT_MAP * const txmap = dbenv->txmap;
 
-	UTXNID_TRACK * const txn = hash_find(txmap->transactions, &utxnid);
-	if (!txn) {
+	UTXNID_TRACK ** const pp = __txn_commit_map_findp(txmap, utxnid);
+	if (!pp) {
 		/*
 		 * The commit-LSN map is a windowed, in-memory cache: it is pruned
 		 * as log files are deleted, is rebuilt only from the last
@@ -558,6 +737,7 @@ static int __txn_commit_map_remove_nolock(dbenv, utxnid, delete_from_logfile_lis
 		goto err;
 	}
 
+	UTXNID_TRACK * const txn = *pp;
 	LOGFILE_TXN_LIST * const logfile_list = hash_find(txmap->logfile_lists, &(txn->commit_lsn.file));
 	if (!logfile_list) {
 		logmsg(LOGMSG_ERROR, "%s: Could not find logfile list for file %d\n", __func__, txn->commit_lsn.file);
@@ -565,23 +745,17 @@ static int __txn_commit_map_remove_nolock(dbenv, utxnid, delete_from_logfile_lis
 		goto err;
 	}
 
-	if (delete_from_logfile_lists) {
-		hash_del(logfile_list->commit_utxnids, txn);
-	}
-
-	if (hash_get_num_entries(logfile_list->commit_utxnids) == 0) {
+	*pp = txn->next;
+	txn->utxnid = 0;
+	txmap->nentries--;
+	if (--logfile_list->nlive == 0) {
 		__txn_commit_map_delete_logfile_list(dbenv, logfile_list);
 	}
 
-	hash_del(txmap->transactions, txn);
-	__os_free(dbenv, txn); 
+	__txn_commit_map_maybe_resize(txmap);
 
 err:
 	return ret;
-}
-
-static int __txn_commit_map_remove_nolock_foreach_wrapper(void *obj, void *arg) {
-	return __txn_commit_map_remove_nolock((DB_ENV *) arg, ((UTXNID_TRACK *) obj)->utxnid, 0);
 }
 
 /*
@@ -598,7 +772,7 @@ int __txn_commit_map_remove(dbenv, utxnid)
 	DB_TXN_COMMIT_MAP * const txmap = dbenv->txmap;
 
 	Pthread_mutex_lock(&txmap->txmap_mutexp);
-	int ret = __txn_commit_map_remove_nolock(dbenv, utxnid, 1);
+	int ret = __txn_commit_map_remove_nolock(dbenv, utxnid);
 	Pthread_mutex_unlock(&txmap->txmap_mutexp);
 
 	return ret;
@@ -615,23 +789,37 @@ void __txn_commit_map_print_info(DB_ENV *dbenv, loglvl lvl, int should_lock) {
 
 	logmsg(lvl, "Highest logfile: %"PRId64"; "
 					"Smallest logfile: %"PRId64"; "
-					"Remove misses: %"PRId64"\n",
+					"Remove misses: %"PRId64"; "
+					"Entries: %"PRId64"; "
+					"Peak entries: %"PRId64"; "
+					"Buckets: %"PRIu64"; "
+					"Resizes: %"PRId64"; "
+					"Bucket bytes: %"PRIu64"; "
+					"Slabs: %"PRId64"; "
+					"Slots: %"PRId64"\n",
 					txmap->highest_logfile,
 					txmap->smallest_logfile,
-					gbl_commit_map_remove_miss);
+					gbl_commit_map_remove_miss,
+					txmap->nentries,
+					txmap->peak_entries,
+					(u_int64_t) 1 << txmap->bits,
+					txmap->nresizes,
+					((u_int64_t) 1 << txmap->bits) * sizeof(UTXNID_TRACK *),
+					txmap->nslabs,
+					txmap->nslots);
 
 	if (should_lock) { Pthread_mutex_unlock(&txmap->txmap_mutexp); }
 }
 
 /*
  * __txn_commit_map_delete_logfile_txns --
- *	Remove all transactions that committed in a specific logfile 
- *	from the commit LSN map.	
+ *	Remove all transactions that committed in a specific logfile
+ *	from the commit LSN map.
  *
  * PUBLIC: int __txn_commit_map_delete_logfile_txns
  * PUBLIC:	   __P((DB_ENV *, u_int32_t));
  */
-int __txn_commit_map_delete_logfile_txns(dbenv, del_log) 
+int __txn_commit_map_delete_logfile_txns(dbenv, del_log)
 	DB_ENV *dbenv;
 	u_int32_t del_log;
 {
@@ -652,18 +840,14 @@ int __txn_commit_map_delete_logfile_txns(dbenv, del_log)
 		goto err;
 	}
 
-	ret = hash_for(to_delete->commit_utxnids, (hashforfunc_t *const) __txn_commit_map_remove_nolock_foreach_wrapper, (void *) dbenv);
-	if (ret) {
-		goto err;
-	}
-
 	__txn_commit_map_delete_logfile_list(dbenv, to_delete);
+	__txn_commit_map_maybe_resize(txmap);
 err:
 	Pthread_mutex_unlock(&txmap->txmap_mutexp);
 
 	return ret;
 }
- 
+
 /*
  * __txn_commit_map_get --
  *	Get the commit LSN of a transaction.
@@ -671,25 +855,25 @@ err:
  * PUBLIC: int __txn_commit_map_get
  * PUBLIC:	   __P((DB_ENV *, u_int64_t, DB_LSN*));
  */
-int __txn_commit_map_get(dbenv, utxnid, commit_lsn) 
+int __txn_commit_map_get(dbenv, utxnid, commit_lsn)
 	DB_ENV *dbenv;
 	u_int64_t utxnid;
 	DB_LSN *commit_lsn;
 {
 	DB_TXN_COMMIT_MAP *txmap;
-	UTXNID_TRACK *txn;
+	UTXNID_TRACK **pp;
 	int ret;
-   
+
 	txmap = dbenv->txmap;
 	ret = 0;
 
 	Pthread_mutex_lock(&txmap->txmap_mutexp);
-	txn = hash_find(txmap->transactions, &utxnid);
+	pp = __txn_commit_map_findp(txmap, utxnid);
 
-	if (txn == NULL) {
+	if (pp == NULL) {
 		ret = DB_NOTFOUND;
 	} else {
-		*commit_lsn = txn->commit_lsn;
+		*commit_lsn = (*pp)->commit_lsn;
 	}
 
 	Pthread_mutex_unlock(&txmap->txmap_mutexp);
@@ -703,7 +887,7 @@ int __txn_commit_map_get(dbenv, utxnid, commit_lsn)
  * PUBLIC: int __txn_commit_map_add_nolock
  * PUBLIC:	   __P((DB_ENV *, u_int64_t, DB_LSN));
  */
-int __txn_commit_map_add_nolock(dbenv, utxnid, commit_lsn) 
+int __txn_commit_map_add_nolock(dbenv, utxnid, commit_lsn)
 	DB_ENV *dbenv;
 	u_int64_t utxnid;
 	DB_LSN commit_lsn;
@@ -711,13 +895,10 @@ int __txn_commit_map_add_nolock(dbenv, utxnid, commit_lsn)
 	DB_TXN_COMMIT_MAP *txmap;
 	LOGFILE_TXN_LIST *to_delete;
 	UTXNID_TRACK *txn;
-	int ret, alloc_txn, alloc_delete_list, commit_map_debug;
+	int commit_map_debug, new_list;
 
 	txmap = dbenv->txmap;
 	commit_map_debug = dbenv->attr.commit_map_debug;
-	alloc_txn = 0;
-	alloc_delete_list = 0;
-	ret = 0;
 
 	if (commit_map_debug) {
 		logmsg(LOGMSG_DEBUG, "Trying to add utxnid %"PRIu64" commit lsn %"PRIu32":%"PRIu32" to the map\n", utxnid, commit_lsn.file, commit_lsn.offset);
@@ -727,40 +908,41 @@ int __txn_commit_map_add_nolock(dbenv, utxnid, commit_lsn)
 		if (commit_map_debug) {
 			logmsg(LOGMSG_DEBUG, "Transaction is not eligible to be added to the map.\n");
 		}
-		return ret;
+		return 0;
 	}
 
-	txn = hash_find(txmap->transactions, &utxnid);
-
-	if (txn != NULL) { 
+	if (__txn_commit_map_findp(txmap, utxnid) != NULL) {
 		if (commit_map_debug) {
 			logmsg(LOGMSG_DEBUG, "Transaction already exists in the map. Not adding it again\n");
 		}
-		return ret;
+		return 0;
 	}
 
 	to_delete = hash_find(txmap->logfile_lists, &commit_lsn.file);
+	new_list = (to_delete == NULL);
 
-	if (!to_delete) {
-		if ((ret = __os_malloc(dbenv, sizeof(LOGFILE_TXN_LIST), &to_delete) != 0)) {
-			ret = ENOMEM;
-			goto err;
-		} else {
-			alloc_delete_list = 1;
+	if (new_list) {
+		if ((to_delete = commit_map_malloc(sizeof(LOGFILE_TXN_LIST))) == NULL) {
+			return ENOMEM;
 		}
-	}
-
-	if ((ret = __os_malloc(dbenv, sizeof(UTXNID_TRACK), &txn)) != 0) {
-		ret = ENOMEM;
-		goto err;
-	}
-	alloc_txn = 1;
-
-	if (alloc_delete_list) {
 		to_delete->file_num = commit_lsn.file;
-		to_delete->commit_utxnids = hash_init_o(offsetof(UTXNID_TRACK, utxnid), sizeof(u_int64_t));
-		hash_add(txmap->logfile_lists, to_delete);
+		to_delete->nlive = 0;
+		to_delete->slabs = NULL;
+	}
 
+	if ((txn = __txn_commit_map_slot(txmap, to_delete)) == NULL) {
+		if (new_list) {
+			commit_map_free(to_delete);
+		}
+		return ENOMEM;
+	}
+
+	if (new_list) {
+		if (hash_add(txmap->logfile_lists, to_delete) != 0) {
+			__txn_commit_map_free_slabs(txmap, to_delete);
+			commit_map_free(to_delete);
+			return ENOMEM;
+		}
 		if (commit_lsn.file < txmap->smallest_logfile || txmap->smallest_logfile == -1) {
 			txmap->smallest_logfile = commit_lsn.file;
 		}
@@ -770,18 +952,15 @@ int __txn_commit_map_add_nolock(dbenv, utxnid, commit_lsn)
 
 	txn->utxnid = utxnid;
 	txn->commit_lsn = commit_lsn;
-	hash_add(txmap->transactions, txn);
-	hash_add(to_delete->commit_utxnids, txn);
-	
-	return ret;
-err:
-	if (alloc_delete_list) {
-		__os_free(dbenv, to_delete);
+	__txn_commit_map_link(txmap, txn);
+	to_delete->nlive++;
+	if (++txmap->nentries > txmap->peak_entries) {
+		txmap->peak_entries = txmap->nentries;
 	}
-	if (alloc_txn) {
-		__os_free(dbenv, txn);
-	}
-	return ret;
+
+	__txn_commit_map_maybe_resize(txmap);
+
+	return 0;
 }
 
 /*
@@ -791,7 +970,7 @@ err:
  * PUBLIC: int __txn_commit_map_add
  * PUBLIC:	   __P((DB_ENV *, u_int64_t, DB_LSN));
  */
-int __txn_commit_map_add(dbenv, utxnid, commit_lsn) 
+int __txn_commit_map_add(dbenv, utxnid, commit_lsn)
 	DB_ENV *dbenv;
 	u_int64_t utxnid;
 	DB_LSN commit_lsn;
@@ -807,6 +986,423 @@ int __txn_commit_map_add(dbenv, utxnid, commit_lsn)
 	Pthread_mutex_unlock(&dbenv->txmap->txmap_mutexp);
 	return ret;
 }
+
+struct __txn_commit_map_foreach {
+	int (*fn)(UTXNID_TRACK *, void *);
+	void *arg;
+};
+
+static int __txn_commit_map_foreach_list(void *obj, void *arg)
+{
+	LOGFILE_TXN_LIST * const list = (LOGFILE_TXN_LIST *) obj;
+	struct __txn_commit_map_foreach * const fa = arg;
+	struct __utxnid_slab *slab;
+	u_int32_t i;
+	int rc;
+
+	for (slab = list->slabs; slab; slab = slab->next) {
+		for (i = 0; i < slab->nused; i++) {
+			if (slab->tracks[i].utxnid != 0 && (rc = fa->fn(&slab->tracks[i], fa->arg)) != 0) {
+				return rc;
+			}
+		}
+	}
+	return 0;
+}
+
+/*
+ * __txn_commit_map_foreach_nolock --
+ *	Call fn on every transaction in the map until it returns non-zero.
+ *	Caller holds txmap_mutexp.
+ *
+ * PUBLIC: int __txn_commit_map_foreach_nolock
+ * PUBLIC:	   __P((DB_ENV *, int (*)(UTXNID_TRACK *, void *), void *));
+ */
+int __txn_commit_map_foreach_nolock(DB_ENV *dbenv, int (*fn)(UTXNID_TRACK *, void *), void *arg)
+{
+	struct __txn_commit_map_foreach fa = {fn, arg};
+	return hash_for(dbenv->txmap->logfile_lists, __txn_commit_map_foreach_list, &fa);
+}
+
+/*
+ * __txn_commit_map_nentries_nolock --
+ *	Number of transactions in the map.  Caller holds txmap_mutexp.
+ *
+ * PUBLIC: int64_t __txn_commit_map_nentries_nolock __P((DB_ENV *));
+ */
+int64_t __txn_commit_map_nentries_nolock(DB_ENV *dbenv)
+{
+	return dbenv->txmap->nentries;
+}
+
+#ifdef COMDB2_TEST
+struct __txn_commit_map_check {
+	DB_TXN_COMMIT_MAP *txmap;
+	int64_t ntxns;
+	int nlists;
+	int err;
+};
+
+static int __txn_commit_map_check_list(void *obj, void *arg)
+{
+	LOGFILE_TXN_LIST * const list = (LOGFILE_TXN_LIST *) obj;
+	struct __txn_commit_map_check * const chk = arg;
+	struct __utxnid_slab *slab;
+	u_int32_t i, live = 0;
+
+	chk->nlists++;
+	if (list->nlive == 0 || list->slabs == NULL ||
+	    list->file_num < chk->txmap->smallest_logfile ||
+	    list->file_num > chk->txmap->highest_logfile) {
+		chk->err = __LINE__;
+	}
+	for (slab = list->slabs; slab; slab = slab->next) {
+		if (slab->nused > slab->ntracks) {
+			chk->err = __LINE__;
+		}
+		for (i = 0; i < slab->nused; i++) {
+			UTXNID_TRACK * const txn = &slab->tracks[i];
+			UTXNID_TRACK **pp;
+			if (txn->utxnid == 0) {
+				continue;
+			}
+			live++;
+			pp = __txn_commit_map_findp(chk->txmap, txn->utxnid);
+			if (pp == NULL || *pp != txn || txn->commit_lsn.file != list->file_num) {
+				chk->err = __LINE__;
+			}
+		}
+	}
+	if (live != list->nlive) {
+		chk->err = __LINE__;
+	}
+	chk->ntxns += live;
+	return 0;
+}
+
+/*
+ * Every transaction has to be in a slab of the logfile it committed in and
+ * chained in the bucket its utxnid hashes to, and nowhere else.
+ */
+static int __txn_commit_map_check(DB_TXN_COMMIT_MAP *txmap, int64_t ntxns, int nlists)
+{
+	struct __txn_commit_map_check chk = {txmap, 0, 0, 0};
+	u_int32_t smallest = txmap->smallest_logfile, highest = txmap->highest_logfile;
+	int64_t chained = 0;
+	u_int64_t b;
+
+	hash_for(txmap->logfile_lists, __txn_commit_map_check_list, &chk);
+	if (chk.err) {
+		return chk.err;
+	}
+	for (b = 0; b < ((u_int64_t) 1 << txmap->bits); b++) {
+		UTXNID_TRACK *txn;
+		for (txn = txmap->buckets[b]; txn; txn = txn->next) {
+			if (txn->utxnid == 0 || __txn_commit_map_bucket(txn->utxnid, txmap->bits) != b) {
+				return __LINE__;
+			}
+			chained++;
+		}
+	}
+	if (chk.ntxns != ntxns || txmap->nentries != ntxns || chained != ntxns || chk.nlists != nlists ||
+	    hash_get_num_entries(txmap->logfile_lists) != nlists) {
+		return __LINE__;
+	}
+	if (nlists == 0 && (txmap->smallest_logfile != -1 || txmap->highest_logfile != -1)) {
+		return __LINE__;
+	}
+	if (nlists > 0 && (!hash_find(txmap->logfile_lists, &smallest) ||
+	    !hash_find(txmap->logfile_lists, &highest))) {
+		return __LINE__;
+	}
+	return 0;
+}
+
+struct __txn_commit_map_collect {
+	u_int64_t *ids;
+	int64_t n;
+	int64_t cap;
+};
+
+static int __txn_commit_map_collect_one(UTXNID_TRACK *txn, void *arg)
+{
+	struct __txn_commit_map_collect * const c = arg;
+
+	if (c->n == c->cap) {
+		return 1;
+	}
+	c->ids[c->n++] = txn->utxnid;
+	return 0;
+}
+
+static int __txn_commit_map_cmp_utxnid(const void *a, const void *b)
+{
+	const u_int64_t x = *(const u_int64_t *) a, y = *(const u_int64_t *) b;
+	return x < y ? -1 : x > y;
+}
+
+/* foreach has to return every transaction in the map, each exactly once */
+static int __txn_commit_map_check_foreach(DB_ENV *dbenv)
+{
+	DB_TXN_COMMIT_MAP * const txmap = dbenv->txmap;
+	struct __txn_commit_map_collect c = {NULL, 0, txmap->nentries + 1};
+	int64_t i;
+	int err = 0;
+
+	if ((c.ids = malloc(sizeof(u_int64_t) * c.cap)) == NULL) {
+		return __LINE__;
+	}
+	if (__txn_commit_map_foreach_nolock(dbenv, __txn_commit_map_collect_one, &c) != 0 ||
+	    c.n != txmap->nentries || c.n != __txn_commit_map_nentries_nolock(dbenv)) {
+		err = __LINE__;
+	}
+	qsort(c.ids, c.n, sizeof(u_int64_t), __txn_commit_map_cmp_utxnid);
+	for (i = 1; !err && i < c.n; i++) {
+		if (c.ids[i] == c.ids[i - 1]) {
+			err = __LINE__;
+		}
+	}
+	for (i = 0; !err && i < c.n; i++) {
+		if (__txn_commit_map_findp(txmap, c.ids[i]) == NULL) {
+			err = __LINE__;
+		}
+	}
+	free(c.ids);
+	return err;
+}
+
+static int __txn_commit_map_has(DB_ENV *dbenv, u_int64_t utxnid, u_int32_t file)
+{
+	DB_LSN lsn;
+	return __txn_commit_map_get(dbenv, utxnid, &lsn) == 0 && lsn.file == file;
+}
+
+#define CLM_SELFTEST(cond)                                                        \
+	do {                                                                      \
+		if (!(cond)) {                                                    \
+			logmsg(LOGMSG_ERROR, "%s: line %d: %s\n", __func__,       \
+			    __LINE__, #cond);                                     \
+			ret = 1;                                                  \
+			goto done;                                                \
+		}                                                                 \
+	} while (0)
+
+/*
+ * __txn_commit_map_selftest --
+ *	Exercise a private commit LSN map: whole-logfile purges, removal of the
+ *	head, middle, tail and only transaction of a logfile, and the hash
+ *	growing and shrinking under it.  The live map is not touched.
+ *
+ * PUBLIC: int __txn_commit_map_selftest __P((void));
+ */
+int __txn_commit_map_selftest(void)
+{
+	DB_ENV *dbenv;
+	DB_TXN_COMMIT_MAP *txmap;
+	DB_LSN lsn = {0};
+	u_int64_t u;
+	u_int64_t base, nxt;
+	u_int32_t f;
+	int ret, i, k;
+
+	if ((dbenv = calloc(1, sizeof(DB_ENV))) == NULL) {
+		return ENOMEM;
+	}
+	dbenv->use_sys_malloc = 1;
+	if ((ret = __txn_commit_map_init(dbenv)) != 0) {
+		free(dbenv);
+		return ret;
+	}
+	txmap = dbenv->txmap;
+
+	/* Several transactions in one logfile, purged together */
+	lsn.file = 50;
+	for (u = 1; u <= 3; u++) {
+		lsn.offset = u;
+		CLM_SELFTEST(__txn_commit_map_add(dbenv, u, lsn) == 0);
+	}
+	CLM_SELFTEST(__txn_commit_map_check(txmap, 3, 1) == 0);
+	for (u = 1; u <= 3; u++) {
+		CLM_SELFTEST(__txn_commit_map_has(dbenv, u, 50));
+	}
+	CLM_SELFTEST(__txn_commit_map_delete_logfile_txns(dbenv, 50) == 0);
+	for (u = 1; u <= 3; u++) {
+		CLM_SELFTEST(!__txn_commit_map_has(dbenv, u, 50));
+	}
+	CLM_SELFTEST(__txn_commit_map_check(txmap, 0, 0) == 0);
+
+	/* Purging a logfile leaves the other logfiles alone */
+	lsn.file = 50;
+	CLM_SELFTEST(__txn_commit_map_add(dbenv, 11, lsn) == 0);
+	CLM_SELFTEST(__txn_commit_map_add(dbenv, 12, lsn) == 0);
+	lsn.file = 51;
+	CLM_SELFTEST(__txn_commit_map_add(dbenv, 13, lsn) == 0);
+	lsn.file = 52;
+	CLM_SELFTEST(__txn_commit_map_add(dbenv, 14, lsn) == 0);
+	CLM_SELFTEST(__txn_commit_map_check(txmap, 4, 3) == 0);
+	CLM_SELFTEST(__txn_commit_map_delete_logfile_txns(dbenv, 50) == 0);
+	CLM_SELFTEST(!__txn_commit_map_has(dbenv, 11, 50) && !__txn_commit_map_has(dbenv, 12, 50));
+	CLM_SELFTEST(__txn_commit_map_has(dbenv, 13, 51) && __txn_commit_map_has(dbenv, 14, 52));
+	CLM_SELFTEST(__txn_commit_map_check(txmap, 2, 2) == 0);
+	CLM_SELFTEST(__txn_commit_map_delete_logfile_txns(dbenv, 51) == 0);
+	CLM_SELFTEST(__txn_commit_map_has(dbenv, 14, 52));
+	CLM_SELFTEST(__txn_commit_map_check(txmap, 1, 1) == 0);
+	CLM_SELFTEST(__txn_commit_map_delete_logfile_txns(dbenv, 52) == 0);
+	CLM_SELFTEST(__txn_commit_map_delete_logfile_txns(dbenv, 52) != 0);
+	CLM_SELFTEST(__txn_commit_map_check(txmap, 0, 0) == 0);
+
+	/* Remove the middle, head, tail and then the only transaction of a logfile */
+	lsn.file = 60;
+	for (u = 21; u <= 25; u++) {
+		CLM_SELFTEST(__txn_commit_map_add(dbenv, u, lsn) == 0);
+	}
+	CLM_SELFTEST(__txn_commit_map_remove(dbenv, 23) == 0);
+	CLM_SELFTEST(!__txn_commit_map_has(dbenv, 23, 60) && __txn_commit_map_has(dbenv, 22, 60) &&
+	    __txn_commit_map_has(dbenv, 24, 60));
+	CLM_SELFTEST(__txn_commit_map_check(txmap, 4, 1) == 0);
+	CLM_SELFTEST(__txn_commit_map_remove(dbenv, 21) == 0);
+	CLM_SELFTEST(__txn_commit_map_check(txmap, 3, 1) == 0);
+	CLM_SELFTEST(__txn_commit_map_remove(dbenv, 25) == 0);
+	CLM_SELFTEST(__txn_commit_map_check(txmap, 2, 1) == 0);
+	CLM_SELFTEST(__txn_commit_map_has(dbenv, 22, 60) && __txn_commit_map_has(dbenv, 24, 60));
+	CLM_SELFTEST(__txn_commit_map_remove(dbenv, 22) == 0);
+	CLM_SELFTEST(__txn_commit_map_check(txmap, 1, 1) == 0);
+	CLM_SELFTEST(__txn_commit_map_remove(dbenv, 24) == 0);
+	CLM_SELFTEST(__txn_commit_map_check(txmap, 0, 0) == 0);
+
+	/* Duplicates, utxnid 0 and zero LSNs are not added */
+	lsn.file = 70;
+	CLM_SELFTEST(__txn_commit_map_add(dbenv, 31, lsn) == 0);
+	CLM_SELFTEST(__txn_commit_map_add(dbenv, 31, lsn) == 0);
+	CLM_SELFTEST(__txn_commit_map_add(dbenv, 0, lsn) == 0);
+	ZERO_LSN(lsn);
+	CLM_SELFTEST(__txn_commit_map_add(dbenv, 32, lsn) == 0);
+	CLM_SELFTEST(__txn_commit_map_check(txmap, 1, 1) == 0);
+	CLM_SELFTEST(__txn_commit_map_delete_logfile_txns(dbenv, 70) == 0);
+	CLM_SELFTEST(__txn_commit_map_check(txmap, 0, 0) == 0);
+
+	/* Many logfiles: purge one in the middle, then interleave removals and purges */
+	for (f = 100; f < 120; f++) {
+		lsn.file = f;
+		for (k = 0; k < 100; k++) {
+			lsn.offset = k + 1;
+			CLM_SELFTEST(__txn_commit_map_add(dbenv, 1000 + f * 100 + k, lsn) == 0);
+		}
+	}
+	CLM_SELFTEST(__txn_commit_map_check(txmap, 2000, 20) == 0);
+	CLM_SELFTEST(__txn_commit_map_delete_logfile_txns(dbenv, 110) == 0);
+	CLM_SELFTEST(!__txn_commit_map_has(dbenv, 1000 + 110 * 100, 110));
+	CLM_SELFTEST(__txn_commit_map_has(dbenv, 1000 + 109 * 100 + 99, 109));
+	CLM_SELFTEST(__txn_commit_map_has(dbenv, 1000 + 111 * 100, 111));
+	CLM_SELFTEST(__txn_commit_map_check(txmap, 1900, 19) == 0);
+	for (f = 100; f < 120; f++) {
+		for (k = 1; k < 100 && f != 110; k += 2) {
+			CLM_SELFTEST(__txn_commit_map_remove(dbenv, 1000 + f * 100 + k) == 0);
+		}
+	}
+	CLM_SELFTEST(__txn_commit_map_check(txmap, 950, 19) == 0);
+	/* the lowest and highest logfiles go first, to move both ends */
+	CLM_SELFTEST(__txn_commit_map_delete_logfile_txns(dbenv, 100) == 0);
+	CLM_SELFTEST(__txn_commit_map_delete_logfile_txns(dbenv, 119) == 0);
+	CLM_SELFTEST(txmap->smallest_logfile == 101 && txmap->highest_logfile == 118);
+	CLM_SELFTEST(__txn_commit_map_check(txmap, 850, 17) == 0);
+	for (f = 101; f < 119; f++) {
+		CLM_SELFTEST(f == 110 || __txn_commit_map_delete_logfile_txns(dbenv, f) == 0);
+	}
+	CLM_SELFTEST(__txn_commit_map_check(txmap, 0, 0) == 0);
+
+	/* Repeated cycles of adds and removals, then purge what is left */
+	for (i = 0; i < 1000; i++) {
+		lsn.file = 200 + i % 5;
+		for (k = 0; k < 20; k++) {
+			lsn.offset = k + 1;
+			CLM_SELFTEST(__txn_commit_map_add(dbenv, 100000 + i * 20 + k, lsn) == 0);
+		}
+		for (k = 0; k < 5; k++) {
+			CLM_SELFTEST(__txn_commit_map_remove(dbenv, 100000 + i * 20 + k) == 0);
+			CLM_SELFTEST(__txn_commit_map_remove(dbenv, 100000 + i * 20 + 19 - k) == 0);
+		}
+	}
+	CLM_SELFTEST(__txn_commit_map_check(txmap, 10000, 5) == 0);
+	for (f = 200; f < 205; f++) {
+		CLM_SELFTEST(__txn_commit_map_delete_logfile_txns(dbenv, f) == 0);
+	}
+	CLM_SELFTEST(__txn_commit_map_check(txmap, 0, 0) == 0);
+
+	/*
+	 * The hash grows with the map, so every transaction has to be found
+	 * after each resize; once most of the map is purged it shrinks back to
+	 * fit what is left, and removals one at a time shrink it further.
+	 */
+	i = txmap->nresizes;
+	for (f = 300; f < 310; f++) {
+		lsn.file = f;
+		for (k = 0; k < 10000; k++) {
+			lsn.offset = k + 1;
+			CLM_SELFTEST(__txn_commit_map_add(dbenv, 200000 + (f - 300) * 10000 + k, lsn) == 0);
+		}
+		CLM_SELFTEST(__txn_commit_map_check(txmap, (f - 300 + 1) * 10000, f - 300 + 1) == 0);
+	}
+	CLM_SELFTEST(txmap->nresizes > i && txmap->nentries <= ((int64_t) 1 << txmap->bits));
+	CLM_SELFTEST(__txn_commit_map_check_foreach(dbenv) == 0);
+	CLM_SELFTEST(__txn_commit_map_remove(dbenv, 200000 + 5 * 10000 + 17) == 0);
+	CLM_SELFTEST(__txn_commit_map_add(dbenv, 200000 + 5 * 10000 + 17, lsn) == 0);
+	CLM_SELFTEST(__txn_commit_map_has(dbenv, 200000 + 5 * 10000 + 17, 309));
+	for (f = 300; f < 309; f++) {
+		CLM_SELFTEST(__txn_commit_map_delete_logfile_txns(dbenv, f) == 0);
+	}
+	/* 10001 left: shrunk to the smallest table with at least two buckets per transaction */
+	CLM_SELFTEST((1 << txmap->bits) >= 2 * 10001 && (1 << (txmap->bits - 1)) < 2 * 10001);
+	CLM_SELFTEST(__txn_commit_map_check(txmap, 10001, 1) == 0);
+	for (k = 0; k < 10000; k++) {
+		CLM_SELFTEST(__txn_commit_map_has(dbenv, 200000 + 9 * 10000 + k, 309));
+	}
+	/* below 4096 of 32768 buckets, removals shrink it to 8192 */
+	for (k = 0; k < 6000; k++) {
+		CLM_SELFTEST(__txn_commit_map_remove(dbenv, 290000 + k) == 0);
+	}
+	CLM_SELFTEST((1 << txmap->bits) == 8192);
+	CLM_SELFTEST(__txn_commit_map_check(txmap, 4001, 1) == 0 && __txn_commit_map_check_foreach(dbenv) == 0);
+	CLM_SELFTEST(!__txn_commit_map_has(dbenv, 290000, 309) && __txn_commit_map_has(dbenv, 296000, 309));
+	CLM_SELFTEST(__txn_commit_map_delete_logfile_txns(dbenv, 309) == 0);
+	CLM_SELFTEST(__txn_commit_map_check(txmap, 0, 0) == 0 && txmap->bits == COMMIT_MAP_MIN_BITS);
+
+	/*
+	 * Recovery removing transactions one at a time, followed by new commits
+	 * in the same logfile: the removed slots stay in the slabs, skipped by
+	 * lookups, foreach and resizes, until the logfile is purged.
+	 */
+	lsn.file = 500;
+	base = 1000000;
+	for (k = 0; k < 10000; k++) {
+		lsn.offset = k + 1;
+		CLM_SELFTEST(__txn_commit_map_add(dbenv, base + k, lsn) == 0);
+	}
+	/* the first 1000 stay throughout and keep the logfile's list alive */
+	nxt = base + 1000;
+	for (i = 0; i < 5; i++) {
+		for (k = 0; k < 9000; k++) {
+			CLM_SELFTEST(__txn_commit_map_remove(dbenv, nxt + k) == 0);
+		}
+		nxt += 9000;
+		for (k = 0; k < 9000; k++) {
+			lsn.offset = 10000 + i * 9000 + k + 1;
+			CLM_SELFTEST(__txn_commit_map_add(dbenv, nxt + k, lsn) == 0);
+		}
+		CLM_SELFTEST(__txn_commit_map_check(txmap, 10000, 1) == 0);
+	}
+	CLM_SELFTEST(__txn_commit_map_check(txmap, 10000, 1) == 0);
+	CLM_SELFTEST(__txn_commit_map_check_foreach(dbenv) == 0);
+	CLM_SELFTEST(__txn_commit_map_has(dbenv, base, 500) && __txn_commit_map_has(dbenv, nxt + 8999, 500));
+	CLM_SELFTEST(__txn_commit_map_delete_logfile_txns(dbenv, 500) == 0);
+	CLM_SELFTEST(__txn_commit_map_check(txmap, 0, 0) == 0 && txmap->nslots == 0 && txmap->nslabs == 0);
+
+done:
+	__txn_commit_map_destroy(dbenv);
+	free(dbenv);
+	return ret;
+}
+#endif
 
 static inline void __free_prepared_children(DB_ENV *dbenv, DB_TXN_PREPARED *p)
 {
