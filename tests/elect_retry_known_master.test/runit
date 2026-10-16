@@ -1,0 +1,36 @@
+#!/usr/bin/env bash
+bash -n "$0" || exit 1
+
+# A node whose election round fails must not start another round once it has
+# accepted a new master: the extra round elects a second master, and commits
+# made under the first one are rolled back.
+
+. ${TESTSROOTDIR}/tools/cluster_utils.sh
+. ${TESTSROOTDIR}/tools/runit_common.sh
+
+[[ -z "$CLUSTER" ]] && failexit "This test requires a cluster"
+
+q() { $CDB2SQL_EXE $CDB2_OPTIONS --tabs $DBNAME --host $1 "$2"; }
+
+master=$(get_master_and_fail_if_not_found) || failexit "no master"
+for node in $CLUSTER; do
+    [[ $node != $master ]] && replica=$node && break
+done
+log=$TESTDIR/logs/$DBNAME.$replica.db
+
+# The replica sits out its next round while the others elect, then fails it
+q $replica "put tunable 'debug_elect_lose_round' 1" || failexit "can't set tunable on $replica"
+downgrade_master || failexit "downgrade failed"
+sleep 15
+
+grep -q "debug_elect_lose_round, failing this round" $log || failexit "$replica never ran an election round"
+grep -q "not retrying election" $log || failexit "$replica retried the election after accepting a master"
+
+# No second election: master and generation stay put
+master=$(get_master_and_fail_if_not_found) || failexit "no master"
+gen=$(get_node_gen $master) || failexit "no gen"
+sleep 15
+[[ $(get_master_and_fail_if_not_found) == $master ]] || failexit "master changed again"
+[[ $(get_node_gen $master) == $gen ]] || failexit "generation changed again"
+
+echo "Success"
