@@ -1739,6 +1739,10 @@ REGISTER_TUNABLE("queuedb_file_interval",
                  "Check on this interval each queuedb against its configured "
                  "maximum file size. (Default: 60000ms)", TUNABLE_INTEGER,
                  &gbl_queuedb_file_interval, READONLY, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("debug_elect_lose_round",
+                 "Fail this node's next election round after waiting 5 seconds, as a timeout would.  "
+                 "(Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_debug_elect_lose_round, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("random_election_timeout",
                  "Use a random timeout in election.  (Default: on)",
                  TUNABLE_BOOLEAN, &gbl_rand_elect_timeout,
