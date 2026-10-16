@@ -33,11 +33,22 @@ extern int gbl_debug_recover_deadlock_evbuffer;
 /* print a description of each tcm test */
 static void tcmtest_printlist()
 {
-    logmsg(LOGMSG_USER, "routecpu <node>            - set routecpu test-node to <node> (routes off the node)\n");
+    logmsg(LOGMSG_USER, "routecpu [node ...]        - route off the given nodes (none clears)\n");
     logmsg(LOGMSG_USER, "\n");
 }
 
-char *tcmtest_routecpu_down_node;
+#define TCMTEST_ROUTECPU_MAX 32
+static char *tcmtest_routecpu_down_nodes[TCMTEST_ROUTECPU_MAX];
+static int tcmtest_routecpu_num_down;
+
+int tcmtest_routecpu_is_down(const char *host)
+{
+    for (int i = 0; i < tcmtest_routecpu_num_down; i++) {
+        if (host == tcmtest_routecpu_down_nodes[i])
+            return 1;
+    }
+    return 0;
+}
 
 /* parse debug trap @send debug <cmd> */
 void debug_trap(char *line, int lline)
@@ -75,9 +86,12 @@ void debug_trap(char *line, int lline)
         }
 
         else if (tokcmp(tok, ltok, "routecpu") == 0) {
-            tok = segtok(line, lline, &st, &ltok);
-            char *host = NULL;
-            if (ltok > 0) {
+            int ndown = 0;
+            while (ndown < TCMTEST_ROUTECPU_MAX) {
+                tok = segtok(line, lline, &st, &ltok);
+                if (ltok <= 0)
+                    break;
+                char *host = NULL;
                 char *tmphost = tokdup(tok, ltok);
                 char *end = NULL;
                 int node = strtol(tmphost, &end, 10);
@@ -89,11 +103,14 @@ void debug_trap(char *line, int lline)
                     host = intern(tmphost);
                 }
                 free(tmphost);
+                if (host) {
+                    tcmtest_routecpu_down_nodes[ndown++] = host;
+                    logmsg(LOGMSG_USER, "enable routecpu test for node %s\n", host);
+                }
             }
-            logmsg(LOGMSG_USER, "%s routecpu test for node %s\n",
-                   host ? "enable" : "disable",
-                   host ? host : tcmtest_routecpu_down_node);
-            tcmtest_routecpu_down_node = host;
+            if (ndown == 0)
+                logmsg(LOGMSG_USER, "disable routecpu test\n");
+            tcmtest_routecpu_num_down = ndown;
         }
     } else if (tokcmp(tok, ltok, "timings") == 0) {
         print_all_time_accounting();
