@@ -78,6 +78,7 @@ int debug_switch_force_file_version_to_fail(void); /* 0 */
 int debug_switch_rep_verify_req_delay(void);       /* 0 */
 int debug_switch_test_trigger_deadlock(void);      /* 0 */
 int debug_switch_test_trigger_reopen(void);        /* 0 */
+int debug_switch_test_trigger_reregister(void);    /* 0 */
 int debug_switch_is_dbq_get_delayed(void);         /* 0 */
 int debug_switch_is_rep_rec_delayed(void);         /* 0 */
 int debug_switch_get_tmp_dir_sleep(void);          /* 0 */

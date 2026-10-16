@@ -85,6 +85,7 @@ static struct debug_switches {
     int rep_verify_req_delay;
     int test_trigger_deadlock;
     int test_trigger_reopen;
+    int test_trigger_reregister;
     int dbq_get_is_delayed;
     int rep_rec_is_delayed;
     int get_tmp_dir_sleep;
@@ -275,6 +276,7 @@ int init_debug_switches(void)
     register_debug_switch("rep_verify_req_delay", &debug_switches.rep_verify_req_delay);
     register_debug_switch("test_trigger_deadlock", &debug_switches.test_trigger_deadlock);
     register_debug_switch("test_trigger_reopen", &debug_switches.test_trigger_reopen);
+    register_debug_switch("test_trigger_reregister", &debug_switches.test_trigger_reregister);
     register_debug_switch("get_tmp_dir_sleep", &debug_switches.get_tmp_dir_sleep);
     register_debug_switch("ignore_null_auth_func", &debug_switches.ignore_null_auth_func);
     register_debug_switch("load_cache_delay", &debug_switches.load_cache_delay);
@@ -530,6 +532,10 @@ int debug_switch_test_trigger_deadlock(void)
 int debug_switch_test_trigger_reopen(void)
 {
     return debug_switches.test_trigger_reopen;
+}
+int debug_switch_test_trigger_reregister(void)
+{
+    return debug_switches.test_trigger_reregister;
 }
 void debug_switch_set_dbq_get_delayed(int val)
 {

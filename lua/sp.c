@@ -701,7 +701,8 @@ static int dbq_poll(Lua L, dbconsumer_t *q, int delay_ms)
 {
     SP sp = getsp(L);
     while (1) {
-        if (stop_waiting(L, q)) {
+        /* The test switch leaves re-registration to the paused branch below */
+        if (!debug_switch_test_trigger_reregister() && stop_waiting(L, q)) {
             return -1;
         }
         int rc;
@@ -718,12 +719,20 @@ again:  status = *q->status;
         if (status == TRIGGER_SUBSCRIPTION_OPEN) {
             rc = dbq_poll_int(L, q); // call will release q->lock
         } else if (status == TRIGGER_SUBSCRIPTION_PAUSED) {
+            /*
+             * Don't hold the trigger lock while re-registering: the master's
+             * reply is read by the replication thread, which needs this lock
+             * to unpause us.
+             */
+            Pthread_mutex_unlock(q->lock);
             if (stop_waiting(L, q)) {
-                Pthread_mutex_unlock(q->lock);
                 return -1;
             }
-            ts = setup_dbq_ts(delay_ms);
-            pthread_cond_timedwait(q->cond, q->lock, &ts); /* RC IGNORED */
+            Pthread_mutex_lock(q->lock);
+            if (*q->status == TRIGGER_SUBSCRIPTION_PAUSED) {
+                ts = setup_dbq_ts(delay_ms);
+                pthread_cond_timedwait(q->cond, q->lock, &ts); /* RC IGNORED */
+            }
             goto again;
         } else {
             assert(status == TRIGGER_SUBSCRIPTION_CLOSED);
