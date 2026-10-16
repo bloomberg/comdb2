@@ -334,8 +334,7 @@ static void hndl_set_comdb2buf(cdb2_hndl_tp *, COMDB2BUF *, int idx);
 static int send_reset(COMDB2BUF *sb, int localcache);
 static void free_raw_response(cdb2_hndl_tp *hndl);
 
-static int check_hb_on_blocked_write = 0; // temporary switch - this will be default behavior
-static int check_hb_on_blocked_write_set_from_env = 0;
+static int check_hb_on_blocked_write = 1;
 
 static pthread_mutex_t cdb2_ssl_sess_lock = PTHREAD_MUTEX_INITIALIZER;
 
@@ -1720,8 +1719,6 @@ static void read_comdb2db_environment_cfg(cdb2_hndl_tp *hndl, const char *comdb2
                                    &cdb2_alarm_unread_socket_data_set_from_env);
         process_env_var_int("COMDB2_FEATURE_MAX_DISCARD_RECORDS", &cdb2_max_discard_records,
                             &cdb2_max_discard_records_set_from_env);
-        process_env_var_str_on_off("COMDB2_CONFIG_CHECK_HB_ON_BLOCKED_WRITE", &check_hb_on_blocked_write,
-                                   &check_hb_on_blocked_write_set_from_env);
 
         char *arg = getenv("COMDB2_CONFIG_INSTALL_STATIC_LIBS");
         if (cdb2_install != NULL && arg != NULL) {
@@ -2218,12 +2215,6 @@ static void read_comdb2db_cfg(cdb2_hndl_tp *hndl, COMDB2BUF *s, const char *comd
                 tok = strtok_r(NULL, " :,", &last);
                 if (tok)
                     cdb2_min_tls_ver = atof(tok);
-            } else if (strcasecmp("check_hb_on_blocked_write", tok) == 0) {
-                if (!check_hb_on_blocked_write_set_from_env) {
-                    tok = strtok_r(NULL, " :,", &last);
-                    if (tok)
-                        check_hb_on_blocked_write = !!atoi(tok);
-                }
             } else if (strcasecmp("request_fingerprint", tok) == 0) {
                 tok = strtok_r(NULL, " :,", &last);
                 if (tok)
@@ -4850,13 +4841,11 @@ static int cdb2_send_query(cdb2_hndl_tp *hndl, cdb2_hndl_tp *event_hndl, COMDB2B
     if (rc != len)
         debugprint("cdb2buf_write rc = %d (len = %d)\n", rc, len);
 
-    // Always enable for chunk transactions
-    int check_hb_on_blocked_write_final = (check_hb_on_blocked_write || (hndl && hndl->is_chunk != CHUNK_NO));
     int timeout_error = 0;
     rc = cdb2buf_flush_chk_timeout(sb, &timeout_error);
 
     // Failed writing to server due to a timeout
-    if (check_hb_on_blocked_write_final && timeout_error && !is_begin && hndl && !hndl->is_read && hndl->in_trans &&
+    if (check_hb_on_blocked_write && timeout_error && !is_begin && hndl && !hndl->is_read && hndl->in_trans &&
         hndl->socket_timeout) {
         rc = wait_for_write(sb, hndl, event_hndl);
     }
