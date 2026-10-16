@@ -3988,6 +3988,11 @@ static int process_berkdb(bdb_state_type *bdb_state, char *host, DBT *control, D
          * to maintain the same lock ordering as triggers.
          */
         bdb_state->dbenv->trigger_pause_all(bdb_state->dbenv);
+        if (debug_switch_test_trigger_reregister()) {
+            /* Hold consumers paused long enough for them to wake up and re-register */
+            logmsg(LOGMSG_WARN, "%s: consumers paused, sleeping\n", __func__);
+            sleep(3);
+        }
     }
 
     /* Rep_verify can set the recovery flag, which causes the code ignores
