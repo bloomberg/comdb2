@@ -175,6 +175,7 @@ extern int gbl_slow_rep_process_txn_maxms;
 extern int gbl_sqlite_sorter_mem;
 extern int gbl_sqlite_use_temptable_for_rowset;
 extern int gbl_allow_bplog_restarts;
+extern int gbl_not_durable_retries;
 extern int gbl_sqlite_stat4_scan;
 extern int gbl_test_blob_race;
 extern int gbl_test_trigger_deadlock;

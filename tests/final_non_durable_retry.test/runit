@@ -39,6 +39,36 @@ function hide_non_durable_rcode
     fi
 }
 
+function set_not_durable_retries
+{
+    typeset val=$1
+    if [[ -z "$CLUSTER" ]] ; then
+        $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "put tunable 'not_durable_retries' = $val"
+    else
+        for n in $CLUSTER ; do
+            $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME --host $n "put tunable 'not_durable_retries' = $val"
+        done
+    fi
+}
+
+function insert_value
+{
+    typeset val=$1
+    if [[ "$transaction" == "1" ]]; then
+        $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default 2>&1 <<EOF
+set transaction $isolation
+begin
+insert into t1 values($val)
+commit
+EOF
+    else
+        $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default 2>&1 <<EOF
+set transaction $isolation
+insert into t1 values($val)
+EOF
+    fi
+}
+
 function create_table
 {
     $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "create table t1 (a int primary key)"
@@ -205,6 +235,41 @@ EOF
     $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "delete from t1 where 1" >/dev/null 2>&1
 }
 
+# not_durable_retries, not survive_n_master_swings, bounds non-durable retries
+function not_durable_retry_cap
+{
+    typeset -a elapsed
+
+    hide_non_durable_rcode 1
+    force_all_non_durable 1
+
+    for cap in 3 40 ; do
+        set_not_durable_retries $cap
+        typeset start=$(timems)
+        x=$(insert_value $cap)
+        elapsed[$cap]=$(( $(timems) - start ))
+        echo "$x"
+        echo "not_durable_retries=$cap took ${elapsed[$cap]}ms"
+        if [[ "$transaction" == "1" ]]; then
+            [[ "$x" != *"[commit] rc 0"* ]] && failexit "capped insert should have succeeded"
+        else
+            [[ "$x" != *"rows inserted=1"* ]] && failexit "capped insert should have succeeded"
+        fi
+    done
+
+    # Each retry waits master_retry_poll_ms (100ms)
+    (( elapsed[40] >= 4000 )) || failexit "40 non-durable retries took only ${elapsed[40]}ms"
+    (( elapsed[3] * 2 < elapsed[40] )) || failexit "3 retries (${elapsed[3]}ms) not much faster than 40 (${elapsed[40]}ms)"
+
+    rows=$($CDB2SQL_EXE -tabs $CDB2_OPTIONS $DBNAME default "select count(*) from t1")
+    [[ "$rows" == "2" ]] || failexit "expected 2 rows after capped retries, got $rows"
+
+    set_not_durable_retries 100
+    hide_non_durable_rcode 0
+    force_all_non_durable 0
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "delete from t1 where 1" >/dev/null 2>&1
+}
+
 function run_test
 {
     echo "Running tests"
@@ -212,6 +277,7 @@ function run_test
     show_non_durable_good_insert
     hide_non_durable_constraint_violation
     show_non_durable_constraint_violation
+    not_durable_retry_cap
 }
 
 create_table

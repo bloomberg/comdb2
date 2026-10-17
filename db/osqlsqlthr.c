@@ -62,6 +62,7 @@ extern int gbl_expressions_indexes;
 extern int gbl_reorder_socksql_no_deadlock;
 
 int gbl_allow_bplog_restarts = 600;
+int gbl_not_durable_retries = 100;
 int gbl_master_retry_poll_ms = 100;
 int gbl_noleader_retry_duration_ms = 50 * 1000; /* wait up to 50 seconds for a new leader */
 int gbl_noleader_retry_poll_ms = 10;
@@ -1042,6 +1043,8 @@ int osql_sock_commit(struct sqlclntstate *clnt, int type, enum trans_clntcomm si
     int rc = 0, rc2;
     int rcout = 0;
     int retries = 0;
+    int not_durable_retries = 0;
+    int sent_final = 0;
     int bdberr = 0;
     int is_distributed = 0;
 
@@ -1187,7 +1190,11 @@ retry:
                         rcout = SQLITE_ABORT;
                         goto err;
                     }
-                    if (retries++ < gbl_allow_bplog_restarts) {
+                    /* Non-durable retries have their own, smaller budget */
+                    int not_durable = (osql->xerr.errval == ERR_NOT_DURABLE);
+                    int max_not_durable = gbl_not_durable_retries > 0 ? gbl_not_durable_retries : 1;
+                    /* Stop on not-durable only after a final went out: the cap may drop mid-loop */
+                    if ((!not_durable || !sent_final) && retries++ < gbl_allow_bplog_restarts) {
                         sql_debug_logf(
                             clnt, __func__, __LINE__,
                             "lost "
@@ -1195,12 +1202,16 @@ retry:
                             "msec\n",
                             retries, gbl_master_retry_poll_ms);
 
+                        if (not_durable)
+                            not_durable_retries++;
                         poll(NULL, 0, gbl_master_retry_poll_ms);
-                        int is_final = (retries >= gbl_allow_bplog_restarts);
+                        int out_of_retries = (retries >= gbl_allow_bplog_restarts);
+                        /* Final lets the master hide not-durable; keep the session so it replays */
+                        sent_final = sent_final || out_of_retries || (not_durable_retries >= max_not_durable);
                         snap_uid_t snap = {{0}};
-                        int keep_session = !is_final || (get_cnonce(clnt, &snap) == 0);
+                        int keep_session = !out_of_retries || (get_cnonce(clnt, &snap) == 0);
 
-                        rc = osql_sock_restart(clnt, 1, keep_session, is_final);
+                        rc = osql_sock_restart(clnt, 1, keep_session, sent_final);
                         /* don't resend on an ended session (rqid 0) */
                         if (sock_restart_retryable_rcode(rc) && osql->rqid && !clnt->is_coordinator) {
                             if (gbl_master_swing_sock_restart_sleep) {
