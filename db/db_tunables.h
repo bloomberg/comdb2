@@ -2730,6 +2730,11 @@ REGISTER_TUNABLE("debug_retro_resume_fail_shard",
                  "Test only: fail reopening a shard while resuming a retroactively time partitioning, to exercise the "
                  "schema change unwind (Default: OFF)",
                  TUNABLE_BOOLEAN, &gbl_debug_retro_resume_fail_shard, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("debug_skip_sc_list_delete_on_abort",
+                 "Test only: leave the sc list in llmeta when aborting a failed schema change, as if the master "
+                 "crashed before removing it (Default: OFF)",
+                 TUNABLE_BOOLEAN, &gbl_debug_skip_sc_list_delete_on_abort, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL,
+                 NULL);
 
 REGISTER_TUNABLE("dohsql_joins", "Enable to support joins in parallel sql execution (default: on)", TUNABLE_BOOLEAN,
                  &gbl_dohsql_joins, 0, NULL, NULL, NULL, NULL);

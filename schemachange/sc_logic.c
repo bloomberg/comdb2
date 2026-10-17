@@ -671,6 +671,29 @@ int sc_kind_runs_do_ddl(int kind)
     return do_schema_change_if[kind].run_do_ddl;
 }
 
+/* schema changes that operate on an already existing table */
+int sc_kind_uses_existing_table(int kind)
+{
+    switch (kind) {
+    case SC_FULLUPRECS:
+    case SC_PARTIALUPRECS:
+    case SC_DROPTABLE:
+    case SC_TRUNCATETABLE:
+    case SC_RENAMETABLE:
+    case SC_ALIASTABLE:
+    case SC_ALTERTABLE:
+    case SC_ALTERTABLE_PENDING:
+    case SC_REBUILDTABLE:
+    case SC_ALTERTABLE_INDEX:
+    case SC_DROPTABLE_INDEX:
+    case SC_REBUILDTABLE_INDEX:
+    case SC_BULK_IMPORT:
+        return 1;
+    default:
+        return 0;
+    }
+}
+
 static int do_schema_change_tran_int(sc_arg_t *arg)
 {
     struct ireq *iq = arg->iq;
@@ -1837,7 +1860,19 @@ int scdone_abort_cleanup(struct ireq *iq)
     if (s->set_running)
         sc_set_running(iq, s, s->tablename, 0, gbl_myhostname, time(NULL),
                        __func__, __LINE__);
-    if (s->db && s->db->handle) {
+    if (s->kind == SC_ADDTABLE) {
+        /* Only remove the table this schema change created.  If the add
+         * failed early (e.g. table already exists), s->newdb is not set and
+         * s->db may point to a pre-existing live table, which must not be
+         * touched.  Backout has already removed newdb from thedb->dbs, so a
+         * table still registered under this name belongs to someone else.
+         */
+        struct dbtable *newdb = s->newdb;
+        if (newdb && newdb->handle && get_dbtable_by_name(s->tablename) != newdb) {
+            delete_temp_table(iq, newdb);
+            cleanup_newdb(newdb);
+        }
+    } else if (s->db && s->db->handle) {
         tran_type *lock_trans = NULL;
         if ((rc = trans_start(iq, NULL, &lock_trans)) == 0) {
             dbtable *db = NULL;
@@ -1847,14 +1882,8 @@ int scdone_abort_cleanup(struct ireq *iq)
             } else {
                 db = get_dbtable_by_name(s->tablename);
             }
-            if (db) {
-                if (s->kind == SC_ADDTABLE) {
-                    delete_temp_table(iq, db);
-                    cleanup_newdb(db);
-                } else {
-                    sc_del_unused_files(db);
-                }
-            }
+            if (db)
+                sc_del_unused_files(db);
             trans_abort(iq, lock_trans);
         }
     }

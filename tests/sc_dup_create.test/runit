@@ -1,0 +1,175 @@
+#!/usr/bin/env bash
+bash -n "$0" | exit 1
+
+source ${TESTSROOTDIR}/tools/runit_common.sh
+
+# A CREATE TABLE that loses the race against a concurrent CREATE of the same
+# table must fail with "already exists" and leave the existing table intact.
+# A table successfully created in the same (aborted) transaction must be
+# backed out completely.
+#
+# Session B parses "create table t" inside a transaction while t does not
+# exist yet (passes the sql-side existence check); session A then creates and
+# populates t. When B commits, the master fails do_add_table() with
+# SC_TABLE_ALREADY_EXIST; the abort path (scdone_abort_cleanup) used to look
+# the table up by name and run delete_temp_table() on the live table, closing
+# its handles and deleting its files.  Concurrent writers would then crash in
+# bdb_fetch_int_ll() on a NULL dbp.
+################################################################################
+
+dbnm=$1
+
+OUT="run.log"
+rm -f $OUT
+touch $OUT
+
+cmd="cdb2sql ${CDB2_OPTIONS} $dbnm default"
+cmdt="cdb2sql -tabs ${CDB2_OPTIONS} $dbnm default"
+NROWS=100
+ITERATIONS=${ITERATIONS:-3}
+
+function failexit_msg
+{
+    echo "FAILURE: $1"
+    echo "FAILURE: $1" >> $OUT
+    exit 1
+}
+
+function check_nodes_alive
+{
+    local nodes="${CLUSTER:-$(hostname)}"
+    for node in $nodes; do
+        cdb2sql ${CDB2_OPTIONS} --tabs $dbnm --host $node "select 1" >> $OUT 2>&1 ||
+            failexit_msg "node $node is not responding (crashed?)"
+    done
+}
+
+function writer
+{
+    local tbl=$1
+    local end=$((SECONDS + $2))
+    while (( SECONDS < end )); do
+        $cmd "update $tbl set b = b + 1 where a = 1" > /dev/null 2>&1
+    done
+}
+
+for (( it = 0; it < ITERATIONS; it++ )); do
+    tbl="t$it"
+    newtbl="n$it"
+    echo "ITERATION $it: table $tbl" | tee -a $OUT
+
+    # Session B: parse the CREATEs before the tables exist, commit later;
+    # newtbl gets created, tbl fails, so the whole transaction is backed out
+    $cmd - > b_$it.out 2>&1 <<EOF &
+begin
+create table $newtbl(a int)\$\$
+create table $tbl(a int, b int)\$\$
+select sleep(6)
+commit
+EOF
+    bpid=$!
+    sleep 2
+
+    # Session A: create and populate the table while B is still open
+    $cmd "create table $tbl(a int, b int)" >> $OUT 2>&1 ||
+        failexit_msg "session A failed to create $tbl"
+    $cmd "insert into $tbl select value, 0 from generate_series(1, $NROWS)" >> $OUT 2>&1 ||
+        failexit_msg "session A failed to populate $tbl"
+
+    # Keep writing to the table while B's commit fails and is backed out
+    writer $tbl 10 &
+    wpid=$!
+
+    wait $bpid
+    cat b_$it.out >> $OUT
+    if ! grep -q "\[commit\] failed" b_$it.out; then
+        failexit_msg "session B duplicate create did not fail: $(cat b_$it.out)"
+    fi
+
+    wait $wpid
+    check_nodes_alive
+
+    cnt=$($cmdt "select count(*) from $tbl" 2>&1)
+    if [[ "$cnt" != "$NROWS" ]]; then
+        failexit_msg "$tbl lost its data after the failed duplicate create: count=$cnt"
+    fi
+
+    $cmd "insert into $tbl values ($((NROWS + 1)), 0)" >> $OUT 2>&1 ||
+        failexit_msg "$tbl is not writable after the failed duplicate create"
+
+    cnt=$($cmdt "select count(*) from comdb2_tables where tablename = '$tbl'")
+    if [[ "$cnt" != "1" ]]; then
+        failexit_msg "$tbl missing from comdb2_tables"
+    fi
+
+    # The table created by the aborted transaction must be gone
+    cnt=$($cmdt "select count(*) from comdb2_tables where tablename = '$newtbl'")
+    if [[ "$cnt" != "0" ]]; then
+        failexit_msg "$newtbl from the aborted transaction is still in comdb2_tables"
+    fi
+    if [[ -z "$CLUSTER" ]]; then
+        sleep 2
+        nfiles=$(ls $DBDIR | grep -c "^${newtbl}_")
+        if [[ "$nfiles" != "0" ]]; then
+            failexit_msg "$newtbl from the aborted transaction left files: $(ls $DBDIR | grep "^${newtbl}_")"
+        fi
+    fi
+
+    echo "ITERATION $it passed" | tee -a $OUT
+done
+
+check_nodes_alive
+
+# A failed CREATE PROCEDURE named like an existing table must not touch the
+# table: only schema changes on existing tables get the table attached.
+echo "PROCEDURE: failed create procedure named like a table" | tee -a $OUT
+master=$($cmdt "select host from comdb2_cluster where is_master='Y'")
+mcmd="cdb2sql ${CDB2_OPTIONS} $dbnm --host $master"
+ptbl="p0"
+
+$cmd "create table $ptbl(a int, b int)" >> $OUT 2>&1 ||
+    failexit_msg "failed to create $ptbl"
+$cmd "insert into $ptbl select value, 0 from generate_series(1, $NROWS)" >> $OUT 2>&1 ||
+    failexit_msg "failed to populate $ptbl"
+$cmd - >> $OUT 2>&1 <<EOF || failexit_msg "failed to create procedure $ptbl v1"
+create procedure $ptbl version 'v1' {local function main() db:emit('v1') end}\$\$
+EOF
+
+# The master rejects procedure sources longer than max_lua_source_len
+$mcmd "put tunable max_lua_source_len 10" >> $OUT 2>&1 ||
+    failexit_msg "failed to set max_lua_source_len"
+writer $ptbl 5 &
+wpid=$!
+out=$($cmd - 2>&1 <<EOF
+create procedure $ptbl version 'v2' {local function main() db:emit('v2') end}\$\$
+EOF
+)
+rc=$?
+echo "$out" >> $OUT
+$mcmd "put tunable max_lua_source_len 1048576" >> $OUT 2>&1
+wait $wpid
+if (( rc == 0 )) || ! echo "$out" | grep -q "failed"; then
+    failexit_msg "create procedure $ptbl v2 did not fail: $out"
+fi
+
+check_nodes_alive
+
+cnt=$($cmdt "select count(*) from $ptbl" 2>&1)
+if [[ "$cnt" != "$NROWS" ]]; then
+    failexit_msg "$ptbl lost its data after the failed create procedure: count=$cnt"
+fi
+$cmd "insert into $ptbl values ($((NROWS + 1)), 0)" >> $OUT 2>&1 ||
+    failexit_msg "$ptbl is not writable after the failed create procedure"
+
+vers=$($cmdt "select version from comdb2_procedures where name = '$ptbl'" 2>&1)
+if [[ "$vers" != "v1" ]]; then
+    failexit_msg "unexpected versions for procedure $ptbl: $vers"
+fi
+res=$($cmdt "exec procedure $ptbl()" 2>&1)
+if [[ "$res" != "v1" ]]; then
+    failexit_msg "procedure $ptbl does not run after the failed create: $res"
+fi
+echo "PROCEDURE passed" | tee -a $OUT
+
+echo "SUCCESS" | tee -a $OUT
+exit 0
