@@ -32,29 +32,32 @@
    [ ] 3.  Use mspace (also gets us #2 for free)?
 */
 
-// PUBLIC: int __lc_cache_init __P((DB_ENV *, int));
-int
-__lc_cache_init(DB_ENV *dbenv, int reinit)
+static void free_ent(DB_ENV *, LC_CACHE_ENTRY *);
+
+static int
+lc_cache_resize(DB_ENV *dbenv)
 {
 	int ret;
+	LC_CACHE *lcc = &dbenv->lc_cache;
+	LC_CACHE_ENTRY *entries, *entry;
 
-	if (!reinit) {
-		Pthread_mutex_init(&dbenv->lc_cache.lk, NULL);
-	} 
-
-	Pthread_mutex_lock(&dbenv->lc_cache.lk);
-
-	LC_CACHE *lcc;
-
-	lcc = &dbenv->lc_cache;
-	lcc->nent = 0;
 	if ((ret =
 		__os_calloc(dbenv, dbenv->attr.cache_lc_max,
-		    sizeof(LC_CACHE_ENTRY), &lcc->ent)) != 0)
-		goto err;
+		    sizeof(LC_CACHE_ENTRY), &entries)) != 0)
+		return ret;
+	if (lcc->txnid_hash == NULL) {
+		lcc->txnid_hash = hash_init(sizeof(u_int32_t));
+		if (lcc->txnid_hash == NULL) {
+			__os_free(dbenv, entries);
+			return ENOMEM;
+		}
+	}
+	while ((entry = listc_rtl(&lcc->lru)) != NULL)
+		free_ent(dbenv, entry);
+	__os_free(dbenv, lcc->ent);
+	lcc->ent = entries;
 	listc_init(&lcc->lru, offsetof(LC_CACHE_ENTRY, lnk));
 	listc_init(&lcc->avail, offsetof(LC_CACHE_ENTRY, lnk));
-	lcc->txnid_hash = hash_init(sizeof(u_int32_t));
 	for (int i = 0; i < dbenv->attr.cache_lc_max; i++) {
 		lcc->ent[i].cacheid = i;
 		lcc->ent[i].lc.memused = 0;
@@ -64,8 +67,19 @@ __lc_cache_init(DB_ENV *dbenv, int reinit)
 	lcc->nent = dbenv->attr.cache_lc_max;
 	lcc->memused = 0;
 
-	ret = 0;
-err:
+	return 0;
+}
+
+// PUBLIC: int __lc_cache_init __P((DB_ENV *, int));
+int
+__lc_cache_init(DB_ENV *dbenv, int reinit)
+{
+	int ret;
+
+	if (!reinit)
+		Pthread_mutex_init(&dbenv->lc_cache.lk, NULL);
+	Pthread_mutex_lock(&dbenv->lc_cache.lk);
+	ret = lc_cache_resize(dbenv);
 	Pthread_mutex_unlock(&dbenv->lc_cache.lk);
 	return ret;
 }
@@ -75,9 +89,12 @@ int
 __lc_cache_destroy(DB_ENV *dbenv)
 {
 	LC_CACHE *lcc;
+	LC_CACHE_ENTRY *entry;
 
 	lcc = &dbenv->lc_cache;
 
+	while ((entry = listc_rtl(&lcc->lru)) != NULL)
+		free_ent(dbenv, entry);
 	__os_free(dbenv, lcc->ent);
 	if (lcc->txnid_hash)
 		hash_free(lcc->txnid_hash);
@@ -144,7 +161,7 @@ append_lsn_collection(DB_ENV *dbenv, LSN_COLLECTION * dest,
 			__os_realloc(dbenv,
 			    (src->nlsns +
 				dest->nlsns) * sizeof(struct logrecord),
-			    &dest->array) != 0))
+			    &dest->array)) != 0)
 			goto err;
 		dest->nalloc = src->nlsns + dest->nlsns;
 	}
@@ -298,26 +315,10 @@ __lc_cache_feed(DB_ENV *dbenv, DB_LSN lsn, DBT dbt)
 
 	/* Did the tunable change and we now want a different max size? */
 	if (dbenv->attr.cache_lc_max != dbenv->lc_cache.nent) {
-		/* TODO: test all this - looks suspicious. */
 		if (dbenv->attr.cache_lc_debug)
 			logmsg(LOGMSG_USER, ">> resizing cache\n");
-		/* clear lru and avail entries, throw them away since this cache is 
-		 * just an optimization */
-		do {
-			e = listc_rtl(&dbenv->lc_cache.lru);
-			if (e) {
-				free_ent(dbenv, e);
-			}
-		} while (e);
-		do {
-			e = listc_rtl(&dbenv->lc_cache.avail);
-			/* Don't free - we free things before they make it on the avail list. */
-		} while (e);
-
-		__os_free(dbenv, dbenv->lc_cache.ent);
-		/* recreate */
-		__lc_cache_init(dbenv, 1);
-		e = NULL;
+		if ((ret = lc_cache_resize(dbenv)) != 0)
+			goto err;
 	}
 
 	/* find matching transaction */
@@ -449,7 +450,9 @@ __lc_cache_feed(DB_ENV *dbenv, DB_LSN lsn, DBT dbt)
 						    txnid, ret);
 
 					/* don't leak if we can't add to collection - not likely to happen */
-					free_ent(dbenv, e);
+					free_lsn_collection(dbenv, &e->lc);
+					e->txnid = 0;
+					e->utxnid = 0;
 					listc_abl(&dbenv->lc_cache.avail, e);
 					ret = 0;
 					goto err;
@@ -513,9 +516,12 @@ __lc_cache_feed(DB_ENV *dbenv, DB_LSN lsn, DBT dbt)
 					logmsg(LOGMSG_USER, "found child txn %x\n",
 					    ce->txnid);
 
-				if (dbenv->attr.cache_lc_memlimit &&
+				if ((dbenv->attr.cache_lc_memlimit &&
 				    e->lc.memused + ce->lc.memused >
-				    dbenv->attr.cache_lc_memlimit) {
+				    dbenv->attr.cache_lc_memlimit) ||
+				    (dbenv->attr.cache_lc_memlimit_tran &&
+				    e->lc.memused + ce->lc.memused >
+				    dbenv->attr.cache_lc_memlimit_tran)) {
 					listc_rfl(&dbenv->lc_cache.lru, e);
 					free_ent(dbenv, e);
 					listc_rfl(&dbenv->lc_cache.lru, ce);
@@ -623,6 +629,7 @@ __lc_cache_get(DB_ENV *dbenv, DB_LSN *lsnp, LSN_COLLECTION * lcout,
 				logmsg(LOGMSG_USER, "matched " PR_LSN " txn %x\n",
 				    PARM_LSNP(lsnp), e->txnid);
 
+			hash_del(dbenv->lc_cache.txnid_hash, e);
 			*lcout = e->lc;
 
 			/* lcout now has a copy of lc which must be freed by the caller. */
@@ -654,6 +661,8 @@ __lc_cache_get(DB_ENV *dbenv, DB_LSN *lsnp, LSN_COLLECTION * lcout,
 				    " (got " PR_LSN ")\n", txnid,
 				    PARM_LSN(e->last_seen_lsn),
 				    PARM_LSNP(lsnp));
+			listc_rfl(&dbenv->lc_cache.lru, e);
+			free_ent(dbenv, e);
 		}
 	}
 	if (dbenv->attr.cache_lc_debug || dbenv->attr.cache_lc_trace_misses)
