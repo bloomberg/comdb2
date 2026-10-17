@@ -54,7 +54,6 @@ int gbl_disable_sql_table_replacement = 0;
 extern int gbl_enable_bulk_import;
 extern int gbl_enable_bulk_import_different_tables;
 
-extern int sqlite3GetToken(const unsigned char *z, int *tokenType);
 extern int sqlite3ParserFallback(int iToken);
 extern int comdb2_save_ddl_context(char *name, void *ctx, comdb2ma mem);
 extern void *comdb2_get_ddl_context(char *name);
@@ -2701,7 +2700,7 @@ int producekw(OpFunc *f)
                 strncpy(kw, zName, nName);
                 kw[nName] = 0;
 
-                int rc = sqlite3GetToken((unsigned char*) kw, &tok);
+                i64 rc = sqlite3GetToken((unsigned char*) kw, &tok);
                 if (rc > 0) {
                     int isfb = sqlite3ParserFallback(tok);
                     if ((isfb && f->int_arg == KW_FB) || (!isfb && f->int_arg == KW_RES)) {
@@ -2874,7 +2873,7 @@ void comdb2getAnalyzeThreshold(Parse* pParse, Token *nm, Token *lnm)
                             (vdbeFuncArgFree)  &free, &stp);
 }
 
-int resolveTableName(sqlite3 *db, struct SrcList_item *p, const char *zDB,
+int resolveTableName(sqlite3 *db, SrcItem *p, const char *zDB,
                      char *tableName, size_t len)
 {
    struct sqlclntstate *clnt = get_sql_clnt();
@@ -4476,11 +4475,11 @@ static char *prepare_csc2(Parse *pParse, struct comdb2_ddl_context *ctx)
 
                 pList->a[i].pExpr->op = TK_ID;
                 pList->a[i].pExpr->u.zToken = child_idx_part->name;
-                pList->a[i].zName = child_idx_part->name;
+                pList->a[i].zEName = child_idx_part->name;
                 if (child_idx_part->flags & INDEX_ORDER_DESC) {
-                    pList->a[i].sortOrder = SQLITE_SO_DESC;
+                    pList->a[i].fg.sortFlags = SQLITE_SO_DESC;
                 } else {
-                    pList->a[i].sortOrder = SQLITE_SO_ASC;
+                    pList->a[i].fg.sortFlags = SQLITE_SO_ASC;
                 }
 
                 i++;
@@ -5300,7 +5299,7 @@ void comdb2CreateTableEnd(
     Parse *pParse, /* Parse context */
     Token *pCons,  /* The ',' token after the last column defn. */
     Token *pEnd,   /* The ')' before options in the CREATE TABLE */
-    u8 tabOpts,    /* Extra table options. Usually 0. */
+    u32 tabOpts,   /* Extra table options. Usually 0. */
     int comdb2Opts /* Comdb2 specific table options. */
 )
 {
@@ -5427,8 +5426,8 @@ cleanup:
 }
 
 void comdb2AddColumn(Parse *pParse, /* Parser context */
-                     Token *pName,  /* Name of the column */
-                     Token *pType   /* Type of the column */
+                     Token pName,   /* Name of the column */
+                     Token pType    /* Type of the column */
 )
 {
     if (comdb2IsPrepareOnly(pParse))
@@ -5436,7 +5435,7 @@ void comdb2AddColumn(Parse *pParse, /* Parser context */
 
     struct comdb2_column *column;
     struct comdb2_column *current;
-    char type[pType->n + 1];
+    char type[pType.n + 1];
     struct comdb2_ddl_context *ctx = pParse->comdb2_ddl_ctx;
     int rc;
     int column_exists;
@@ -5464,17 +5463,17 @@ void comdb2AddColumn(Parse *pParse, /* Parser context */
         goto oom;
 
     /* Column name */
-    column->name = comdb2_strndup(ctx->mem, pName->z, pName->n);
+    column->name = comdb2_strndup(ctx->mem, pName.z, pName.n);
     if (column->name == 0)
         goto oom;
     sqlite3Dequote(column->name);
 
     /* Column type */
-    if (pType->n == 0) {
+    if (pType.n == 0) {
         setError(pParse, SQLITE_MISUSE, "No type specified.");
         goto cleanup;
     }
-    strncpy0(type, pType->z, sizeof(type));
+    strncpy0(type, pType.z, sizeof(type));
     sqlite3Dequote(type);
 
     if ((rc = comdb2_parse_sql_type(type, (int *)&column->len)) == -1) {
@@ -5826,6 +5825,11 @@ static void comdb2AddIndexInt(
         return;
     }
 
+    /* Disallow NULLS FIRST / NULLS LAST in the sort order. */
+    if (sqlite3HasExplicitNulls(pParse, pList)) {
+        goto cleanup;
+    }
+
     key = comdb2_calloc(ctx->mem, 1, sizeof(struct comdb2_key));
     if (key == 0)
         goto oom;
@@ -5993,7 +5997,7 @@ static void comdb2AddIndexInt(
                 goto cleanup;
             }
 
-            if (pListItem->sortOrder == SQLITE_SO_DESC) {
+            if (pListItem->fg.sortFlags == SQLITE_SO_DESC) {
                 idx_part->flags |= INDEX_ORDER_DESC;
             }
 
@@ -6468,19 +6472,24 @@ static int set_constraint_name(Parse *pParse,
     char constraint_name_buf[MAXCONSLEN + 1];
     char *constraint_name;
 
-    if (pParse->constraintName.n == 0) {
+#ifdef DEBUG
+    /* Safeguard access to pParse->u1.cr members. */
+    assert(pParse->isCreate);
+#endif
+
+    if (pParse->u1.cr.constraintName.n == 0) {
         /* Generate the constraint name. */
         gen_constraint_name(constraint, constraint_name_buf,
                             sizeof(constraint_name_buf));
         constraint_name = constraint_name_buf;
     } else {
-        if (pParse->constraintName.n > MAXCONSLEN) {
+        if (pParse->u1.cr.constraintName.n > MAXCONSLEN) {
             setError(pParse, SQLITE_MISUSE, "Constraint name is too long.");
             return 1;
         }
-        memcpy(constraint_name_buf, pParse->constraintName.z,
-               pParse->constraintName.n);
-        constraint_name_buf[pParse->constraintName.n] = 0;
+        memcpy(constraint_name_buf, pParse->u1.cr.constraintName.z,
+               pParse->u1.cr.constraintName.n);
+        constraint_name_buf[pParse->u1.cr.constraintName.n] = 0;
         constraint_name = constraint_name_buf;
         sqlite3Dequote(constraint_name);
     }
@@ -6494,7 +6503,7 @@ static int set_constraint_name(Parse *pParse,
     }
 
     /* Don't use auto-generated constraint name for foreign keys. */
-    if (pParse->constraintName.n > 0 || constraint->type != CONS_FKEY) {
+    if (pParse->u1.cr.constraintName.n > 0 || constraint->type != CONS_FKEY) {
         constraint->name = comdb2_strdup(ctx->mem, constraint_name);
         if (constraint->name == 0) {
             setError(pParse, SQLITE_NOMEM, "System out of memory");
@@ -6592,11 +6601,11 @@ void comdb2CreateForeignKey(
             if (idx_part == 0)
                 goto oom;
 
-            idx_part->name = comdb2_strdup(ctx->mem, pFromCol->a[i].zName);
+            idx_part->name = comdb2_strdup(ctx->mem, pFromCol->a[i].zEName);
             if (idx_part->name == 0)
                 goto oom;
 
-            assert(pFromCol->a[i].sortOrder == SQLITE_SO_ASC);
+            assert(pFromCol->a[i].fg.sortFlags == SQLITE_SO_ASC);
 
             /* There's no comdb2_column for foreign columns. */
             // idx_part->column = 0;
@@ -6614,11 +6623,11 @@ void comdb2CreateForeignKey(
         if (idx_part == 0)
             goto oom;
 
-        idx_part->name = comdb2_strdup(ctx->mem, pToCol->a[i].zName);
+        idx_part->name = comdb2_strdup(ctx->mem, pToCol->a[i].zEName);
         if (idx_part->name == 0)
             goto oom;
 
-        assert(pToCol->a[i].sortOrder == SQLITE_SO_ASC);
+        assert(pToCol->a[i].fg.sortFlags == SQLITE_SO_ASC);
         // idx_part->column = 0;
 
         listc_abl(&constraint->parent_idx_col_list, idx_part);
@@ -7677,7 +7686,8 @@ void comdb2AddCheckConstraint(Parse *pParse,      /* Parsing context */
 
     if (use_sqlite_impl(pParse)) {
         assert(ctx == 0);
-        sqlite3AddCheckConstraint(pParse, pCheckExpr);
+        /* sqlite3AddCheckConstraint() expects zStart to point at the "(". */
+        sqlite3AddCheckConstraint(pParse, pCheckExpr, zStart - 1, zEnd);
         return;
     }
 

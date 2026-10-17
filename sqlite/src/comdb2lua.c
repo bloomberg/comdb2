@@ -76,7 +76,7 @@ static void add_watched_cols(int type, Table *table, Cdb2TrigEvent *event, Colum
         }
     } else {
         for (int i = 0; i < table->nCol; ++i) {
-            ColumnEvent *ce = getcol(list, table->aCol[i].zName);
+            ColumnEvent *ce = getcol(list, table->aCol[i].zCnName);
             ce->event |= type;
         }
     }
