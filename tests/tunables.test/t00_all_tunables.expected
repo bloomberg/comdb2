@@ -660,6 +660,7 @@
 (name='noreallearly', description='Disables 'reallearly'', type='BOOLEAN', value='ON', read_only='Y')
 (name='norepdebug', description='Disables 'repdebug'', type='BOOLEAN', value='OFF', read_only='Y')
 (name='nosurprise', description='', type='BOOLEAN', value='OFF', read_only='Y')
+(name='not_durable_retries', description='Have a node retry a non-durable transaction this many times before giving up.  (Default: 100)', type='INTEGER', value='100', read_only='N')
 (name='notimeout', description='Turns off SQL timeouts. (Default: off)', type='BOOLEAN', value='OFF', read_only='N')
 (name='noudp', description='', type='BOOLEAN', value='OFF', read_only='Y')
 (name='nowatch', description='Disable watchdog. Watchdog aborts the database if basic things like creating threads, allocating memory, etc. doesn't work. (Default: off)', type='BOOLEAN', value='OFF', read_only='Y')
