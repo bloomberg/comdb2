@@ -56,6 +56,7 @@
 #include "schemachange.h"
 #include "db_access.h"
 #include "fdb_fend.h"
+#include "comdb2_trace.h"
 
 extern int gbl_partial_indexes;
 extern int gbl_expressions_indexes;
@@ -1718,6 +1719,15 @@ static int osql_send_commit_logic(struct sqlclntstate *clnt, int retries, int ne
             osql->replicant_numops++;
             rc = osql_send_startgen(osql->target_host, osql->rqid, osql->uuid,
                                     clnt->start_gen, nettype);
+        }
+
+        if (rc == 0 && clnt->trace) {
+            char trace[COMDB2_TRACE_MAXLEN];
+            int len = gbl_trace_hooks->sql_osql_payload(clnt->trace, trace, sizeof(trace));
+            if (len > 0 && len <= sizeof(trace)) {
+                osql->replicant_numops++;
+                rc = osql_send_trace(osql->target_host, osql->rqid, osql->uuid, trace, len, nettype);
+            }
         }
 
         if (rc == 0) {

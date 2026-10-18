@@ -65,6 +65,7 @@ static const char revid[] =
 #ifndef TESTSUITE
 
 #include <bdbglue.h>
+#include <comdb2_trace.h>
 int rep_qstat_has_fills(void);
 int rep_qstat_has_allreq(void);
 extern int db_is_exiting(void);
@@ -168,6 +169,9 @@ extern void *bdb_clientinfo_from_logrec(DB_ENV *, void *);
 extern void bdb_clientinfo_free(void *);
 extern u_int32_t bdb_clientinfo_id(void *);
 extern void bdb_replication_thread_begin(u_int32_t, u_int32_t);
+extern void *bdb_trace_rep_start(const void *, int);
+extern void bdb_trace_rep_done(void *, int, uint64_t, uint64_t);
+extern void bdb_trace_rep_free(void *);
 extern void bdb_replication_thread_client(void *);
 extern void bdb_replication_thread_fingerprint(const u_int8_t *);
 extern void bdb_replication_thread_end(void);
@@ -408,6 +412,23 @@ void send_master_req(DB_ENV *dbenv, const char *func, int line)
 	}
 }
 
+/* Starts the replication side of comdb2_trace if logrec is the master's trace
+ * __db_debug record. */
+static void *
+__rep_trace_from_logrec(DB_ENV *dbenv, void *logrec)
+{
+	__db_debug_args *argp = NULL;
+	void *trace = NULL;
+
+	if (__db_debug_read(dbenv, logrec, &argp) != 0)
+		return NULL;
+	if (argp->op.size == 4 &&
+		memcmp(argp->op.data, COMDB2_TRACE_DEBUG_OP, 4) == 0)
+		trace = bdb_trace_rep_start(argp->data.data, argp->data.size);
+	__os_free(dbenv, argp);
+	return trace;
+}
+
 void
 lc_free(DB_ENV *dbenv, struct __recovery_processor *rp, LSN_COLLECTION * lc)
 {
@@ -437,6 +458,10 @@ lc_free(DB_ENV *dbenv, struct __recovery_processor *rp, LSN_COLLECTION * lc)
 	if (lc->clientinfo != NULL) {
 		bdb_clientinfo_free(lc->clientinfo);
 		lc->clientinfo = NULL;
+	}
+	if (lc->trace != NULL) {
+		bdb_trace_rep_free(lc->trace);
+		lc->trace = NULL;
 	}
 	lc->array = NULL;
 	lc->nlsns = 0;
@@ -4240,8 +4265,10 @@ worker_thd(struct thdpool *pool, void *work, void *thddata, int op)
 	DBT tmpdbt;
 	u_int32_t rectype;
 	LISTC_T(struct recovery_record) q;
+	uint64_t pagein_start, pagein_io_start, pagein, pagein_io;
 
 	listc_init(&q, offsetof(struct __recovery_record, lnk));
+	bb_berkdb_thread_pagein_counts(&pagein_start, &pagein_io_start);
 
 	/* TODO: pass empty dbt if a transaction gets large - worker 
 	 * should then get a cursor and read the record itself */
@@ -4341,12 +4368,16 @@ worker_thd(struct thdpool *pool, void *work, void *thddata, int op)
 		}
 	}
 
+	bb_berkdb_thread_pagein_counts(&pagein, &pagein_io);
+
 	Pthread_mutex_lock(&rq->processor->lk);
 	rr = listc_rtl(&q);
 	while (rr) {
 		pool_relablk(rp->recpool, rr);
 		rr = listc_rtl(&q);
 	}
+	rp->pagein += pagein - pagein_start;
+	rp->pagein_io += pagein_io - pagein_io_start;
 	rq->processor->num_busy_workers--;
 
 	/* Signal if not running inline */
@@ -4851,6 +4882,9 @@ err:
 		rp->has_schema_lock = 0;
 	}
 
+	bdb_trace_rep_done(rp->trace, ret, rp->pagein, rp->pagein_io);
+	rp->trace = NULL;
+
 	ret = reset_recovery_processor(rp);
 
 	/* TODO: How do I signal error?  What errors can there be? */
@@ -5000,6 +5034,8 @@ __rep_process_txn_int(dbenv, rctl, rec, ltrans, maxlsn, commit_gen, rep_gen, loc
 	/* Up here, not beside the phase-2 loop: err: reads it, and the earlier
 	 * goto err1/err would jump past an initializer down there. */
 	void *cur_clientinfo = NULL, *ci = NULL;
+	void *cur_trace = NULL;
+	uint64_t pagein_start = 0, pagein_io_start = 0, pagein, pagein_io;
 	LSN_COLLECTION lc;
 	DB_LOCKREQ req, *lvp;
 	DB_LOGC *logc;
@@ -5060,6 +5096,7 @@ __rep_process_txn_int(dbenv, rctl, rec, ltrans, maxlsn, commit_gen, rep_gen, loc
 	 */
 	LOGCOPY_32(&rectype, rec->data);
 	normalize_rectype(&rectype);
+	bb_berkdb_thread_pagein_counts(&pagein_start, &pagein_io_start);
 	memset(&lc, 0, sizeof(lc));
 	if ((ret= __os_malloc(dbenv, sizeof(LISTC_T(UTXNID)), &lc.child_utxnids) != 0)) {
 		goto err;
@@ -5250,6 +5287,7 @@ __rep_process_txn_int(dbenv, rctl, rec, ltrans, maxlsn, commit_gen, rep_gen, loc
 		else {
 			/* Phase 1.  Get a list of the LSNs in this transaction, and sort it. */
 			lc.want_clientinfo = gbl_log_clientinfo;
+			lc.want_trace = (gbl_trace_hooks != NULL);
 			if ((ret = __rep_collect_txn_txnid(dbenv, &prev_lsn, &lc,
 							&had_serializable_records, NULL, txnid)) != 0) {
 				/* lcin is unset, so the lc_free at the end skips it. */
@@ -5260,6 +5298,8 @@ __rep_process_txn_int(dbenv, rctl, rec, ltrans, maxlsn, commit_gen, rep_gen, loc
 			lcin = &lc;
 			cur_clientinfo = lc.clientinfo;
 			lc.clientinfo = NULL;
+			cur_trace = lc.trace;
+			lc.trace = NULL;
 			/* here's the bug!!!! ! */
 			qsort(lc.array, lc.nlsns, sizeof(struct logrecord),
 					__rep_lsn_cmp);
@@ -5284,6 +5324,10 @@ __rep_process_txn_int(dbenv, rctl, rec, ltrans, maxlsn, commit_gen, rep_gen, loc
 		ci = rp->clientinfo;
 	else
 		ci = cur_clientinfo;
+	if (cur_trace == NULL && rp != NULL) {
+		cur_trace = rp->trace;
+		rp->trace = NULL;
+	}
 
 	/* Before __lock_get_list() below, not just before phase 2: the txn's locks
 	 * are read from the commit record and all taken there, stamped with the
@@ -5447,6 +5491,7 @@ __rep_process_txn_int(dbenv, rctl, rec, ltrans, maxlsn, commit_gen, rep_gen, loc
 		else {
 			/* Phase 1.  Get a list of the LSNs in this transaction, and sort it. */
 			lc.want_clientinfo = gbl_log_clientinfo;
+			lc.want_trace = (gbl_trace_hooks != NULL);
 			if ((ret = __rep_collect_txn_txnid(dbenv, &prev_lsn, &lc,
 							&had_serializable_records, NULL, txnid)) != 0) {
 				/* lcin is unset, so the lc_free at the end skips it. */
@@ -5457,6 +5502,8 @@ __rep_process_txn_int(dbenv, rctl, rec, ltrans, maxlsn, commit_gen, rep_gen, loc
 			lcin = &lc;
 			cur_clientinfo = lc.clientinfo;
 			lc.clientinfo = NULL;
+			cur_trace = lc.trace;
+			lc.trace = NULL;
 			/* here's the bug!!!! ! */
 			qsort(lc.array, lc.nlsns, sizeof(struct logrecord),
 					__rep_lsn_cmp);
@@ -5718,6 +5765,11 @@ err1:
 	if (lcin && (rp == NULL || (lcin != &rp->lc)))
 		lc_free(dbenv, rp, lcin);
 
+	if (cur_trace) {
+		bb_berkdb_thread_pagein_counts(&pagein, &pagein_io);
+		bdb_trace_rep_done(cur_trace, ret, pagein - pagein_start, pagein_io - pagein_io_start);
+	}
+
 	return (ret);
 }
 
@@ -5900,6 +5952,12 @@ reset_recovery_processor(rp)
 		bdb_clientinfo_free(rp->clientinfo);
 		rp->clientinfo = NULL;
 	}
+
+	if (rp->trace != NULL) {
+		bdb_trace_rep_free(rp->trace);
+		rp->trace = NULL;
+	}
+	rp->pagein = rp->pagein_io = 0;
 
 	lc_free(dbenv, rp, &rp->lc);
 
@@ -6239,6 +6297,7 @@ bad_resize:	;
 
 	if (collect_before_locking) {
 		rp->lc.want_clientinfo = gbl_log_clientinfo;
+		rp->lc.want_trace = (gbl_trace_hooks != NULL);
 		if ((ret = __rep_collect_txn_txnid(dbenv, &prev_lsn, &rp->lc,
 				&had_serializable_records, rp, txnid)) != 0) {
 #if defined ABORT_ON_CONCURRENT_ERROR
@@ -6251,6 +6310,8 @@ bad_resize:	;
 			__rep_lsn_cmp);
 		rp->clientinfo = rp->lc.clientinfo;
 		rp->lc.clientinfo = NULL;
+		rp->trace = rp->lc.trace;
+		rp->lc.trace = NULL;
 	}
 
 	if (utxnid) {
@@ -6399,6 +6460,7 @@ bad_resize:	;
 	 * this transaction to be processed serially. */
 	if (!collect_before_locking) {
 		rp->lc.want_clientinfo = gbl_log_clientinfo;
+		rp->lc.want_trace = (gbl_trace_hooks != NULL);
 		if ((ret = __rep_collect_txn_txnid(dbenv, &prev_lsn, &rp->lc,
 				&had_serializable_records, rp, txnid)) != 0) {
 #if defined ABORT_ON_CONCURRENT_ERROR
@@ -6411,6 +6473,8 @@ bad_resize:	;
 			__rep_lsn_cmp);
 		rp->clientinfo = rp->lc.clientinfo;
 		rp->lc.clientinfo = NULL;
+		rp->trace = rp->lc.trace;
+		rp->lc.trace = NULL;
 	}
 
 #ifndef NDEBUG
@@ -6753,6 +6817,9 @@ __rep_collect_txn_from_log(dbenv, lsnp, lc, had_serializable_records, rp)
 				rectype == REP_LLOG_CLIENTINFO)
 				lc->clientinfo =
 					bdb_clientinfo_from_logrec(dbenv, data.data);
+			if (lc->want_trace && lc->trace == NULL &&
+				rectype == DB___db_debug)
+				lc->trace = __rep_trace_from_logrec(dbenv, data.data);
 
 			__rep_classify_type(rectype, had_serializable_records);
 			if (gbl_ufid_add_on_collect && !DB_RECTYPE_IS_LOGICAL(rectype) && DB_RECTYPE_HAS_UFID(rectype)) {
@@ -6880,23 +6947,25 @@ __rep_collect_txn_txnid_int(dbenv, lsnp, lc, had_serializable_records, rp, txnid
 
 	if (dbenv->attr.cache_lc && txnid) {
 		int want_clientinfo = lc->want_clientinfo;
+		int want_trace = lc->want_trace;
 		ret = __lc_cache_get(dbenv, lsnp, lc, txnid);
 		/* TODO: had_serializable/had_logical/had_commit - store in lc? */
 
 		if (ret == 0) {
 			/* The get overwrote lc; the records are all in memory. */
 			lc->want_clientinfo = want_clientinfo;
-			for (int i = 0; want_clientinfo && i < lc->nlsns; i++) {
+			lc->want_trace = want_trace;
+			for (int i = 0; (want_clientinfo || want_trace) && i < lc->nlsns; i++) {
 				u_int32_t rectype;
 				if (lc->array[i].rec.data == NULL)
 					continue;
 				LOGCOPY_32(&rectype, lc->array[i].rec.data);
 				normalize_rectype(&rectype);
-				if (rectype == REP_LLOG_CLIENTINFO) {
+				if (want_clientinfo && lc->clientinfo == NULL && rectype == REP_LLOG_CLIENTINFO)
 					lc->clientinfo = bdb_clientinfo_from_logrec(
 						dbenv, lc->array[i].rec.data);
-					break;
-				}
+				else if (want_trace && lc->trace == NULL && rectype == DB___db_debug)
+					lc->trace = __rep_trace_from_logrec(dbenv, lc->array[i].rec.data);
 			}
 
 			if (had_serializable_records)

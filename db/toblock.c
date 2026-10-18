@@ -67,6 +67,7 @@
 #include "bdb_int.h"
 #include "bdb_queue.h"
 #include "osqlblkseq.h"
+#include "comdb2_trace.h"
 #include "localrep.h"
 #include "util.h"
 #include "tohex.h"
@@ -2118,6 +2119,8 @@ int toblock(struct ireq *iq)
     int rc = 0;
     block_state_t blkstate;
 
+    bdb_thread_pagein_counts(&iq->pagein_start, &iq->pagein_io_start);
+
     /* fill blkstate's common fields */
     blkstate.p_buf_req_start = iq->p_buf_in;
     blkstate.p_buf_req_end = NULL;
@@ -2887,6 +2890,11 @@ static inline void debug_prepare_tests(struct ireq *iq, tran_type *parent_trans,
             exit(1);
         }
         prepared = 1;
+        /* trans_commit_int must not log a trace record into a prepared txn */
+        if (iq->trace) {
+            gbl_trace_hooks->release(iq->trace);
+            iq->trace = NULL;
+        }
     }
 
     if (!prepared || debug_prepared_should_commit()) {
