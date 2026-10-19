@@ -6358,7 +6358,7 @@ static int push_args(const char **argstr, struct sqlclntstate *clnt, char **err,
     if (rc != arg_end) {
         *err = malloc(64);
         if (arg.type == arg_param) {
-            snprintf0(*err, 60, "bad parameter name:%s pos:%d type:%d", arg.buf + 1, argcnt, rc);
+            snprintf0(*err, 60, "bad parameter name:%s type:%d", arg.buf + 1, rc);
         } else {
             if (snprintf0(*err, 60, "bad argument -> %s", msg) >= 60) {
                 strcat(*err, "...");
