@@ -7919,8 +7919,7 @@ again:
             }
         }
         if (fd < 0) {
-            snprintf(hndl->errstr, sizeof(hndl->errstr),
-                     "%s: Can't connect to host %s port %d", __func__, host,
+            snprintf(hndl->errstr, sizeof(hndl->errstr), "%s: Can't connect to portmux host %s port %d", __func__, host,
                      port);
             rc = -1;
             goto after_callback;
@@ -8311,9 +8310,9 @@ retry:
                      hndl->dbname);
             goto after_callback;
         }
-        sprintf(hndl->errstr,
-                "cdb2_get_dbhosts: can't do dbinfo query on %s hosts.",
-                hndl->dbname);
+        // sprintf(hndl->errstr,
+        //         "cdb2_get_dbhosts: can't do dbinfo query on %s hosts.",
+        //         hndl->dbname);
         if (hndl->num_hosts > 1) goto retry;
     }
 after_callback: /* We are going to exit the function in this label. */
