@@ -18,4 +18,12 @@ else
     echo "xxxxxx Failed xxxxxx"
 fi
 
+echo "------ Running test_time_metric ------"
+if ${TESTSBUILDDIR}/test_time_metric; then
+    echo "------ Passed ------"
+else
+    should_fail=1
+    echo "xxxxxx Failed xxxxxx"
+fi
+
 exit ${should_fail}

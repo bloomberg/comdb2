@@ -123,21 +123,39 @@ int time_metric_get_points(struct time_metric *t, struct point **values, int *nv
 }
 
 double time_metric_average(struct time_metric *t) {
-    return averager_avg(t->avg);
+    double rc;
+    Pthread_mutex_lock(&t->lk);
+    rc = averager_avg(t->avg);
+    Pthread_mutex_unlock(&t->lk);
+    return rc;
 }
 
 double time_metric_delta_average(struct time_metric *t) {
-    return averager_delta_avg(t->avg);
+    double rc;
+    Pthread_mutex_lock(&t->lk);
+    rc = averager_delta_avg(t->avg);
+    Pthread_mutex_unlock(&t->lk);
+    return rc;
 }
 
 int time_metric_max(struct time_metric *t) {
-    return averager_max(t->avg);
+    int rc;
+    Pthread_mutex_lock(&t->lk);
+    rc = averager_max(t->avg);
+    Pthread_mutex_unlock(&t->lk);
+    return rc;
 }
 
 int time_metric_depth(struct time_metric *t) {
-    return averager_depth(t->avg);
+    int rc;
+    Pthread_mutex_lock(&t->lk);
+    rc = averager_depth(t->avg);
+    Pthread_mutex_unlock(&t->lk);
+    return rc;
 }
 
 void time_metric_clear(struct time_metric *t) {
+    Pthread_mutex_lock(&t->lk);
     averager_clear(t->avg);
+    Pthread_mutex_unlock(&t->lk);
 }
