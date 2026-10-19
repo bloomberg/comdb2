@@ -305,11 +305,11 @@ public class Comdb2Handle extends AbstractConnection {
     public void setSSLMode(String mode) {
         if ("PREFER".equalsIgnoreCase(mode))
             sslmode = SSL_MODE.PREFER;
-        if ("PREFER_VERIFY_CA".equalsIgnoreCase(mode))
+        else if ("PREFER_VERIFY_CA".equalsIgnoreCase(mode))
             sslmode = SSL_MODE.PREFER_VERIFY_CA;
-        if ("PREFER_VERIFY_HOSTNAME".equalsIgnoreCase(mode))
+        else if ("PREFER_VERIFY_HOSTNAME".equalsIgnoreCase(mode))
             sslmode = SSL_MODE.PREFER_VERIFY_HOSTNAME;
-        if ("REQUIRE".equalsIgnoreCase(mode))
+        else if ("REQUIRE".equalsIgnoreCase(mode))
             sslmode = SSL_MODE.REQUIRE;
         else if ("VERIFY_CA".equalsIgnoreCase(mode))
             sslmode = SSL_MODE.VERIFY_CA;

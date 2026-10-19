@@ -44,6 +44,27 @@ public class SSLPreferTest {
     }
 
 
+    @Test public void prefer_verify_hostname() throws SQLException {
+        Connection conn = null;
+        try {
+            conn = DriverManager.getConnection(String.format(
+                        "jdbc:comdb2://%s/%s?" +
+                        "ssl_mode=PREFER_VERIFY_HOSTNAME&" +
+                        "trust_store=%s/truststore&" +
+                        "trust_store_password=%s&" +
+                        "key_store=%s/keystore&" +
+                        "key_store_password=%s",
+                        cluster, ssldb, certpath, certpass, certpath, certpass));
+            conn.createStatement().executeQuery("SELECT 1");
+            Assert.fail("Should not reach here");
+        } catch (SQLException sqle) {
+            Assert.assertTrue(sqle.getCause().getMessage().contains("Certificate does not match host name"));
+        } finally {
+            if (conn != null)
+                conn.close();
+        }
+    }
+
     @Test public void prefer() throws SQLException {
         Connection conn = null;
         try {
