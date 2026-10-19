@@ -3613,8 +3613,7 @@ carray_err:     *err = sqlite3_mprintf("carray_bind: invalid param:%s count:%d t
     }
 out:if (rc) {
         /* same msg as the SP path (lua/sp.c) */
-        int pos = p.pos ? p.pos : sqlite3_bind_parameter_index(stmt, p.name);
-        *err = sqlite3_mprintf("bad parameter name:%s pos:%d type:%d", p.name, pos, p.type);
+        *err = sqlite3_mprintf("bad parameter name:%s type:%d", p.name, p.type);
     }
     return rc;
 }
