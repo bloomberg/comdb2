@@ -3354,6 +3354,150 @@ function test_verify_retry
     done
 }
 
+function count_failed_replay_writes
+{
+    cat $LOGDIR/${DBNAME}.db $LOGDIR/${DBNAME}.*.db 2>/dev/null | grep -c "debug failing replayed push write"
+}
+
+function count_verify_replays
+{
+    typeset total=0
+    typeset n=0
+    typeset node
+    for node in ${CLUSTER:-default}; do
+        if [[ "$node" == "default" ]]; then
+            n=$($CDB2SQL_EXE -tabs $CDB2_OPTIONS $DBNAME default "select value from comdb2_metrics where name='verify_replays'")
+        else
+            n=$($CDB2SQL_EXE -tabs $CDB2_OPTIONS $DBNAME --host $node "select value from comdb2_metrics where name='verify_replays'")
+        fi
+        let total=total+n
+    done
+    echo $total
+}
+
+# Fail pushed writes on the first $1 replays with rc $4; a txn must commit everywhere or nowhere.
+# With $3 == 0 the txn has only remote writes, so the first replayed statement is a push.
+# A transient rc (-1) replays again; a permanent one (-3) fails the txn with CDB2ERR_DIST_ABORT, without another replay.
+function replay_push_write_failure
+{
+    typeset fails=$1
+    typeset expect_all=$2
+    typeset local=${3:-1}
+    typeset failrc=${4:--1}
+    typeset records=300
+    typeset ncommitted=0
+    typeset j=0
+    typeset r=0
+    typeset out=""
+    typeset tables="$SECONDARY_DBNAME.t1 $TERTIARY_DBNAME.t1 $QUATERNARY_DBNAME.t1 $QUINARY_DBNAME.t1"
+    typeset before=$(count_failed_replay_writes)
+    typeset replays_before=$(count_verify_replays)
+    typeset expectrc=2
+    typeset tag="replay_push_write_failure $fails $local $failrc"
+
+    if [[ "$local" == "1" ]]; then
+        tables="t1 $tables"
+    fi
+    if [[ "$failrc" != "-1" ]]; then
+        expectrc=410
+    fi
+
+    toggle_verify_retry_max 10
+    toggle_tunable debug_fail_push_write_on_replay $fails 0 1
+    toggle_tunable debug_fail_push_write_on_replay_rc $failrc 0 1
+    toggle_random_verify_errors 1
+    typeset -A rows
+    while [[ $j -lt $records ]]; do
+        # insert j, move j-1 to j-1+1000, and delete j-2+1000
+        typeset dml=""
+        for tbl in $tables; do
+            dml="${dml}insert into $tbl(a) values($j)
+update $tbl set a = a + 1000 where a = $(( j - 1 ))
+delete from $tbl where a = $(( j - 2 + 1000 ))
+"
+        done
+        out=$(echo "begin
+${dml}commit
+" | $CDB2SQL_EXE $DEBUGTRACE $CDB2_OPTIONS $DBNAME default - 2>&1)
+        r=$?
+        if [[ "$r" == "0" ]]; then
+            rows[$j]=1
+            if [[ -n "${rows[$(( j - 1 ))]}" ]]; then
+                unset rows[$(( j - 1 ))]
+                rows[$(( j - 1 + 1000 ))]=1
+            fi
+            unset rows[$(( j - 2 + 1000 ))]
+            let ncommitted=ncommitted+1
+        elif [[ "$expect_all" == "1" ]]; then
+            fail_exit "$tag: txn $j failed: $out"
+        elif [[ "$out" != *"failed with rc $expectrc "* ]]; then
+            fail_exit "$tag: txn $j expected rc $expectrc: $out"
+        fi
+        let j=j+1
+    done
+    toggle_random_verify_errors 0
+    toggle_tunable debug_fail_push_write_on_replay 0 0 1
+    toggle_tunable debug_fail_push_write_on_replay_rc -1 0 1
+    toggle_verify_retry_max 499
+
+    typeset after=$(count_failed_replay_writes)
+    typeset replays=$(( $(count_verify_replays) - replays_before ))
+    typeset failed=$(( after - before ))
+    # remote-only txns may not draw a verify error; consistency below is the real check for them
+    if [[ "$local" == "1" ]]; then
+        [[ "$failed" -gt 0 ]] || fail_exit "$tag: no replayed push write was failed"
+        [[ "$expect_all" == "1" || "$ncommitted" -lt "$records" ]] || fail_exit "$tag: no txn failed"
+    else
+        typeset x=$($CDB2SQL_EXE -tabs $CDB2_OPTIONS $DBNAME default "select count(*) from t1")
+        [[ "$x" == "0" ]] || fail_exit "$tag: local t1 has $x rows"
+    fi
+    # every replay fails: once its first push fails, it must not run the others
+    if [[ "$fails" -ge 10 ]]; then
+        [[ "$failed" == "$replays" ]] || fail_exit "$tag: $failed failed pushes in $replays replays"
+    fi
+    # a permanent error ends the txn after a single replay
+    if [[ "$failrc" != "-1" ]]; then
+        [[ "$replays" == "$(( records - ncommitted ))" ]] || fail_exit "$tag: $replays replays for $(( records - ncommitted )) failed txns"
+    fi
+
+    typeset expected=$(echo ${!rows[@]} | tr ' ' '\n' | sort -n | tr '\n' ' ')
+    for tbl in $tables; do
+        typeset found=$($CDB2SQL_EXE -tabs $CDB2_OPTIONS $DBNAME default "select a from $tbl order by a" | tr '\n' ' ')
+        [[ "$found" == "$expected" ]] || fail_exit "$tag: $tbl has \"$found\", expected \"$expected\""
+    done
+    echo "$tag: committed $ncommitted of $records, failed $failed replayed writes in $replays replays"
+    delete_records
+}
+
+# Failing to start the local txn for a pushed write must answer the client, and roll back cleanly
+function push_write_start_failure
+{
+    typeset out=""
+    typeset x=""
+    toggle_tunable debug_fail_push_write_start 1 0 1
+    out=$(echo "begin
+insert into $SECONDARY_DBNAME.t1(a) values(1)
+rollback
+" | timeout 60 $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default - 2>&1)
+    typeset r=$?
+    toggle_tunable debug_fail_push_write_start 0 0 1
+    [[ "$r" != "124" ]] || fail_exit "push_write_start_failure: client hung"
+    [[ "$out" == *"failed with rc -101 failed to start transaction"* ]] || fail_exit "push_write_start_failure: no error: $out"
+    x=$($CDB2SQL_EXE -tabs $CDB2_OPTIONS $DBNAME default "select count(*) from $SECONDARY_DBNAME.t1")
+    [[ "$x" == "0" ]] || fail_exit "push_write_start_failure: remote has $x rows"
+}
+
+function test_replay_push_write_failure
+{
+    replay_push_write_failure 1000 0
+    replay_push_write_failure 1 1
+    replay_push_write_failure 1000 0 0
+    replay_push_write_failure 1 1 0
+    replay_push_write_failure 1000 0 1 -3
+    replay_push_write_failure 1000 0 0 -3
+    push_write_start_failure
+}
+
 function test_verify_participant_constraint_violation
 {
     typeset cnt=0
@@ -3723,6 +3867,11 @@ function run_test
     testcase="test_verify_retry"
     testcase_preamble $testcase
     test_verify_retry
+    testcase_finish $testcase
+
+    testcase="test_replay_push_write_failure"
+    testcase_preamble $testcase
+    test_replay_push_write_failure
     testcase_finish $testcase
 
     testcase="test_verify_participant_constraint_violation"

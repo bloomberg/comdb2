@@ -306,6 +306,14 @@ REGISTER_TUNABLE("wait_for_prepare_seqnum", "Wait-for-seqnum for prepare records
 /* 2pc debug & test tunables */
 REGISTER_TUNABLE("debug_disttxn_trace", "Print disttxn debug information.  (Default: off)", TUNABLE_BOOLEAN,
                  &gbl_debug_disttxn_trace, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("debug_fail_push_write_on_replay", "Fail pushed writes on the first N verify replays.  (Default: 0)",
+                 TUNABLE_INTEGER, &gbl_debug_fail_push_write_on_replay, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL,
+                 NULL);
+REGISTER_TUNABLE("debug_fail_push_write_on_replay_rc", "Error code for debug_fail_push_write_on_replay.  (Default: -1)",
+                 TUNABLE_INTEGER, &gbl_debug_fail_push_write_on_replay_rc, EXPERIMENTAL | INTERNAL | SIGNED, NULL, NULL,
+                 NULL, NULL);
+REGISTER_TUNABLE("debug_fail_push_write_start", "Fail starting the local txn for a 2pc push write.  (Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_debug_fail_push_write_start, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("all_waitdie", "Enable waitdie for all transactions.  (Default: off)", TUNABLE_BOOLEAN,
                  &gbl_all_waitdie, READONLY | EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("debug_disable_waitdie_deadlock_detection", "Disable waitdie deadlock detection.  (Default: off)",
