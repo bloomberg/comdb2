@@ -2354,6 +2354,18 @@ void pstack_self(void)
     unset_running_pstack();
 }
 
+/* Only sanctioned nodes vote; with no sanctioned list everyone does */
+static int rep_can_vote(DB_ENV *dbenv, const char *host)
+{
+    bdb_state_type *bdb_state = dbenv->app_private;
+    if (!bdb_state || !bdb_state->repinfo || !bdb_state->repinfo->netinfo)
+        return 1;
+    netinfo_type *netinfo = bdb_state->repinfo->netinfo;
+    if (net_get_sanctioned_node_list(netinfo, 0, NULL) == 0)
+        return 1;
+    return net_is_sanctioned(netinfo, host);
+}
+
 static void panic_func(DB_ENV *dbenv, int errval)
 {
     bdb_state_type *bdb_state = dbenv->app_private;
@@ -2534,6 +2546,7 @@ static DB_ENV *dbenv_open(bdb_state_type *bdb_state)
     }
 
     dbenv->set_log_trigger(dbenv, log_trigger_btree_trigger, log_trigger_callback);
+    dbenv->set_rep_can_vote(dbenv, rep_can_vote);
 
 #ifdef BDB_VERB_REPLICATION_DEFAULT
     /* turn on verbose replication by default, so I can see what's happening

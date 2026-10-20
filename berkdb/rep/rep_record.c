@@ -2350,6 +2350,15 @@ rep_verify_err:if (logc != NULL && (t_ret = __log_c_close(logc)) != 0 &&
 			goto errlock;
 		}
 
+		/* Only tally votes from hosts the application lets vote */
+		if (dbenv->rep_can_vote && !dbenv->rep_can_vote(dbenv, *eidp)) {
+			logmsg(LOGMSG_WARN, "%s line %d ignoring vote1 from %s: not allowed to vote\n",
+				__func__, __LINE__, *eidp);
+			ret = 0;
+			fromline = __LINE__;
+			goto errlock;
+		}
+
 		if (rp->rectype == REP_VOTE1) {
 			vi = (REP_VOTE_INFO *) rec->data;
 			if (LOG_SWAPPED())
@@ -2553,6 +2562,13 @@ rep_verify_err:if (logc != NULL && (t_ret = __log_c_close(logc)) != 0 &&
 		break;
 	case REP_VOTE2:
 	case REP_GEN_VOTE2:
+		if (dbenv->rep_can_vote && !dbenv->rep_can_vote(dbenv, *eidp)) {
+			logmsg(LOGMSG_WARN, "%s line %d ignoring vote2 from %s: not allowed to vote\n",
+				__func__, __LINE__, *eidp);
+			ret = 0;
+			fromline = __LINE__;
+			goto errlock;
+		}
 		Pthread_mutex_lock(&rep_candidate_lock);
 		MUTEX_LOCK(dbenv, db_rep->rep_mutexp);
 

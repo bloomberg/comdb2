@@ -254,6 +254,8 @@ sanc_node_type *net_add_to_sanctioned(netinfo_type *netinfo_ptr,
 
 int net_is_single_sanctioned_node(netinfo_type *netinfo_ptr);
 
+int net_is_sanctioned(netinfo_type *netinfo_ptr, const char *host);
+
 int net_get_sanctioned_node_list(netinfo_type *netinfo_ptr, int max_nodes,
                                  const char *nodes[REPMAX]);
 
