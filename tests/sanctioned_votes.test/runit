@@ -50,6 +50,7 @@ done
 
 function cleanup
 {
+    $CDB2SQL_EXE $CDB2_OPTIONS --tabs $DBNAME --host $unsanctioned "put tunable 'debug_unsanctioned_elect' 0"
     send_all "bdb add $unsanctioned"
 }
 trap cleanup EXIT
@@ -68,12 +69,34 @@ done
 
 (( $(grep -c "is not allowed to vote" $ulog) > before )) || failexit "$unsanctioned never refused to hold an election"
 
+# Let the unsanctioned node hold elections anyway: the sanctioned nodes must drop its votes
+function count_ignored
+{
+    typeset total=0 node
+    for node in ${nodes[@]}; do
+        [[ "$node" == "$unsanctioned" ]] && continue
+        total=$(( total + $(grep -c "ignoring vote[12] from $unsanctioned" $LOGDIR/${DBNAME}.${node}.db) ))
+    done
+    echo $total
+}
+$CDB2SQL_EXE $CDB2_OPTIONS --tabs $DBNAME --host $unsanctioned "put tunable 'debug_unsanctioned_elect' 1" || failexit "can't set tunable on $unsanctioned"
+ignored=$(count_ignored)
+for ((round = 6; round <= 10; round++)); do
+    $CDB2SQL_EXE $CDB2_OPTIONS --tabs $DBNAME --host $master "exec procedure sys.cmd.send('downgrade')"
+    sleep 5
+    master=$(wait_for_master) || failexit "no master elected in round $round"
+    [[ "$master" != "$unsanctioned" ]] || failexit "unsanctioned node $unsanctioned won round $round"
+    $CDB2SQL_EXE $CDB2_OPTIONS --tabs $DBNAME --host $master "insert into t1 values($round)" || failexit "write failed in round $round"
+done
+$CDB2SQL_EXE $CDB2_OPTIONS --tabs $DBNAME --host $unsanctioned "put tunable 'debug_unsanctioned_elect' 0"
+(( $(count_ignored) > ignored )) || failexit "no sanctioned node ignored a vote from $unsanctioned"
+
 send_all "bdb add $unsanctioned"
 trap - EXIT
 wait_for_cluster
 master=$(wait_for_master) || failexit "no master after re-adding $unsanctioned"
 x=$($CDB2SQL_EXE $CDB2_OPTIONS --tabs $DBNAME default "select count(*) from t1")
-[[ "$x" == "5" ]] || failexit "expected 5 rows, got '$x'"
+[[ "$x" == "10" ]] || failexit "expected 10 rows, got '$x'"
 
 echo "Success"
 exit 0

@@ -1739,6 +1739,10 @@ REGISTER_TUNABLE("debug_elect_lose_round",
                  "Fail this node's next election round after waiting 5 seconds, as a timeout would.  "
                  "(Default: off)",
                  TUNABLE_BOOLEAN, &gbl_debug_elect_lose_round, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("debug_unsanctioned_elect",
+                 "Let this node hold elections even if it is not sanctioned, so tests can check that its votes are "
+                 "dropped.  (Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_debug_unsanctioned_elect, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("random_election_timeout",
                  "Use a random timeout in election.  (Default: on)",
                  TUNABLE_BOOLEAN, &gbl_rand_elect_timeout,

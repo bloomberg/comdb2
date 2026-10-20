@@ -1125,6 +1125,7 @@ static void abort_election_on_exit(bdb_state_type *bdb_state)
 
 int gbl_elect_priority_bias = 0;
 int gbl_debug_elect_lose_round = 0;
+extern int gbl_debug_unsanctioned_elect;
 
 int gbl_rand_elect_timeout = 1;
 uint32_t gbl_rand_elect_min_ms = 1000;
@@ -1255,6 +1256,19 @@ elect_again:
         print(bdb_state,
               "election will not be held, connected to %d of %d nodes\n",
               num_connected, num);
+
+        Pthread_mutex_lock(&(bdb_state->repinfo->elect_mutex));
+        bdb_state->repinfo->in_election = 0;
+        Pthread_mutex_unlock(&(bdb_state->repinfo->elect_mutex));
+
+        bdb_thread_event(bdb_state, BDBTHR_EVENT_DONE);
+        return NULL;
+    }
+
+    /* No one tallies our vote, so don't retry an election we can't win */
+    if (!gbl_debug_unsanctioned_elect && bdb_state->dbenv->rep_can_vote &&
+        !bdb_state->dbenv->rep_can_vote(bdb_state->dbenv, bdb_state->repinfo->myhost)) {
+        logmsg(LOGMSG_USER, "election will not be held, %s is not allowed to vote\n", bdb_state->repinfo->myhost);
 
         Pthread_mutex_lock(&(bdb_state->repinfo->elect_mutex));
         bdb_state->repinfo->in_election = 0;
