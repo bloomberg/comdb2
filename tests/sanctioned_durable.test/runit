@@ -1,0 +1,126 @@
+#!/usr/bin/env bash
+bash -n "$0" || exit 1
+
+# Durability counts sanctioned nodes; a commissioned node that isn't sanctioned
+# still gets replicated to, but its ack doesn't make a commit durable
+
+. ${TESTSROOTDIR}/tools/runit_common.sh
+. ${TESTSROOTDIR}/tools/cluster_utils.sh
+
+export debug=1
+[[ $debug == "1" ]] && set -x
+
+if [[ -z "$CLUSTER" ]]; then
+    echo "This test requires a cluster"
+    exit 0
+fi
+
+nodes=($CLUSTER)
+if [[ ${#nodes[@]} -lt 3 ]]; then
+    echo "This test requires at least 3 nodes"
+    exit 0
+fi
+
+cluster_size=${#nodes[@]}
+export LOGDIR=$TESTDIR/logs
+
+function send_all
+{
+    for node in ${nodes[@]}; do
+        $CDB2SQL_EXE $CDB2_OPTIONS --tabs $DBNAME --host $node "exec procedure sys.cmd.send('$1')" >/dev/null 2>&1
+    done
+}
+
+# Freeze every replicant except $unsanctioned and print the master's lease verdict
+function lease_check
+{
+    typeset before=$(grep -c "verify_master_leases" $masterlog) node
+    for node in ${nodes[@]}; do
+        [[ "$node" != "$master" && "$node" != "$unsanctioned" ]] && ssh $node "kill -STOP \$(cat ${TMPDIR}/${DBNAME}.pid)" </dev/null
+    done
+    sleep 3
+    grep "verify_master_leases" $masterlog | tail -n +$(( before + 1 )) | tail -1
+    for node in ${nodes[@]}; do
+        [[ "$node" != "$master" && "$node" != "$unsanctioned" ]] && ssh $node "kill -CONT \$(cat ${TMPDIR}/${DBNAME}.pid)" </dev/null
+    done
+    sleep 3
+}
+
+# Insert a row and print the master's durability trace for it
+function insert_and_trace
+{
+    typeset before=$(grep -c "Last txn was" $masterlog)
+    $CDB2SQL_EXE $CDB2_OPTIONS --tabs $DBNAME --host $master "insert into t1 values($1)" >/dev/null || failexit "insert $1 failed"
+    sleep 1
+    grep "Last txn was" $masterlog | tail -n +$(( before + 1 )) | tail -1
+}
+
+$CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "create table t1(a int)" || failexit "create table"
+master=$(get_master_and_fail_if_not_found) || failexit "no master"
+masterlog=$LOGDIR/${DBNAME}.${master}.db
+unsanctioned=""
+for node in ${nodes[@]}; do
+    [[ "$node" != "$master" ]] && unsanctioned=$node && break
+done
+
+function cleanup
+{
+    for node in ${nodes[@]}; do
+        ssh $node "kill -CONT \$(cat ${TMPDIR}/${DBNAME}.pid)" </dev/null
+    done
+    send_all "bdb add $unsanctioned"
+}
+trap cleanup EXIT
+
+line=$(insert_and_trace 1)
+echo "$line" | grep -q "durable-nodes=$cluster_size durable-acked=$cluster_size" || failexit "unexpected trace with every node sanctioned: $line"
+
+# With every node sanctioned, the master and $unsanctioned are 2 of 3
+if [[ $cluster_size -eq 3 ]]; then
+    line=$(lease_check)
+    echo "$line" | grep -q "SUCCEEDED: we have 2 current leases from 3 nodes" || failexit "unexpected lease verdict with every node sanctioned: $line"
+fi
+
+send_all "bdb del $unsanctioned"
+sleep 2
+line=$(insert_and_trace 2)
+echo "$line" | grep -q "tot_acked=$(( cluster_size - 1 ))," || failexit "$unsanctioned stopped acking: $line"
+echo "$line" | grep -q "durable-nodes=$(( cluster_size - 1 )) durable-acked=$(( cluster_size - 1 ))" || failexit "ack from $unsanctioned counted toward durability: $line"
+
+# Only sanctioned leases count, so the master holds 1 of $(( cluster_size - 1 ))
+line=$(lease_check)
+echo "$line" | grep -q "failed: we have 1 current leases from $(( cluster_size - 1 )) nodes" || failexit "lease from $unsanctioned counted: $line"
+
+send_all "bdb add $unsanctioned"
+trap - EXIT
+sleep 2
+line=$(insert_and_trace 3)
+echo "$line" | grep -q "durable-nodes=$cluster_size durable-acked=$cluster_size" || failexit "unexpected trace after re-adding $unsanctioned: $line"
+
+# With no sanctioned nodes nothing counts: no commit is durable and no lease quorum is held
+function readd_all
+{
+    for node in ${nodes[@]}; do
+        send_all "bdb add $node"
+    done
+}
+trap readd_all EXIT
+for node in ${nodes[@]}; do
+    send_all "bdb del $node"
+done
+for ((i = 0; i < 30; i++)); do
+    $CDB2SQL_EXE $CDB2_OPTIONS --tabs $DBNAME --host $master "exec procedure sys.cmd.send('bdb sanc')" | grep -q "^node " || break
+    sleep 1
+done
+line=$(insert_and_trace 4)
+echo "$line" | grep -q "durable-nodes=0 durable-acked=0" || failexit "commit was durable with no sanctioned nodes: $line"
+line=$(lease_check)
+echo "$line" | grep -q "failed: we have 0 current leases from 0 nodes" || failexit "master kept a lease quorum with no sanctioned nodes: $line"
+readd_all
+trap - EXIT
+sleep 2
+line=$(insert_and_trace 5)
+echo "$line" | grep -q "durable-nodes=$cluster_size durable-acked=$cluster_size" || failexit "unexpected trace after restoring the sanctioned list: $line"
+
+echo "Success"
+exit 0

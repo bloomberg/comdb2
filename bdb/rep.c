@@ -2199,6 +2199,34 @@ int bdb_block_durable(bdb_state_type *bdb_state, DB_LSN *lsn)
     return lock_desired;
 }
 
+/* Durability counts sanctioned nodes only, so with none nothing is durable.
+ * Returns the other nodes and whether this node counts. */
+static int durable_node_list(bdb_state_type *bdb_state, struct interned_string *nodelist[REPMAX], int *self_counts)
+{
+    netinfo_type *netinfo = bdb_state->repinfo->netinfo;
+    struct interned_string *sanc[REPMAX];
+    int nsanc, count = 0;
+
+    nsanc = net_get_sanctioned_node_list_interned(netinfo, REPMAX, sanc);
+    *self_counts = 0;
+    for (int i = 0; i < nsanc && i < REPMAX; i++) {
+        if (sanc[i] == bdb_state->repinfo->myhost_interned)
+            *self_counts = 1;
+        else
+            nodelist[count++] = sanc[i];
+    }
+    return count;
+}
+
+static int in_node_list(struct interned_string *host, struct interned_string *nodelist[REPMAX], int count)
+{
+    for (int i = 0; i < count; i++) {
+        if (nodelist[i] == host)
+            return 1;
+    }
+    return 0;
+}
+
 /* Called by the master to periodically broadcast the durable lsn.  The
  * algorithm: sort lsns of all nodes (including master's).  The durable lsn will
  * be in the (n/2)th spot.  We can only make claims about durability for things
@@ -2213,19 +2241,20 @@ static void calculate_durable_lsn(bdb_state_type *bdb_state, DB_LSN *dlsn,
     struct interned_string *nodelist[REPMAX];
     DB_LSN nodelsns[REPMAX];
     uint32_t nodegens[REPMAX], mygen;
-    int nodecount, index = 0, j, selix;
+    int nodecount, index = 0, j, selix, self_counts, total;
 
     bdb_state->dbenv->get_rep_gen(bdb_state->dbenv, &mygen);
     bdb_latest_commit(bdb_state, &nodelsns[index], &nodegens[index]);
 
+    // This won't include the master
+    nodecount = durable_node_list(bdb_state, nodelist, &self_counts);
+    total = nodecount + self_counts;
+
     /* It's only durable if i have written it */
-    if (nodegens[index] == mygen)
+    if (self_counts && nodegens[index] == mygen)
         index++;
 
-    // This won't include the master
-    nodecount =
-        net_get_all_commissioned_nodes_interned(bdb_state->repinfo->netinfo, nodelist);
-    if (!nodecount) {
+    if (!nodecount && self_counts) {
         (*dlsn) = nodelsns[0];
         (*gen) = nodegens[0];
         if ((*dlsn).file == 0) {
@@ -2257,13 +2286,12 @@ static void calculate_durable_lsn(bdb_state_type *bdb_state, DB_LSN *dlsn,
      * downshift the index by the difference of those seqnums which are from a
      * different generation.  */
 
-    /* Nodecount + 1 is total nodes.  nodecount doesn't include the master, so
-     * it effectively subtracts one from the total nodes. */
-    selix = nodecount / 2;
+    /* Total is nodes that count, the master only if it is sanctioned */
+    selix = (total - 1) / 2;
 
     /* Shift for nodes which were reporting a different generation & didn't make
      * it into this array. */
-    selix -= ((nodecount + 1) - index);
+    selix -= (total - index);
     if (selix < 0)
         selix = 0;
 
@@ -2292,10 +2320,12 @@ static void calculate_durable_lsn(bdb_state_type *bdb_state, DB_LSN *dlsn,
     }
 }
 
-int verify_master_leases_int(bdb_state_type *bdb_state, struct interned_string **comlist,
-                             int comcount, const char *func, uint32_t line)
+/* Leases need a majority of the nodes that count for durability */
+int verify_master_leases_int(bdb_state_type *bdb_state, const char *func, uint32_t line)
 {
-    int total_nodes = (comcount + 1), current_leases = 1, i;
+    struct interned_string *comlist[REPMAX];
+    int self_counts, comcount = durable_node_list(bdb_state, comlist, &self_counts);
+    int total_nodes = comcount + self_counts, current_leases = self_counts, i;
     int verify_trace = bdb_state->attr->verify_master_lease_trace;
     static time_t lastpr = 0;
     static int last_rc = 0;
@@ -2350,12 +2380,7 @@ int verify_master_leases_int(bdb_state_type *bdb_state, struct interned_string *
 int verify_master_leases(bdb_state_type *bdb_state, const char *func,
                          uint32_t line)
 {
-    struct interned_string *comlist[REPMAX];
-    int comcount;
-
-    comcount =
-        net_get_all_commissioned_nodes_interned(bdb_state->repinfo->netinfo, comlist);
-    return verify_master_leases_int(bdb_state, comlist, comcount, func, line);
+    return verify_master_leases_int(bdb_state, func, line);
 }
 
 int gbl_catchup_window_trace = 0;
@@ -3295,6 +3320,8 @@ int bdb_wait_for_seqnum_from_all_int(bdb_state_type *bdb_state, seqnum_type *seq
     uint32_t nodegen;
     int num_successfully_acked = 0;
     int total_commissioned;
+    struct interned_string *durlist[REPMAX];
+    int total_durable, self_durable, num_durable_acked = 0;
     int lock_desired = 0;
     int fake_incoherent = 0;
     int non_durable_retry = gbl_replicant_retry_on_not_durable && (!is_final || !gbl_ignore_final_non_durable_retry);
@@ -3324,6 +3351,9 @@ int bdb_wait_for_seqnum_from_all_int(bdb_state_type *bdb_state, seqnum_type *seq
     */
 
     begin_time = comdb2_time_epochms();
+
+    /* Wait on every commissioned node, but only sanctioned acks make it durable */
+    total_durable = durable_node_list(bdb_state, durlist, &self_durable);
 
     /* lame, i know.  go into a loop polling once per second to see if
        anyone is coherent yet.  don't wait forever - this must timeout
@@ -3415,6 +3445,8 @@ int bdb_wait_for_seqnum_from_all_int(bdb_state_type *bdb_state, seqnum_type *seq
             if (rc == 0) {
                 base_node = nodelist[i]->str;
                 num_successfully_acked++;
+                if (in_node_list(nodelist[i], durlist, total_durable))
+                    num_durable_acked++;
 
                 end_time = comdb2_time_epochms();
                 we_used = end_time - begin_time;
@@ -3502,8 +3534,11 @@ got_ack:
             numfailed++;
         }
 
-        else if (rc == 0)
+        else if (rc == 0) {
             num_successfully_acked++;
+            if (in_node_list(nodelist[i], durlist, total_durable))
+                num_durable_acked++;
+        }
 
         else if (rc == 1)
             rc = 0;
@@ -3584,13 +3619,13 @@ done_wait:
     int istest = 0;
     int was_durable = 0;
 
-    uint32_t cluster_size = total_commissioned + 1;
-    uint32_t number_with_this_update = num_successfully_acked + 1;
+    uint32_t cluster_size = total_durable + self_durable;
+    uint32_t number_with_this_update = num_durable_acked + self_durable;
     uint32_t durable_target = (cluster_size % 2) ? (cluster_size / 2) + 1 : (cluster_size / 2);
 
     ATOMIC_ADD64(gbl_distributed_commit_count, 1);
 
-    if ((number_with_this_update < durable_target) ||
+    if (!cluster_size || (number_with_this_update < durable_target) ||
         (gbl_durable_wait_seqnum_test && (istest = (0 == (rand() % 20))))) {
         if (istest)
             logmsg(LOGMSG_USER, "%s return not durable for durable wait seqnum test\n", __func__);
@@ -3644,13 +3679,13 @@ done_wait:
                    calc_lsn.file, calc_lsn.offset, seqnum->lsn.file, seqnum->lsn.offset);
         }
         logmsg(LOGMSG_USER,
-               "Last txn was %s, tot_connected=%d tot_acked=%d, "
+               "Last txn was %s, tot_connected=%d tot_acked=%d, durable-nodes=%u durable-acked=%u "
                "durable-commit-count=%u not-durable-commit-count=%u "
                "commit-lsn=[%d][%d] commit-gen=%u calc-durable-lsn=[%d][%d] "
                "calc-durable-gen=%u\n",
-               was_durable ? "durable" : "not-durable", total_commissioned, num_successfully_acked, durable_count,
-               not_durable_count, seqnum->lsn.file, seqnum->lsn.offset, seqnum->generation, calc_lsn.file,
-               calc_lsn.offset, calc_gen);
+               was_durable ? "durable" : "not-durable", total_commissioned, num_successfully_acked, cluster_size,
+               number_with_this_update, durable_count, not_durable_count, seqnum->lsn.file, seqnum->lsn.offset,
+               seqnum->generation, calc_lsn.file, calc_lsn.offset, calc_gen);
     }
 
     /* Accounting to accommodate testcase */
