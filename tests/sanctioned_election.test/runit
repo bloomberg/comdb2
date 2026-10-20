@@ -34,6 +34,7 @@ function send_all
 function cleanup
 {
     send_all "debug tcmtest routecpu"
+    [[ -n "$ghost" ]] && send_all "bdb del $ghost"
 }
 trap cleanup EXIT
 
@@ -128,42 +129,47 @@ write_on $master 3 || failexit "could not write after replicants returned"
 expected="1,3"
 
 # Keep vs elect: with exactly half the nodes up the master stays, but no new master can be elected
-if (( cluster_size % 2 == 0 )); then
-    half=$(replicants_of $master | head -$(( cluster_size / 2 )) | xargs)
-    masterlog=$LOGDIR/${DBNAME}.${master}.db
-    before=$(grep -c "cluster is unelectable" $masterlog)
-    for node in $half; do
-        kill_node $node
-    done
-    sleep 10
-    (( $(grep -c "cluster is unelectable" $masterlog) == before )) || failexit "master $master stepped down with half the cluster up"
-    write_on $master 4 || failexit "master $master rejected a write with half the cluster up"
-
-    before=$(grep -c "election will not be held" $masterlog)
-    $CDB2SQL_EXE $CDB2_OPTIONS --tabs $DBNAME --host $master "exec procedure sys.cmd.send('downgrade')"
-    refused=0
-    for ((i = 0; i < 30; i++)); do
-        (( $(grep -c "election will not be held" $masterlog) > before )) && refused=1 && break
-        sleep 1
-    done
-    [[ $refused == 1 ]] || failexit "half the cluster did not refuse to elect a new master"
-    if write_on $master 5; then
-        failexit "half the cluster accepted a write after giving up the master"
-    fi
-    # The timed-out write is still retried server-side, so it may land once a master returns
-    x=$($CDB2SQL_EXE $CDB2_OPTIONS --tabs $DBNAME --host $master "select count(*) from t1 where a = 5")
-    [[ "$x" == "0" ]] || failexit "write 5 committed with half the cluster up"
-
-    for node in $half; do
-        start_node $node
-    done
-    wait_for_cluster
-    master=$(wait_for_master) || failexit "no master elected after half the cluster returned"
-    write_on $master 6 || failexit "could not write after half the cluster returned"
-    expected="1,3,4,6"
-else
-    echo "Skipping keep-vs-elect check: needs an even number of nodes"
+# An odd cluster sanctions a host that never comes up, so the sanctioned count is even
+ghost=""
+sanctioned_size=$cluster_size
+if (( cluster_size % 2 == 1 )); then
+    ghost=192.0.2.1
+    send_all "bdb add $ghost"
+    sanctioned_size=$(( cluster_size + 1 ))
 fi
+half=$(replicants_of $master | head -$(( cluster_size - sanctioned_size / 2 )) | xargs)
+masterlog=$LOGDIR/${DBNAME}.${master}.db
+before=$(grep -c "cluster is unelectable" $masterlog)
+for node in $half; do
+    kill_node $node
+done
+sleep 10
+(( $(grep -c "cluster is unelectable" $masterlog) == before )) || failexit "master $master stepped down with half the cluster up"
+write_on $master 4 || failexit "master $master rejected a write with half the cluster up"
+
+before=$(grep -c "election will not be held" $masterlog)
+$CDB2SQL_EXE $CDB2_OPTIONS --tabs $DBNAME --host $master "exec procedure sys.cmd.send('downgrade')"
+refused=0
+for ((i = 0; i < 30; i++)); do
+    (( $(grep -c "election will not be held" $masterlog) > before )) && refused=1 && break
+    sleep 1
+done
+[[ $refused == 1 ]] || failexit "half the cluster did not refuse to elect a new master"
+if write_on $master 5; then
+    failexit "half the cluster accepted a write after giving up the master"
+fi
+# The timed-out write is still retried server-side, so it may land once a master returns
+x=$($CDB2SQL_EXE $CDB2_OPTIONS --tabs $DBNAME --host $master "select count(*) from t1 where a = 5")
+[[ "$x" == "0" ]] || failexit "write 5 committed with half the cluster up"
+
+for node in $half; do
+    start_node $node
+done
+wait_for_cluster
+master=$(wait_for_master) || failexit "no master elected after half the cluster returned"
+write_on $master 6 || failexit "could not write after half the cluster returned"
+expected="1,3,4,6"
+[[ -n "$ghost" ]] && send_all "bdb del $ghost" && ghost=""
 
 rows=$($CDB2SQL_EXE $CDB2_OPTIONS --tabs $DBNAME default "select group_concat(a) from (select a from t1 where a not in (2, 5) order by a)")
 [[ "$rows" == "$expected" ]] || failexit "expected rows $expected, got '$rows'"
