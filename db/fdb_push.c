@@ -613,6 +613,8 @@ reset:
  * Same as handle_fdb_push, but for writes
  *
  */
+int gbl_debug_fail_push_write_on_replay = 0;
+
 int handle_fdb_push_write(sqlclntstate *clnt, struct errstat *err, int n_extra_sets, const char **sets, const char *sql)
 {
     fdb_push_connector_t *push = clnt->fdb_push;
@@ -708,6 +710,12 @@ int handle_fdb_push_write(sqlclntstate *clnt, struct errstat *err, int n_extra_s
     while ((rc = cdb2_next_record(hndl)) == CDB2_OK);
 
     if (rc != CDB2_OK_DONE) {
+        goto hndl_err;
+    }
+
+    if (clnt->osql.replay != OSQL_RETRY_NONE && clnt->verify_retries <= gbl_debug_fail_push_write_on_replay) {
+        logmsg(LOGMSG_USER, "%s: debug failing replayed push write, retry %d\n", __func__, clnt->verify_retries);
+        rc = -1;
         goto hndl_err;
     }
 
