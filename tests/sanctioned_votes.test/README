@@ -1,1 +1,1 @@
-Verify a node removed from the sanctioned list neither votes nor wins an election
+Verify a node removed from the sanctioned list neither holds an election nor wins one, and that its votes are dropped when it holds one anyway
