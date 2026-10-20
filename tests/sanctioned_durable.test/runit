@@ -139,5 +139,12 @@ sleep 2
 line=$(insert_and_trace 5)
 echo "$line" | grep -q "durable-nodes=$cluster_size durable-acked=$cluster_size" || failexit "unexpected trace after restoring the sanctioned list: $line"
 
+# A clean exit decommissions the node on its peers, but it stays sanctioned and
+# still counts: counting commissioned nodes would let the master alone be durable
+bounce_node $unsanctioned 10
+line=$(insert_and_trace 6)
+echo "$line" | grep -q "durable-nodes=$cluster_size durable-acked=$(( cluster_size - 1 ))" || failexit "stopped node $unsanctioned stopped counting toward durability: $line"
+wait_for_cluster
+
 echo "Success"
 exit 0
