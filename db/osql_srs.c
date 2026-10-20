@@ -24,6 +24,7 @@
 #include "net_appsock.h"
 
 #include "debug_switches.h"
+#include "fdb_fend.h"
 
 extern int gbl_osql_verify_retries_max;
 extern int gbl_notimeouts;
@@ -148,8 +149,8 @@ int srs_tran_destroy(struct sqlclntstate *clnt)
     if (clnt->dist_txnid) {
         free(clnt->dist_txnid);
         clnt->dist_txnid = NULL;
-        clnt->dist_timestamp = 0;
     }
+    clnt->dist_timestamp = 0;
 
     if (!osql->history)
         goto done;
@@ -334,6 +335,14 @@ static int srs_tran_replay_once(struct sqlclntstate *clnt, int(dispatch_fn)(stru
         abort();
     }
 
+    /* every replay is a new distributed txn: drop the last attempt's remote trans and dist_txnid */
+    if (clnt->dbtran.dtran) {
+        logmsg(LOGMSG_ERROR, "%s: rolling back remote trans left by the last attempt\n", __func__);
+        fdb_trans_rollback(clnt);
+    }
+    free(clnt->dist_txnid);
+    clnt->dist_txnid = NULL;
+
     clnt->verify_retries++;
     gbl_verify_tran_replays++;
     /* Replays for SERIAL or SNAPISOL will never have select or selectv */
@@ -357,6 +366,9 @@ static int srs_tran_replay_once(struct sqlclntstate *clnt, int(dispatch_fn)(stru
     clnt->start_gen = bdb_get_rep_gen(thedb->bdb_env);
     LISTC_FOR_EACH(&osql->history->lst, item, lnk)
     {
+        /* this attempt already failed (e.g. a replayed push write): skip to its commit, which aborts it */
+        if (clnt->early_retry && item != LISTC_BOT(&osql->history->lst))
+            continue;
         clnt->done = 0; /* reset done flag */
         restore_stmt(clnt, item);
         if ((rc = dispatch_fn(clnt)) != 0)

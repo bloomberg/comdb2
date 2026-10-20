@@ -1373,7 +1373,9 @@ done:
     clnt->coordinator_tier = NULL;
     free(clnt->coordinator_master);
     clnt->coordinator_master = NULL;
-    clnt->dist_timestamp = 0ULL;
+    /* a failed commit with replay history keeps dist_timestamp for the replay; srs_tran_destroy clears it */
+    if (!rcout || !clnt->osql.history)
+        clnt->dist_timestamp = 0ULL;
 
     return rcout;
 }

@@ -262,6 +262,8 @@ static int rese_commit(struct sqlclntstate *clnt, struct sql_thread *thd,
         clnt->osql.xerr.errval = ERR_BLOCK_FAILED + ERR_VERIFY;
         errstat_cat_str(&(clnt->osql.xerr), "verify error on master swing");
         rc = SQLITE_ABORT;
+    } else if (clnt->early_retry == EARLY_ERR_REMOTE) {
+        rc = SQLITE_ABORT;
     }
 
     BDB_RELLOCK();

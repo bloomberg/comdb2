@@ -349,7 +349,8 @@ typedef struct fdb_push_connector fdb_push_connector_t;
 enum early_verify_error {
     EARLY_ERR_VERIFY = 1,
     EARLY_ERR_SELECTV = 2,
-    EARLY_ERR_GENCHANGE = 3
+    EARLY_ERR_GENCHANGE = 3,
+    EARLY_ERR_REMOTE = 4 /* osql.xerr holds the error */
 };
 
 enum connection_state {
