@@ -2320,7 +2320,8 @@ static void calculate_durable_lsn(bdb_state_type *bdb_state, DB_LSN *dlsn,
     }
 }
 
-/* Leases need a majority of the nodes that count for durability */
+/* Leases count the nodes durability counts and need half of them, or a majority
+ * if elect_forbid_perfect_netsplit is set; with none counted there is no quorum */
 int verify_master_leases_int(bdb_state_type *bdb_state, const char *func, uint32_t line)
 {
     struct interned_string *comlist[REPMAX];
@@ -2351,7 +2352,10 @@ int verify_master_leases_int(bdb_state_type *bdb_state, const char *func, uint32
     }
     Pthread_mutex_unlock(&(bdb_state->master_lease_lk));
 
-    if (current_leases >= ((total_nodes / 2) + 1)) {
+    int have_quorum =
+        total_nodes && (bdb_state->attr->elect_forbid_perfect_netsplit ? (current_leases * 2 > total_nodes)
+                                                                       : (current_leases * 2 >= total_nodes));
+    if (have_quorum) {
         if (verify_trace && (last_rc == 0 || (now = time(NULL)) != lastpr)) {
             logmsg(LOGMSG_USER,
                    "%s line %d verify_master_leases SUCCEEDED: we have %u "

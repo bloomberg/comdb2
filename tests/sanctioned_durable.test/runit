@@ -68,6 +68,7 @@ function cleanup
     for node in ${nodes[@]}; do
         ssh $node "kill -CONT \$(cat ${TMPDIR}/${DBNAME}.pid)" </dev/null
     done
+    send_all "bdb setattr elect_disable_netsplit_patch 0"
     send_all "bdb add $unsanctioned"
 }
 trap cleanup EXIT
@@ -75,10 +76,25 @@ trap cleanup EXIT
 line=$(insert_and_trace 1)
 echo "$line" | grep -q "durable-nodes=$cluster_size durable-acked=$cluster_size" || failexit "unexpected trace with every node sanctioned: $line"
 
-# With every node sanctioned, the master and $unsanctioned are 2 of 3
-if [[ $cluster_size -eq 3 ]]; then
+# Keeping leases needs half the counted nodes, or a majority with elect_disable_netsplit_patch set
+function lease_verdict
+{
+    typeset leases=$1 total=$2 strict=$3
+    if (( strict ? leases * 2 > total : leases * 2 >= total )); then echo SUCCEEDED; else echo failed; fi
+}
+
+# With every node sanctioned, the master and $unsanctioned hold 2 leases
+line=$(lease_check)
+verdict=$(lease_verdict 2 $cluster_size 0)
+echo "$line" | grep -q "$verdict: we have 2 current leases from $cluster_size nodes" || failexit "expected $verdict with 2 of $cluster_size leases: $line"
+
+# An exact half keeps leases only while elect_disable_netsplit_patch is off
+if (( cluster_size % 2 == 0 )); then
+    $CDB2SQL_EXE $CDB2_OPTIONS --tabs $DBNAME --host $master "exec procedure sys.cmd.send('bdb setattr elect_disable_netsplit_patch 1')"
     line=$(lease_check)
-    echo "$line" | grep -q "SUCCEEDED: we have 2 current leases from 3 nodes" || failexit "unexpected lease verdict with every node sanctioned: $line"
+    $CDB2SQL_EXE $CDB2_OPTIONS --tabs $DBNAME --host $master "exec procedure sys.cmd.send('bdb setattr elect_disable_netsplit_patch 0')"
+    verdict=$(lease_verdict 2 $cluster_size 1)
+    echo "$line" | grep -q "$verdict: we have 2 current leases from $cluster_size nodes" || failexit "expected $verdict with 2 of $cluster_size leases and elect_disable_netsplit_patch set: $line"
 fi
 
 send_all "bdb del $unsanctioned"
@@ -89,7 +105,8 @@ echo "$line" | grep -q "durable-nodes=$(( cluster_size - 1 )) durable-acked=$(( 
 
 # Only sanctioned leases count, so the master holds 1 of $(( cluster_size - 1 ))
 line=$(lease_check)
-echo "$line" | grep -q "failed: we have 1 current leases from $(( cluster_size - 1 )) nodes" || failexit "lease from $unsanctioned counted: $line"
+verdict=$(lease_verdict 1 $(( cluster_size - 1 )) 0)
+echo "$line" | grep -q "$verdict: we have 1 current leases from $(( cluster_size - 1 )) nodes" || failexit "lease from $unsanctioned counted: $line"
 
 send_all "bdb add $unsanctioned"
 trap - EXIT
