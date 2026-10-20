@@ -1971,6 +1971,25 @@ inline int replicant_is_able_to_retry(struct sqlclntstate *clnt)
     return clnt->dbtran.mode != TRANLEVEL_SNAPISOL && clnt->dbtran.mode != TRANLEVEL_SERIAL;
 }
 
+/* A replayed push write that failed with one of these may succeed on the next replay */
+static int push_write_error_is_transient(int rc)
+{
+    switch (rc) {
+    case CDB2ERR_CONNECT_ERROR:
+    case CDB2ERR_IO_ERROR:
+    case CDB2ERR_TRAN_IO_ERROR:
+    case CDB2ERR_REJECTED:
+    case CDB2ERR_NOMASTER:
+    case CDB2ERR_DEADLOCK:
+    case CDB2ERR_VERIFY_ERROR:
+    case CDB2ERR_NOTSERIAL:
+    case CDB2ERR_NOTDURABLE:
+        return 1;
+    default:
+        return 0;
+    }
+}
+
 static inline int replicant_can_retry_rc(struct sqlclntstate *clnt, int rc)
 {
     if (clnt->verifyretry_off || clnt->dbtran.trans_has_sp || clnt->is_participant)
@@ -4357,6 +4376,21 @@ retry_legacy_remote:
                     rec.stmt = NULL;
                 }
                 rc = handle_fdb_push_write(clnt, &err, 0, NULL, clnt->sql);
+                /* 2pc remote writes commit with the local txn, so a verify replay must re-push them */
+                if (rc == 0 && clnt->use_2pc && clnt->in_client_trans && srs_tran_add_query(clnt))
+                    logmsg(LOGMSG_ERROR, "Fail to add remote write to transaction replay session\n");
+                if (rc && rc != -2 && clnt->osql.replay != OSQL_RETRY_NONE) {
+                    /* no client sees a replayed write; abort this attempt so it never commits without it,
+                     * and fail the txn with the remote's error unless another replay could succeed */
+                    if (push_write_error_is_transient(rc)) {
+                        clnt->early_retry = EARLY_ERR_VERIFY;
+                    } else {
+                        clnt->early_retry = EARLY_ERR_REMOTE;
+                        errstat_set_rcstrf(&clnt->osql.xerr, ERR_DIST_ABORT, "replayed remote write failed rc %d: %s",
+                                           rc, errstat_get_str(&err));
+                    }
+                    sql_set_sqlengine_state(clnt, __FILE__, __LINE__, SQLENG_INTRANS_STATE);
+                }
             }
             if (rc == -2) {
                 logmsg(LOGMSG_WARN, "QUERY %s disable push\n", clnt->sql);
@@ -5484,8 +5518,8 @@ void cleanup_clnt(struct sqlclntstate *clnt)
     if (clnt->dist_txnid) {
         free(clnt->dist_txnid);
         clnt->dist_txnid = NULL;
-        clnt->dist_timestamp = 0;
     }
+    clnt->dist_timestamp = 0;
     if (clnt->coordinator_dbname) {
         free(clnt->coordinator_dbname);
         clnt->coordinator_dbname = NULL;
@@ -5737,8 +5771,8 @@ void reset_clnt(struct sqlclntstate *clnt, int initial)
     if (clnt->dist_txnid) {
         free(clnt->dist_txnid);
         clnt->dist_txnid = NULL;
-        clnt->dist_timestamp = 0;
     }
+    clnt->dist_timestamp = 0;
 
     clear_session_tbls(clnt);
 
