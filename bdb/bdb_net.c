@@ -59,9 +59,7 @@
 
 extern void fsnapf(FILE *, void *, int);
 extern int get_myseqnum(bdb_state_type *bdb_state, uint8_t *p_net_seqnum);
-extern int verify_master_leases_int(bdb_state_type *bdb_state,
-                                    struct interned_string **comlist, int comcount,
-                                    const char *func, uint32_t line);
+extern int verify_master_leases_int(bdb_state_type *bdb_state, const char *func, uint32_t line);
 
 static unsigned int sent_udp = 0;
 static unsigned int fail_udp = 0;
@@ -827,8 +825,7 @@ void send_coherency_leases(bdb_state_type *bdb_state, int lease_time,
 
     /* Check our master-lease */
     if (bdb_state->attr->master_lease) {
-        master_is_coherent = verify_master_leases_int(
-            bdb_state, comlist, comcount, __func__, __LINE__);
+        master_is_coherent = verify_master_leases_int(bdb_state, __func__, __LINE__);
     } else
         master_is_coherent = 1;
 
