@@ -1,0 +1,79 @@
+#!/usr/bin/env bash
+bash -n "$0" || exit 1
+
+# A node that isn't sanctioned must not hold an election or have its votes tallied
+
+. ${TESTSROOTDIR}/tools/runit_common.sh
+. ${TESTSROOTDIR}/tools/cluster_utils.sh
+
+export debug=1
+[[ $debug == "1" ]] && set -x
+
+if [[ -z "$CLUSTER" ]]; then
+    echo "This test requires a cluster"
+    exit 0
+fi
+
+nodes=($CLUSTER)
+if [[ ${#nodes[@]} -lt 3 ]]; then
+    echo "This test requires at least 3 nodes"
+    exit 0
+fi
+
+export LOGDIR=$TESTDIR/logs
+
+function send_all
+{
+    for node in ${nodes[@]}; do
+        $CDB2SQL_EXE $CDB2_OPTIONS --tabs $DBNAME --host $node "exec procedure sys.cmd.send('$1')" >/dev/null 2>&1
+    done
+}
+
+function wait_for_master
+{
+    typeset master=""
+    for ((i = 0; i < 60; i++)); do
+        master=$(get_master_and_fail_if_not_found) && break
+        sleep 1
+    done
+    [[ -n "$master" ]] || return 1
+    echo "$master"
+}
+
+$CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "create table t1(a int)" || failexit "create table"
+
+master=$(wait_for_master) || failexit "no master elected"
+unsanctioned=""
+for node in ${nodes[@]}; do
+    [[ "$node" != "$master" ]] && unsanctioned=$node && break
+done
+
+function cleanup
+{
+    send_all "bdb add $unsanctioned"
+}
+trap cleanup EXIT
+
+send_all "bdb del $unsanctioned"
+ulog=$LOGDIR/${DBNAME}.${unsanctioned}.db
+before=$(grep -c "is not allowed to vote" $ulog)
+
+for ((round = 1; round <= 5; round++)); do
+    $CDB2SQL_EXE $CDB2_OPTIONS --tabs $DBNAME --host $master "exec procedure sys.cmd.send('downgrade')"
+    sleep 5
+    master=$(wait_for_master) || failexit "no master elected in round $round"
+    [[ "$master" != "$unsanctioned" ]] || failexit "unsanctioned node $unsanctioned won round $round"
+    $CDB2SQL_EXE $CDB2_OPTIONS --tabs $DBNAME --host $master "insert into t1 values($round)" || failexit "write failed in round $round"
+done
+
+(( $(grep -c "is not allowed to vote" $ulog) > before )) || failexit "$unsanctioned never refused to hold an election"
+
+send_all "bdb add $unsanctioned"
+trap - EXIT
+wait_for_cluster
+master=$(wait_for_master) || failexit "no master after re-adding $unsanctioned"
+x=$($CDB2SQL_EXE $CDB2_OPTIONS --tabs $DBNAME default "select count(*) from t1")
+[[ "$x" == "5" ]] || failexit "expected 5 rows, got '$x'"
+
+echo "Success"
+exit 0

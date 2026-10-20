@@ -71,6 +71,7 @@ static int __rep_wrlock_recovery_blocked __P((DB_ENV *));
 static int __rep_set_rep_db_pagesize __P((DB_ENV *, int));
 static int __rep_get_rep_db_pagesize __P((DB_ENV *, int *));
 static int __rep_set_ignore __P((DB_ENV *, int (*func)(const char *filename)));
+static int __rep_set_can_vote __P((DB_ENV *, int (*func)(DB_ENV *, const char *host)));
 static int __rep_set_log_trigger __P((DB_ENV *, void *(*is_log_trigger)(const char *filename), int (*log_trigger_cb)(void *trigger, const DB_LSN *lsn, const DB_LSN *commit_lsn, const char *filename, u_int32_t rectype, const void *log)));
 static int __rep_start __P((DB_ENV *, DBT *, u_int32_t, u_int32_t));
 static int __rep_stat __P((DB_ENV *, DB_REP_STAT **, u_int32_t));
@@ -134,6 +135,7 @@ __rep_dbenv_create(dbenv)
 		dbenv->set_rep_send_ack = __rep_set_rep_send_ack;
 		dbenv->set_rep_signal_logfill = __rep_set_signal_logfill;
 		dbenv->set_rep_ignore = __rep_set_ignore;
+		dbenv->set_rep_can_vote = __rep_set_can_vote;
 		dbenv->set_log_trigger = __rep_set_log_trigger;
 		dbenv->set_truncate_sc_callback = __rep_set_truncate_sc_callback;
 		dbenv->set_rep_truncate_callback = __rep_set_rep_truncate_callback;
@@ -1047,6 +1049,20 @@ __rep_set_ignore(dbenv, f_ignore)
 	return (0);
 }
 
+/*
+ * __rep_set_can_vote --
+ *  Register function which tells elections whether a host's vote counts
+ */
+static int
+__rep_set_can_vote(dbenv, f_can_vote)
+	DB_ENV *dbenv;
+	int (*f_can_vote) __P((DB_ENV *, const char *));
+{
+	PANIC_CHECK(dbenv);
+	dbenv->rep_can_vote = f_can_vote;
+	return (0);
+}
+
 static int
 __rep_set_rep_send_ack(dbenv, f_send_ack)
 	DB_ENV *dbenv;
@@ -1299,6 +1315,13 @@ __rep_elect(dbenv, nsites, priority, timeout, newgen, already_master, eidp)
 	db_rep = dbenv->rep_handle;
 	rep = db_rep->region;
 	dblp = dbenv->lg_handle;
+
+	/* Our vote wouldn't count anywhere else, so don't count it here either */
+	if (dbenv->rep_can_vote && !dbenv->rep_can_vote(dbenv, rep->eid)) {
+		logmsg(LOGMSG_WARN, "%s: %s is not allowed to vote, not holding an election\n",
+			__func__, rep->eid);
+		return (DB_REP_UNAVAIL);
+	}
 
 	/* This sets 'use_committed_gen' and feature-tests simultaneously */
 	if ((use_committed_gen = dbenv->attr.elect_highest_committed_gen))

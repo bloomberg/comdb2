@@ -1604,6 +1604,22 @@ int net_is_single_sanctioned_node(netinfo_type *netinfo_ptr)
     return single_node;
 }
 
+int net_is_sanctioned(netinfo_type *netinfo_ptr, const char *host)
+{
+    int found = 0;
+    sanc_node_type *ptr;
+
+    Pthread_mutex_lock(&(netinfo_ptr->sanclk));
+    for (ptr = netinfo_ptr->sanctioned_list; ptr != NULL; ptr = ptr->next) {
+        if (strcmp(ptr->host->str, host) == 0) {
+            found = 1;
+            break;
+        }
+    }
+    Pthread_mutex_unlock(&(netinfo_ptr->sanclk));
+
+    return found;
+}
 
 static int net_get_sanctioned_interned_int(netinfo_type *netinfo_ptr, int max_nodes,
                                  struct interned_string *hosts[REPMAX], int include_self)
