@@ -613,6 +613,10 @@ reset:
  * Same as handle_fdb_push, but for writes
  *
  */
+int gbl_debug_fail_push_write_on_replay = 0;
+int gbl_debug_fail_push_write_on_replay_rc = CDB2ERR_CONNECT_ERROR;
+int gbl_debug_fail_push_write_start = 0;
+
 int handle_fdb_push_write(sqlclntstate *clnt, struct errstat *err, int n_extra_sets, const char **sets, const char *sql)
 {
     fdb_push_connector_t *push = clnt->fdb_push;
@@ -714,6 +718,12 @@ int handle_fdb_push_write(sqlclntstate *clnt, struct errstat *err, int n_extra_s
         goto hndl_err;
     }
 
+    if (clnt->osql.replay != OSQL_RETRY_NONE && clnt->verify_retries <= gbl_debug_fail_push_write_on_replay) {
+        logmsg(LOGMSG_USER, "%s: debug failing replayed push write, retry %d\n", __func__, clnt->verify_retries);
+        rc = gbl_debug_fail_push_write_on_replay_rc;
+        goto hndl_err;
+    }
+
     cdb2_effects_tp effects = {0};
     if (!clnt->in_client_trans || clnt->verifyretry_off || clnt->use_2pc) {
         rc = cdb2_get_effects(hndl, &effects);
@@ -743,7 +753,7 @@ int handle_fdb_push_write(sqlclntstate *clnt, struct errstat *err, int n_extra_s
 
     if (clnt->use_2pc && tran->writes_status == FDB_TRAN_WRITES) {
         /* if this is 2pc, make sure we have a local transaction to coordinate remote writes */
-        rc = osql_sock_start_deferred(clnt);
+        rc = gbl_debug_fail_push_write_start ? SQLITE_ABORT : osql_sock_start_deferred(clnt);
         if (rc) {
             logmsg(LOGMSG_ERROR, "%s: failed to start sosql, rc=%d\n", __func__, rc);
             errstat_set_rcstrf(err, rc = CDB2ERR_NOMASTER, "failed to start transaction");
