@@ -393,12 +393,6 @@ static cdb2_hndl_tp *_hndl_open_int(sqlclntstate *clnt, const char *class,
         return NULL;
     }
 
-    rc = forward_extra_set_commands(hndl, n_sets, sets, err);
-    if (rc) {
-        cdb2_close(hndl);
-        return NULL;
-    }
-
     if (clnt->n_set_commands > 0) {
         rc = forward_extra_set_commands(hndl, clnt->n_set_commands,
                 (const char **)clnt->set_commands, err);
@@ -406,6 +400,13 @@ static cdb2_hndl_tp *_hndl_open_int(sqlclntstate *clnt, const char *class,
             cdb2_close(hndl);
             return NULL;
         }
+    }
+
+    /* last, so the client's sets cannot override ours (e.g. SET VERIFYRETRY OFF) */
+    rc = forward_extra_set_commands(hndl, n_sets, sets, err);
+    if (rc) {
+        cdb2_close(hndl);
+        return NULL;
     }
 
     fdb_client_set_identityBlob(clnt, hndl);
@@ -738,7 +739,7 @@ int handle_fdb_push_write(sqlclntstate *clnt, struct errstat *err, int n_extra_s
          */
     }
 
-    if (clnt->use_2pc && tran->writes_status == FDB_TRAN_WRITES) {
+    if (clnt->use_2pc && clnt->in_client_trans && tran->writes_status == FDB_TRAN_WRITES) {
         /* if this is 2pc, make sure we have a local transaction to coordinate remote writes */
         int rc = osql_sock_start_deferred(clnt);
         if (rc) {
