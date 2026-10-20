@@ -115,6 +115,7 @@ done
 if write_on $master 2; then
     failexit "lone master $master accepted a write with $(( cluster_size - 1 )) rtcpu'd nodes down"
 fi
+# Like write 5 below, the timed-out write may be retried server-side and land later
 
 for node in $replicants; do
     start_node $node
@@ -164,7 +165,7 @@ else
     echo "Skipping keep-vs-elect check: needs an even number of nodes"
 fi
 
-rows=$($CDB2SQL_EXE $CDB2_OPTIONS --tabs $DBNAME default "select group_concat(a) from (select a from t1 where a != 5 order by a)")
+rows=$($CDB2SQL_EXE $CDB2_OPTIONS --tabs $DBNAME default "select group_concat(a) from (select a from t1 where a not in (2, 5) order by a)")
 [[ "$rows" == "$expected" ]] || failexit "expected rows $expected, got '$rows'"
 
 echo "Success"
