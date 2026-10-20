@@ -3047,9 +3047,10 @@ static void whereLoopOutputAdjust(
          && (pTerm->wtFlags & TERM_HIGHTRUTH)==0  /* tag-20200224-1 */
         ){
           Expr *pRight = pTerm->pExpr->pRight;
+          Parse *pParse = pWC->pWInfo->pParse;
           int k = 0;
           testcase( pTerm->pExpr->op==TK_IS );
-          if( sqlite3ExprIsInteger(pRight, &k, 0) && k>=(-1) && k<=1 ){
+          if( sqlite3ExprIsInteger(pRight, &k, pParse) && k>=(-1) && k<=1 ){
             k = 10;
           }else{
             k = 20;
