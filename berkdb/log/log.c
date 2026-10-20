@@ -1252,6 +1252,8 @@ __log_vtruncate(dbenv, lsn, ckplsn, trunclsn)
 
 err:	R_UNLOCK(dbenv, &dblp->reginfo);
 	Pthread_rwlock_unlock(&dbenv->loglk);
+	if (ret == 0)
+		__lc_cache_clear(dbenv);
 	return (ret);
 }
 

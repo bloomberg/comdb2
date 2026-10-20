@@ -84,6 +84,21 @@ __lc_cache_init(DB_ENV *dbenv, int reinit)
 	return ret;
 }
 
+/* Truncation can resend records already fed, so drop every cached transaction */
+// PUBLIC: void __lc_cache_clear __P((DB_ENV *));
+void
+__lc_cache_clear(DB_ENV *dbenv)
+{
+	LC_CACHE_ENTRY *e;
+
+	if (dbenv->lc_cache.ent == NULL) /* recovery runs before __lc_cache_init */
+		return;
+	Pthread_mutex_lock(&dbenv->lc_cache.lk);
+	while ((e = listc_rtl(&dbenv->lc_cache.lru)) != NULL)
+		free_ent(dbenv, e);
+	Pthread_mutex_unlock(&dbenv->lc_cache.lk);
+}
+
 // PUBLIC: int __lc_cache_destroy __P((DB_ENV *));
 int
 __lc_cache_destroy(DB_ENV *dbenv)
@@ -335,10 +350,10 @@ __lc_cache_feed(DB_ENV *dbenv, DB_LSN lsn, DBT dbt)
 				logmsg(LOGMSG_USER, ">> txnid %x got lsn " PR_LSN
 				    " but expected " PR_LSN "\n", txnid,
 				    PARM_LSN(lsn), PARM_LSN(e->last_seen_lsn));
-			/* Sanity check - look at the collections last lsn */
-			assert(0 ==
+			/* A merged child leaves the collection tail behind last_seen_lsn */
+			assert(e->lc.nlsns == 0 ||
 			    log_compare(&e->lc.array[e->lc.nlsns - 1].lsn,
-				&e->last_seen_lsn));
+				&e->last_seen_lsn) <= 0);
 
 			listc_rfl(&dbenv->lc_cache.lru, e);
 			free_ent(dbenv, e);
