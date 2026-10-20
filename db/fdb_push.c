@@ -741,10 +741,13 @@ int handle_fdb_push_write(sqlclntstate *clnt, struct errstat *err, int n_extra_s
 
     if (clnt->use_2pc && clnt->in_client_trans && tran->writes_status == FDB_TRAN_WRITES) {
         /* if this is 2pc, make sure we have a local transaction to coordinate remote writes */
-        int rc = osql_sock_start_deferred(clnt);
+        rc = osql_sock_start_deferred(clnt);
         if (rc) {
             logmsg(LOGMSG_ERROR, "%s: failed to start sosql, rc=%d\n", __func__, rc);
-            return rc;
+            errstat_set_rcstrf(err, rc, "failed to start local transaction for remote write");
+            if (!is_stored_proc(clnt) && write_response(clnt, RESPONSE_ERROR, (void *)errstat_get_str(err), rc))
+                logmsg(LOGMSG_DEBUG, "Failed to write error to client");
+            goto free; /* closing the handle drops the uncommitted remote write */
         }
     }
 
