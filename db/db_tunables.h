@@ -1700,6 +1700,10 @@ REGISTER_TUNABLE(
     "Percentage of sanctioned nodes dynamic incoherent-slow will allow to be incoherent-slow.  (Default: 40)",
     TUNABLE_INTEGER, &gbl_dynamic_max_incoherent_percent, 0, NULL, NULL, NULL, NULL);
 
+REGISTER_TUNABLE("coherency_sanctioned_only",
+                 "Only give coherency leases to sanctioned nodes, so nodes outside the sanctioned list cannot serve "
+                 "sql.  (Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_coherency_sanctioned_only, 0, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("set_coherent_state_trace", "Verbose coherency trace.  (Default: off)", TUNABLE_BOOLEAN,
                  &gbl_set_coherent_state_trace, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("finish_fill_threshold", "Fill to end if end is less than this.  (Default: 60000000)", TUNABLE_INTEGER,

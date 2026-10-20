@@ -282,6 +282,7 @@ extern int gbl_always_ack_fills;
 extern int gbl_verbose_fills;
 extern int gbl_getlock_latencyms;
 extern int gbl_set_coherent_state_trace;
+extern int gbl_coherency_sanctioned_only;
 extern int gbl_incoherent_slow_inactive_timeout;
 extern int gbl_max_incoherent_slow;
 extern int gbl_dynamic_max_incoherent_slow;
