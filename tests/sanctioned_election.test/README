@@ -1,1 +1,1 @@
-Verify a sanctioned majority elects with an rtcpu'd node down, a lone master gives up mastership, and (with an even node count) half the cluster keeps its master but cannot elect a new one
+Verify a sanctioned majority elects with an rtcpu'd node down, a lone master gives up mastership, and half the sanctioned nodes keep their master but cannot elect a new one (an odd cluster adds a sanctioned host that never comes up)
