@@ -141,7 +141,7 @@ echo "$line" | grep -q "durable-nodes=$cluster_size durable-acked=$cluster_size"
 
 # A clean exit decommissions the node on its peers, but it stays sanctioned and
 # still counts: counting commissioned nodes would let the master alone be durable
-bounce_node $unsanctioned 10
+(bounce_node $unsanctioned 10) >>$LOGDIR/bounce_node.log 2>&1
 line=$(insert_and_trace 6)
 echo "$line" | grep -q "durable-nodes=$cluster_size durable-acked=$(( cluster_size - 1 ))" || failexit "stopped node $unsanctioned stopped counting toward durability: $line"
 wait_for_cluster
