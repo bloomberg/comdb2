@@ -1,0 +1,92 @@
+#!/usr/bin/env bash
+bash -n "$0" || exit 1
+
+# Two sanctioned nodes: the master keeps its lease with half the cluster up,
+# but a lone replicant cannot elect a new master
+
+. ${TESTSROOTDIR}/tools/runit_common.sh
+. ${TESTSROOTDIR}/tools/cluster_utils.sh
+
+set -x
+nodes=($CLUSTER)
+if [[ ${#nodes[@]} -ne 2 ]]; then
+    echo "This test requires exactly 2 nodes"
+    exit 0
+fi
+export LOGDIR=$TESTDIR/logs
+function kill_node
+{
+    kill_by_pidfile ${TMPDIR}/${DBNAME}.$1.pid
+}
+
+function start_node
+{
+    typeset node=$1
+    typeset params="--no-global-lrl --lrl $DBDIR/${DBNAME}.lrl --pidfile ${TMPDIR}/${DBNAME}.${node}.pid"
+    mv --backup=numbered $LOGDIR/${DBNAME}.${node}.db $LOGDIR/${DBNAME}.${node}.db.1
+    if [[ $node == $(hostname) ]]; then
+        (cd $DBDIR; ${DEBUG_PREFIX} $COMDB2_EXE ${DBNAME} ${params} &> $LOGDIR/${DBNAME}.${node}.db &)
+    else
+        typeset cmd="cd ${DBDIR}; source ${REP_ENV_VARS} ; ${DEBUG_PREFIX} $COMDB2_EXE ${DBNAME} ${params} 2>&1 | tee $TESTDIR/${DBNAME}.db"
+        ssh -n -o StrictHostKeyChecking=no -tt $node ${cmd} &> $LOGDIR/${DBNAME}.${node}.db &
+        echo $! > ${TMPDIR}/${DBNAME}.${node}.pid
+    fi
+}
+
+function wait_for_master
+{
+    typeset master=""
+    for ((i = 0; i < 60; i++)); do
+        master=$(get_master_and_fail_if_not_found) && break
+        sleep 1
+    done
+    [[ -n "$master" ]] || return 1
+    echo "$master"
+}
+
+function sql
+{
+    typeset host=$1; shift
+    timeout 30 $CDB2SQL_EXE $CDB2_OPTIONS --tabs $DBNAME --host $host "$@"
+}
+
+sql ${nodes[0]} "create table t1(a int)" || failexit "create table"
+master=$(wait_for_master) || failexit "no master"
+replicant=${nodes[0]}
+[[ $replicant == $master ]] && replicant=${nodes[1]}
+sql $master "insert into t1 values(1)" || failexit "insert 1"
+
+# Kill the replicant: 1 of 2 is half, so the master stays and its lease holds
+masterlog=$LOGDIR/${DBNAME}.${master}.db
+kill_node $replicant
+sleep 10
+[[ $(sql $master "select host from comdb2_cluster where is_master='Y'") == $master ]] || failexit "master $master stepped down"
+sql $master "insert into t1 values(2)" || failexit "master rejected a write with the replicant down"
+grep -q "verify_master_leases SUCCEEDED: we have 1 current leases from 2 nodes" $masterlog || failexit "no lease success with 1 of 2"
+grep -q "cluster is unelectable" $masterlog && failexit "master downgraded with half the cluster"
+
+start_node $replicant
+wait_for_cluster
+sleep 5
+
+# Kill the master: the lone replicant needs 2 of 2 to elect
+replog=$LOGDIR/${DBNAME}.${replicant}.db
+kill_node $master
+refused=0
+for ((i = 0; i < 30; i++)); do
+    grep -q "election will not be held, connected to 1 of 2 nodes" $replog && refused=1 && break
+    sleep 1
+done
+[[ $refused == 1 ]] || failexit "lone replicant did not refuse to elect"
+[[ $(sql $replicant "select host from comdb2_cluster where is_master='Y'") == $replicant ]] && failexit "lone replicant became master"
+sql $replicant "insert into t1 values(99)" && failexit "write succeeded with no master"
+
+start_node $master
+newmaster=$(wait_for_master) || failexit "no master after restart"
+wait_for_cluster
+sql $newmaster "insert into t1 values(3)" || failexit "insert 3"
+for node in ${nodes[@]}; do
+    c=$(sql $node "select count(*) from t1 where a in (1, 2, 3)")
+    [[ "$c" != "3" ]] && failexit "$node has $c of rows 1, 2 and 3"
+done
+echo "Success"
