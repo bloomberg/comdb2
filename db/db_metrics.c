@@ -97,7 +97,6 @@ struct comdb2_metrics_store {
     int64_t temptable_create_reqs;
     int64_t temptable_spills;
     int64_t net_drops;
-    int64_t net_queue_size;
     int64_t rep_deadlocks;
     int64_t rw_evicts;
     int64_t standing_queue_time;
@@ -296,8 +295,6 @@ comdb2_metric gbl_metrics[] = {
      STATISTIC_COLLECTION_TYPE_CUMULATIVE, &stats.temptable_spills, NULL},
     {"net_drops", "Number of packets that didn't fit on network queue and were dropped", STATISTIC_INTEGER,
      STATISTIC_COLLECTION_TYPE_CUMULATIVE, &stats.net_drops, NULL},
-    {"net_queue_size", "Size of largest outgoing net queue", STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_LATEST,
-     &stats.net_queue_size, NULL},
     {"rep_deadlocks", "Replication deadlocks", STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_CUMULATIVE,
      &stats.rep_deadlocks, NULL},
     {"rw_evictions", "Dirty page evictions", STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_CUMULATIVE, &stats.rw_evicts,
@@ -794,11 +791,6 @@ int refresh_metrics(void)
     stats.temptable_spills = gbl_temptable_spills;
 
     stats.net_drops = get_hosts_metric("replication", NET_DROPS);
-
-    stats.net_queue_size = get_hosts_metric("replication", MAX_QUEUE_SIZE);
-    rc = get_hosts_metric("offloadsql", MAX_QUEUE_SIZE);
-    if (stats.net_queue_size < rc)
-        stats.net_queue_size = rc;
 
     bdb_rep_deadlocks(thedb->bdb_env, &stats.rep_deadlocks);
 

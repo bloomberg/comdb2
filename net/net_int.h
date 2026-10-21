@@ -181,15 +181,7 @@ struct host_node_tag {
     int got_hello;
     int closed;
 
-    unsigned enque_count; /* number of items currently enqueued for writing */
-    unsigned peak_enque_count;
-    unsigned peak_enque_count_time;
-
     unsigned num_queue_full; /* how often we hit queue full issue */
-
-    unsigned enque_bytes;
-    unsigned peak_enque_bytes;
-    unsigned peak_enque_bytes_time;
 
     struct in_addr addr;
 
@@ -200,7 +192,6 @@ struct host_node_tag {
     HostInfo udp_info;
 
     void *qstat;
-    struct time_metric *metric_queue_size;
 };
 
 /* Cut down data structure used for storing the sanc list. */
@@ -355,10 +346,7 @@ int write_hello_reply(netinfo_type *, host_node_type *);
 int write_list_evbuffer(host_node_type *, int, const struct iovec *, int, int);
 int net_send_evbuffer(netinfo_type *, const char *, int, void *, int, int, void **, int *, int);
 
-enum net_metric_type {
-    NET_DROPS = 1,
-    MAX_QUEUE_SIZE = 2
-};
+enum net_metric_type { NET_DROPS = 1 };
 int get_hosts_metric(const char *netname, enum net_metric_type type);
 
 int dist_heartbeats(dist_hbeats_type *);
