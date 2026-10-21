@@ -331,6 +331,9 @@ int llog_scdone_rename_wrapper(bdb_state_type *bdb_state,
             memcpy(mashup + oldlen, key, newlen);
         }
     }
+    /* replicants do this in scdone_callback */
+    sc_bump_changed_gen(s->done_type, s->db ? s->db : get_dbtable_by_name(s->tablename));
+
     if (!tran)
         rc = bdb_llog_scdone(bdb_state, s->done_type, mashup, oldlen + newlen,
                              1, bdberr);

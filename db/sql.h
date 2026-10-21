@@ -273,8 +273,9 @@ typedef struct {
     int nchunks;          /* number of chunks. 0 for a non-chunked transaction. */
     int throttle_txn_chunks_msec; /* wait this many milliseconds before starting a new chunk (if 0 then look at tunable) */
 
-    /* cache the versions of dta files to catch schema changes and fastinits */
-    table_version_cache *table_version_cache;
+    /* gbl_schema_gen when the snapshot started; a table changed after this
+     * fails the transaction.  0 if not set. */
+    int64_t schema_gen;
 } dbtran_type;
 typedef dbtran_type trans_t;
 
