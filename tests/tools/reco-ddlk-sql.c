@@ -76,7 +76,15 @@ static void who_master(void)
 static int num_incoherent(void)
 {
     cdb2_hndl_tp *master = hndl(master_node);
-    int rc = cdb2_run_statement(master, "SELECT count(*) FROM comdb2_cluster where coherent_state != 'coherent'");
+    const char *sql = "SELECT count(*) FROM comdb2_cluster where coherent_state != 'coherent'";
+    int rc = cdb2_run_statement(master, sql);
+    /* A busy host can make connecting to the master time out: that isn't
+     * what this test checks, so retry it a few times */
+    for (int tries = 1; rc == CDB2ERR_CONNECT_ERROR && tries < 10; ++tries) {
+        Printf("%s cdb2_run_statement rc:%d %s, retrying\n", __func__, rc, cdb2_errstr(master));
+        sleep(1);
+        rc = cdb2_run_statement(master, sql);
+    }
     if (rc != 0) {
         Printf("%s cdb2_run_statement rc:%d %s\n", __func__, rc, cdb2_errstr(master));
         exit(1);
@@ -211,8 +219,17 @@ static void *reader(void *data)
         Printf("%s: cdb2_run_statement rc:%d %s\n", __func__, rc, cdb2_errstr(db));
         exit(1);
     }
+    /* The looping readers are there to contend with the writer: once it is
+     * done, stop rather than drain the rest of a 1M row join, which takes
+     * minutes on a busy host. Reader 99 is the final full read. */
+    int stop_when_done = (i != 99);
+    int stopped = 0;
     int counter = 0;
     while ((rc = cdb2_next_record(db)) == CDB2_OK) {
+        if (stop_when_done && done) {
+            stopped = 1;
+            break;
+        }
         int do_exit = 0;
         ++counter;
         int col = 0;
@@ -368,12 +385,12 @@ static void *reader(void *data)
             exit(1);
         }
     }
-    if (rc != CDB2_OK_DONE) {
+    if (!stopped && rc != CDB2_OK_DONE) {
         Printf("%s: cdb2_next_record rc:%d %s\n", __func__, rc, cdb2_errstr(db));
         exit(1);
     }
     cdb2_close(db);
-    if (counter) Printf("%s %2d: rows:%d\n", __func__, i, counter);
+    if (counter) Printf("%s %2d: rows:%d%s\n", __func__, i, counter, stopped ? " (stopped, writer done)" : "");
     return NULL;
 }
 static void *readers(void *data)
