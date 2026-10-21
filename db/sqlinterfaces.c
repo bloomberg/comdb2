@@ -1742,10 +1742,6 @@ static int populate_modsnap_state(struct sqlclntstate *clnt)
         goto done;
     }
 
-    /* under the schema lock, so no schema change commits between the start
-     * LSN and this */
-    clnt->dbtran.schema_gen = ATOMIC_LOAD64(gbl_schema_gen);
-
     rc = bdb_register_modsnap(db->handle, clnt->modsnap_start_lsn_file, clnt->modsnap_start_lsn_offset,
                               clnt->last_checkpoint_lsn_file, clnt->last_checkpoint_lsn_offset,
                               &clnt->modsnap_registration);
@@ -2355,6 +2351,7 @@ static int do_commitrollback(struct sqlthdstate *thd, struct sqlclntstate *clnt,
     }
 
     clnt->dbtran.schema_gen = 0;
+    clear_snap_table_checks(&clnt->dbtran);
 
     return rc;
 }

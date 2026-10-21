@@ -170,6 +170,9 @@ int bdb_put_cursortran(bdb_state_type *bdb_state, cursor_tran_t *curtran,
  *
  */
 uint32_t bdb_get_lid_from_cursortran(cursor_tran_t *curtran);
+int bdb_llmeta_sc_committed_since_snapshot(cursor_tran_t *curtran, const char *tablename, uint32_t start_file,
+                                           uint32_t start_offset, uint32_t ckp_file, uint32_t ckp_offset,
+                                           void **start_keys, int *nstart, int *changed, int *bdberr);
 
 /**
  * Parse a string containing an enable/disable feature and

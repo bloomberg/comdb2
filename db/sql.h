@@ -273,11 +273,18 @@ typedef struct {
     int nchunks;          /* number of chunks. 0 for a non-chunked transaction. */
     int throttle_txn_chunks_msec; /* wait this many milliseconds before starting a new chunk (if 0 then look at tunable) */
 
-    /* gbl_schema_gen when the snapshot started; a table changed after this
-     * fails the transaction.  0 if not set. */
+    /* serializable: gbl_schema_gen when the snapshot started; a table changed
+     * after this fails the transaction.  0 if not set. */
     int64_t schema_gen;
+
+    /* modsnap: tables found unchanged since the start LSN; see
+     * check_snapshot_table() */
+    struct snap_table_check *snap_checks;
+    int n_snap_checks;
 } dbtran_type;
 typedef dbtran_type trans_t;
+
+void clear_snap_table_checks(dbtran_type *dbtran);
 
 /* analyze sampled (previously misnamed compressed) idx */
 typedef struct {

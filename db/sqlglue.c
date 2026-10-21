@@ -180,6 +180,71 @@ enum { AUTHENTICATE_READ = 1, AUTHENTICATE_WRITE = 2 };
 static int chunk_transaction(BtCursor *pCur, struct sqlclntstate *clnt,
                              struct sql_thread *thd);
 
+struct snap_table_check {
+    char *tablename;
+    int64_t checked_gen; /* db->changed_gen when last found unchanged */
+    void *start_keys;    /* sc_history rows at the start LSN */
+    int nstart;          /* -1 if not read yet */
+};
+
+void clear_snap_table_checks(dbtran_type *dbtran)
+{
+    for (int i = 0; i < dbtran->n_snap_checks; i++) {
+        free(dbtran->snap_checks[i].tablename);
+        free(dbtran->snap_checks[i].start_keys);
+    }
+    free(dbtran->snap_checks);
+    dbtran->snap_checks = NULL;
+    dbtran->n_snap_checks = 0;
+}
+
+/* Set *changed if a schema change of the table committed after the modsnap
+ * start LSN.  The full check reads sc_history in llmeta; after that, only a
+ * newer local schema change (db->changed_gen) needs another look.  Call with
+ * the table read lock held. */
+static int check_snapshot_table(struct sqlclntstate *clnt, struct dbtable *db, int *changed)
+{
+    struct snap_table_check *chk = NULL;
+    *changed = 0;
+
+    for (int i = 0; i < clnt->dbtran.n_snap_checks; i++) {
+        if (strcasecmp(clnt->dbtran.snap_checks[i].tablename, db->tablename) == 0) {
+            chk = &clnt->dbtran.snap_checks[i];
+            break;
+        }
+    }
+    const int64_t gen = ATOMIC_LOAD64(db->changed_gen);
+    if (chk && gen <= chk->checked_gen)
+        return 0;
+    if (chk == NULL) {
+        chk = realloc(clnt->dbtran.snap_checks, (clnt->dbtran.n_snap_checks + 1) * sizeof(*chk));
+        if (chk == NULL)
+            return SQLITE_NOMEM;
+        clnt->dbtran.snap_checks = chk;
+        chk = &chk[clnt->dbtran.n_snap_checks++];
+        chk->tablename = strdup(db->tablename);
+        chk->checked_gen = -1;
+        chk->start_keys = NULL;
+        chk->nstart = -1;
+    }
+
+    int bdberr = 0;
+    if (bdb_llmeta_sc_committed_since_snapshot(clnt->dbtran.cursor_tran, db->tablename, clnt->modsnap_start_lsn_file,
+                                               clnt->modsnap_start_lsn_offset, clnt->last_checkpoint_lsn_file,
+                                               clnt->last_checkpoint_lsn_offset, &chk->start_keys, &chk->nstart,
+                                               changed, &bdberr)) {
+        logmsg(LOGMSG_ERROR, "%s: table %s: failed to read schema change history, bdberr %d\n", __func__, db->tablename,
+               bdberr);
+        return (bdberr == BDBERR_DEADLOCK) ? SQLITE_DEADLOCK : SQLITE_INTERNAL;
+    }
+    if (*changed)
+        logmsg(LOGMSG_ERROR, "table \"%s\" changed after the snapshot start LSN %u:%u\n", db->tablename,
+               clnt->modsnap_start_lsn_file, clnt->modsnap_start_lsn_offset);
+    else
+        chk->checked_gen = gen;
+    return 0;
+}
+
 static void initialize_curtran_for_modsnap(cursor_tran_t * const curtran, const struct sqlclntstate * const clnt)
 {
     curtran->modsnap_start_lsn.file = clnt->modsnap_start_lsn_file;
@@ -5938,6 +6003,7 @@ int sqlite3BtreeCommit(Btree *pBt)
     }
 
     clnt->dbtran.schema_gen = 0;
+    clear_snap_table_checks(&clnt->dbtran);
 
     reset_clnt_flags(clnt);
 
@@ -6057,6 +6123,7 @@ int sqlite3BtreeRollback(Btree *pBt, int dummy, int writeOnlyDummy)
     }
 
     clnt->dbtran.schema_gen = 0;
+    clear_snap_table_checks(&clnt->dbtran);
 
     reset_clnt_flags(clnt);
 
@@ -8667,20 +8734,24 @@ static int sqlite3LockStmtTables_int(sqlite3_stmt *pStmt, int after_recovery)
 
         /* in snapshot and stronger isolations, fail if the table changed
          * since the transaction started */
-        if (clnt->dbtran.schema_gen &&
-            (clnt->dbtran.mode == TRANLEVEL_SERIAL || clnt->dbtran.mode == TRANLEVEL_SNAPISOL)) {
-            if (db->changed_gen > clnt->dbtran.schema_gen) {
+        int changed = 0;
+        if (clnt->dbtran.mode == TRANLEVEL_SERIAL && clnt->dbtran.schema_gen) {
+            changed = db->changed_gen > clnt->dbtran.schema_gen;
+            if (changed)
                 logmsg(LOGMSG_ERROR, "table \"%s\" changed, gen %" PRId64 " > %" PRId64 "\n", db->tablename,
                        db->changed_gen, clnt->dbtran.schema_gen);
-                sqlite3_mutex_enter(sqlite3_db_mutex(p->db));
-                sqlite3VdbeError(p, "table \"%s\" was schema changed",
-                                 db->tablename);
-                sqlite3VdbeTransferError(p);
-                sqlite3MakeSureDbHasErr(p->db, SQLITE_OK);
-                sqlite3_mutex_leave(sqlite3_db_mutex(p->db));
+        } else if (clnt->dbtran.mode == TRANLEVEL_SNAPISOL && clnt->modsnap_in_progress) {
+            if ((rc = check_snapshot_table(clnt, db, &changed)) != 0)
+                return rc;
+        }
+        if (changed) {
+            sqlite3_mutex_enter(sqlite3_db_mutex(p->db));
+            sqlite3VdbeError(p, "table \"%s\" was schema changed", db->tablename);
+            sqlite3VdbeTransferError(p);
+            sqlite3MakeSureDbHasErr(p->db, SQLITE_OK);
+            sqlite3_mutex_leave(sqlite3_db_mutex(p->db));
 
-                return SQLITE_SCHEMA;
-            }
+            return SQLITE_SCHEMA;
         }
 
         if (after_recovery) {

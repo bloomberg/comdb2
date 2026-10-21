@@ -4681,6 +4681,129 @@ int bdb_llmeta_get_sc_history(tran_type *t, sc_hist_row **hist_out, int *num,
     return 0;
 }
 
+/* Collect the keys of the committed sc_history rows of a table.  With
+ * start_lsn set, read llmeta as of that LSN. */
+static int sc_hist_committed_keys(cursor_tran_t *curtran, const char *tablename, const DB_LSN *start_lsn,
+                                  const DB_LSN *ckp_lsn, struct llmeta_hist_key **keys_out, int *nkeys_out, int *bdberr)
+{
+    DB *db = llmeta_bdb_state->dbp_data[0][0];
+    struct llmeta_hist_key *keys = NULL;
+    int nkeys = 0, rc = 0;
+    union {
+        struct llmeta_hist_key key;
+        uint8_t buf[LLMETA_IXLEN];
+    } u = {{0}};
+    const size_t prefixlen = offsetof(struct llmeta_hist_key, pad);
+
+    *keys_out = NULL;
+    *nkeys_out = 0;
+    *bdberr = BDBERR_NOERROR;
+
+    DBC *dbc = get_cursor_for_cursortran_flags(curtran, db, start_lsn ? DB_CUR_SNAPSHOT : 0, bdberr);
+    if (dbc == NULL)
+        return -1;
+    if (start_lsn) {
+        dbc->modsnap_start_lsn = *start_lsn;
+        dbc->last_checkpoint_lsn = *ckp_lsn;
+    }
+
+    u.key.file_type = htonl(LLMETA_SCHEMACHANGE_HISTORY);
+    strncpy0(u.key.tablename, tablename, sizeof(u.key.tablename));
+
+    uint8_t prefix[sizeof(struct llmeta_hist_key)];
+    memcpy(prefix, u.buf, prefixlen);
+
+    DBT dbt_key = {0}, dbt_data = {0};
+    dbt_key.data = u.buf;
+    dbt_key.size = prefixlen;
+    dbt_key.ulen = sizeof(u.buf);
+    dbt_key.flags = DB_DBT_USERMEM;
+    dbt_data.flags = DB_DBT_REALLOC;
+
+    for (rc = dbc->c_get(dbc, &dbt_key, &dbt_data, DB_SET_RANGE); rc == 0;
+         rc = dbc->c_get(dbc, &dbt_key, &dbt_data, DB_NEXT)) {
+        if (dbt_key.size < sizeof(struct llmeta_hist_key) || memcmp(u.buf, prefix, prefixlen) != 0)
+            break;
+        sc_hist_row row = {0};
+        if (dbt_data.size < sizeof(llmeta_sc_hist_data) ||
+            llmeta_sc_hist_data_get(&row, dbt_data.data, (uint8_t *)dbt_data.data + dbt_data.size) == NULL)
+            continue;
+        if (row.status != BDB_SC_COMMITTED)
+            continue;
+        struct llmeta_hist_key *k = realloc(keys, (nkeys + 1) * sizeof(*keys));
+        if (k == NULL) {
+            rc = ENOMEM;
+            break;
+        }
+        keys = k;
+        memcpy(&keys[nkeys++], u.buf, sizeof(struct llmeta_hist_key));
+    }
+    if (rc == DB_NOTFOUND || rc == 0)
+        rc = 0;
+    else if (rc == DB_LOCK_DEADLOCK)
+        *bdberr = BDBERR_DEADLOCK;
+    else
+        *bdberr = BDBERR_MISC;
+
+    free(dbt_data.data);
+    int crc = dbc->c_close(dbc);
+    if (rc == 0 && crc) {
+        rc = crc;
+        *bdberr = (crc == DB_LOCK_DEADLOCK) ? BDBERR_DEADLOCK : BDBERR_MISC;
+    }
+    if (rc) {
+        free(keys);
+        return -1;
+    }
+    *keys_out = keys;
+    *nkeys_out = nkeys;
+    return 0;
+}
+
+/* Set *changed if a schema change of the table committed after the modsnap
+ * start LSN: a committed sc_history row exists now that was not committed at
+ * the start LSN.  ckp is the checkpoint LSN before the start LSN.  The start
+ * LSN rows are read once and kept in *start_keys / *nstart (-1 if not read
+ * yet); free them with free(). */
+int bdb_llmeta_sc_committed_since_snapshot(cursor_tran_t *curtran, const char *tablename, uint32_t start_file,
+                                           uint32_t start_offset, uint32_t ckp_file, uint32_t ckp_offset,
+                                           void **start_keys, int *nstart, int *changed, int *bdberr)
+{
+    const DB_LSN start_lsn = {.file = start_file, .offset = start_offset};
+    const DB_LSN ckp_lsn = {.file = ckp_file, .offset = ckp_offset};
+    struct llmeta_hist_key *now = NULL;
+    int nnow = 0;
+
+    *changed = 0;
+    if (sc_hist_committed_keys(curtran, tablename, NULL, NULL, &now, &nnow, bdberr))
+        return -1;
+    if (nnow == 0)
+        goto done;
+
+    if (*nstart < 0) {
+        struct llmeta_hist_key *start = NULL;
+        if (sc_hist_committed_keys(curtran, tablename, &start_lsn, &ckp_lsn, &start, nstart, bdberr)) {
+            *nstart = -1;
+            free(now);
+            return -1;
+        }
+        *start_keys = start;
+    }
+
+    const struct llmeta_hist_key *start = *start_keys;
+    for (int i = 0; i < nnow && !*changed; i++) {
+        int found = 0;
+        for (int j = 0; j < *nstart && !found; j++)
+            found = (memcmp(&now[i], &start[j], sizeof(now[i])) == 0);
+        if (!found)
+            *changed = 1;
+    }
+
+done:
+    free(now);
+    return 0;
+}
+
 enum { LLMETA_SC_STATUS_DATA_LEN = 8 + 4 + 8 + LLMETA_SCERR_LEN + 4 };
 
 static uint8_t *

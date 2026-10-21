@@ -382,6 +382,7 @@ static int do_finalize(ddl_t func, struct ireq *iq,
         return rc;
     }
 
+    /* snapshot transactions find schema changes through this history row */
     if (bdb_set_schema_change_status(tran, s->tablename, iq->sc_seed, sc_nrecs,
                                      NULL, 0, BDB_SC_COMMITTED, NULL,
                                      &bdberr) ||
@@ -389,6 +390,10 @@ static int do_finalize(ddl_t func, struct ireq *iq,
         logmsg(LOGMSG_ERROR,
                "%s: failed to set bdb schema change status, bdberr %d\n",
                __func__, bdberr);
+        rc = -1;
+        if (input_tran == NULL)
+            goto abort;
+        return rc;
     }
 
     if (input_tran == NULL) {

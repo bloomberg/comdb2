@@ -616,6 +616,7 @@ int osql_clean_sqlclntstate(struct sqlclntstate *clnt)
     }
 
     clnt->dbtran.schema_gen = 0;
+    clear_snap_table_checks(&clnt->dbtran);
 
     if (clnt->dbtran.shadow_tran) {
         /* for some reason the clnt contains an unfinished
