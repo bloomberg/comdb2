@@ -67,6 +67,8 @@ struct convert_record_data {
     blob_buffer_t freeblb[MAXBLOBS];
     int blobix[MAXBLOBS], toblobs2fromblobs[MAXBLOBS];
     unsigned n_genids_changed;
+    /* this thread's effects, unless iq has its own snap_info */
+    struct query_effects effects;
     long long nrecs, prev_nrecs, nrecskip;
     int num_records_per_trans;
     int num_retry_errors;

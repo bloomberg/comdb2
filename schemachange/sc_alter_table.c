@@ -726,8 +726,7 @@ errout:
     if (rc && rc != SC_MASTER_DOWNGRADE) {
         /* For live schema change, MUST do this before trying to remove
          * the .new tables or you get crashes */
-        if (gbl_sc_abort || db->sc_abort || iq->sc_should_abort ||
-            rc == SC_ABORTED) {
+        if (gbl_sc_abort || db->sc_abort || iq->sc_should_abort || sc_is_aborting(s) || rc == SC_ABORTED) {
             sc_errf(s, "convert_all_records aborted\n");
         } else {
             sc_errf(s, "convert_all_records failed\n");
@@ -892,8 +891,7 @@ convert_records:
     if (rc && rc != SC_MASTER_DOWNGRADE) {
         /* For live schema change, MUST do this before trying to remove
          * the .new tables or you get crashes */
-        if (gbl_sc_abort || db->sc_abort || iq->sc_should_abort ||
-            rc == SC_ABORTED) {
+        if (gbl_sc_abort || db->sc_abort || iq->sc_should_abort || sc_is_aborting(s) || rc == SC_ABORTED) {
             sc_errf(s, "convert_all_records aborted\n");
         } else {
             sc_errf(s, "convert_all_records failed\n");
@@ -982,10 +980,12 @@ int finalize_alter_table(struct ireq *iq, struct schema_change_type *s,
     if (db->sc_live_logical)
         bdb_clear_logical_live_sc(db->handle, 0 /* already locked */);
 
-    if (gbl_sc_abort || db->sc_abort || iq->sc_should_abort) {
+    if (gbl_sc_abort || db->sc_abort || iq->sc_should_abort || sc_is_aborting(s)) {
+        /* logical redo runs past convert_all_records, pick up its errors */
+        sc_tran_ctx_publish(s->ctx, iq);
         sc_errf(s, "Aborting schema change %s\n", s->tablename);
-        sc_errf(s, "gbl_sc_abort=%d db->sc_abort=%d iq->sc_should_abort=%d\n",
-                gbl_sc_abort, db->sc_abort, iq->sc_should_abort);
+        sc_errf(s, "gbl_sc_abort=%d db->sc_abort=%d iq->sc_should_abort=%d sc_is_aborting=%d\n", gbl_sc_abort,
+                db->sc_abort, iq->sc_should_abort, sc_is_aborting(s));
         BACKOUT;
     }
 
@@ -1292,7 +1292,7 @@ int do_upgrade_table_int(struct schema_change_type *s)
         rc = SC_MASTER_DOWNGRADE;
     else if (rc) {
         rc = SC_CONVERSION_FAILED;
-        if (gbl_sc_abort || db->sc_abort || (s->iq && s->iq->sc_should_abort))
+        if (gbl_sc_abort || db->sc_abort || sc_is_aborting(s))
             sc_errf(s, "upgrade_all_records aborted\n");
         else
             sc_errf(s, "upgrade_all_records failed\n");
