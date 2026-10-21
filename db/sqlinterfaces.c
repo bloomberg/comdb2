@@ -186,6 +186,7 @@ int gbl_eventlog_fullhintsql = 1;
 
 comdb2_query_preparer_t *query_preparer_plugin;
 int gbl_sql_recover_time = 10;
+extern int gbl_pagelock_release_interval_ms;
 int gbl_debug_recover_deadlock_evbuffer = 0;
 int gbl_sql_row_delay_msecs = 0; /* testing delay per sql row, before sending the row */
 
@@ -371,7 +372,7 @@ int write_response(struct sqlclntstate *clnt, int R, void *D, int I)
         struct timeval now, diff;
         gettimeofday(&now, NULL);
         timersub(&now, &clnt->last_sql_recover_time, &diff);
-        int64_t ms = diff.tv_sec * 1000 - diff.tv_usec / 1000;
+        int64_t ms = diff.tv_sec * 1000 + diff.tv_usec / 1000;
         if (ms >= gbl_sql_recover_time) {
             clnt->last_sql_recover_time = now;
             if (recover_deadlock_evbuffer(clnt) != 0) {
@@ -5784,8 +5785,17 @@ int recover_deadlock_evbuffer(struct sqlclntstate *clnt)
     if ((waiters = bdb_curtran_has_waiters(thedb->bdb_env, clnt->dbtran.cursor_tran)) == 0
         && (lock_desired = bdb_lock_desired(thedb->bdb_env)) == 0
     ){
+        clnt->pagelock_release_last_ms = 0;
         return 0;
     }
+    /* Once we released, give the reader a little time to make progress
+     * before releasing again for a waiter that is still there */
+    int now = comdb2_time_epochms();
+    if (waiters && clnt->pagelock_release_last_ms &&
+        (now - clnt->pagelock_release_last_ms) < gbl_pagelock_release_interval_ms) {
+        return 0;
+    }
+    clnt->pagelock_release_last_ms = now;
     int flags = 0;
     if (gbl_fail_client_write_lock && !(rand() % gbl_fail_client_write_lock)) {
         flags = RECOVER_DEADLOCK_FORCE_FAIL;
@@ -5796,8 +5806,16 @@ int recover_deadlock_evbuffer(struct sqlclntstate *clnt)
         if (waiters) logmsg(LOGMSG_USER, "%s waiters:%d clnt:%s count:%d delay:%d\n", __func__, waiters, clnt->sql, clnt->deadlock_recovered, ms);
         else logmsg(LOGMSG_USER, "%s lock-desired:%d clnt:%s count:%d delay:%d\n", __func__, lock_desired, clnt->sql, clnt->deadlock_recovered, ms);
     } else {
-        if (waiters) logmsg(LOGMSG_USER, "%s waiters:%d delay:%d\n", __func__, waiters, ms);
-        else logmsg(LOGMSG_USER, "%s lock-desired:%d delay:%d\n", __func__, lock_desired, ms);
+        /* at most once a second: a reader can release every few ms */
+        static int lastpr = 0;
+        int nowsec = comdb2_time_epoch();
+        if (nowsec - lastpr > 0) {
+            if (waiters)
+                logmsg(LOGMSG_USER, "%s waiters:%d delay:%d\n", __func__, waiters, ms);
+            else
+                logmsg(LOGMSG_USER, "%s lock-desired:%d delay:%d\n", __func__, lock_desired, ms);
+            lastpr = nowsec;
+        }
     }
     return recover_deadlock_flags(thedb->bdb_env, clnt, NULL, ms, __func__, __LINE__, flags);
 }
