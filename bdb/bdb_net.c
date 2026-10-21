@@ -104,6 +104,11 @@ void set_udp_sender(udp_sender *s)
 
 static int udp_send(bdb_state_type *bdb_state, ack_info *info, const char *to)
 {
+    /* testing: drop this percentage of udp packets */
+    int fails = bdb_state->attr->rand_udp_fails;
+    if (fails > 0 && rand() % 100 < fails) {
+        return 0;
+    }
     return udp_send_impl(bdb_state, info, to);
 }
 
