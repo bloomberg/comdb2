@@ -3,6 +3,9 @@ bash -n "$0" || exit 1
 
 source ${TESTSROOTDIR}/tools/runstepper.sh
 
+${TESTSROOTDIR}/tools/compare_results.sh -s -d $1
+[ $? -eq 0 ] || exit 1
+
 # cdb2sql strips a statement's trailing semicolon, which SET MULTILINE ON
 # requires, so these run through stepper instead.
 for script in *.stepper; do
