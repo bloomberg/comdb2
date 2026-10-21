@@ -352,19 +352,6 @@ net_ack_message_type_get(net_ack_message_type *p_net_ack_message_type,
     return p_buf;
 }
 
-void update_host_net_queue_stats(host_node_type *host_node_ptr, size_t count, size_t bytes) {
-    host_node_ptr->enque_count += count;
-    if (host_node_ptr->enque_count > host_node_ptr->peak_enque_count) {
-        host_node_ptr->peak_enque_count = host_node_ptr->enque_count;
-        host_node_ptr->peak_enque_count_time = comdb2_time_epoch();
-    }
-    host_node_ptr->enque_bytes += bytes;
-    if (host_node_ptr->enque_bytes > host_node_ptr->peak_enque_bytes) {
-        host_node_ptr->peak_enque_bytes = host_node_ptr->enque_bytes;
-        host_node_ptr->peak_enque_bytes_time = comdb2_time_epoch();
-    }
-}
-
 /* Enque a net message consisting of a header and some optional data.
  * The caller should hold the enque lock.
  * Note that dataptr1==NULL => datasz1==0 and dataptr2==NULL => datasz2==0
@@ -1512,10 +1499,6 @@ host_node_type *add_to_netinfo_ll(netinfo_type *netinfo_ptr, const char hostname
     }
 
     netinfo_ptr->head = ptr;
-
-    char *metric_name = comdb2_asprintf("queue_size_%s", hostname);
-    ptr->metric_queue_size = time_metric_new(metric_name);
-    free(metric_name);
 
     return ptr;
 }
