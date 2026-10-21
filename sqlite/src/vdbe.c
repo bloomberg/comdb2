@@ -7865,7 +7865,11 @@ case OP_IdxGE:  {       /* jump, ncycle */
     assert( pC->eCurType==CURTYPE_BTREE );
     pCur = pC->uc.pCursor;
     assert( sqlite3BtreeCursorIsValid(pCur) );
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+    nCellKey = sqlite3BtreeIntegerKey(pCur);
+#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     nCellKey = sqlite3BtreePayloadSize(pCur);
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     /* nCellKey will always be between 0 and 0xffffffff because of the way
     ** that btreeParseCellPtr() and sqlite3GetVarint32() are implemented */
     if( nCellKey<=0 || nCellKey>0x7fffffff ){
