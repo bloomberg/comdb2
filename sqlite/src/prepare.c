@@ -145,7 +145,12 @@ int sqlite3InitCallback(void *pInit, int argc, char **argv, char **NotUsed){
 
     assert( db->init.busy );
     db->init.iDb = iDb;
-    if( sqlite3GetUInt32(argv[3], &db->init.newTnum)==0
+    if( (sqlite3GetUInt32(argv[3], &db->init.newTnum)==0
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+         /* db/sqlmaster.c gives every view a rootpage of -1. */
+         && strcmp(argv[3], "-1")!=0
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+        )
      || (db->init.newTnum>pData->mxPage && pData->mxPage>0)
     ){
       if( sqlite3Config.bExtraSchemaChecks ){
