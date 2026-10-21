@@ -2772,6 +2772,8 @@ static DB_ENV *dbenv_open(bdb_state_type *bdb_state)
     net_register_handler(bdb_state->repinfo->netinfo, USER_TYPE_TEST, "test",
                          berkdb_receive_test);
 
+    net_register_handler(bdb_state->repinfo->netinfo, USER_TYPE_PREFAULT_UFID, "prefault_ufid", receive_prefault_ufid);
+
     net_register_handler(bdb_state->repinfo->netinfo, USER_TYPE_ADD, "add",
                          berkdb_receive_msg);
 

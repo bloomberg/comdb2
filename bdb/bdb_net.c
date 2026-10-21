@@ -372,29 +372,39 @@ int udppfault_thdpool_init(void)
     return 0;
 }
 
-/* USER_TYPE_UDP_PREFAULT_UFID payload: the file's UFID, then the page number */
-enum { UDP_PREFAULT_UFID_LEN = DB_FILE_ID_LEN + sizeof(uint32_t) };
+int enque_udppfault_ufid(bdb_state_type *bdb_state, const uint8_t *ufid, unsigned int pgno);
 
+/* USER_TYPE_PREFAULT_UFID payload: the file's UFID, then the page number */
+enum { PREFAULT_UFID_LEN = DB_FILE_ID_LEN + sizeof(uint32_t) };
+
+/* Hints go on the replication connection (encrypted when ssl_replicant_mode is
+ * on). They are lossy: without NET_SEND_NODROP a full connection queue drops
+ * the hint instead of blocking the committing thread, and without
+ * NET_SEND_NODELAY a hint waits for the next flush of the log stream. */
 static int send_prefault(bdb_state_type *bdb_state, const char *tohost, const unsigned char *ufid, unsigned int pgno)
 {
-    ack_info *info;
+    uint8_t buf[PREFAULT_UFID_LEN];
     uint8_t *p_buf;
-    uint8_t *p_buf_end;
 
-    new_ack_info(info, UDP_PREFAULT_UFID_LEN, bdb_state->repinfo->myhost);
-    p_buf = ack_info_data(info);
-    p_buf_end = p_buf + UDP_PREFAULT_UFID_LEN;
-    p_buf = buf_no_net_put(ufid, DB_FILE_ID_LEN, p_buf, p_buf_end);
-    buf_put(&pgno, sizeof(pgno), p_buf, p_buf_end);
+    p_buf = buf_no_net_put(ufid, DB_FILE_ID_LEN, buf, buf + sizeof(buf));
+    buf_put(&pgno, sizeof(pgno), p_buf, buf + sizeof(buf));
 
-    info->from = 0;
-    info->to = 0;
-    info->type = USER_TYPE_UDP_PREFAULT_UFID;
-    info->len = UDP_PREFAULT_UFID_LEN;
+    return net_send(bdb_state->repinfo->netinfo, tohost, USER_TYPE_PREFAULT_UFID, buf, sizeof(buf), 0);
+}
 
-    udp_send(bdb_state, info, tohost);
+void receive_prefault_ufid(void *ack_handle, void *usr_ptr, char *from_host, struct interned_string *from_interned,
+                           int usertype, void *dta, int dtalen, uint8_t is_tcp)
+{
+    bdb_state_type *bdb_state = usr_ptr;
+    uint32_t pgno;
 
-    return 0;
+    if (bdb_state->parent)
+        bdb_state = bdb_state->parent;
+    if (dtalen != PREFAULT_UFID_LEN)
+        return;
+    buf_get(&pgno, sizeof(pgno), (uint8_t *)dta + DB_FILE_ID_LEN, (uint8_t *)dta + dtalen);
+    /* runs on the network thread: only enqueue (lossy, never blocks) */
+    enque_udppfault_ufid(bdb_state, dta, pgno);
 }
 
 void udp_prefault_all(bdb_state_type *bdb_state, const unsigned char *ufid, unsigned int pgno)
@@ -445,7 +455,6 @@ static void print_ping_rtt(ack_info *info)
 
 int enque_udppfault_filepage(bdb_state_type *bdb_state, unsigned int fileid,
                              unsigned int pgno);
-int enque_udppfault_ufid(bdb_state_type *bdb_state, const uint8_t *ufid, unsigned int pgno);
 
 const uint8_t *rep_udp_filepage_type_get(filepage_type *p_filepage_type,
                                          const uint8_t *p_buf,
@@ -580,17 +589,6 @@ static void udp_reader(int fd, short what, void *arg)
         debug_trace("sent ack %d -> %s", info->to, from);
 #endif
         break;
-
-    case USER_TYPE_UDP_PREFAULT_UFID: {
-        uint32_t pgno;
-        if (info->len != UDP_PREFAULT_UFID_LEN)
-            break;
-        data = ack_info_data(info);
-        p_buf_end = (uint8_t *)data + info->len;
-        buf_get(&pgno, sizeof(pgno), (uint8_t *)data + DB_FILE_ID_LEN, p_buf_end);
-        enque_udppfault_ufid(bdb_state, data, pgno);
-        break;
-    }
 
     case USER_TYPE_UDP_ACK:
         debug_trace("received ack from %s %s", from,
