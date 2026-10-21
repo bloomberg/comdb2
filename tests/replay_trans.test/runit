@@ -312,6 +312,39 @@ function run_healthy_contention() {
     echo "healthy contention (backoff ${backoff}ms): passed"
 }
 
+# A txn waiting on its timer between retries is still busy: comdb2_connections
+# shows it as waiting_to_retry, not idle.
+function run_waiting_retry_state() {
+    echo "Test: state of a waiting retry"
+    set_retry_tunables 100000 0 2000
+
+    local node=$(cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "SELECT comdb2_host()")
+    # invalid_genid is on, so the txn keeps retrying until the re-queue fails.
+    cdb2sql ${CDB2_OPTIONS} $dbnm --host $node - <<EOF > state.out 2>&1 &
+BEGIN
+UPDATE t1 SET j = NOW() WHERE i = 1;
+COMMIT
+EOF
+    local txpid=$!
+    sleep 1
+    local waiting=0 i st
+    for i in $(seq 1 10); do
+        st=$(cdb2sql --tabs ${CDB2_OPTIONS} $dbnm --host $node "SELECT state FROM comdb2_connections WHERE pid=$txpid")
+        echo "state: $st"
+        [ "$st" = "waiting_to_retry" ] && waiting=$((waiting + 1))
+        sleep 0.2
+    done
+    cdb2sql ${CDB2_OPTIONS} $dbnm --host $node "PUT TUNABLE 'debug.fail_verify_requeue' 1"
+    wait_for_answer $txpid "waiting retry state"
+    cdb2sql ${CDB2_OPTIONS} $dbnm --host $node "PUT TUNABLE 'debug.fail_verify_requeue' 0"
+    set_retry_tunables 499 3 50
+
+    # Each replay takes a few ms between waits of up to 2s, so nearly every
+    # sample should catch it waiting.
+    (( waiting >= 8 )) || failexit "waiting retry shown as waiting_to_retry only $waiting of 10 times"
+    echo "state of a waiting retry: passed"
+}
+
 # When a ruleset rejects the re-queue, the rejection has already answered the
 # client. A second error would be read as the answer to the client's next
 # statement.
@@ -366,6 +399,7 @@ run_failed_requeue "on immediate re-queue" 100000 0
 run_failed_requeue "when a parked retry wakes up" 0 200
 # The first retry, sent straight from the failed COMMIT.
 run_failed_requeue "on the first retry" 100000 0 first
+run_waiting_retry_state
 run_rejected_requeue "on immediate re-queue" 100000 0
 run_rejected_requeue "when a parked retry wakes up" 0 200
 verify
