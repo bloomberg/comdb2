@@ -8766,9 +8766,11 @@ sqlite3BtreeCursor_remote(Btree *pBt,      /* The btree */
 
     /* set a transaction id if none is set yet */
     if ((iTable >= RTPAGE_START) && !fdb_is_sqlite_stat(clnt, cur->rootpage)) {
-        /* I would like to open here a transaction if this is
-           an actual update */
-        if (!clnt->isselect /* TODO: maybe only create one if we write to remote && fdb_write_is_remote()*/) {
+        /* create a remote transaction only if we write to this fdb; read
+         * cursors join an existing transaction for this fdb, if any
+         * (i.e. previous write to this fdb in the same client transaction)
+         */
+        if (wrFlag) {
             trans = fdb_trans_begin_or_join(clnt, fdb, 0, NULL);
             if (!trans) {
                 logmsg(LOGMSG_ERROR, "%s: failed to create fdb_tran\n",

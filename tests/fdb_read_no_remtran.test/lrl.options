@@ -1,0 +1,5 @@
+# force legacy (non cdb2api) remote transactions, so any remote transaction
+# created by the source db is visible as a remtran request on the remote db
+foreign_db_push_remote 0
+foreign_db_push_redirect 0
+foreign_db_resolve_local 1
