@@ -331,10 +331,19 @@ static void daysFunc(sqlite3_context *context, int argc, sqlite3_value **argv)
   }
 }
 
+/* Zero a function's output Mem but keep its owning db: the VDBE asserts
+** pOut->db is set after every function call. */
+static void resetOutputMem(Mem *pOut)
+{
+   sqlite3 *db = pOut->db;
+   bzero(pOut, sizeof(Mem));
+   pOut->db = db;
+}
+
 static void nextSequence(sqlite3_context *context, int argc, sqlite3_value **argv)
 {
    assert(context->pVdbe);
-   bzero(context->pOut, sizeof(Mem));
+   resetOutputMem(context->pOut);
    sqlite3VdbeMemSetMasterResolve(context->pOut);
 }
 
@@ -349,7 +358,7 @@ static void currentTS(sqlite3_context *context, int argc, sqlite3_value **argv)
        sqlite3DbFree(context->pOut->db, context->pOut->zMalloc);
        context->pOut->szMalloc = 0;
    }
-   bzero(context->pOut, sizeof(Mem));
+   resetOutputMem(context->pOut);
    sqlite3VdbeMemSetDatetime(context->pOut, &dt, NULL);
 }
 
