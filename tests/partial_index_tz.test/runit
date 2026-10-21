@@ -1,0 +1,111 @@
+#!/usr/bin/env bash
+bash -n "$0" || exit 1
+
+# A partial index predicate with a datetime literal that carries no timezone
+# must select the same rows whatever the session timezone is.  A row written
+# from one timezone and expired from another used to leave an orphaned entry
+# in the partial index.
+
+dbnm=$1
+
+INF="cast('9999-12-31T000000.000 UTC' as datetime)"
+TZLESS="{ WHERE (d = '9999-12-30T19:00:00') }"
+
+failexit() {
+    echo "FAIL: $1"
+    exit 1
+}
+
+# sql <tz> <statement...>: run statements in one session in timezone <tz>
+sql() {
+    local tz=$1
+    shift
+    { for s in "$@"; do echo "$s"; done; } |
+        COMDB2TZ=$tz cdb2sql ${CDB2_OPTIONS} -s $dbnm default - 2>&1
+}
+
+# put_tunable <name> <value>: on every node, since any of them may run the
+# writes
+put_tunable() {
+    local nodes=${CLUSTER:-}
+    if [[ -z "$nodes" ]]; then
+        cdb2sql ${CDB2_OPTIONS} $dbnm default "put tunable $1 $2" >/dev/null ||
+            failexit "put tunable $1"
+        return
+    fi
+    for node in $nodes; do
+        cdb2sql ${CDB2_OPTIONS} $dbnm default --host $node "put tunable $1 $2" >/dev/null ||
+            failexit "put tunable $1 on $node"
+    done
+}
+
+verify_ok() {
+    local out
+    out=$(cdb2sql ${CDB2_OPTIONS} $dbnm default "exec procedure sys.cmd.verify('t')" 2>&1)
+    echo "$out" | grep -q "Verify succeeded"
+}
+
+# ids of the active rows, through the partial index
+active() {
+    sql America/New_York "select id from t where d = '9999-12-30T19:00:00' order by id" |
+        tr -dc '0-9\n' | tr '\n' ' '
+}
+
+# The active row has d at a sentinel, which the partial index selects with a
+# literal meant as New York time.
+cdb2sql ${CDB2_OPTIONS} $dbnm default "create table t { schema { int id datetime d }
+keys { \"pk\" = id dup \"active\" = id $TZLESS } }" >/dev/null || failexit "create table"
+
+# run_case <insert tz> <writer tz> <how>: row 1 from one session, then from
+# another the writer adds row 2 and expires row 1, expires row 2 through the
+# partial index and deletes row 1.  <how> is "env" (COMDB2TZ) or "set" (set
+# timezone in the session).
+run_case() {
+    local itz=$1 wtz=$2 how=$3
+    local pre=()
+    local tag="insert $itz, writer $wtz ($how)"
+    if [[ "$how" == "set" ]]; then
+        pre=("set timezone $wtz")
+        wtz=America/New_York
+    fi
+
+    cdb2sql ${CDB2_OPTIONS} $dbnm default "truncate t" >/dev/null || failexit "truncate"
+    sql $itz "insert into t values(1, $INF)" | grep -q "rows inserted=1" || failexit "$tag: insert"
+
+    local out
+    out=$(sql $wtz "${pre[@]}" "set transaction read committed" "begin" \
+        "insert into t values(2, $INF)" \
+        "update t set d = now() where id = 1" \
+        "commit")
+    echo "$out" | grep -q "failed" && failexit "$tag: writer: $out"
+    verify_ok || failexit "$tag: verify after expiring row 1"
+    [[ "$(active)" == "2 " ]] || failexit "$tag: active '$(active)', expected '2 '"
+
+    out=$(sql $wtz "${pre[@]}" "update t set d = now() where d = $INF" "delete from t where id = 1")
+    echo "$out" | grep -q "failed" && failexit "$tag: expire/delete: $out"
+    verify_ok || failexit "$tag: verify after expire/delete"
+    [[ -z "$(active)" ]] || failexit "$tag: active '$(active)' after expire"
+    echo "ok: $tag"
+}
+
+zones="America/New_York UTC Asia/Tokyo"
+for itz in $zones; do
+    for wtz in $zones; do
+        run_case $itz $wtz env
+    done
+    run_case $itz UTC set
+done
+
+# With the tunable off, predicates follow the session timezone again and the
+# mixed-timezone case corrupts the index; make sure the test notices.
+put_tunable partial_index_fixed_tz 0
+cdb2sql ${CDB2_OPTIONS} $dbnm default "truncate t" >/dev/null
+sql America/New_York "insert into t values(1, $INF)" >/dev/null
+sql UTC "update t set d = now() where id = 1" >/dev/null
+verify_ok && failexit "tunable off: expected verify to fail"
+echo "ok: tunable off reproduces the corruption"
+
+put_tunable partial_index_fixed_tz 1
+cdb2sql ${CDB2_OPTIONS} $dbnm default "drop table t" >/dev/null
+
+echo "Success"

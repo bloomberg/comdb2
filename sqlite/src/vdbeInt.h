@@ -598,6 +598,9 @@ struct Vdbe {
   u16 hasVTables;
   u8 hasScalarFunc;
   char tzname[TZNAME_MAX];/* timezone info for datetime support */
+  char partIdxSavedTz[TZNAME_MAX];     /* tzname to restore after OP_PartIdxTz */
+  char partIdxSavedClntTz[TZNAME_MAX]; /* session tzname, likewise */
+  u8 partIdxTzActive;     /* Between OP_PartIdxTz enter and leave */
   int dtprec;             /* datetime precision - make it u32 to silence compiler */
   struct timespec tspec;  /* time of prepare, used for stable now() */
   u8 oeFlag;              /* ON CONFLICT action */
@@ -814,6 +817,8 @@ int convMem2ClientDatetime(Mem *pMem, void *out);
 int convMem2ClientDatetimeStr(Mem *pMem, void *out, int outlen, int *outdtsz);
 int convDttz2ClientDatetime(const dttz_t *, const char *tzname, void *out, int sqltype);
 const char *get_clnt_tz();
+char *get_clnt_tzbuf(size_t *len);
+void comdb2PartIdxTz(Vdbe *p, int enter);
 void func_needs_vdbe(sqlite3_context *context, FuncDef *pFunc, Vdbe *pVdbe);
 
 int sqliteVdbeMemDecimalBasicArithmetics(Mem *a, Mem *b, int opcode, Mem * res, int flipped);
