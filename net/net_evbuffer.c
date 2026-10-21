@@ -1163,10 +1163,6 @@ static void writecb(int fd, short what, void *data)
     Pthread_mutex_lock(&e->wr_lk);
     if (fd != e->fd || !e->flush_buf || !e->wr_buf) abort(); /* sanity check */
     evbuffer_add_buffer(e->wr_buf, e->flush_buf);
-    if (e->host_node_ptr) {
-        e->host_node_ptr->enque_count = 0;
-        e->host_node_ptr->enque_bytes = 0;
-    }
     Pthread_mutex_unlock(&e->wr_lk);
     size_t len = evbuffer_get_length(e->wr_buf);
     while (len) {
@@ -3922,8 +3918,6 @@ static void get_hosts_metric_impl(void *arg)
         case NET_DROPS:
             metric->value = me->num_queue_full;
             break;
-        case MAX_QUEUE_SIZE:
-            metric->value = time_metric_max(me->metric_queue_size);
     }
 
     struct event_info *e;
@@ -3933,12 +3927,6 @@ static void get_hosts_metric_impl(void *arg)
             case NET_DROPS:
                 metric->value += e->host_node_ptr->num_queue_full;
                 break;
-            case MAX_QUEUE_SIZE: {
-                int tmp = time_metric_max(e->host_node_ptr->metric_queue_size);
-                if (metric->value < tmp)
-                    metric->value = tmp;
-                break;
-            }
         }
     }
 }
@@ -4042,7 +4030,6 @@ int write_list_evbuffer(host_node_type *host_node_ptr, int type, const struct io
     if (rc==0) {
         e->net_info->netinfo_ptr->stats.bytes_written += total;
         host_node_ptr->stats.bytes_written += total;
-        update_host_net_queue_stats(host_node_ptr, 1, total);
     }
     Pthread_mutex_unlock(&e->wr_lk);
     return rc;
@@ -4095,7 +4082,6 @@ int net_send_all_evbuffer(netinfo_type *netinfo_ptr, int n, void **buf, int *len
         Pthread_mutex_unlock(&e->wr_lk);
         if (e->host_node_ptr) {
             e->host_node_ptr->stats.bytes_written += sz;
-            update_host_net_queue_stats(e->host_node_ptr, 1, sz);
         }
         netinfo_ptr->stats.bytes_written += sz;
     }
