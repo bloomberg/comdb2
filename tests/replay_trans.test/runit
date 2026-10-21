@@ -59,6 +59,16 @@ function wait_for_answer() {
     failexit "$2: txn never answered"
 }
 
+# Verify replays counted on every node: a retry runs on the node its client is on.
+function total_replays() {
+    local node total=0
+    for node in ${CLUSTER:-$master}; do
+        total=$((total + $(cdb2sql --tabs ${CDB2_OPTIONS} $dbnm --host $node \
+            "SELECT value FROM comdb2_metrics WHERE name='verify_replays'")))
+    done
+    echo $total
+}
+
 function cleanup() {
     cdb2sql ${CDB2_OPTIONS} $dbnm default "DROP TABLE t1"
 }
@@ -100,11 +110,21 @@ function assert_no_state_wrong() {
     fi
 }
 
+#   $1 "notimeout" to run with the notimeout tunable on
 function run_client_timeout_during_retry() {
-    echo "Test: client timeout during retry"
+    local notimeout=$1
+    echo "Test: client timeout during retry $notimeout"
     # Raise retry max on all nodes so retries are still in flight when
     # the client-side api timeout fires.
     set_all_nodes_tunable osql_verify_retry_max 100000
+    [ -n "$notimeout" ] && set_all_nodes_tunable notimeout 1
+    local logs=$logfile node
+    if [ -n "$CLUSTER" ]; then
+        logs=""
+        for node in $CLUSTER; do logs="$logs $TESTDIR/logs/$dbnm.$node.db"; done
+    fi
+    local wfails=$(cat $logs | grep -c "write failed")
+    local stops=$(cat $logs | grep -c "stopping retries of transaction")
 
     # Client-side api_call_timeout expires while the server is still retrying.
     # The server should clean up the replay state without "state is wrong" errors.
@@ -118,9 +138,29 @@ EOF
     # ends the txn this early.
     grep -q "Timeout while reading" timeout.out || failexit "client did not time out during retry"
 
-    sleep 2
+    # The server learns the client is gone when a heartbeat write fails. From
+    # then on no retry should start: nobody is left to hear the answer. (The
+    # check inside a running statement alone can take up to 5s to notice.)
+    retry_in_loop 100 0.1 "(( \$(cat $logs | grep -c 'write failed') > wfails ))" ||
+        failexit "server never noticed the client left"
+    local r1=$(total_replays)
+    sleep 1
+    local r2=$(total_replays)
+    if [ -n "$notimeout" ]; then
+        # notimeout keeps statements running after the client leaves; retries do the same.
+        (( r2 - r1 > 1 )) || failexit "notimeout: retries stopped after the client left"
+    else
+        (( r2 - r1 <= 1 )) || failexit "still retrying after the client left: $((r2 - r1)) replays in 1s"
+    fi
 
     set_all_nodes_tunable osql_verify_retry_max 499
+    [ -n "$notimeout" ] && set_all_nodes_tunable notimeout 0
+    # Let the last retry end before counting log lines.
+    retry_in_loop 100 0.1 "r1=\$(total_replays); sleep 0.2; (( \$(total_replays) == r1 ))" ||
+        failexit "retries never stopped"
+    # Nobody is left to answer, so no "failing it" warning and no error reply.
+    (( $(cat $logs | grep -c "stopping retries of transaction") == stops )) ||
+        failexit "logged a failed retry for a client that already left"
 
     # Server should still be healthy
     out=$(cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "SELECT i FROM t1 WHERE i = 1")
@@ -318,6 +358,7 @@ init
 run_bad_tx_with_intransres
 run_bad_tx_without_intransres
 run_client_timeout_during_retry
+run_client_timeout_during_retry notimeout
 run_queue_full_during_retry
 # Back-to-back retries: the worker's own re-queue fails.
 run_failed_requeue "on immediate re-queue" 100000 0

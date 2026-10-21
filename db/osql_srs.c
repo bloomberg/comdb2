@@ -27,6 +27,7 @@
 #include "debug_switches.h"
 
 extern int gbl_osql_verify_retries_max;
+extern int gbl_notimeouts;
 extern int blockproc2sql_error(int rc, const char *func, int line);
 
 typedef struct srs_tran_query {
@@ -265,10 +266,11 @@ int gbl_debug_fail_verify_requeue = 0;
 /* A COMMIT that fails with a retryable error holds its error back so the retry
    can answer instead.  When the retry can't be queued, nobody else will answer,
    and the client would hear nothing until its read timeout.  A ruleset rejection
-   (dispatch_rc) has already answered, so a second error would confuse the client. */
+   (dispatch_rc) has already answered, so a second error would confuse the client.
+   A client that has left has nobody to answer. */
 static void srs_tran_send_error(struct sqlclntstate *clnt, int dispatch_rc)
 {
-    if (dispatch_rc == ERR_QUERY_REJECTED || dispatch_rc == CDB2ERR_REJECTED)
+    if (dispatch_rc == ERR_QUERY_REJECTED || dispatch_rc == CDB2ERR_REJECTED || peer_dropped_connection(clnt))
         return;
     osqlstate_t *osql = &clnt->osql;
     int rc = osql->xerr.errval ? blockproc2sql_error(osql->xerr.errval, __func__, __LINE__) : CDB2ERR_VERIFY_ERROR;
@@ -421,6 +423,13 @@ int srs_tran_replay(struct sqlclntstate *clnt)
 {
     osqlstate_t *osql = &clnt->osql;
     int rc = 0;
+
+    /* The client left while this retry waited: nobody is left to hear the answer.
+       notimeout keeps statements running after their client leaves, so retries keep going too. */
+    if (!gbl_notimeouts && peer_dropped_connection(clnt)) {
+        srs_tran_replay_end(clnt, 0, 0);
+        return 0;
+    }
 
     // replay all the stmts
     rc = srs_tran_replay_once(clnt, run_sql_query);
