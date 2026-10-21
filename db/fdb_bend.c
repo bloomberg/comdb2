@@ -72,6 +72,9 @@
 
 extern int gbl_fdb_track;
 
+/* How long a remote transaction request waits for an earlier one (0 = forever) */
+int gbl_fdb_sequence_timeout_ms = 10000;
+
 struct svc_cursor {
     char *cid;    /* cursor id */
     char *tid;    /* trans id */
@@ -268,7 +271,13 @@ svc_cursor_t *fdb_svc_cursor_open(char *tid, char *cid, int code_release, int ve
            OCC lockless
            must have been selling snake oil in a previous life
          */
-        fdb_sequence_request(tran_clnt, trans, seq);
+        if (fdb_sequence_request(tran_clnt, trans, seq)) {
+            listc_rfl(&trans->cursors, cur);
+            Pthread_mutex_unlock(&tran_clnt->dtran_mtx);
+            free(cur);
+            free(*pclnt);
+            return NULL;
+        }
 
         /* free this guy */
         Pthread_mutex_unlock(&tran_clnt->dtran_mtx);
@@ -1210,10 +1219,23 @@ int fdb_svc_trans_get_tid(char *cid, char *tid)
  *
  * NOTE: this is called with dtran_mtx locked, and returns it LOCKED!
  */
-void fdb_sequence_request(struct sqlclntstate *tran_clnt, fdb_tran_t *trans,
-                          int seq)
+int fdb_sequence_wait(struct sqlclntstate *tran_clnt, fdb_tran_t *trans, int seq)
 {
+    int start = comdb2_time_epochms();
+
     while (trans->seq < seq) {
+        /* An earlier request that never arrives must not park this thread
+           forever; if it holds the bdb lock, it must also not block a
+           downgrade, upgrade or rep_verify that wants the writelock */
+        int waited = comdb2_time_epochms() - start;
+        if ((gbl_fdb_sequence_timeout_ms > 0 && waited > gbl_fdb_sequence_timeout_ms) ||
+            (bdb_lockref() > 0 && bdb_lock_desired(thedb->bdb_env)) || db_is_exiting()) {
+            uuidstr_t us;
+            logmsg(LOGMSG_ERROR, "%s: giving up on tid=%s waiting for seq %d (at %d) after %d ms\n", __func__,
+                   comdb2uuidstr((unsigned char *)trans->tid, us), seq, trans->seq, waited);
+            return -1;
+        }
+
         /* free this guy */
         Pthread_mutex_unlock(&tran_clnt->dtran_mtx);
 
@@ -1225,8 +1247,17 @@ void fdb_sequence_request(struct sqlclntstate *tran_clnt, fdb_tran_t *trans,
         Pthread_mutex_lock(&tran_clnt->dtran_mtx);
     }
 
+    return 0;
+}
+
+int fdb_sequence_request(struct sqlclntstate *tran_clnt, fdb_tran_t *trans, int seq)
+{
+    if (fdb_sequence_wait(tran_clnt, trans, seq))
+        return -1;
+
     /* bump the transactional sequence */
     trans->seq++;
+    return 0;
 }
 
 /* pack an sqlite unpacked row to a packed row */

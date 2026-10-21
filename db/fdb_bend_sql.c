@@ -386,7 +386,18 @@ int fdb_svc_trans_commit(char *tid, enum transaction_level lvl,
     /* we need to wait for not yet arrived cursors, before we wait for them
        to finish!!!
      */
-    fdb_sequence_request(clnt, clnt->dbtran.dtran->fdb_trans.top, seq);
+    if (fdb_sequence_request(clnt, clnt->dbtran.dtran->fdb_trans.top, seq)) {
+        /* an earlier request never arrived: the transaction is incomplete */
+        Pthread_mutex_unlock(&clnt->dtran_mtx);
+        if (clnt->dbtran.mode == TRANLEVEL_SOSQL)
+            osql_sock_abort(clnt, OSQL_SOCK_REQ);
+        if (osql_unregister_sqlthr(clnt)) {
+            logmsg(LOGMSG_ERROR, "%s: unable to unregister blocksql thread %s\n", __func__, us);
+        }
+        clnt->writeTransaction = 0;
+        clnt->dbtran.shadow_tran = NULL;
+        return -1;
+    }
 
     while (clnt->dbtran.dtran->fdb_trans.top->cursors.top != NULL) {
         Pthread_mutex_unlock(&clnt->dtran_mtx);
@@ -494,7 +505,8 @@ int fdb_svc_trans_rollback(char *tid, enum transaction_level lvl,
        so that new cursors can detect and fail gracefully
      */
     clnt->dbtran.rollbacked = 1;
-    fdb_sequence_request(clnt, clnt->dbtran.dtran->fdb_trans.top, seq);
+    /* if an earlier request never arrives, roll back without it */
+    (void)fdb_sequence_request(clnt, clnt->dbtran.dtran->fdb_trans.top, seq);
 
     while (clnt->dbtran.dtran->fdb_trans.top->cursors.top != NULL) {
         Pthread_mutex_unlock(&clnt->dtran_mtx);
@@ -534,6 +546,19 @@ int fdb_svc_trans_rollback(char *tid, enum transaction_level lvl,
         logmsg(LOGMSG_ERROR, "%s: unable to unregister blocksql thread %s\n",
                __func__, us);
     }
+
+    return rc;
+}
+
+/* Wait for this write's turn before taking a curtran: the curtran holds the
+   bdb readlock, which must not be pinned while an earlier request is late */
+static int fdb_svc_wait_turn(sqlclntstate *clnt, int seq)
+{
+    int rc;
+
+    Pthread_mutex_lock(&clnt->dtran_mtx);
+    rc = fdb_sequence_wait(clnt, clnt->dbtran.dtran->fdb_trans.top, seq);
+    Pthread_mutex_unlock(&clnt->dtran_mtx);
 
     return rc;
 }
@@ -743,6 +768,9 @@ int fdb_svc_cursor_insert(sqlclntstate *clnt, char *tblname,
     int rc2 = 0;
     int standalone = 0;
 
+    if (fdb_svc_wait_turn(clnt, seq))
+        return -1;
+
     thd = _fdb_svc_cursor_start(&bCur, clnt, tblname, rootpage, genid, 0,
                                 &standalone);
     if (!thd) {
@@ -788,7 +816,11 @@ int fdb_svc_cursor_insert(sqlclntstate *clnt, char *tblname,
 
     Pthread_mutex_lock(&clnt->dtran_mtx);
 
-    fdb_sequence_request(clnt, clnt->dbtran.dtran->fdb_trans.top, seq);
+    if (fdb_sequence_request(clnt, clnt->dbtran.dtran->fdb_trans.top, seq)) {
+        Pthread_mutex_unlock(&clnt->dtran_mtx);
+        rc = -1;
+        goto done;
+    }
 
     rc = osql_insrec(&bCur, thd, row, rowlen, rowblobs, MAXBLOBS, 0);
 
@@ -821,6 +853,9 @@ int fdb_svc_cursor_delete(sqlclntstate *clnt, char *tblname,
     int rc2 = 0;
     int standalone = 0;
 
+    if (fdb_svc_wait_turn(clnt, seq))
+        return -1;
+
     thd = _fdb_svc_cursor_start(&bCur, clnt, tblname, rootpage, genid, 1,
                                 &standalone);
     if (!thd) {
@@ -837,7 +872,11 @@ int fdb_svc_cursor_delete(sqlclntstate *clnt, char *tblname,
 
     Pthread_mutex_lock(&clnt->dtran_mtx);
 
-    fdb_sequence_request(clnt, clnt->dbtran.dtran->fdb_trans.top, seq);
+    if (fdb_sequence_request(clnt, clnt->dbtran.dtran->fdb_trans.top, seq)) {
+        Pthread_mutex_unlock(&clnt->dtran_mtx);
+        rc = -1;
+        goto done;
+    }
 
     rc = osql_delrec(&bCur, thd);
 
@@ -846,6 +885,7 @@ int fdb_svc_cursor_delete(sqlclntstate *clnt, char *tblname,
     clnt->effects.num_deleted++;
     clnt->nrows++;
 
+done:
     rc2 = _fdb_svc_cursor_end(&bCur, clnt, standalone);
     if (!rc) {
         rc = rc2;
@@ -872,6 +912,9 @@ int fdb_svc_cursor_update(sqlclntstate *clnt, char *tblname,
     int rc = 0;
     int rc2 = 0;
     int standalone = 0;
+
+    if (fdb_svc_wait_turn(clnt, seq))
+        return -1;
 
     thd = _fdb_svc_cursor_start(&bCur, clnt, tblname, rootpage, oldgenid, 1,
                                 &standalone);
@@ -926,7 +969,11 @@ int fdb_svc_cursor_update(sqlclntstate *clnt, char *tblname,
 
     Pthread_mutex_lock(&clnt->dtran_mtx);
 
-    fdb_sequence_request(clnt, clnt->dbtran.dtran->fdb_trans.top, seq);
+    if (fdb_sequence_request(clnt, clnt->dbtran.dtran->fdb_trans.top, seq)) {
+        Pthread_mutex_unlock(&clnt->dtran_mtx);
+        rc = -1;
+        goto done;
+    }
 
     rc = osql_updrec(&bCur, thd, row, rowlen, NULL /*TODO : review updCols*/,
                      rowblobs, MAXBLOBS, 0);
