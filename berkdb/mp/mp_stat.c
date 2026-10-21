@@ -179,7 +179,18 @@ __memp_stat(dbenv, gspp, fspp, flags)
 
 				R_LOCK(dbenv, dbmp->reginfo);
 				pages = c_mp->stat.st_pages;
-				memset(&c_mp->stat, 0, sizeof(c_mp->stat));
+				/*
+				 * st_page_dirty is a live count updated without the
+				 * region lock; leave it out of the reset.
+				 */
+				memset(&c_mp->stat, 0,
+				    offsetof(DB_MPOOL_STAT, st_page_dirty));
+				memset((u_int8_t *)&c_mp->stat +
+				    offsetof(DB_MPOOL_STAT, st_page_dirty) +
+				    sizeof(c_mp->stat.st_page_dirty), 0,
+				    sizeof(c_mp->stat) -
+				    offsetof(DB_MPOOL_STAT, st_page_dirty) -
+				    sizeof(c_mp->stat.st_page_dirty));
 				c_mp->stat.st_hash_buckets = c_mp->htab_buckets;
 				c_mp->stat.st_pages = pages;
 				R_UNLOCK(dbenv, dbmp->reginfo);
