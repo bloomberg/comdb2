@@ -1411,7 +1411,12 @@ int sqlite3CheckObjectName(
   if( db->init.busy ){
     if( sqlite3_stricmp(zType, db->init.azInit[0])
      || sqlite3_stricmp(zName, db->init.azInit[1])
-     || sqlite3_stricmp(zTblName, db->init.azInit[2])
+     || (sqlite3_stricmp(zTblName, db->init.azInit[2])
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+         /* db/sqlmaster.c leaves tbl_name NULL for views. */
+         && !(db->init.azInit[2]==0 && sqlite3_stricmp(zType, "view")==0)
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+        )
     ){
       sqlite3ErrorMsg(pParse, ""); /* corruptSchema() will supply the error */
       return SQLITE_ERROR;
