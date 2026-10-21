@@ -416,6 +416,7 @@ static int srs_tran_redispatch(struct sqlclntstate *clnt)
         return srs_tran_requeue(clnt);
     int ms = rand() % (max_ms + 1);
     struct timeval tv = {.tv_sec = ms / 1000, .tv_usec = (ms % 1000) * 1000};
+    clnt_change_state(clnt, CONNECTION_RETRY_WAIT);
     return event_base_once(get_dispatch_event_base(), -1, EV_TIMEOUT, srs_tran_redispatch_cb, clnt, &tv);
 }
 

@@ -352,13 +352,13 @@ enum early_verify_error {
     EARLY_ERR_GENCHANGE = 3
 };
 
-enum connection_state
-{
+enum connection_state {
     CONNECTION_NEW,
     CONNECTION_IDLE,
     CONNECTION_RESET,
     CONNECTION_QUEUED,
-    CONNECTION_RUNNING
+    CONNECTION_RUNNING,
+    CONNECTION_RETRY_WAIT /* a verify-failed txn waiting on a timer to be re-queued */
 };
 
 enum {

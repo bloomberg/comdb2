@@ -6279,6 +6279,9 @@ static const char* connstate_str(enum connection_state s) {
         case CONNECTION_RUNNING:
             return "CONNECTION_RUNNING";
 
+        case CONNECTION_RETRY_WAIT:
+            return "CONNECTION_RETRY_WAIT";
+
         default:
             return "???";
     }
@@ -6290,8 +6293,9 @@ static int32_t active_connections = 0;
 /* Call with state_lk held */
 static void update_active_connection(struct sqlclntstate *clnt)
 {
-    int active = clnt->in_sql_evbuffers && (clnt->state == CONNECTION_QUEUED || clnt->state == CONNECTION_RUNNING ||
-                                            (clnt->state == CONNECTION_IDLE && in_client_trans(clnt)));
+    int active = clnt->in_sql_evbuffers &&
+                 (clnt->state == CONNECTION_QUEUED || clnt->state == CONNECTION_RUNNING ||
+                  clnt->state == CONNECTION_RETRY_WAIT || (clnt->state == CONNECTION_IDLE && in_client_trans(clnt)));
     if (active != clnt->in_active_count) {
         ATOMIC_ADD32(active_connections, active ? 1 : -1);
         clnt->in_active_count = active;
@@ -6868,8 +6872,8 @@ void cancel_connections(int only_queued, uuid_t uuid, char *fp)
                     clnt->discard_this = 1;
                     logmsg(LOGMSG_WARN, "%s:%d Cancelling %s\n", __func__,  __LINE__, clnt->sql);
                 }
-            } else if (clnt->state == CONNECTION_RUNNING ||
-                    clnt->state == CONNECTION_QUEUED) {
+            } else if (clnt->state == CONNECTION_RUNNING || clnt->state == CONNECTION_QUEUED ||
+                       clnt->state == CONNECTION_RETRY_WAIT) {
                 clnt->discard_this = 1;
                 logmsg(LOGMSG_WARN, "%s:%d Cancelling %s\n", __func__,  __LINE__, clnt->sql);
             }

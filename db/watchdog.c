@@ -355,6 +355,10 @@ static void *watchdog_thread(void *arg)
                             zState = "RUNNING";
                             slow_seconds = gbl_client_running_slow_seconds;
                             break;
+                        case CONNECTION_RETRY_WAIT:
+                            zState = "RETRY_WAIT";
+                            slow_seconds = gbl_client_running_slow_seconds;
+                            break;
                     }
                     if ((zState != NULL) && (slow_seconds > 0)) {
                         int state_time = conn_info->time_in_state_int;

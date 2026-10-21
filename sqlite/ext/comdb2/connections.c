@@ -70,6 +70,9 @@ int get_connections(void **data, int *num_points) {
             case CONNECTION_RUNNING:
                 info[i].state = !info[i].is_canceled ? "running" : " running_canceled";
                 break;
+            case CONNECTION_RETRY_WAIT:
+                info[i].state = !info[i].is_canceled ? "waiting_to_retry" : "waiting_to_retry_canceled";
+                break;
         }
     }
     return 0;
