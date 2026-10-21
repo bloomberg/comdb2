@@ -487,8 +487,7 @@ DEF_ATTR(UDP_DROP_WARN_TIME, udp_drop_warn_time, SECS, 300,
          "Print no more than one warning per UDP_DROP_WARN_TIME seconds.")
 DEF_ATTR(UDP_AVERAGE_OVER_EPOCHS, udp_average_over_epochs, QUANTITY, 4,
          "Average over these many TCP epochs.")
-DEF_ATTR(RAND_UDP_FAILS, rand_udp_fails, QUANTITY, 0,
-         "Rate of drop of UDP packets (for testing).")
+DEF_ATTR(RAND_UDP_FAILS, rand_udp_fails, PERCENT, 0, "Percentage of outgoing UDP packets to drop (for testing).")
 DEF_ATTR(HOSTILE_TAKEOVER_RETRIES, hostile_takeover_retries, QUANTITY, 0,
          "Attempt to take over mastership if the master machine is marked "
          "offline, and the current machine is online.")

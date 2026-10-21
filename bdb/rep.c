@@ -2032,15 +2032,36 @@ void bdb_disable_replication_time_tracking(bdb_state_type *bdb_state)
     Pthread_mutex_unlock(&(bdb_state->seqnum_info->lock));
 }
 
-/* when packet is udp, increase counter
+static inline void reset_udp_counts(struct hostinfo *h, time_t now)
+{
+    h->incoming_udp_count = 0;
+    h->expected_udp_count = 0;
+    h->udp_average_counter = 0;
+    h->udp_window_start = now;
+}
+
+/* when packet is a udp commit ack, remember how far it acks
  * when it is tcp, do work to find udp loss rate
  */
-inline static void update_node_acks(bdb_state_type *bdb_state, struct interned_string *host,
-                                    int is_tcp)
+inline static void update_node_acks(bdb_state_type *bdb_state, struct interned_string *host, seqnum_type *seqnum,
+                                    uint32_t mygen, int is_tcp)
 {
     struct hostinfo *h = retrieve_hostinfo(host);
+    time_t now = time(NULL);
+
+    /* Counts left from an earlier term as master say nothing about this one */
+    if (h->udp_count_gen != mygen) {
+        h->udp_count_gen = mygen;
+        ZERO_LSN(h->udp_ack_lsn);
+        reset_udp_counts(h, now);
+    }
+
     if (is_tcp == 0) {
-        h->incoming_udp_count++;
+        /* Lease renewals also come over udp, but carry an issue time */
+        uint64_t issue_time;
+        memcpy(&issue_time, seqnum->issue_time, sizeof(issue_time));
+        if (issue_time == 0 && log_compare(&seqnum->lsn, &h->udp_ack_lsn) > 0)
+            h->udp_ack_lsn = seqnum->lsn;
         return;
     }
 
@@ -2048,19 +2069,28 @@ inline static void update_node_acks(bdb_state_type *bdb_state, struct interned_s
         return;
     }
 
+    /* On a quiet node a window can hold fewer commits than udp_drop_delta_threshold,
+     * so it could never warn.  Keep counting until losing udp_drop_warn_percent of the
+     * commits would cross udp_drop_delta_threshold, but for no longer than
+     * udp_drop_warn_time, so old losses are not reported as current ones.
+     * Nothing waited on: start over. */
+    int warn_percent = bdb_state->attr->udp_drop_warn_percent;
+    int warn_time = bdb_state->attr->udp_drop_warn_time;
+    if (h->expected_udp_count > 0 && warn_percent > 0 && now - h->udp_window_start < warn_time &&
+        h->expected_udp_count * warn_percent < bdb_state->attr->udp_drop_delta_threshold * 100) {
+        return;
+    }
+
     float delta = h->expected_udp_count - h->incoming_udp_count;
     float rate = 100 * delta / h->expected_udp_count;
 
-    if (h->expected_udp_count > 1 &&
-        delta > bdb_state->attr->udp_drop_delta_threshold &&
-        rate > bdb_state->attr->udp_drop_warn_percent) {
-        logmsg(LOGMSG_DEBUG,
-               "update_node_acks: host %s, expected_udp_count = %d, delta = "
-               "%.1f, loss = %f percent\n", host->str, h->expected_udp_count, delta, rate);
+    if (h->expected_udp_count > 1 && delta > bdb_state->attr->udp_drop_delta_threshold &&
+        rate > bdb_state->attr->udp_drop_warn_percent && now - h->last_udp_drop_warn >= warn_time) {
+        logmsg(LOGMSG_WARN, "update_node_acks: udp acks from %s: expected %d, received %d (%.0f%% missed)\n", host->str,
+               h->expected_udp_count, h->incoming_udp_count, rate);
+        h->last_udp_drop_warn = now;
     }
-    h->incoming_udp_count = 0;
-    h->expected_udp_count = 0;
-    h->udp_average_counter = 0;
+    reset_udp_counts(h, now);
 }
 
 static int lsncmp(const void *lsn1, const void *lsn2)
@@ -2573,7 +2603,7 @@ static void got_new_seqnum_from_node(bdb_state_type *bdb_state,
     }
 
     if (bdb_state->repinfo->master_host == bdb_state->repinfo->myhost)
-        update_node_acks(bdb_state, hostinterned, is_tcp);
+        update_node_acks(bdb_state, hostinterned, seqnum, mygen, is_tcp);
 
     Pthread_mutex_unlock(&(bdb_state->seqnum_info->lock));
 
@@ -2995,9 +3025,6 @@ static int bdb_wait_for_seqnum_from_node_int(bdb_state_type *bdb_state,
 
     Pthread_mutex_lock(&(bdb_state->seqnum_info->lock));
 
-    if (gbl_udp)
-        h->expected_udp_count++;
-
 again:
 
     if (h->seqnum.lsn.file == INT_MAX || bdb_lock_desired(bdb_state)) {
@@ -3048,6 +3075,13 @@ again:
     got_lsn = h->seqnum.lsn;
 
     if (bdb_seqnum_compare(bdb_state, &h->seqnum, seqnum) >= 0) {
+        /* Count each acked commit once, however many times it waited on this
+         * node, and whether a udp ack covered it; one ack can cover several */
+        if (gbl_udp) {
+            h->expected_udp_count++;
+            if (log_compare(&h->udp_ack_lsn, &seqnum->lsn) >= 0)
+                h->incoming_udp_count++;
+        }
         Pthread_mutex_unlock(&(bdb_state->seqnum_info->lock));
         if (bdb_state->attr->wait_for_seqnum_trace) {
             logmsg(LOGMSG_USER, "%s line %d called from %d %s good rcode mach-gen %u mach_lsn %d:%d waiting for %u %d:%d\n", 

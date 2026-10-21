@@ -626,9 +626,13 @@ struct hostinfo
     int coherent_state;
     int appseqnum;
     wait_for_lsn_list waitlist;
-    short expected_udp_count;
-    short incoming_udp_count;
-    short udp_average_counter;
+    int expected_udp_count;
+    int incoming_udp_count;
+    int udp_average_counter;
+    time_t last_udp_drop_warn;
+    time_t udp_window_start;
+    uint32_t udp_count_gen;
+    DB_LSN udp_ack_lsn;
     int filenum;
     struct averager *time_10seconds;
     struct averager *time_minute;

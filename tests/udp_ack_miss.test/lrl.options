@@ -1,0 +1,6 @@
+# Already the default; set anyway because the test depends on udp acks
+udp
+# Short window so the rate limit is visible within a few seconds of load
+setattr UDP_DROP_WARN_TIME 5
+# A quiet node loses only a few acks per window; warn on those too
+setattr UDP_DROP_DELTA_THRESHOLD 2
