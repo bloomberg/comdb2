@@ -398,7 +398,6 @@ int64_t net_get_num_accept_timeouts(netinfo_type *netinfo_ptr);
 void net_set_conntime_dump_period(netinfo_type *netinfo_ptr, int value);
 int net_get_conntime_dump_period(netinfo_type *netinfo_ptr);
 int net_send_all(netinfo_type *, int, void **, int *, int *, int *);
-void update_host_net_queue_stats(host_node_type *, size_t, size_t);
 int db_is_stopped(void);
 int db_is_exiting(void);
 void stop_event_net(void);
