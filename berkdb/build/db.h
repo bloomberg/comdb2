@@ -2369,6 +2369,8 @@ struct __ufid_to_db_t {
 	void *log_trigger;
 	char *fname;
 	DB *dbp;
+	int pfcnt;		/* UDP prefault pins on dbp */
+	int pfclosing;		/* dbp is being detached: no new pins */
 };
 
 /* fingerprint is the acquirer's 16-byte fingerprint or NULL; fingerprint_role is
@@ -2837,6 +2839,8 @@ struct __db_env {
 	/* ufid to dbp hash */
 	hash_t *ufid_to_db_hash;
 	pthread_mutex_t ufid_to_db_lk;
+	pthread_cond_t ufid_to_db_cond;	/* prefault pins drained */
+	int ufid_pf_stop;		/* env closing: no new prefault pins */
 
 	/* prepared transactions */
 	hash_t *prepared_txn_hash;
