@@ -12175,6 +12175,8 @@ void print_cooked_access(BtCursor *pCur, int col)
  */
 int sqlite3BtreeTxnState(Btree *p)
 {
+    if (p == NULL)
+        return SQLITE_TXN_NONE;
     struct sql_thread *thd = pthread_getspecific(query_info_key);
     int intrans = (thd && thd->clnt) ? thd->clnt->intrans : 0;
     return intrans ? SQLITE_TXN_WRITE : SQLITE_TXN_NONE;
