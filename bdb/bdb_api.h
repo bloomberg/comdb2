@@ -62,9 +62,6 @@ typedef struct bdb_callback_tag bdb_callback_type;
 struct tran_tag;
 typedef struct tran_tag tran_type;
 
-struct table_version_cache;
-typedef struct table_version_cache table_version_cache;
-
 struct bdb_attr_tag;
 typedef struct bdb_attr_tag bdb_attr_type;
 
@@ -2122,11 +2119,6 @@ int bdb_llmeta_list_records(bdb_state_type *bdb_state, int *bdberr);
 int bdb_have_ipu(bdb_state_type *bdb_state);
 
 bdb_state_type *bdb_get_table_by_name(bdb_state_type *bdb_state, char *table);
-int bdb_osql_check_table_version(bdb_state_type *bdb_state, table_version_cache *cache);
-
-int bdb_init_table_version_cache(table_version_cache **cache);
-void bdb_free_table_version_cache(table_version_cache *cache);
-
 int bdb_get_myseqnum(bdb_state_type *bdb_state, seqnum_type *seqnum);
 
 void bdb_replace_handle(bdb_state_type *parent, int ix, bdb_state_type *handle);

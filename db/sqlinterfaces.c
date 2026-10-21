@@ -1718,29 +1718,6 @@ static void reqlog_setup_begin_commit_rollback(struct sqlthdstate *thd, struct s
     log_queue_time(thd->logger, clnt);
 }
 
-int cache_table_versions(struct sqlclntstate *clnt)
-{
-    if (clnt->dbtran.table_version_cache) {
-        bdb_free_table_version_cache(clnt->dbtran.table_version_cache);
-        clnt->dbtran.table_version_cache = NULL;
-    }
-
-    int rc = bdb_init_table_version_cache(&clnt->dbtran.table_version_cache);
-    if (rc) {
-        logmsg(LOGMSG_ERROR, "%s failed initialize table verison cache rc=%d\n", __func__, rc);
-        return rc;
-    }
-
-    int bdberr;
-    rc = bdb_osql_cache_table_versions(thedb->bdb_env, clnt->dbtran.table_version_cache, &bdberr);
-    if (rc) {
-        logmsg(LOGMSG_ERROR, "%s failed to cache table versions rc=%d bdberr=%d\n", __func__, rc, bdberr);
-        return rc;
-    }
-
-    return 0;
-}
-
 static int populate_modsnap_state(struct sqlclntstate *clnt)
 {
     assert_no_schema_lk();
@@ -1765,13 +1742,9 @@ static int populate_modsnap_state(struct sqlclntstate *clnt)
         goto done;
     }
 
-    // TODO: Refactor cache_table_versions to not take in a clnt and then call it within bdb_get_modsnap_start_state
-    // so that we're holding the schema lock over less code.
-    rc = cache_table_versions(clnt);
-    if (rc) {
-        logmsg(LOGMSG_ERROR, "%s: Failed to cache table versions\n", __func__);
-        goto done;
-    }
+    /* under the schema lock, so no schema change commits between the start
+     * LSN and this */
+    clnt->dbtran.schema_gen = ATOMIC_LOAD64(gbl_schema_gen);
 
     rc = bdb_register_modsnap(db->handle, clnt->modsnap_start_lsn_file, clnt->modsnap_start_lsn_offset,
                               clnt->last_checkpoint_lsn_file, clnt->last_checkpoint_lsn_offset,
@@ -1786,7 +1759,7 @@ static int populate_modsnap_state(struct sqlclntstate *clnt)
 done:
     unlock_schema_lk();
     BDB_RELLOCK();
-    return 0;
+    return rc;
 }
 
 void clear_modsnap_state(struct sqlclntstate *clnt)
@@ -2381,10 +2354,7 @@ static int do_commitrollback(struct sqlthdstate *thd, struct sqlclntstate *clnt,
         }
     }
 
-    if (clnt->dbtran.table_version_cache) {
-        bdb_free_table_version_cache(clnt->dbtran.table_version_cache);
-        clnt->dbtran.table_version_cache = NULL;
-    }
+    clnt->dbtran.schema_gen = 0;
 
     return rc;
 }

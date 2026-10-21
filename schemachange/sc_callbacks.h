@@ -52,6 +52,8 @@ int live_sc_post_update_delayed_key_adds(struct ireq *iq, void *trans, unsigned 
 int scdone_callback(bdb_state_type *bdb_state, const char table[], void *arg,
                     scdone_t type);
 
+void sc_bump_changed_gen(scdone_t type, struct dbtable *db);
+
 int schema_change_abort_callback(void);
 
 void sc_del_unused_files(struct dbtable *);

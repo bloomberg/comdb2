@@ -5659,15 +5659,6 @@ int sqlite3BtreeBeginTrans(Vdbe *vdbe, Btree *pBt, int wrflag, int *pSchemaVersi
         goto done;
     }
 
-    if (clnt->dbtran.mode == TRANLEVEL_SERIAL) {
-        rc = cache_table_versions(clnt);
-        if (rc) {
-            logmsg(LOGMSG_ERROR, "%s: Failed to cache table versions\n", __func__);
-            rc = SQLITE_ERROR;
-            goto done;
-        }
-    }
-
     if (!must_start_new_transaction(clnt, wrflag)) {
         rc = SQLITE_OK;
         goto done;
@@ -5686,6 +5677,12 @@ int sqlite3BtreeBeginTrans(Vdbe *vdbe, Btree *pBt, int wrflag, int *pSchemaVersi
                tranlevel_tostr(clnt->dbtran.mode));
         clnt->translevel_changed = 1;
         clnt->dbtran.mode = TRANLEVEL_RECOM;
+    }
+
+    /* read before the snapshot starts: a schema change that commits in
+     * between fails the transaction instead of being missed */
+    if (clnt->dbtran.mode == TRANLEVEL_SERIAL) {
+        clnt->dbtran.schema_gen = ATOMIC_LOAD64(gbl_schema_gen);
     }
 
     rc = start_new_transaction(clnt);
@@ -5940,10 +5937,7 @@ int sqlite3BtreeCommit(Btree *pBt)
         clnt->selectv_arr = NULL;
     }
 
-    if (clnt->dbtran.table_version_cache) {
-        bdb_free_table_version_cache(clnt->dbtran.table_version_cache);
-        clnt->dbtran.table_version_cache = NULL;
-    }
+    clnt->dbtran.schema_gen = 0;
 
     reset_clnt_flags(clnt);
 
@@ -6062,10 +6056,7 @@ int sqlite3BtreeRollback(Btree *pBt, int dummy, int writeOnlyDummy)
         clnt->selectv_arr = NULL;
     }
 
-    if (clnt->dbtran.table_version_cache) {
-        bdb_free_table_version_cache(clnt->dbtran.table_version_cache);
-        clnt->dbtran.table_version_cache = NULL;
-    }
+    clnt->dbtran.schema_gen = 0;
 
     reset_clnt_flags(clnt);
 
@@ -8674,14 +8665,13 @@ static int sqlite3LockStmtTables_int(sqlite3_stmt *pStmt, int after_recovery)
             }
         }
 
-        /* in snapshot and stronger isolations, check cached table versions */
-        if (clnt->dbtran.table_version_cache &&
+        /* in snapshot and stronger isolations, fail if the table changed
+         * since the transaction started */
+        if (clnt->dbtran.schema_gen &&
             (clnt->dbtran.mode == TRANLEVEL_SERIAL || clnt->dbtran.mode == TRANLEVEL_SNAPISOL)) {
-            /* make sure btrees have not changed since the transaction started
-             */
-            rc = bdb_osql_check_table_version(db->handle, clnt->dbtran.table_version_cache);
-            if (rc != 0) {
-                /* fprintf(stderr, "bdb_osql_check_table_version failed rc=%d\n", rc);*/
+            if (db->changed_gen > clnt->dbtran.schema_gen) {
+                logmsg(LOGMSG_ERROR, "table \"%s\" changed, gen %" PRId64 " > %" PRId64 "\n", db->tablename,
+                       db->changed_gen, clnt->dbtran.schema_gen);
                 sqlite3_mutex_enter(sqlite3_db_mutex(p->db));
                 sqlite3VdbeError(p, "table \"%s\" was schema changed",
                                  db->tablename);

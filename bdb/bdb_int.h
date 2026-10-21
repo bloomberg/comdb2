@@ -615,12 +615,6 @@ typedef struct {
     int should_reject;
 } repinfo_type;
 
-typedef struct table_version_cache
-{
-    int sz;
-    unsigned long long *entries;
-} table_version_cache_t;
-
 struct hostinfo
 {
     seqnum_type seqnum;
@@ -888,9 +882,6 @@ struct bdb_state_tag {
      * just to make debugging lock issues abit easier. */
     pthread_mutex_t thread_lock_info_list_mutex;
     LISTC_T(thread_lock_info_type) thread_lock_info_list;
-
-    /* cache the version_num for the data; this is used to detect dta changes */
-    unsigned long long version_num;
 
     pthread_cond_t temptable_wait;
 #ifdef DEBUG_TEMP_TABLES
@@ -1707,8 +1698,6 @@ int bdb_lite_list_records(bdb_state_type *bdb_state,
                                           int *bdberr),
                           int *bdberr);
 
-int bdb_osql_cache_table_versions(bdb_state_type *bdb_state, table_version_cache *cache,
-                                  int *bdberr);
 int bdb_temp_table_destroy_lru(struct temp_table *tbl,
                                bdb_state_type *bdb_state, int *last,
                                int *bdberr);

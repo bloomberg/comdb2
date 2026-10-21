@@ -784,6 +784,9 @@ typedef struct dbtable {
     /* tableversion is an ever increasing counter which is incremented for
      * every schema change (add, alter, drop, etc.) but not for fastinit */
     unsigned long long tableversion;
+    /* gbl_schema_gen value of the last schema change that changed what a
+     * read of this table sees; see sc_bump_changed_gen() */
+    int64_t changed_gen;
 
     /* map of tag fields for schema version to curr schema */
     unsigned int * versmap[MAXVER + 1];
@@ -1837,6 +1840,7 @@ extern int gbl_default_sc_scanmode;
 extern int gbl_sc_abort;
 extern int gbl_tranmode;
 extern volatile uint32_t gbl_analyze_gen;
+extern int64_t gbl_schema_gen;
 extern volatile int gbl_views_gen;
 extern int gbl_sc_report_freq;
 extern int gbl_thrman_trace;
