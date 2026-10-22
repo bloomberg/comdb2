@@ -4991,6 +4991,10 @@ void sqlengine_work_appsock(struct sqlthdstate *thd, struct sqlclntstate *clnt)
         goto done;
     }
 
+    /* A new transaction may start in a new generation */
+    if (clnt->ctrl_sqlengine == SQLENG_NORMAL_PROCESS)
+        clnt->init_gen = 0;
+
     /* everything going in is cursor based */
     int rc = get_curtran(thedb->bdb_env, clnt);
     if (rc) {
