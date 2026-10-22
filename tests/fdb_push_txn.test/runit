@@ -187,6 +187,183 @@ echo "commit effects: $eff"
 [[ "$eff" != "3 0 0 0 3" ]] && failexit "remote-only commit effects '$eff', expected '3 0 0 0 3'"
 expect "effects remote-only" REM "select count(*) from t where id between 130 and 132" 3
 
+# The same transactions run from stored procedures on the source db: outside
+# a client transaction (implicit parent transaction, or db:begin/db:commit in
+# the procedure), and inside a client transaction. All the checks run, and
+# the mismatches are reported at the end.
+spfail=""
+
+# $1: name, $2: SRC|REM, $3: sql, $4: expected
+sp_expect()
+{
+    local got
+    if [[ "$2" == "SRC" ]]; then
+        got=$($SRC default "$3" | xargs)
+    else
+        got=$($REM default "$3" | xargs)
+    fi
+    if [[ "$got" != "$4" ]]; then
+        echo "MISMATCH $1: '$3' on $2 got '$got', expected '$4'"
+        spfail="$spfail\n$1: '$3' on $2 got '$got', expected '$4'"
+    fi
+}
+
+# create stored procedure $1 on the source db, with main() body from stdin
+create_sp()
+{
+    local body out
+    body=$(cat)
+    out=$($SRC default - 2>&1 <<EOF
+create procedure $1 version 'fdb_push_txn' {
+local function main()
+$body
+end
+}\$\$
+EOF
+)
+    echo "$out" | grep -q "failed with rc" && failexit "create procedure $1: $out"
+}
+
+# run sql (stdin) on source db; $1: name, $2: "ok" or "error" (expected outcome)
+run_sp()
+{
+    local out rc failed=0
+    echo "== $1"
+    out=$($SRC default - 2>&1)
+    rc=$?
+    echo "$out"
+    if [[ $rc -ne 0 ]] || echo "$out" | grep -q "failed with rc"; then
+        failed=1
+    fi
+    if [[ "$2" == "ok" && $failed -eq 1 ]]; then
+        spfail="$spfail\n$1: unexpected error"
+    elif [[ "$2" == "error" && $failed -eq 0 ]]; then
+        spfail="$spfail\n$1: expected an error"
+    fi
+}
+
+create_sp sp_remote_local_update <<EOF
+    db:exec("insert into ${RTBL} values (200)")
+    db:exec("update t set id=1012 where id=12")
+EOF
+run_sp "sp: remote insert, local update" ok <<EOF
+exec procedure sp_remote_local_update()
+EOF
+sp_expect "sp: remote insert, local update" SRC "select count(*) from t where id=1012" 1
+sp_expect "sp: remote insert, local update" REM "select count(*) from t where id=200" 1
+
+create_sp sp_remote_local_delete <<EOF
+    db:exec("insert into ${RTBL} values (201)")
+    db:exec("delete from t where id=13")
+EOF
+run_sp "sp: remote insert, local delete" ok <<EOF
+exec procedure sp_remote_local_delete()
+EOF
+sp_expect "sp: remote insert, local delete" SRC "select count(*) from t where id=13" 0
+sp_expect "sp: remote insert, local delete" REM "select count(*) from t where id=201" 1
+
+create_sp sp_remote_local_insert <<EOF
+    db:exec("insert into ${RTBL} values (202)")
+    db:exec("insert into t values (700)")
+EOF
+run_sp "sp: remote insert, local insert" ok <<EOF
+exec procedure sp_remote_local_insert()
+EOF
+sp_expect "sp: remote insert, local insert" SRC "select count(*) from t where id=700" 1
+sp_expect "sp: remote insert, local insert" REM "select count(*) from t where id=202" 1
+
+create_sp sp_remote_local_remote <<EOF
+    db:exec("insert into ${RTBL} values (203)")
+    db:exec("update t set id=1014 where id=14")
+    db:exec("insert into ${RTBL} values (204)")
+EOF
+run_sp "sp: remote insert, local update, remote insert" ok <<EOF
+exec procedure sp_remote_local_remote()
+EOF
+sp_expect "sp: remote insert, local update, remote insert" SRC "select count(*) from t where id=1014" 1
+sp_expect "sp: remote insert, local update, remote insert" REM "select count(*) from t where id in (203, 204)" 2
+
+create_sp sp_local_remote <<EOF
+    db:exec("update t set id=1015 where id=15")
+    db:exec("insert into ${RTBL} values (205)")
+EOF
+run_sp "sp: local update, remote insert" ok <<EOF
+exec procedure sp_local_remote()
+EOF
+sp_expect "sp: local update, remote insert" SRC "select count(*) from t where id=1015" 1
+sp_expect "sp: local update, remote insert" REM "select count(*) from t where id=205" 1
+
+create_sp sp_txn_rollback <<EOF
+    db:begin()
+    db:exec("insert into ${RTBL} values (206)")
+    db:exec("update t set id=1016 where id=16")
+    db:rollback()
+EOF
+run_sp "sp: begin, remote insert, local update, rollback" ok <<EOF
+exec procedure sp_txn_rollback()
+EOF
+sp_expect "sp: begin, remote insert, local update, rollback" SRC "select count(*) from t where id=16" 1
+sp_expect "sp: begin, remote insert, local update, rollback" REM "select count(*) from t where id=206" 0
+
+create_sp sp_txn_remote_commit <<EOF
+    db:begin()
+    db:exec("insert into ${RTBL} values (207)")
+    db:commit()
+EOF
+run_sp "sp: begin, remote-only, commit" ok <<EOF
+exec procedure sp_txn_remote_commit()
+EOF
+sp_expect "sp: begin, remote-only, commit" REM "select count(*) from t where id=207" 1
+
+create_sp sp_txn_remote_rollback <<EOF
+    db:begin()
+    db:exec("insert into ${RTBL} values (208)")
+    db:rollback()
+EOF
+run_sp "sp: begin, remote-only, rollback" ok <<EOF
+exec procedure sp_txn_remote_rollback()
+EOF
+sp_expect "sp: begin, remote-only, rollback" REM "select count(*) from t where id=208" 0
+
+# the procedure fails after its writes: its implicit transaction is rolled back
+create_sp sp_error <<EOF
+    db:exec("insert into ${RTBL} values (209)")
+    db:exec("update t set id=1017 where id=17")
+    error("forced failure")
+EOF
+run_sp "sp: remote insert, local update, error" error <<EOF
+exec procedure sp_error()
+EOF
+sp_expect "sp: remote insert, local update, error" SRC "select count(*) from t where id=17" 1
+sp_expect "sp: remote insert, local update, error" REM "select count(*) from t where id=209" 0
+
+# procedures inside a client transaction
+create_sp sp_in_client_txn <<EOF
+    db:exec("insert into ${RTBL} values (210)")
+    db:exec("update t set id=1018 where id=18")
+EOF
+run_sp "client transaction, sp: remote insert, local update, commit" ok <<EOF
+begin
+exec procedure sp_in_client_txn()
+commit
+EOF
+sp_expect "client transaction, sp: remote insert, local update, commit" SRC "select count(*) from t where id=1018" 1
+sp_expect "client transaction, sp: remote insert, local update, commit" REM "select count(*) from t where id=210" 1
+
+create_sp sp_in_client_txn_rollback <<EOF
+    db:exec("insert into ${RTBL} values (211)")
+    db:exec("update t set id=1019 where id=19")
+EOF
+run_sp "client transaction, sp: remote insert, local update, rollback" ok <<EOF
+begin
+exec procedure sp_in_client_txn_rollback()
+rollback
+EOF
+sp_expect "client transaction, sp: remote insert, local update, rollback" SRC "select count(*) from t where id=19" 1
+sp_expect "client transaction, sp: remote insert, local update, rollback" REM "select count(*) from t where id=211" 0
+
+[[ -n "$spfail" ]] && failexit "stored procedure transactions:$(echo -e "$spfail")"
+
 if cat ${TESTDIR}/logs/${SECONDARY_DBNAME}*.db 2>/dev/null | grep -q "wrong sql transaction"; then
     failexit "source db ran a local write without a local transaction"
 fi
