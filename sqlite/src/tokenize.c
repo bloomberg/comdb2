@@ -681,7 +681,10 @@ int sqlite3RunParser(Parse *pParse, const char *zSql){
   pParentParse = db->pParse;
   db->pParse = pParse;
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-  int need_to_check_for_semi = pParse->prepFlags & SQLITE_PREPARE_REQUIRE_SEMI;
+  /* SQL from sqlite3NestedParse() never ends in a semicolon, but it shares
+  ** the client's prepFlags. */
+  int need_to_check_for_semi = !pParse->nested
+                            && (pParse->prepFlags & SQLITE_PREPARE_REQUIRE_SEMI);
 #endif
   while( 1 ){
     n = sqlite3GetToken((u8*)zSql, &tokenType);
