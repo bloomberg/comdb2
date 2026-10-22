@@ -12,3 +12,6 @@ decoupled_logputs off
 setattr LOGDELETE_RUN_INTERVAL 1
 
 snapisol on
+
+# hasql retries need snapshot; socksql.testopts runs the socksql variant
+sql_tranlevel_default snapshot

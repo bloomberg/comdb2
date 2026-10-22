@@ -76,7 +76,6 @@ jepsen_sets.test
 killcluster.test
 netloss.test              -- does not pass most of the time; requires kernel 4.x & docker 17.x
 overflowblobs.test        -- timesout
-repeated_downgrades.test  -- we get lost writes from the downgrades
 incremental_backup_load.test -- times out on rr- we have other tests
 rootpagememleak.test
 rowlocks_blkseq.test
