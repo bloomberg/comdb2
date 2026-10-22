@@ -1,0 +1,3 @@
+Verify that a "local" handle keeps localhost as its only host when it
+discovers hosts while a pooled local connection is available, both when a
+query on a pooled connection is retried and when get_dbinfo is on.
