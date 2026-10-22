@@ -100,6 +100,7 @@ int fdb_svc_trans_get_tid(char *cid, char *tid);
  *
  * NOTE: this is called with dtran_mtx locked, and returns it LOCKED!
  * Returns non-zero, without bumping the sequence, if it gives up waiting.
+ * Giving up marks the sequence broken, failing every later request at once.
  */
 int fdb_sequence_request(struct sqlclntstate *tran_clnt, fdb_tran_t *trans, int seq);
 

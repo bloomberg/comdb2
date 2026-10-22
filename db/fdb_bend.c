@@ -73,7 +73,7 @@
 extern int gbl_fdb_track;
 
 /* How long a remote transaction request waits for an earlier one (0 = forever) */
-int gbl_fdb_sequence_timeout_ms = 10000;
+int gbl_fdb_sequence_timeout_ms = 60000;
 
 struct svc_cursor {
     char *cid;    /* cursor id */
@@ -243,7 +243,9 @@ svc_cursor_t *fdb_svc_cursor_open(char *tid, char *cid, int code_release, int ve
                 Pthread_mutex_unlock(&tran_clnt->dtran_mtx);
             }
             free(cur);
+            cleanup_clnt(*pclnt);
             free(*pclnt);
+            *pclnt = NULL;
             return NULL;
         }
 
@@ -275,7 +277,10 @@ svc_cursor_t *fdb_svc_cursor_open(char *tid, char *cid, int code_release, int ve
             listc_rfl(&trans->cursors, cur);
             Pthread_mutex_unlock(&tran_clnt->dtran_mtx);
             free(cur);
+            (*pclnt)->dbtran.shadow_tran = NULL;
+            cleanup_clnt(*pclnt);
             free(*pclnt);
+            *pclnt = NULL;
             return NULL;
         }
 
@@ -1221,18 +1226,36 @@ int fdb_svc_trans_get_tid(char *cid, char *tid)
  */
 int fdb_sequence_wait(struct sqlclntstate *tran_clnt, fdb_tran_t *trans, int seq)
 {
-    int start = comdb2_time_epochms();
+    int begin = comdb2_time_epochms();
+    int start = begin;
+    int last_seq = trans->seq;
 
-    while (trans->seq < seq) {
-        /* An earlier request that never arrives must not park this thread
-           forever; if it holds the bdb lock, it must also not block a
-           downgrade, upgrade or rep_verify that wants the writelock */
-        int waited = comdb2_time_epochms() - start;
-        if ((gbl_fdb_sequence_timeout_ms > 0 && waited > gbl_fdb_sequence_timeout_ms) ||
-            (bdb_lockref() > 0 && bdb_lock_desired(thedb->bdb_env)) || db_is_exiting()) {
+    while (trans->seq < seq || trans->seq_broken) {
+        int now = comdb2_time_epochms();
+        const char *why = NULL;
+
+        /* earlier requests are still arriving: only time a real stall */
+        if (trans->seq != last_seq) {
+            last_seq = trans->seq;
+            start = now;
+        }
+
+        /* An earlier request that never arrives must not park this thread forever */
+        if (trans->seq_broken)
+            why = "an earlier request gave up";
+        else if (gbl_fdb_sequence_timeout_ms > 0 && now - start > gbl_fdb_sequence_timeout_ms)
+            why = "timed out";
+        else if (db_is_exiting())
+            why = "db exiting";
+
+        if (why) {
             uuidstr_t us;
-            logmsg(LOGMSG_ERROR, "%s: giving up on tid=%s waiting for seq %d (at %d) after %d ms\n", __func__,
-                   comdb2uuidstr((unsigned char *)trans->tid, us), seq, trans->seq, waited);
+            /* this request will never be sequenced, so no later one can run:
+               fail them now instead of letting each wait out the timeout */
+            trans->seq_broken = 1;
+            logmsg(LOGMSG_ERROR, "%s: giving up on tid=%s waiting for seq %d (at %d): %s after %d ms (%d ms total)\n",
+                   __func__, comdb2uuidstr((unsigned char *)trans->tid, us), seq, trans->seq, why, now - start,
+                   now - begin);
             return -1;
         }
 
