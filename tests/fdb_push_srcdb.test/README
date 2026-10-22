@@ -1,0 +1,4 @@
+A remote write pushed to the remote db can reference tables of the source db
+(unqualified table names, as seen by the client of the source db). Check that
+these resolve to the source db tables, and not to tables of the remote db,
+including when the remote db has a table with the same name.
