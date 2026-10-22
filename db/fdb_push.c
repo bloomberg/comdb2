@@ -167,6 +167,17 @@ int fdb_push_write_setup(Parse *pParse, enum ast_type type, Table *pTab)
     if (pDb->version < FDB_VER_CDB2API)
         return -1;
 
+    /* an older remote db resolves unqualified tables to its own tables;
+     * do not push a statement that reads tables of other dbs to it; never
+     * push a statement reading system tables, they hold this db data
+     */
+    int other_dbs = fdb_stmt_uses_other_dbs(pParse, pTab->iDb);
+    if (other_dbs == 2 || (other_dbs && pDb->version < FDB_VER_PUSH_SRCDB)) {
+        logmsg(LOGMSG_DEBUG, "%s: QUERY %s reads other dbs (%d), remote version %d\n", __func__, clnt->sql, other_dbs,
+               pDb->version);
+        return -1;
+    }
+
     enum mach_class fdb_class;
     int fdb_local;
     if (get_fdb_class(pDb->zDbSName, &fdb_class, &fdb_local))
@@ -621,7 +632,7 @@ int handle_fdb_push_write(sqlclntstate *clnt, struct errstat *err, int n_extra_s
     fdb_t *fdb;
     int created;
     int rc;
-    int set_intrans = 0;
+    int set_inremtrans = 0;
     const char *noverify = "SET VeRiFyReTRy OFF";
     int cdb2open_flags = clnt->features.require_fastsql ? CDB2_REQUIRE_FASTSQL : 0 /* no sqlite row format here */;
 
@@ -667,11 +678,20 @@ int handle_fdb_push_write(sqlclntstate *clnt, struct errstat *err, int n_extra_s
             rc = -2;
             goto free;
         }
-        if (clnt->in_client_trans) {
-            /* if not standalone, and this is the first reachout to this fdb, send begin */
-            if (!clnt->intrans) {
-                clnt->intrans = 1;
-                set_intrans = 1;
+        if (in_sql_trans(clnt)) {
+            /* if not standalone, and this is the first reachout to this fdb, send begin;
+             * mark the remote transaction, so commit/rollback reach it even if
+             * there is no local transaction
+             */
+            if (!clnt->inremtrans) {
+                clnt->inremtrans = 1;
+                set_inremtrans = 1;
+            }
+
+            /* identify this db, node and client transaction to the remote */
+            rc = fdb_rempush_set(clnt, fdb, tran->fcon.hndl);
+            if (rc) {
+                goto hndl_err;
             }
 
             /* if this is 2pc, we need to send additional info to the participant */
@@ -692,6 +712,12 @@ int handle_fdb_push_write(sqlclntstate *clnt, struct errstat *err, int n_extra_s
                 goto hndl_err;
             }
             tran->writes_status = FDB_TRAN_BEGIN;
+        } else {
+            /* identify this db and node to the remote */
+            rc = fdb_rempush_set(clnt, fdb, tran->fcon.hndl);
+            if (rc) {
+                goto hndl_err;
+            }
         }
     }
     hndl = tran->fcon.hndl;
@@ -800,7 +826,6 @@ int handle_fdb_push_write(sqlclntstate *clnt, struct errstat *err, int n_extra_s
 
             tran->last_effects = effects;
         }
-        sql_set_sqlengine_state(clnt, __FILE__, __LINE__, SQLENG_INTRANS_STATE);
     } else {
         /* SP standalone — just store effects */
         clnt->effects.num_affected = effects.num_affected;
@@ -825,7 +850,7 @@ int handle_fdb_push_write(sqlclntstate *clnt, struct errstat *err, int n_extra_s
         }
     }
 
-    if (!clnt->in_client_trans) {
+    if (!in_sql_trans(clnt)) {
         goto free;
     }
 
@@ -863,13 +888,11 @@ free_push:
          * so that the postpone message works
          */
         fdb_push_free(&clnt->fdb_push);
-        if (set_intrans) {
-            /* if this tried to short call to local sqlite3BtreeBeginTrans
-             * first time we try to push, and we set clnt->intrans,
-             * and we are gonna retry the legacy mode, need to reset
-             * that back so we do not skip calling sqlite3BtreeBeginTrans
+        if (set_inremtrans) {
+            /* this was the first remote transaction, and it is gone; the
+             * legacy retry runs in a local transaction
              */
-            clnt->intrans = 0;
+            fdb_clear_inremtrans(clnt);
         }
     }
 

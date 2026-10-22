@@ -1,0 +1,10 @@
+Check client transactions with remote writes pushed over cdb2api: remote-only
+and mixed local/remote transactions commit and rollback correctly, a local
+update or delete after a pushed remote write runs in a proper local
+transaction, a remote-only transaction is rolled back when the client
+disconnects, and the transaction effects are reported correctly.
+
+The same transactions run from stored procedures: outside a client
+transaction (the implicit transaction of the procedure, db:begin/db:commit
+and db:rollback, a procedure failing after its writes), and inside a client
+transaction.

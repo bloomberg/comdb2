@@ -26,6 +26,7 @@
 #include "poll.h"
 #include "flibc.h"
 #include "logmsg.h"
+#include "comdb2_atomic.h"
 #include "comdb2_appsock.h"
 #include <disttxn.h>
 #include "cdb2_constants.h"
@@ -3535,9 +3536,11 @@ int fdb_send_begin(struct sqlclntstate *clnt, fdb_msg_t *msg, fdb_tran_t *trans,
 
     static int counter = 0;
 
-    if (counter % 1000 == 0) {
-        ++counter;
-        logmsg(LOGMSG_ERROR, "SENDING REMTRAN %d!\n", counter);
+    /* trace legacy remtran usage: first call, and every 1000 calls after */
+    int cnt = ATOMIC_ADD32(counter, 1);
+    if (cnt % 1000 == 1) {
+        logmsg(LOGMSG_ERROR, "SENDING REMTRAN %d! db %s sql \"%.256s\"\n", cnt, fdb_dbname_name(trans->fdb),
+               clnt->sql ? clnt->sql : "");
     }
 
     /* clean previous whatever */
