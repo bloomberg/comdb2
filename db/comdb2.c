@@ -1941,6 +1941,7 @@ void cleanup_newdb(dbtable *tbl)
     if (!tbl)
         return;
 
+    unlink_reverse_constraints(tbl);
     free(tbl->sqlaliasname);
 
     if (tbl->tablename) {
@@ -2046,6 +2047,27 @@ int add_reverse_constraint(struct dbtable *db, constraint_t *cnstrt)
     }
     db->rev_constraints[db->n_rev_constraints++] = cnstrt;
     return rc;
+}
+
+/* Remove other tables' reverse constraints that point into db->constraints;
+ * matches by pointer so a live table with the same name keeps its entries */
+void unlink_reverse_constraints(struct dbtable *db)
+{
+    if (!thedb || !db->constraints)
+        return;
+    constraint_t *beg = db->constraints, *end = db->constraints + db->n_constraints;
+    for (int i = 0; i < thedb->num_dbs; i++) {
+        struct dbtable *rdb = thedb->dbs[i];
+        Pthread_mutex_lock(&rdb->rev_constraints_lk);
+        for (int j = 0; j < rdb->n_rev_constraints; j++) {
+            constraint_t *ct = rdb->rev_constraints[j];
+            if (ct >= beg && ct < end) {
+                delete_reverse_constraint(rdb, j);
+                j--;
+            }
+        }
+        Pthread_mutex_unlock(&rdb->rev_constraints_lk);
+    }
 }
 
 int delete_reverse_constraint(struct dbtable *db, size_t idx)
