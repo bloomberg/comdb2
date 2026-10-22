@@ -958,6 +958,54 @@ __db_dbenv_mpool(dbp, fname, flags)
 }
 
 /*
+ * __db_close_recover_dbps --
+ *	Close the handles recovery or replication opened on fileid (on every
+ *	file if fileid is NULL), other than exclude. The ufid hash keeps only
+ *	the latest of them, so find them all on the dblist.
+ *
+ * PUBLIC: int __db_close_recover_dbps __P((DB_ENV *, u_int8_t *, DB *,
+ * PUBLIC:     DB_TXN *, u_int32_t));
+ */
+int
+__db_close_recover_dbps(dbenv, fileid, exclude, txn, flags)
+	DB_ENV *dbenv;
+	u_int8_t *fileid;
+	DB *exclude;
+	DB_TXN *txn;
+	u_int32_t flags;
+{
+	DB *ldbp;
+	int ret, t_ret;
+	FILE *f;
+
+	ret = 0;
+	for (;;) {
+		MUTEX_THREAD_LOCK(dbenv, dbenv->dblist_mutexp);
+		LIST_FOREACH(ldbp, &dbenv->dblist, dblistlinks)
+			if (ldbp != exclude && F_ISSET(ldbp, DB_AM_RECOVER) &&
+			    (fileid == NULL ||
+			    memcmp(ldbp->fileid, fileid, DB_FILE_ID_LEN) == 0))
+				break;
+		MUTEX_THREAD_UNLOCK(dbenv, dbenv->dblist_mutexp);
+		if (ldbp == NULL)
+			return (ret);
+
+		/* Keep the trace on server */
+		f = io_override_get_std();
+		io_override_set_std(stdout);
+		logmsg(LOGMSG_WARN, "%s: closing recovery DB handle to %s\n", __func__, ldbp->fname);
+		io_override_set_std(f);
+
+		if ((t_ret = __db_close(ldbp, txn,
+		    ldbp->mpf == NULL ? DB_NOSYNC : flags)) != 0) {
+			__db_err(dbenv, "__db_close(%s)", ldbp->fname);
+			if (ret == 0)
+				ret = t_ret;
+		}
+	}
+}
+
+/*
  * __db_clear_ufid_hash --
  * DB->clear_ufid_hash
  *	Attempts to close DB handle held by ufid hash
@@ -970,39 +1018,7 @@ __db_clear_ufid_hash(dbp, txn, flags)
 	DB_TXN *txn;
 	u_int32_t flags;
 {
-	DB_LSN dummy_lsn;
-	DB *ufid_dbp;
-	DB_ENV *dbenv;
-	int ret;
-	FILE *f;
-
-	dbenv = dbp->dbenv;
-	ZERO_LSN(dummy_lsn);
-	ufid_dbp = NULL;
-
-	ret = __ufid_find_db_for_removal(dbenv, txn, &ufid_dbp, dbp->fileid, &dummy_lsn);
-	if (ufid_dbp == dbp) {
-		/* prevent double-close */
-		return 0;
-	}
-
-	if (ret != 0 || ufid_dbp == NULL || !F_ISSET(ufid_dbp, DB_AM_RECOVER)) {
-		/* Ignore this file if its fileid is deleted, missing, or not opened by recovery */
-		return 0;
-	}
-
-	/* Keep the trace on server */
-	f = io_override_get_std();
-	io_override_set_std(stdout);
-	logmsg(LOGMSG_WARN, "%s: closing ufid hash open DB handle to %s\n", __func__, dbp->fname);
-	io_override_set_std(f);
-
-	ret = __db_close(ufid_dbp, txn, flags);
-	if (ret != 0) {
-		__db_err(dbenv, "__db_close(%s)", dbp->fname);
-	}
-	return (ret);
-
+	return (__db_close_recover_dbps(dbp->dbenv, dbp->fileid, dbp, txn, flags));
 }
 extern DB_OPEN_LIST gbl_db_open_list;
 
