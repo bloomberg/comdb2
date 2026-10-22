@@ -1928,13 +1928,44 @@ dbtable *newqdb(struct dbenv *env, const char *name, int avgsz, int pagesize,
     tbl->dbtype = isqueuedb ? DBTYPE_QUEUEDB : DBTYPE_QUEUE;
     tbl->avgitemsz = avgsz;
     tbl->queue_pagesize_override = pagesize;
-    Pthread_mutex_init(&tbl->rev_constraints_lk, NULL);
-
-    if (tbl->dbtype == DBTYPE_QUEUEDB || tbl->dbtype == DBTYPE_QUEUE) {
-        Pthread_rwlock_init(&tbl->consumer_lk, NULL);
-    }
+    dbtable_init_locks(tbl);
 
     return tbl;
+}
+
+/* A dbtable's locks live on the heap: a copy of a pthread lock is not a
+ * usable lock, but a copy of a pointer to one is. */
+void dbtable_init_locks(dbtable *tbl)
+{
+    tbl->rev_constraints_lk = malloc(sizeof(pthread_mutex_t));
+    tbl->sc_live_lk = malloc(sizeof(pthread_rwlock_t));
+    tbl->consumer_lk = malloc(sizeof(pthread_rwlock_t));
+    if (!tbl->rev_constraints_lk || !tbl->sc_live_lk || !tbl->consumer_lk) {
+        logmsg(LOGMSG_FATAL, "%s: Memory allocation error\n", __func__);
+        abort();
+    }
+    Pthread_mutex_init(tbl->rev_constraints_lk, NULL);
+    Pthread_rwlock_init(tbl->sc_live_lk, NULL);
+    Pthread_rwlock_init(tbl->consumer_lk, NULL);
+}
+
+void dbtable_free_locks(dbtable *tbl)
+{
+    if (tbl->rev_constraints_lk) {
+        Pthread_mutex_destroy(tbl->rev_constraints_lk);
+        free(tbl->rev_constraints_lk);
+        tbl->rev_constraints_lk = NULL;
+    }
+    if (tbl->sc_live_lk) {
+        Pthread_rwlock_destroy(tbl->sc_live_lk);
+        free(tbl->sc_live_lk);
+        tbl->sc_live_lk = NULL;
+    }
+    if (tbl->consumer_lk) {
+        Pthread_rwlock_destroy(tbl->consumer_lk);
+        free(tbl->consumer_lk);
+        tbl->consumer_lk = NULL;
+    }
 }
 
 void cleanup_newdb(dbtable *tbl)
@@ -2003,7 +2034,7 @@ void cleanup_newdb(dbtable *tbl)
         tbl->check_constraint_query = NULL;
     }
 
-    Pthread_mutex_destroy(&tbl->rev_constraints_lk);
+    dbtable_free_locks(tbl);
 
     if (tbl->ix_func) {
         for (int i = 0; i < tbl->num_lua_sfuncs; ++i) {
@@ -2011,9 +2042,6 @@ void cleanup_newdb(dbtable *tbl)
         }
         free(tbl->lua_sfuncs);
     }
-
-    if (tbl->dbtype == DBTYPE_QUEUEDB)
-        Pthread_rwlock_destroy(&tbl->consumer_lk);
 
     free(tbl);
 }
@@ -2059,7 +2087,7 @@ void unlink_reverse_constraints(struct dbtable *db)
     constraint_t *beg = db->constraints, *end = db->constraints + db->n_constraints;
     for (int i = 0; i < thedb->num_dbs; i++) {
         struct dbtable *rdb = thedb->dbs[i];
-        Pthread_mutex_lock(&rdb->rev_constraints_lk);
+        Pthread_mutex_lock(rdb->rev_constraints_lk);
         for (int j = 0; j < rdb->n_rev_constraints; j++) {
             constraint_t *ct = rdb->rev_constraints[j];
             if (ct >= beg && ct < end) {
@@ -2067,7 +2095,7 @@ void unlink_reverse_constraints(struct dbtable *db)
                 j--;
             }
         }
-        Pthread_mutex_unlock(&rdb->rev_constraints_lk);
+        Pthread_mutex_unlock(rdb->rev_constraints_lk);
     }
 }
 

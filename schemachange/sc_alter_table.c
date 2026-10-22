@@ -392,13 +392,13 @@ static void decrement_sc_yet_to_resume_counter()
 
 void dbtable_set_alter_fields(struct dbtable *db, struct dbtable *newdb)
 {
-    Pthread_rwlock_wrlock(&db->sc_live_lk);
+    Pthread_rwlock_wrlock(db->sc_live_lk);
     db->sc_to = newdb;
     db->sc_from = db;
     db->sc_abort = 0;
     db->sc_downgrading = 0;
     db->doing_conversion = 1; /* live_sc_off will unset it */
-    Pthread_rwlock_unlock(&db->sc_live_lk);
+    Pthread_rwlock_unlock(db->sc_live_lk);
 }
 struct dbtable *do_alter_table_newdb(const char *tablename, const char *csc2, int dbnum, struct schema_change_type *s,
                                      struct ireq *iq)
@@ -911,13 +911,13 @@ static int do_merge_table(struct ireq *iq, struct schema_change_type *s,
         goto earlyfail;
     }
 
-    Pthread_rwlock_wrlock(&db->sc_live_lk);
+    Pthread_rwlock_wrlock(db->sc_live_lk);
     db->sc_from = s->db = db;
     db->sc_to = s->newdb = newdb;
     db->sc_abort = 0;
     db->sc_downgrading = 0;
     db->doing_conversion = 1; /* live_sc_off will unset it */
-    Pthread_rwlock_unlock(&db->sc_live_lk);
+    Pthread_rwlock_unlock(db->sc_live_lk);
 
 convert_records:
     assert(db->sc_from == db && s->db == db);

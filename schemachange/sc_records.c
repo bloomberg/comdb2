@@ -1629,9 +1629,9 @@ int convert_all_records(struct dbtable *from, struct dbtable *to,
         }
 
         s->logical_livesc = 1;
-        Pthread_rwlock_wrlock(&s->db->sc_live_lk);
+        Pthread_rwlock_wrlock(s->db->sc_live_lk);
         s->db->sc_live_logical = 1;
-        Pthread_rwlock_unlock(&s->db->sc_live_lk);
+        Pthread_rwlock_unlock(s->db->sc_live_lk);
         Pthread_create(&thdData->tid, &gbl_pthread_attr_detached,
                             (void *(*)(void *))live_sc_logical_redo_thd,
                             thdData);

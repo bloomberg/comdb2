@@ -660,11 +660,11 @@ int live_sc_post_delete(struct ireq *iq, void *trans, unsigned long long genid,
                         blob_buffer_t *oldblobs)
 {
     int rc = 0;
-    Pthread_rwlock_rdlock(&iq->usedb->sc_live_lk);
+    Pthread_rwlock_rdlock(iq->usedb->sc_live_lk);
 
     rc = live_sc_post_delete_int(iq, trans, genid, old_dta, del_keys, oldblobs);
 
-    Pthread_rwlock_unlock(&iq->usedb->sc_live_lk);
+    Pthread_rwlock_unlock(iq->usedb->sc_live_lk);
     return rc;
 }
 
@@ -765,12 +765,12 @@ int live_sc_post_add(struct ireq *iq, void *trans, unsigned long long genid,
         logmsg(LOGMSG_INFO, "%s: slept 30s\n", __func__);
     }
 
-    Pthread_rwlock_rdlock(&iq->usedb->sc_live_lk);
+    Pthread_rwlock_rdlock(iq->usedb->sc_live_lk);
 
     rc = live_sc_post_add_int(iq, trans, genid, od_dta, ins_keys, blobs,
                               maxblobs, origflags, rrn);
 
-    Pthread_rwlock_unlock(&iq->usedb->sc_live_lk);
+    Pthread_rwlock_unlock(iq->usedb->sc_live_lk);
     return rc;
 }
 
@@ -780,11 +780,11 @@ int live_sc_delayed_key_adds(struct ireq *iq, void *trans,
                              unsigned long long ins_keys, int od_len)
 {
     int rc = 0;
-    Pthread_rwlock_rdlock(&iq->usedb->sc_live_lk);
+    Pthread_rwlock_rdlock(iq->usedb->sc_live_lk);
 
     rc = live_sc_post_update_delayed_key_adds(iq, trans, newgenid, od_dta, ins_keys, od_len);
 
-    Pthread_rwlock_unlock(&iq->usedb->sc_live_lk);
+    Pthread_rwlock_unlock(iq->usedb->sc_live_lk);
     return rc;
 }
 
@@ -928,36 +928,36 @@ int live_sc_post_update(struct ireq *iq, void *trans,
 {
     int rc;
 
-    Pthread_rwlock_rdlock(&iq->usedb->sc_live_lk);
+    Pthread_rwlock_rdlock(iq->usedb->sc_live_lk);
 
     rc = live_sc_post_update_int(iq, trans, oldgenid, old_dta, newgenid,
                                  new_dta, ins_keys, del_keys, od_len, updCols,
                                  blobs, maxblobs, origflags, rrn, deferredAdd,
                                  oldblobs, newblobs);
 
-    Pthread_rwlock_unlock(&iq->usedb->sc_live_lk);
+    Pthread_rwlock_unlock(iq->usedb->sc_live_lk);
     return rc;
 }
 
 int live_sc_disable_inplace_blobs(struct ireq *iq)
 {
     int rc = 0;
-    Pthread_rwlock_rdlock(&iq->usedb->sc_live_lk);
+    Pthread_rwlock_rdlock(iq->usedb->sc_live_lk);
     if (iq->usedb->sc_from == iq->usedb && iq->usedb->sc_live_logical &&
         iq->usedb->sc_to->ix_blob)
         rc = 1;
-    Pthread_rwlock_unlock(&iq->usedb->sc_live_lk);
+    Pthread_rwlock_unlock(iq->usedb->sc_live_lk);
     return rc;
 }
 
 int live_sc_delay_key_add(struct ireq *iq)
 {
     int rc = 0;
-    Pthread_rwlock_rdlock(&iq->usedb->sc_live_lk);
+    Pthread_rwlock_rdlock(iq->usedb->sc_live_lk);
     if (iq->usedb->sc_from == iq->usedb && !iq->usedb->sc_live_logical &&
         iq->usedb->sc_to->n_constraints)
         rc = 1;
-    Pthread_rwlock_unlock(&iq->usedb->sc_live_lk);
+    Pthread_rwlock_unlock(iq->usedb->sc_live_lk);
     return rc;
 }
 

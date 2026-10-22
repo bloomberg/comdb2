@@ -695,7 +695,8 @@ typedef struct dbtable {
     constraint_t **rev_constraints;
     size_t n_rev_constraints;
     size_t cap_rev_constraints;
-    pthread_mutex_t rev_constraints_lk;
+    /* Locks are heap-allocated so a memcpy of a dbtable carries them along */
+    pthread_mutex_t *rev_constraints_lk;
 
     /* CHECK constraints */
     check_constraint_t *check_constraints;
@@ -756,7 +757,7 @@ typedef struct dbtable {
 
     /* All writer threads have to grab the lock in read/write mode.  If a live
      * schema change is in progress then they have to do extra stuff. */
-    pthread_rwlock_t sc_live_lk;
+    pthread_rwlock_t *sc_live_lk;
 
     /* count the number of updates and deletes done by schemachange
      * when behind the cursor.  This helps us know how many
@@ -790,7 +791,7 @@ typedef struct dbtable {
     uint8_t vers_compat_ondisk[MAXVER + 1];
 
     /* lock for consumer list */
-    pthread_rwlock_t consumer_lk;
+    pthread_rwlock_t *consumer_lk;
 
     unsigned has_datacopy_ix : 1; /* set to 1 if we have datacopy indexes */
     unsigned ix_partial : 1;      /* set to 1 if we have partial indexes */
@@ -2558,6 +2559,8 @@ int fastinit_table(struct dbenv *dbenvin, char *table);
 
 void cleanup_newdb(struct dbtable *);
 void cleanup_merge_resume_newdb(struct ireq *iq, struct schema_change_type *sc, int downgrade);
+void dbtable_init_locks(struct dbtable *);
+void dbtable_free_locks(struct dbtable *);
 struct dbtable *newqdb(struct dbenv *env, const char *name, int avgsz, int pagesize,
                   int isqueuedb);
 int add_queue_to_environment(char *table, int avgitemsz, int pagesize);
