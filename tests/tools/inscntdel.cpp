@@ -74,6 +74,7 @@ typedef struct {
 void create_tbls(int N)
 {
     cdb2_hndl_tp *h;
+    cdb2_set_max_retries(999999); // must precede cdb2_open to apply to this handle
     int rc = cdb2_open(&h, dbname, "default", 0);
     if (rc != 0)
         rc = cdb2_open(&h, dbname, "local", 0);
@@ -81,7 +82,6 @@ void create_tbls(int N)
         fprintf(stderr, "Error: cdb2_open failed: %d\n", rc);
         exit(1);
     }
-    cdb2_set_max_retries(999999);
 
     for(int i = 0 ; i < N; i++) {
         usleep(500);
@@ -105,6 +105,7 @@ void create_tbls(int N)
 void *thr(void *arg)
 {
     cdb2_hndl_tp *h;
+    cdb2_set_max_retries(999999); // must precede cdb2_open to apply to this handle
     int rc = cdb2_open(&h, dbname, "default", 0);
     if (rc != 0)
         rc = cdb2_open(&h, dbname, "local", 0);
@@ -112,7 +113,6 @@ void *thr(void *arg)
         fprintf(stderr, "Error: cdb2_open failed: %d\n", rc);
         exit(1);
     }
-    cdb2_set_max_retries(999999);
 
     thr_info_t *tinfo = (thr_info_t *)arg;
     int i = tinfo->thrid;
