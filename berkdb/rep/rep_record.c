@@ -8761,6 +8761,16 @@ __rep_verify_match(dbenv, rp, savetime, online)
 	MUTEX_LOCK(dbenv, db_rep->rep_mutexp);
 	done = savetime != rep->timestamp;
 	MUTEX_UNLOCK(dbenv, db_rep->rep_mutexp);
+
+	/* Another thread's truncate can put a matched lsn past end of log */
+	if (!done) {
+		R_LOCK(dbenv, &dblp->reginfo);
+		prevlsn = lp->lsn;
+		R_UNLOCK(dbenv, &dblp->reginfo);
+		if ((done = log_compare(&rp->lsn, &prevlsn) >= 0))
+			logmsg(LOGMSG_WARN, "%s: ignoring verify-match %u:%u past end of log %u:%u\n", __func__,
+				rp->lsn.file, rp->lsn.offset, prevlsn.file, prevlsn.offset);
+	}
 	if (done) {
 		MUTEX_UNLOCK(dbenv, db_rep->db_mutexp);
 		Pthread_mutex_unlock(&apply_lk);
