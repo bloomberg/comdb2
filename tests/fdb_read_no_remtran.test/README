@@ -1,0 +1,7 @@
+Check that a read-only access to a remote table from a statement that writes
+locally (i.e. UPDATE local ... WHERE x > (SELECT max(x) FROM remdb.t)) does not
+create a remote transaction (remtran), and that a remote transaction is still
+created for, and joined after, an actual write to the remote db.
+
+The base configuration disables push, so remote writes use remtran; the
+fdbpush variant enables push writes, and no remtran is expected at all.

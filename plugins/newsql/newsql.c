@@ -2257,6 +2257,12 @@ int process_set_commands(struct sqlclntstate *clnt, CDB2SQLQUERY *sql_query)
                 if (process_fdb_set_cdb2api_2pc(clnt, sqlstr, err, sizeof(err))) {
                     rc = ii + 1;
                 }
+            } else if (strncasecmp(sqlstr, "rempush_", 8) == 0) {
+                sqlstr += 8;
+
+                if (process_fdb_set_rempush(clnt, sqlstr, err, sizeof(err))) {
+                    rc = ii + 1;
+                }
             } else if (strncasecmp(sqlstr, "typessql", 8) == 0) {
                 sqlstr += 8;
                 sqlstr = skipws(sqlstr);
@@ -2561,7 +2567,7 @@ int newsql_should_dispatch(struct sqlclntstate *clnt, int *commit_rollback)
 
 void newsql_reset(struct sqlclntstate *clnt)
 {
-    if (clnt->ctrl_sqlengine == SQLENG_INTRANS_STATE) {
+    if (clnt->ctrl_sqlengine == SQLENG_INTRANS_STATE || clnt->inremtrans) {
         /* Discard the pending transaction when receiving RESET from the
                sockpool. We reach here if
                1) the handle is in a open transaction, and
