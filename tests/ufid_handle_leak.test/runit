@@ -1,0 +1,58 @@
+#!/usr/bin/env bash
+bash -n "$0" || exit 1
+
+[ -z "${CLUSTER}" ] && { echo "Test requires a cluster"; exit 0; }
+
+dbnm=$1
+
+# An alter that keeps the table's btree files (instant add column, add index)
+# closes the old table handle on replicants with BDB_CLOSE_FLAGS_CLR_UFID,
+# which also closes the apply handle held in the ufid hash. The master keeps
+# writing to the same files, so the next replicated write is resolved through
+# __ufid_to_db -> __ufid_open, which opens a private DB handle and caches it
+# in the ufid hash. Nothing closes it, so a clean exit leaves db_ref != 0:
+#   Database handles open during environment close
+#   bdb_close_int: error closing env 22 Invalid argument
+#
+# Fails while the leak exists. Run with BASELINE=1 to skip the alter and
+# check that a plain clean exit doesn't log it.
+
+cdb2sql ${CDB2_OPTIONS} $dbnm default "CREATE TABLE t1 (i INT)"
+cdb2sql ${CDB2_OPTIONS} $dbnm default "INSERT INTO t1 VALUES(1)"
+
+if [[ "$BASELINE" != "1" ]]; then
+    cdb2sql ${CDB2_OPTIONS} $dbnm default "ALTER TABLE t1 ADD COLUMN j INT NULL"
+fi
+
+cdb2sql ${CDB2_OPTIONS} $dbnm default "INSERT INTO t1(i) VALUES(2)"
+cdb2sql ${CDB2_OPTIONS} $dbnm default "UPDATE t1 SET i = i + 10 WHERE 1"
+sleep 2
+
+master=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select host from comdb2_cluster where is_master='Y'"`
+echo "master is $master"
+
+for node in $CLUSTER ; do
+    cdb2sql ${CDB2_OPTIONS} $dbnm --host $node 'EXEC PROCEDURE sys.cmd.send("exit")'
+done
+
+leaked=0
+for node in $CLUSTER ; do
+    log=${TESTDIR}/logs/${DBNAME}.${node}.db
+    for i in $(seq 1 120); do
+        grep -q "goodbye" $log && break
+        sleep 1
+    done
+    if grep -q "Database handles open during environment close" $log; then
+        echo "$node: leaked handles at exit"
+        grep "Database handles open during environment close\|error closing env" $log
+        leaked=1
+    else
+        echo "$node: clean"
+    fi
+done
+
+if [[ $leaked -ne 0 ]]; then
+    echo "Failed: DB handles left open at environment close"
+    exit 1
+fi
+echo "Success"
