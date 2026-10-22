@@ -4,7 +4,8 @@ bash -n "$0" || exit 1
 # A partial index predicate with a datetime literal that carries no timezone
 # must select the same rows whatever the session timezone is.  A row written
 # from one timezone and expired from another used to leave an orphaned entry
-# in the partial index.
+# in the partial index.  New partial indexes can no longer use such literals;
+# existing ones keep working until they are changed.
 
 dbnm=$1
 
@@ -25,7 +26,7 @@ sql() {
 }
 
 # put_tunable <name> <value>: on every node, since any of them may run the
-# writes
+# writes or become master
 put_tunable() {
     local nodes=${CLUSTER:-}
     if [[ -z "$nodes" ]]; then
@@ -52,9 +53,12 @@ active() {
 }
 
 # The active row has d at a sentinel, which the partial index selects with a
-# literal meant as New York time.
+# literal meant as New York time.  New indexes like this are refused now, so
+# this creates the kind of table that existed before and is grandfathered in.
+put_tunable debug.allow_tzless_partial_index 1
 cdb2sql ${CDB2_OPTIONS} $dbnm default "create table t { schema { int id datetime d }
 keys { \"pk\" = id dup \"active\" = id $TZLESS } }" >/dev/null || failexit "create table"
+put_tunable debug.allow_tzless_partial_index 0
 
 # run_case <insert tz> <writer tz> <how>: row 1 from one session, then from
 # another the writer adds row 2 and expires row 1, expires row 2 through the
@@ -106,6 +110,53 @@ verify_ok && failexit "tunable off: expected verify to fail"
 echo "ok: tunable off reproduces the corruption"
 
 put_tunable partial_index_fixed_tz 1
-cdb2sql ${CDB2_OPTIONS} $dbnm default "drop table t" >/dev/null
+cdb2sql ${CDB2_OPTIONS} $dbnm default "truncate t" >/dev/null || failexit "truncate"
+
+# New partial indexes must give datetime literals a timezone; t's index is
+# grandfathered and only refused once it is changed.
+expect() {
+    local want=$1 tag=$2 out
+    out=$(echo "$3" | cdb2sql ${CDB2_OPTIONS} $dbnm default - 2>&1)
+    if echo "$out" | grep -q "failed"; then
+        [[ $want == reject ]] || failexit "$tag: $out"
+        echo "$out" | grep -q "literal that has no timezone" || failexit "$tag: wrong error: $out"
+    else
+        [[ $want == ok ]] || failexit "$tag: expected it to be refused"
+    fi
+    echo "ok: $want $tag"
+}
+
+new_table() {
+    echo "create table $1 { schema { int id datetime d cstring s[32] } keys { dup \"k\" = id { where $2 } } }\$\$"
+}
+alter_t() {
+    echo "alter table t { schema { int id datetime d } keys { \"pk\" = id $1 } }\$\$"
+}
+
+expect reject "new table, no timezone" "$(new_table n1 "d = '9999-12-30T19:00:00'")"
+expect reject "new table, between" "$(new_table n2 "d between '2020-01-01' and '2021-01-01 UTC'")"
+expect reject "new table, in" "$(new_table n3 "d in ('2020-01-01T00:00:00 UTC', '2021-01-01T00:00:00')")"
+expect reject "new table, cast" "$(new_table n4 "d > cast('2020-01-01T00:00:00' as datetime)")"
+expect ok "new table, America/New_York" "$(new_table n5 "d = '9999-12-30T19:00:00 America/New_York'")"
+expect ok "new table, UTC" "$(new_table n6 "d = '9999-12-31T00:00:00 UTC'")"
+expect ok "new table, text column" "$(new_table n7 "s = '2020-01-01T00:00:00'")"
+
+expect reject "alter t, change the index columns" "$(alter_t "dup \"active\" = id + d $TZLESS")"
+expect reject "alter t, rename the index" "$(alter_t "dup \"active2\" = id $TZLESS")"
+expect reject "alter t, add a partial index without timezone" \
+    "$(alter_t "dup \"active\" = id $TZLESS dup \"active2\" = d $TZLESS")"
+expect ok "alter t, add a plain index" "$(alter_t "dup \"active\" = id $TZLESS dup \"d_plain\" = d")"
+expect ok "add column" "alter table t add column extra int"
+expect reject "create index without timezone" "create index t_tzless on t(d) where d = '9999-12-30T19:00:00'"
+expect ok "create index with timezone" "create index t_tz on t(d) where d = '9999-12-30T19:00:00 America/New_York'"
+expect ok "rebuild" "rebuild t"
+expect ok "truncate" "truncate t"
+expect ok "alter t, give the index a timezone" \
+    "$(alter_t "dup \"active\" = id { WHERE (d = '9999-12-30T19:00:00 America/New_York') }")"
+verify_ok || failexit "verify after schema changes"
+
+for tbl in t n5 n6 n7; do
+    cdb2sql ${CDB2_OPTIONS} $dbnm default "drop table $tbl" >/dev/null
+done
 
 echo "Success"
