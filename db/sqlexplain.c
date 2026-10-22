@@ -1118,6 +1118,11 @@ void get_one_explain_line(struct sqlclntstate *clnt, sqlite3 *hndl, strbuf *out,
     case OP_CursorHint:
         strbuf_appendf(out, "Cursor [%d] table ", op->p1);
         print_cursor_description(clnt, out, &cur[op->p1], 1);
+        /* Without a P4 expr this hint pairs index cursor P1 with table cursor P3 */
+        if (op->p4type != P4_EXPR) {
+            strbuf_appendf(out, " drives table cursor [%d]", op->p3);
+            break;
+        }
         char *descr = sqlite3ExprDescribe(hndl->pVdbe, op->p4.pExpr);
         strbuf_appendf(out, " hint \"%s\"",
                        (descr) ? descr : "(expression not parseable, see 592)");
