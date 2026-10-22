@@ -536,6 +536,14 @@ int do_alter_table(struct ireq *iq, struct schema_change_type *s,
             rc = SC_CSC2_ERROR;
             goto earlyfail;
         }
+
+        if ((rc = check_partial_index_tz(s, db, newdb))) {
+            backout(newdb);
+            cleanup_newdb(newdb);
+            if (local_lock)
+                unlock_schema_lk();
+            goto earlyfail;
+        }
     }
 
     if ((iq == NULL || iq->tranddl <= 1) &&
