@@ -6177,6 +6177,8 @@ void freedb_int(dbtable *db, dbtable *replace)
         for (i = 0; i < db->numcols; i++) {
             free(columns[i]);
         }
+        /* NULL if the locks moved to another table */
+        dbtable_free_locks(db);
     }
     free(db->lrlfname);
     free(db->tablename);
@@ -6242,7 +6244,19 @@ void freedb_int(dbtable *db, dbtable *replace)
     }
 
     if (replace) {
+        /* db takes over replace's locks with the copy. We hold the schema
+         * lock and the table write lock, so nobody holds or waits on db's
+         * old locks. */
+        dbtable_free_locks(db);
+
         memcpy(db, replace, sizeof(dbtable));
+
+        /* The locks belong to db now: make sure nothing frees them through
+         * replace. */
+        replace->rev_constraints_lk = NULL;
+        replace->sc_live_lk = NULL;
+        replace->consumer_lk = NULL;
+
         db->dbs_idx = dbs_idx;
         db->sqlaliasname = sqlaliasname;
         db->timepartition_name = timepartition_name;

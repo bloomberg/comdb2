@@ -637,13 +637,13 @@ int do_alter_table(struct ireq *iq, struct schema_change_type *s,
                db->sc_genids[i], db->sc_genids[i]);
     }
 
-    Pthread_rwlock_wrlock(&db->sc_live_lk);
+    Pthread_rwlock_wrlock(db->sc_live_lk);
     db->sc_from = s->db = db;
     db->sc_to = s->newdb = newdb;
     db->sc_abort = 0;
     db->sc_downgrading = 0;
     db->doing_conversion = 1; /* live_sc_off will unset it */
-    Pthread_rwlock_unlock(&db->sc_live_lk);
+    Pthread_rwlock_unlock(db->sc_live_lk);
 
 convert_records:
     assert(db->sc_from == db && s->db == db);
@@ -819,13 +819,13 @@ static int do_merge_table(struct ireq *iq, struct schema_change_type *s,
         return -1;
     }
 
-    Pthread_rwlock_wrlock(&db->sc_live_lk);
+    Pthread_rwlock_wrlock(db->sc_live_lk);
     db->sc_from = s->db = db;
     db->sc_to = s->newdb = newdb;
     db->sc_abort = 0;
     db->sc_downgrading = 0;
     db->doing_conversion = 1; /* live_sc_off will unset it */
-    Pthread_rwlock_unlock(&db->sc_live_lk);
+    Pthread_rwlock_unlock(db->sc_live_lk);
 
 convert_records:
     assert(db->sc_from == db && s->db == db);

@@ -414,7 +414,7 @@ int check_update_constraints(struct ireq *iq, void *trans,
                              int *errout)
 {
     int i = 0, rc = 0;
-    Pthread_mutex_lock(&iq->usedb->rev_constraints_lk);
+    Pthread_mutex_lock(iq->usedb->rev_constraints_lk);
     for (i = 0; i < iq->usedb->n_rev_constraints; i++) {
         int j = 0;
         constraint_t *cnstrt = iq->usedb->rev_constraints[i];
@@ -443,7 +443,7 @@ int check_update_constraints(struct ireq *iq, void *trans,
                           "key constraint: unknown keytag '%s'",
                           cnstrt->keynm[j]);
                 *errout = OP_FAILED_INTERNAL + ERR_FORM_KEY;
-                Pthread_mutex_unlock(&iq->usedb->rev_constraints_lk);
+                Pthread_mutex_unlock(iq->usedb->rev_constraints_lk);
                 return ERR_CONVERT_IX;
             }
             if (gbl_partial_indexes && iq->usedb->ix_partial &&
@@ -466,7 +466,7 @@ int check_update_constraints(struct ireq *iq, void *trans,
                           "key constraint cannot form destination table '%s' index %d (%s)",
                           iq->usedb->tablename, ixnum, cnstrt->keynm[j]);
                 *errout = OP_FAILED_INTERNAL + ERR_FORM_KEY;
-                Pthread_mutex_unlock(&iq->usedb->rev_constraints_lk);
+                Pthread_mutex_unlock(iq->usedb->rev_constraints_lk);
                 return ERR_CONVERT_IX;
             }
 
@@ -488,7 +488,7 @@ int check_update_constraints(struct ireq *iq, void *trans,
                               "key constraint: new data cannot form table '%s' index %d (%s)",
                               iq->usedb->tablename, ixnum, cnstrt->keynm[j]);
                     *errout = OP_FAILED_INTERNAL + ERR_FORM_KEY;
-                    Pthread_mutex_unlock(&iq->usedb->rev_constraints_lk);
+                    Pthread_mutex_unlock(iq->usedb->rev_constraints_lk);
                     return ERR_CONVERT_IX;
                 }
                 /* if new key  matches old key, we don't need to check this
@@ -515,7 +515,7 @@ int check_update_constraints(struct ireq *iq, void *trans,
                           "key constraint: unknown table '%s' keytag '%s'",
                           cnstrt->lcltable->tablename, cnstrt->lclkeyname);
                 *errout = OP_FAILED_INTERNAL + ERR_FORM_KEY;
-                Pthread_mutex_unlock(&iq->usedb->rev_constraints_lk);
+                Pthread_mutex_unlock(iq->usedb->rev_constraints_lk);
                 return ERR_CONVERT_IX;
             }
 
@@ -625,12 +625,12 @@ int check_update_constraints(struct ireq *iq, void *trans,
                 if (iq->debug)
                     reqprintf(iq, "RTNKYCNSTRT CANT MALLOC\n");
                 *errout = OP_FAILED_INTERNAL + ERR_INTERNAL;
-                Pthread_mutex_unlock(&iq->usedb->rev_constraints_lk);
+                Pthread_mutex_unlock(iq->usedb->rev_constraints_lk);
                 return ERR_INTERNAL;
             }
         }
     }
-    Pthread_mutex_unlock(&iq->usedb->rev_constraints_lk);
+    Pthread_mutex_unlock(iq->usedb->rev_constraints_lk);
     return 0;
 }
 
