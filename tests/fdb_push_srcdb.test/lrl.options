@@ -3,3 +3,4 @@ foreign_db_push_remote 1
 foreign_db_push_remote_writes 1
 foreign_db_push_redirect 0
 foreign_db_resolve_local 1
+fdbdebg 1

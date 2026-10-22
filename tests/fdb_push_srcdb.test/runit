@@ -97,4 +97,51 @@ commit
 EOF
 expect_remote "client transaction" "1001 2001 2002 2003 4001 11001 11002 11003"
 
+# remote cursors of the client transaction came back to this source node
+# with its txnid; the source accepts them only for an active transaction
+# registered on the node, so a wrong node or txnid fails the statements above
+if ! cat ${TESTDIR}/logs/${SECONDARY_DBNAME}*.db 2>/dev/null | grep -q "remsql cursor reads for source transaction"; then
+    failexit "no remote cursor read for the source transaction"
+fi
+
+# a pushed statement names its source node; it must be a node of the source db
+rnode=$($REM default "select host from comdb2_cluster" | head -1)
+REMNODE="${CDB2SQL_EXE} --tabs --cdb2cfg ${CDB2_CONFIG} --host ${rnode} ${DBNAME}"
+
+echo "== source node is a node of the source db"
+out=$($REMNODE - 2>&1 <<EOF
+set rempush_name ${SECONDARY_DBNAME}
+set rempush_tier default
+set rempush_node ${rnode}
+select count(*) from lt
+EOF
+)
+echo "$out"
+# drop the "[statement] rc" lines
+res=$(echo "$out" | grep -v "^\[")
+[[ "$res" != "3" ]] && failexit "valid source node: expected 3 rows from source lt, got '$res'"
+
+echo "== source node is not a node of the source db"
+out=$($REMNODE - 2>&1 <<EOF
+set rempush_name ${SECONDARY_DBNAME}
+set rempush_tier default
+set rempush_node bogusnode
+select count(*) from lt
+EOF
+)
+echo "$out"
+echo "$out" | grep -q "rempush node bogusnode is not a node of" || failexit "bogus source node was not rejected"
+
+# a remote cursor naming a source transaction that is not active is rejected
+echo "== unknown source transaction"
+out=$($SRC default - 2>&1 <<EOF
+set remsql_version 10
+set remsql_srcdbname ${DBNAME}
+set remsql_srctxn 00000000-1111-2222-3333-444444444444
+select 1
+EOF
+)
+echo "$out"
+echo "$out" | grep -q "unknown source transaction" || failexit "unknown source transaction was not rejected"
+
 echo "SUCCESS"
