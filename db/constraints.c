@@ -2324,6 +2324,34 @@ int populate_reverse_constraints(struct dbtable *db)
     return n_errors;
 }
 
+/* undoes populate_reverse_constraints(): removes the db's constraints from the
+ * reverse constraint arrays of the tables they reference; needed before a
+ * table that never made it (failed or backed out create) is freed, otherwise
+ * the referenced tables keep pointers into freed memory */
+void depopulate_reverse_constraints(struct dbtable *db)
+{
+    int ii, jj, kk;
+
+    for (ii = 0; ii < db->n_constraints; ii++) {
+        constraint_t *cnstrt = &db->constraints[ii];
+
+        for (jj = 0; jj < cnstrt->nrules; jj++) {
+            struct dbtable *cttbl = get_dbtable_by_name(cnstrt->table[jj]);
+            if (cttbl == NULL || cttbl == db)
+                continue;
+
+            Pthread_mutex_lock(&cttbl->rev_constraints_lk);
+            for (kk = 0; kk < cttbl->n_rev_constraints; kk++) {
+                if (cttbl->rev_constraints[kk] == cnstrt) {
+                    delete_reverse_constraint(cttbl, kk);
+                    kk--;
+                }
+            }
+            Pthread_mutex_unlock(&cttbl->rev_constraints_lk);
+        }
+    }
+}
+
 /* Iterate over all constraints which a key has 
  * more of the time there is one such constraint but there
  * can be multiple such rules */

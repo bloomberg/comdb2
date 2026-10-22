@@ -1819,6 +1819,9 @@ int backout_schema_changes(struct ireq *iq, tran_type *tran)
                 rem_dbtable_from_thedb_dbs(s->db);
             }
             if (s->newdb) {
+                /* a transactional create registers its constraints with the
+                 * referenced tables at finalize; drop them, the table is going away */
+                depopulate_reverse_constraints(s->newdb);
                 backout_schemas(s->newdb->tablename);
             }
         } else if (s->db) {

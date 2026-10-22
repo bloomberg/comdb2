@@ -187,6 +187,9 @@ int add_table_to_environment(char *table, const char *csc2,
 
 err:
     newdb->iq = NULL;
+    /* the add failed, its constraints must not stay registered with the
+     * referenced tables (no-op if we failed before populating them) */
+    depopulate_reverse_constraints(newdb);
     backout_schemas(newdb->tablename);
     cleanup_newdb(newdb);
     return rc;
