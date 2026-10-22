@@ -1103,6 +1103,21 @@ static void reqlog_free_all(struct reqlogger *logger)
     put_ref(&logger->sql_ref);
 }
 
+/* Async dist commit: another thread will end this request.  Save this
+ * thread's storage counters now, so the request's log shows its own numbers. */
+void reqlog_keep_thread_stats(struct reqlogger *logger)
+{
+    if (!logger)
+        return;
+    logger->thread_stats = *bdb_get_thread_stats();
+    logger->thread_stats_saved = 1;
+}
+
+const struct berkdb_thread_stats *reqlog_thread_stats(const struct reqlogger *logger)
+{
+    return logger->thread_stats_saved ? &logger->thread_stats : bdb_get_thread_stats();
+}
+
 void reqlog_free(struct reqlogger *logger)
 {
     if (logger) {
@@ -1599,7 +1614,7 @@ static void print_client_query_stats(struct reqlogger *logger,
 static void log_header_ll(struct reqlogger *logger, struct output *out,
                           int is_running)
 {
-    const struct berkdb_thread_stats *thread_stats = bdb_get_thread_stats();
+    const struct berkdb_thread_stats *thread_stats = reqlog_thread_stats(logger);
     struct reqlog_print_callback_args args;
 
     if (out == long_request_out) {
