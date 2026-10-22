@@ -14,6 +14,7 @@
 
 int gbl_iterations;
 int gbl_print_cnonce;
+int gbl_snapshot;
 static std::string quote("");
 static std::string comma(",");
 static std::string space(" ");
@@ -22,6 +23,7 @@ static std::string begin("begin");
 static std::string commit("commit");
 static std::string rollback("rollback");
 static std::string sethasql("set hasql on");
+static std::string setsnapshot("set transaction snapshot isolation");
 
 int runsql(cdb2_hndl_tp *h, std::string &sql)
 {
@@ -74,6 +76,7 @@ typedef struct {
 void create_tbls(int N)
 {
     cdb2_hndl_tp *h;
+    cdb2_set_max_retries(999999); // must precede cdb2_open to apply to this handle
     int rc = cdb2_open(&h, dbname, "default", 0);
     if (rc != 0)
         rc = cdb2_open(&h, dbname, "local", 0);
@@ -81,7 +84,6 @@ void create_tbls(int N)
         fprintf(stderr, "Error: cdb2_open failed: %d\n", rc);
         exit(1);
     }
-    cdb2_set_max_retries(999999);
 
     for(int i = 0 ; i < N; i++) {
         usleep(500);
@@ -105,6 +107,7 @@ void create_tbls(int N)
 void *thr(void *arg)
 {
     cdb2_hndl_tp *h;
+    cdb2_set_max_retries(999999); // must precede cdb2_open to apply to this handle
     int rc = cdb2_open(&h, dbname, "default", 0);
     if (rc != 0)
         rc = cdb2_open(&h, dbname, "local", 0);
@@ -112,11 +115,13 @@ void *thr(void *arg)
         fprintf(stderr, "Error: cdb2_open failed: %d\n", rc);
         exit(1);
     }
-    cdb2_set_max_retries(999999);
 
     thr_info_t *tinfo = (thr_info_t *)arg;
     int i = tinfo->thrid;
 
+    // hasql only retries snapshot or serializable transactions, so set this first
+    if (gbl_snapshot)
+        runsql(h, setsnapshot);
     runsql(h, sethasql); // this also causes cdb2api to wrap the insert/delete with a explicit begin/commit
     int N = 100;
 
@@ -163,7 +168,7 @@ void *thr(void *arg)
 
 void usage_and_exit(const char *p, const char *err) {
     fprintf(stderr, "%s\n", err);
-    fprintf(stderr, "Usage %s --dbname DBNAME --numthreads NUMTHREADS --iterations ITERATIONS \n", p);
+    fprintf(stderr, "Usage %s --dbname DBNAME --numthreads NUMTHREADS --iterations ITERATIONS [--snapshot]\n", p);
     exit(1);
 }
 
@@ -188,18 +193,20 @@ int main(int argc, char *argv[])
         {"numthreads", required_argument, NULL, 'n'},
         {"iterations", required_argument, NULL, 'i'},
         {"printcnonce", optional_argument, NULL, 'p'},
+        {"snapshot", no_argument, NULL, 's'},
         {NULL, 0, NULL, 0}
     };
 
     int c;
     int index;
-    while ((c = getopt_long(argc, argv, "d:n:i:p?", long_options, &index)) != -1) {
+    while ((c = getopt_long(argc, argv, "d:n:i:ps?", long_options, &index)) != -1) {
         //printf("c '%c' %d index %d optarg '%s'\n", c, c, index, optarg);
         switch(c) {
             case 'd': dbname = strdup(optarg); break;
             case 'n': numthreads = atoi(optarg); break;
             case 'i': iterations = atoi(optarg); break;
             case 'p': gbl_print_cnonce = 1; break;
+            case 's': gbl_snapshot = 1; break;
             case '?':  break;
             default: break;
         }
