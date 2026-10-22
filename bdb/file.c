@@ -5328,6 +5328,8 @@ static int bdb_upgrade_int(bdb_state_type *bdb_state, uint32_t newgen,
         logmsg(LOGMSG_ERROR, "rep_start failed rc %d\n", rc);
         return 1;
     } else {
+        /* bdb_upgrade zeroed our seqnum: any ack would make its node coherent */
+        bdb_set_seqnum(bdb_state);
         /* special case upgrade codepath to get this set faster */
         set_repinfo_master_host(bdb_state, bdb_state->repinfo->myhost, __func__,
                                 __LINE__);
