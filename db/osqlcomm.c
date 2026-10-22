@@ -6918,9 +6918,9 @@ static int _shard_undo_alter_fields(const char *tablename, timepart_view_t **unu
         logmsg(LOGMSG_ERROR, "%s Unable to find table %s\n", __func__, tablename);
         return 0; /* best effort */
     }
-    Pthread_rwlock_rdlock(&shard->sc_live_lk);
+    Pthread_rwlock_rdlock(shard->sc_live_lk);
     int was_set = (shard->sc_to == sc->partition.newdb);
-    Pthread_rwlock_unlock(&shard->sc_live_lk);
+    Pthread_rwlock_unlock(shard->sc_live_lk);
     if (was_set)
         live_sc_off(shard);
     return 0;

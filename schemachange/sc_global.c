@@ -442,7 +442,7 @@ void live_sc_off(struct dbtable *db)
 #ifdef DEBUG
     logmsg(LOGMSG_INFO, "live_sc_off()\n");
 #endif
-    Pthread_rwlock_wrlock(&db->sc_live_lk);
+    Pthread_rwlock_wrlock(db->sc_live_lk);
     db->sc_to = NULL;
     db->sc_from = NULL;
     db->sharding_func = NULL;
@@ -458,7 +458,7 @@ void live_sc_off(struct dbtable *db)
     db->sc_nrecs = 0;
     db->sc_prev_nrecs = 0;
     db->doing_conversion = 0;
-    Pthread_rwlock_unlock(&db->sc_live_lk);
+    Pthread_rwlock_unlock(db->sc_live_lk);
 }
 
 void sc_set_downgrading(struct schema_change_type *s)
@@ -476,14 +476,14 @@ void sc_set_downgrading(struct schema_change_type *s)
     /* make sure no one writes to the table */
     bdb_lock_table_write(s->db->handle, tran);
 
-    Pthread_rwlock_wrlock(&s->db->sc_live_lk);
+    Pthread_rwlock_wrlock(s->db->sc_live_lk);
     /* live_sc_post* code will look at this and return errors properly */
     s->db->sc_downgrading = 1;
     s->db->sc_to = NULL;
     s->db->sc_from = NULL;
     s->db->sc_abort = 0;
     s->db->doing_conversion = 0;
-    Pthread_rwlock_unlock(&s->db->sc_live_lk);
+    Pthread_rwlock_unlock(s->db->sc_live_lk);
 
     if (s->db->sc_live_logical) {
         int rc =
@@ -747,7 +747,7 @@ int list_running_schema_changes(struct running_sc_info **info, int *num_running_
         if (!db)
             continue;
 
-        Pthread_rwlock_rdlock(&db->sc_live_lk);
+        Pthread_rwlock_rdlock(db->sc_live_lk);
 
         if (db->doing_conversion || db->doing_upgrade) {
             struct running_sc_info *sc_info = &((*info)[*num_running_sc]);
@@ -759,7 +759,7 @@ int list_running_schema_changes(struct running_sc_info **info, int *num_running_
             ++(*num_running_sc);
         }
 
-        Pthread_rwlock_unlock(&db->sc_live_lk);
+        Pthread_rwlock_unlock(db->sc_live_lk);
     }
 
     Pthread_mutex_unlock(&schema_change_in_progress_mutex);

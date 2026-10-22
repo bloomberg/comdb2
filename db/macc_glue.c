@@ -139,8 +139,7 @@ static dbtable *newdb_from_schema(struct dbenv *env, const char *tblname, int db
     tbl->dbenv = env;
     tbl->dbnum = dbnum;
     tbl->lrl = dyns_get_db_table_size(); /* this gets adjusted later */
-    Pthread_rwlock_init(&tbl->sc_live_lk, NULL);
-    Pthread_mutex_init(&tbl->rev_constraints_lk, NULL);
+    dbtable_init_locks(tbl);
     if (dbnum == 0) {
         /* if no dbnumber then no default tag is required ergo lrl can be 0 */
         if (tbl->lrl < 0)
