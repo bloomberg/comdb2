@@ -698,6 +698,11 @@ struct remsql_set {
 };
 
 #define in_client_trans(clnt) ((clnt)->in_client_trans)
+/* clnt runs in an sql transaction: a client transaction, or the transaction
+ * of a stored procedure (implicit, or db:begin), which is not a client one */
+#define in_sql_trans(clnt)                                                                                             \
+    ((clnt)->in_client_trans || (clnt)->ctrl_sqlengine == SQLENG_STRT_STATE ||                                         \
+     (clnt)->ctrl_sqlengine == SQLENG_INTRANS_STATE)
 struct string_ref;
 
 struct session_tbl;

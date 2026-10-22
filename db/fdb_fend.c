@@ -2635,10 +2635,10 @@ int fdb_rempush_set(sqlclntstate *clnt, fdb_t *fdb, cdb2_hndl_tp *hndl)
         return -1;
     }
 
-    if (!clnt->in_client_trans)
+    if (!in_sql_trans(clnt))
         return 0;
 
-    /* one txnid for the client transaction, shared by all remote dbs */
+    /* one txnid for the transaction, shared by all remote dbs */
     if (!clnt->rempush_txnid_registered) {
         comdb2uuid(clnt->rempush_txnid);
         if (_rempush_txn_register(clnt)) {
@@ -4274,8 +4274,7 @@ static fdb_tran_t *fdb_trans_dtran_get_subtran(sqlclntstate *clnt,
          * 2) socksql txn and push remote read and writes are enabled
          */
         if (fdb->server_version >= FDB_VER_WR_CDB2API && !clnt->disable_fdb_push && clnt->fdb_push_remote_write &&
-            (/*1*/!clnt->in_client_trans ||
-            (/*2*/clnt->fdb_push_remote && clnt->dbtran.mode == TRANLEVEL_SOSQL)))
+            (/*1*/ !in_sql_trans(clnt) || (/*2*/ clnt->fdb_push_remote && clnt->dbtran.mode == TRANLEVEL_SOSQL)))
             tran = _dtran_get_subtran_cdb2api(clnt, fdb, use_ssl);
         else
             tran = _dtran_get_subtran(clnt, fdb, use_ssl);

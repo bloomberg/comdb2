@@ -678,7 +678,7 @@ int handle_fdb_push_write(sqlclntstate *clnt, struct errstat *err, int n_extra_s
             rc = -2;
             goto free;
         }
-        if (clnt->in_client_trans) {
+        if (in_sql_trans(clnt)) {
             /* if not standalone, and this is the first reachout to this fdb, send begin;
              * mark the remote transaction, so commit/rollback reach it even if
              * there is no local transaction
@@ -850,7 +850,7 @@ int handle_fdb_push_write(sqlclntstate *clnt, struct errstat *err, int n_extra_s
         }
     }
 
-    if (!clnt->in_client_trans) {
+    if (!in_sql_trans(clnt)) {
         goto free;
     }
 
