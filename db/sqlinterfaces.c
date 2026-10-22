@@ -2199,6 +2199,7 @@ static int do_commitrollback(struct sqlthdstate *thd, struct sqlclntstate *clnt,
                                                bdb_attr_get(thedb->bdb_attr, BDB_ATTR_DURABLE_LSNS),
                                                gbl_replicant_retry_on_not_durable);
                             } else {
+                                rc = CDB2ERR_NOTDURABLE;
                                 sql_debug_logf(clnt, __func__, __LINE__,
                                                "returned CDB2ERR_NOTDURABLE for SQLITE_CLIENT_CHANGENODE "
                                                "durable-lsns=%d, retry-on-not-durable=%d\n",
