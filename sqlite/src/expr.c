@@ -4459,7 +4459,10 @@ void sqlite3ExprCodeGetColumnOfTable(
   Column *pCol;
   assert( v!=0 );
   assert( pTab!=0 );
+#if !defined(SQLITE_BUILDING_FOR_COMDB2)
+  /* COMDB2: iCol -2 == XN_EXPR is passed here for comdb2_rowid. */
   assert( iCol!=XN_EXPR );
+#endif /* !defined(SQLITE_BUILDING_FOR_COMDB2) */
   if( iCol<0 || iCol==pTab->iPKey ){
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
     /* Pass the comdb2 rowid flavor in P3 so that OP_Rowid runs the right
