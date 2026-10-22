@@ -2616,6 +2616,7 @@ int populate_reverse_constraints(struct dbtable *db);
 void init_reverse_constraints(struct dbtable *db);
 int add_reverse_constraint(struct dbtable *db, constraint_t *cnstrt);
 int delete_reverse_constraint(struct dbtable *db, size_t idx);
+void unlink_reverse_constraints(struct dbtable *db);
 int has_index_changed(struct dbtable *db, char *keynm, int ct_check, int newkey,
                       FILE *out, int accept_type_change);
 int resume_schema_change(void);

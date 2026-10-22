@@ -754,6 +754,7 @@ downgraded:
             sc_set_downgrading(s);
             if (!s->newdb_borrowed) {
                 bdb_close_only(s->newdb->handle, &bdberr);
+                unlink_reverse_constraints(s->newdb);
                 freedb(s->newdb);
             }
             s->newdb = NULL;
@@ -1815,6 +1816,9 @@ int backout_schema_changes(struct ireq *iq, tran_type *tran)
             poll(NULL, 0, 100);
         }
         if (s->kind == SC_ADDTABLE) {
+            /* drop the new table's reverse constraints before abort cleanup frees it */
+            if (s->newdb)
+                unlink_reverse_constraints(s->newdb);
             if (s->already_finalized) {
                 rem_dbtable_from_thedb_dbs(s->db);
             }
