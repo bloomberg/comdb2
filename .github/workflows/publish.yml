@@ -27,6 +27,26 @@ jobs:
           server-password: OSSRH_PASSWORD
           gpg-private-key: ${{ secrets.GPG_KEY }}
           gpg-passphrase: GPG_KEY_PASSPHRASE
+          
+    # Use Maven 3.9 instead of the version of the runner image: with Maven
+    # 3.10, central-publishing-maven-plugin (at least up to 0.11.0) leaves
+    # maven-metadata-local.xml and _remote.repositories in the bundle, and
+    # Maven Central rejects it ("Bundle has content that does NOT have a .pom
+    # file"). This broke the publication of 1.4.2. The pin can be removed once
+    # https://github.com/apache/maven/issues/13388 is fixed or the plugin
+    # supports Maven 3.10.
+      - name: Install Maven
+        env:
+          MAVEN_VERSION: 3.9.16
+          MAVEN_SHA512: 831a8591fe20c8243b1dbe7d71e3244f31d1665b0804b2e825e38cbbe5ce0cafb8338851f90780735568773e0a6cd07bbec107cda0b896b008b861075358b6f6
+        run: |
+          tarball="apache-maven-${MAVEN_VERSION}-bin.tar.gz"
+          curl -fsSLO "https://repo1.maven.org/maven2/org/apache/maven/apache-maven/${MAVEN_VERSION}/${tarball}"
+          echo "${MAVEN_SHA512}  ${tarball}" | sha512sum -c -
+          tar xzf "${tarball}" -C "${RUNNER_TEMP}"
+          rm "${tarball}"
+          echo "${RUNNER_TEMP}/apache-maven-${MAVEN_VERSION}/bin" >> "${GITHUB_PATH}"
+          "${RUNNER_TEMP}/apache-maven-${MAVEN_VERSION}/bin/mvn" --version
 
       - name: Deploy to Maven Central
         working-directory: cdb2jdbc
