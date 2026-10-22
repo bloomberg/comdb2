@@ -143,6 +143,7 @@ void berk_memp_sync_alarm_ms(int);
 #include <net_appsock.h>
 #include "sc_csc2.h"
 #include "sc_util.h"
+#include "sc_queues.h"
 #include "sc_global.h"
 #include "reverse_conn.h"
 #include "alias.h"
@@ -2270,6 +2271,54 @@ cleanup:
     return rc;
 }
 
+static int llmeta_load_queue(struct dbenv *dbenv, char *qname)
+{
+    dbtable *tbl;
+    char **dests;
+    int ndests;
+    char *config;
+    int rc;
+    int bdberr;
+
+    tbl = newqdb(dbenv, qname, 65536 /* TODO: pass from comdb2sc, store in llmeta? */, 65536, 1);
+    if (tbl == NULL) {
+        logmsg(LOGMSG_ERROR, "can't create queue \"%s\"\n", qname);
+        return -1;
+    }
+
+    dbenv->qdbs = realloc(dbenv->qdbs, (dbenv->num_qdbs + 1) * sizeof(dbtable *));
+    if (dbenv->qdbs == NULL) {
+        logmsg(LOGMSG_ERROR, "can't allocate memory for queue list\n");
+        return -1;
+    }
+    dbenv->qdbs[dbenv->num_qdbs++] = tbl;
+
+    /* Add the queue to the hash */
+    hash_add(dbenv->qdb_hash, tbl);
+
+    rc = bdb_llmeta_get_queue(NULL, qname, &config, &ndests, &dests, &bdberr);
+    if (rc) {
+        logmsg(LOGMSG_ERROR, "can't get information for queue \"%s\"\n", qname);
+        return -1;
+    }
+
+    rc = dbqueuedb_add_consumer(tbl, 0, dests[0], 0);
+    if (rc) {
+        logmsg(LOGMSG_ERROR, "can't add consumer for queue \"%s\"\n", qname);
+        return -1;
+    }
+
+    /* Create the queue's stored procedure */
+    rc = javasp_load_procedure_int(qname, NULL, config);
+    if (rc) {
+        logmsg(LOGMSG_ERROR, "%s: javasp_load_procedure_int returned rc %d\n", __func__, rc);
+        return -1;
+    }
+
+    /* Consumers start once backend_open() has opened the queue */
+    return 0;
+}
+
 static int llmeta_load_queues(struct dbenv *dbenv)
 {
     char *qnames[MAX_NUM_QUEUES];
@@ -2283,61 +2332,44 @@ static int llmeta_load_queues(struct dbenv *dbenv)
         return rc;
     }
 
-    if (fnd_queues == 0)
-        return 0;
-
-    dbenv->qdbs = realloc(dbenv->qdbs,
-                          (dbenv->num_qdbs + fnd_queues) * sizeof(dbtable *));
-    if (dbenv->qdbs == NULL) {
-        logmsg(LOGMSG_ERROR, "can't allocate memory for queue list\n");
-        return -1;
-    }
     for (int i = 0; i < fnd_queues; i++) {
-        dbtable *tbl;
-        char **dests;
-        int ndests;
-        char *config;
-
-        tbl = newqdb(dbenv, qnames[i],
-                    65536 /* TODO: pass from comdb2sc, store in llmeta? */,
-                    65536, 1);
-        if (tbl == NULL) {
-            logmsg(LOGMSG_ERROR, "can't create queue \"%s\"\n", qnames[i]);
+        if (llmeta_load_queue(dbenv, qnames[i]))
             return -1;
-        }
-        dbenv->qdbs[dbenv->num_qdbs++] = tbl;
-
-        /* Add queue the hash. */
-        hash_add(dbenv->qdb_hash, tbl);
-
-        rc = bdb_llmeta_get_queue(NULL, qnames[i], &config, &ndests, &dests,
-                                  &bdberr);
-        if (rc) {
-            logmsg(LOGMSG_ERROR, "can't get information for queue \"%s\"\n",
-                    qnames[i]);
-            return -1;
-        }
-
-        rc = dbqueuedb_add_consumer(tbl, 0, dests[0], 0);
-        if (rc) {
-            logmsg(LOGMSG_ERROR, "can't add consumer for queue \"%s\"\n", qnames[i]);
-            return -1;
-        }
-
-        /* create a procedure (needs to go away, badly) */
-        rc = javasp_load_procedure_int(qnames[i], NULL, config);
-        if (rc) {
-            logmsg(LOGMSG_ERROR, "%s: javasp_load_procedure_int returned rc %d\n",
-                    __func__, rc);
-            return -1;
-        }
-
-        /* the final step (starting consumers) requires the dbs to be open, so
-         * we defer that
-         * until after backend_open() is done. */
     }
 
     return 0;
+}
+
+/* A log truncate can undo queue adds and drops: make the queue list match llmeta */
+static int llmeta_reload_queues(struct dbenv *dbenv)
+{
+    char *qnames[MAX_NUM_QUEUES];
+    int fnd_queues = 0;
+    int bdberr = 0;
+    int rc = 0;
+
+    if (bdb_llmeta_get_queues(qnames, MAX_NUM_QUEUES, &fnd_queues, &bdberr)) {
+        logmsg(LOGMSG_ERROR, "bdb_llmeta_get_queues bdberr %d\n", bdberr);
+        return -1;
+    }
+
+    for (int i = dbenv->num_qdbs - 1; i >= 0 && rc == 0; i--) {
+        int found = 0;
+        for (int j = 0; j < fnd_queues && !found; j++)
+            found = (strcasecmp(dbenv->qdbs[i]->tablename, qnames[j]) == 0);
+        if (!found) {
+            char *name = strdup(dbenv->qdbs[i]->tablename);
+            rc = perform_trigger_update_replicant(NULL, name, llmeta_queue_drop);
+            free(name);
+        }
+    }
+
+    for (int i = 0; i < fnd_queues; i++) {
+        if (rc == 0 && getqueuebyname(qnames[i]) == NULL)
+            rc = llmeta_load_queue(dbenv, qnames[i]);
+        free(qnames[i]);
+    }
+    return rc;
 }
 
 int llmeta_load_views(struct dbenv *dbenv, void *tran)
@@ -6492,20 +6524,22 @@ retry_tran:
         abort();
     }
 
-    for (ii = 0; ii < thedb->num_dbs; ii++) {
-        db = thedb->dbs[ii];
-        if ((rc = bdb_lock_table_write(db->handle, tran)) != 0) {
-            if (rc == BDBERR_DEADLOCK && retries < 10) {
-                retries++;
-                bdb_tran_abort(thedb->bdb_env, tran, &bdberr);
-                logmsg(LOGMSG_ERROR, "%s: got deadlock acquiring tablelocks\n",
-                       __func__);
-                goto retry_tran;
-            } else {
-                logmsg(LOGMSG_FATAL, "%s: got error %d acquiring tablelocks\n",
-                       __func__, rc);
-                abort();
-            }
+    /* Lock comdb2_queues before the queues, as sc_queues.c does: readers of the
+     * queue list hold it. A Lua consumer holds only its queue's table read lock */
+    rc = bdb_lock_tablename_write(thedb->bdb_env, "comdb2_queues", tran);
+    for (ii = 0; rc == 0 && ii < thedb->num_dbs + thedb->num_qdbs; ii++) {
+        db = ii < thedb->num_dbs ? thedb->dbs[ii] : thedb->qdbs[ii - thedb->num_dbs];
+        rc = bdb_lock_table_write(db->handle, tran);
+    }
+    if (rc != 0) {
+        if (rc == BDBERR_DEADLOCK && retries < 10) {
+            retries++;
+            bdb_tran_abort(thedb->bdb_env, tran, &bdberr);
+            logmsg(LOGMSG_ERROR, "%s: got deadlock acquiring tablelocks\n", __func__);
+            goto retry_tran;
+        } else {
+            logmsg(LOGMSG_FATAL, "%s: got error %d acquiring tablelocks\n", __func__, rc);
+            abort();
         }
     }
 
@@ -6545,6 +6579,11 @@ retry_tran:
 
     if (llmeta_load_timepart(thedb)) {
         logmsg(LOGMSG_ERROR, "could not load time partitions\n");
+        abort();
+    }
+
+    if (llmeta_reload_queues(thedb)) {
+        logmsg(LOGMSG_FATAL, "could not reload queues from llmeta\n");
         abort();
     }
 
