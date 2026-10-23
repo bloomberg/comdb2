@@ -1322,11 +1322,15 @@ elect_again:
     int already_master = 0;
 
     if (gbl_debug_elect_lose_round) {
-        /* Test hook: sit this round out while the other nodes elect a master,
-         * then fail it as a timeout would. */
+        /* Test hook: sit this round out until the others elect a master (30s cap), then fail it as a timeout would */
         gbl_debug_elect_lose_round = 0;
         logmsg(LOGMSG_WARN, "elect_thread: debug_elect_lose_round, failing this round\n");
-        poll(NULL, 0, 5000);
+        for (int i = 0; i < 300; i++) {
+            char *m = bdb_state->repinfo->master_host;
+            if (m != db_eid_invalid && m != bdb_master_dupe)
+                break;
+            poll(NULL, 0, 100);
+        }
         rc = DB_REP_UNAVAIL;
     } else {
         /* Should be holding bdb readlock .. */
