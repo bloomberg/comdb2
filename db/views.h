@@ -198,10 +198,39 @@ int views_read_view(void *tran, const char *name, char **pstr);
 char *views_read_all_views(void);
 
 /**
+ * Read the llmeta cson representation of all the views through tran
+ *
+ */
+char *views_read_all_views_tran(void *tran);
+
+/**
  * Create in-memory view set corresponding to the llmeta saved value
  *
  */
 timepart_views_t *views_create_all_views(void);
+
+/**
+ * Create a view set from the llmeta that tran reads, for example as of a
+ * snapshot (see bdb_tran_set_llmeta_snap()).  The set does not register its
+ * shards with the tables; free it with timepart_views_free()
+ *
+ */
+timepart_views_t *views_create_all_views_tran(void *tran);
+
+/**
+ * Free a view set from views_create_all_views_tran()
+ *
+ */
+void timepart_views_free(timepart_views_t *views);
+
+/**
+ * Return the sql name of table tablename in the view set: a truncate
+ * partition made from an existing table names that table after its first
+ * shard.  Return NULL if the table keeps its own name.
+ *
+ */
+const char *timepart_views_sqlalias(timepart_views_t *views,
+                                    const char *tablename);
 
 /**
  * Serialize in-memory view repository into a CSON string

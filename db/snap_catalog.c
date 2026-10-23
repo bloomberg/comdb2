@@ -28,6 +28,13 @@
  * sqlite sees the catalog through its own sqlite_master entries, and
  * get_dbtable_by_name() returns its tables on the sql thread of the snapshot.
  * The snapshot cannot write an old table.
+ *
+ * The views and the time partitions of the catalog are read from llmeta as
+ * of the start LSN too.  A rollout that truncates a shard gives the shard new files, so
+ * the snapshot reads the shard as an old table.  A truncate partition made
+ * from an existing table names that table after its first shard in sql (see
+ * timepart_views_sqlalias()); an old table gets the name as of the start
+ * LSN.
  */
 
 #include <inttypes.h>
@@ -38,6 +45,7 @@
 #include "macc_glue.h"
 #include "comdb2_atomic.h"
 #include "snap_catalog.h"
+#include "views.h"
 #include <bdb_api.h>
 #include <logmsg.h>
 #include <sys_wrap.h>
@@ -55,6 +63,7 @@ struct snap_table {
 
 struct snap_catalog_ent {
     char *name;
+    char *alias; /* sql name, if not name */
     struct snap_table *old; /* NULL: the current table */
 };
 
@@ -66,6 +75,8 @@ struct snap_catalog {
     struct snap_catalog_ent *ents;
     master_entry_t *master;
     int nmaster;
+    timepart_views_t *views; /* the time partitions */
+    hash_t *view_hash;       /* the views */
 };
 
 /* every committed schema change is before sc_lsn; unknown while
@@ -104,14 +115,17 @@ static int sc_after_lsn(uint32_t file, uint32_t offset, int64_t *gen)
     return after;
 }
 
-/* 1 if db has the schema csc2 and the files that llmeta names through tran.
- * The csc2 version alone does not tell: a table without instant schema
- * change keeps version 1 through an index change. */
-static int same_table(tran_type *tran, struct dbtable *db, const char *csc2)
+/* 1 if db has the sql name alias (NULL: its own name), the schema csc2 and
+ * the files that llmeta names through tran.  The csc2 version alone does not
+ * tell: a table without instant schema change keeps version 1 through an
+ * index change. */
+static int same_table(tran_type *tran, struct dbtable *db, const char *alias, const char *csc2)
 {
     unsigned long long vers;
     int bdberr;
 
+    if (db->sqlaliasname ? alias == NULL || strcasecmp(db->sqlaliasname, alias) != 0 : alias != NULL)
+        return 0;
     if (db->csc2_schema == NULL || strcmp(db->csc2_schema, csc2) != 0)
         return 0;
     for (int i = 0; i < db->numblobs + 1; i++) {
@@ -139,20 +153,14 @@ static void close_old_table(struct dbtable *db)
     free(db);
 }
 
-/* Open table name, with schema csc2 and version csc2_vers, as llmeta names
- * it through tran */
-static struct dbtable *open_old_table(tran_type *tran, const char *name, const char *csc2, int csc2_vers)
+/* Open table name, with sql name alias, schema csc2 and version csc2_vers,
+ * as llmeta names it through tran */
+static struct dbtable *open_old_table(tran_type *tran, const char *name, const char *alias, const char *csc2,
+                                      int csc2_vers)
 {
     struct dbtable *db = NULL;
-    char *alias = NULL;
     char tagname[MAXTABLELEN];
     int bdberr, compr = 0, compr_blobs = 0, datacopy_odh = 0;
-
-    /* a shard of a time partition: not done yet */
-    if (bdb_get_table_sqlalias_tran(name, tran, &alias) < 0 || alias) {
-        free(alias);
-        return NULL;
-    }
 
     /* the tags of the table are under a name of its own */
     snprintf(tagname, sizeof(tagname), "$snap%" PRIu64, ATOMIC_ADD64(snap_seq, 1));
@@ -166,6 +174,8 @@ static struct dbtable *open_old_table(tran_type *tran, const char *name, const c
     }
     db->tag_tablename = db->tablename;
     db->tablename = strdup(name);
+    if (alias)
+        db->sqlaliasname = strdup(alias);
     db->schema_version = csc2_vers;
 
     db->handle = bdb_open_snapshot(name, thedb->basedir, db->lrl, db->nix, (short *)db->ix_keylen, db->ix_dupes,
@@ -210,14 +220,15 @@ err:
 }
 
 /* Return a reference to table name as llmeta names it through tran */
-static struct snap_table *get_old_table(tran_type *tran, const char *name, const char *csc2, int csc2_vers)
+static struct snap_table *get_old_table(tran_type *tran, const char *name, const char *alias, const char *csc2,
+                                        int csc2_vers)
 {
     const int dbopen_gen = bdb_get_dbopen_gen();
     struct snap_table *st;
 
     Pthread_mutex_lock(&snap_tables_lk);
     for (st = snap_tables; st; st = st->next) {
-        if (strcasecmp(st->name, name) == 0 && st->dbopen_gen == dbopen_gen && same_table(tran, st->db, csc2)) {
+        if (strcasecmp(st->name, name) == 0 && st->dbopen_gen == dbopen_gen && same_table(tran, st->db, alias, csc2)) {
             st->refs++;
             break;
         }
@@ -226,7 +237,7 @@ static struct snap_table *get_old_table(tran_type *tran, const char *name, const
     if (st)
         return st;
 
-    struct dbtable *db = open_old_table(tran, name, csc2, csc2_vers);
+    struct dbtable *db = open_old_table(tran, name, alias, csc2, csc2_vers);
     if (db == NULL)
         return NULL;
     st = calloc(1, sizeof(*st));
@@ -270,6 +281,7 @@ static void clear_catalog(struct snap_catalog *cat)
 {
     for (int i = 0; i < cat->nents; i++) {
         free(cat->ents[i].name);
+        free(cat->ents[i].alias);
         if (cat->ents[i].old)
             put_old_table(cat->ents[i].old);
     }
@@ -279,6 +291,11 @@ static void clear_catalog(struct snap_catalog *cat)
     destroy_sqlite_master(cat->master, cat->nmaster);
     cat->master = NULL;
     cat->nmaster = 0;
+    timepart_views_free(cat->views);
+    cat->views = NULL;
+    if (cat->view_hash)
+        free_view_hash(cat->view_hash);
+    cat->view_hash = NULL;
 }
 
 void snap_catalog_free(struct snap_catalog **pcat)
@@ -289,6 +306,22 @@ void snap_catalog_free(struct snap_catalog **pcat)
     clear_catalog(cat);
     free(cat);
     *pcat = NULL;
+}
+
+/* 1 if the views a and b have the same names and definitions */
+static int same_views(hash_t *a, hash_t *b)
+{
+    void *ent;
+    unsigned int bkt;
+
+    if (hash_get_num_entries(a) != hash_get_num_entries(b))
+        return 0;
+    for (struct dbview *v = hash_first(a, &ent, &bkt); v; v = hash_next(a, &ent, &bkt)) {
+        struct dbview *w = hash_find_readonly(b, &v->view_name);
+        if (w == NULL || strcmp(v->view_def, w->view_def) != 0)
+            return 0;
+    }
+    return 1;
 }
 
 static int build_catalog(struct sqlclntstate *clnt, struct snap_catalog *cat)
@@ -315,6 +348,11 @@ static int build_catalog(struct sqlclntstate *clnt, struct snap_catalog *cat)
     if (ntables && (cat->ents == NULL || dbs == NULL))
         goto done;
 
+    cat->views = views_create_all_views_tran(tran);
+    cat->view_hash = llmeta_read_views(tran);
+    if (cat->views == NULL || cat->view_hash == NULL)
+        goto done;
+
     for (int i = 0; i < ntables; i++) {
         struct snap_catalog_ent *ent = &cat->ents[cat->nents];
         char *csc2 = NULL;
@@ -327,8 +365,18 @@ static int build_catalog(struct sqlclntstate *clnt, struct snap_catalog *cat)
         ent->name = strdup(names[i]);
         cat->nents++;
 
+        if (bdb_get_table_sqlalias_tran(names[i], tran, &ent->alias) < 0) {
+            free(csc2);
+            goto done;
+        }
+        if (ent->alias == NULL) {
+            const char *alias = timepart_views_sqlalias(cat->views, names[i]);
+            if (alias)
+                ent->alias = strdup(alias);
+        }
+
         struct dbtable *live = get_live_dbtable_by_name(names[i]);
-        if (live && same_table(tran, live, csc2)) {
+        if (live && strcasecmp(live->tablename, names[i]) == 0 && same_table(tran, live, ent->alias, csc2)) {
             free(csc2);
             dbs[i] = live;
             nlive++;
@@ -336,7 +384,7 @@ static int build_catalog(struct sqlclntstate *clnt, struct snap_catalog *cat)
         }
 
         changed = 1;
-        ent->old = get_old_table(tran, names[i], csc2, csc2_vers);
+        ent->old = get_old_table(tran, names[i], ent->alias, csc2, csc2_vers);
         free(csc2);
         if (ent->old == NULL) {
             logmsg(LOGMSG_ERROR, "%s: cannot open table %s as of %u:%u\n", __func__, names[i],
@@ -349,9 +397,11 @@ static int build_catalog(struct sqlclntstate *clnt, struct snap_catalog *cat)
     /* tables created after the start LSN */
     if (nlive != thedb->num_dbs)
         changed = 1;
+    if (!same_views(cat->view_hash, thedb->view_hash))
+        changed = 1;
 
     if (changed) {
-        cat->master = create_master_entry_array(dbs, ntables, thedb->view_hash, &cat->nmaster);
+        cat->master = create_master_entry_array(dbs, ntables, cat->view_hash, &cat->nmaster);
         if (cat->master == NULL)
             goto done;
     } else {
@@ -413,6 +463,12 @@ int snap_catalog_copy_rootpages(struct sqlclntstate *clnt, struct sql_thread *th
     return get_copy_rootpages_custom(thd, cat->master, cat->nmaster);
 }
 
+timepart_views_t *snap_catalog_views(struct sqlclntstate *clnt)
+{
+    struct snap_catalog *cat = clnt->dbtran.snap_catalog;
+    return cat && cat->nents ? cat->views : NULL;
+}
+
 int snap_catalog_find_table(const char *name, struct dbtable **db)
 {
     struct sql_thread *thd = pthread_getspecific(query_info_key);
@@ -423,14 +479,27 @@ int snap_catalog_find_table(const char *name, struct dbtable **db)
         return 0;
 
     for (int i = 0; i < cat->nents; i++) {
-        if (strcasecmp(cat->ents[i].name, name) == 0) {
-            *db = cat->ents[i].old ? cat->ents[i].old->db : get_live_dbtable_by_name(name);
+        if (strcasecmp(cat->ents[i].name, name) == 0 ||
+            (cat->ents[i].alias && strcasecmp(cat->ents[i].alias, name) == 0)) {
+            *db = cat->ents[i].old ? cat->ents[i].old->db : get_live_dbtable_by_name(cat->ents[i].name);
             return 1;
         }
     }
     if (strcmp(name, COMDB2_STATIC_TABLE) == 0)
         return 0;
     *db = NULL;
+    return 1;
+}
+
+int snap_catalog_find_view(const char *name, struct dbview **view)
+{
+    struct sql_thread *thd = pthread_getspecific(query_info_key);
+    if (thd == NULL || thd->clnt == NULL)
+        return 0;
+    struct snap_catalog *cat = thd->clnt->dbtran.snap_catalog;
+    if (cat == NULL || cat->nents == 0)
+        return 0;
+    *view = hash_find_readonly(cat->view_hash, &name);
     return 1;
 }
 

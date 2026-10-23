@@ -82,12 +82,13 @@ live() {
     check live_$name "$(cat out.$name)" "$5"
 }
 
-# asof <case> <change> <query> <expected>: the change commits after a
-# timestamp, and a snapshot as of that timestamp runs <query>
+# asof <case> <change> <query> <expected> [<setup>]: the change commits
+# after a timestamp, and a snapshot as of that timestamp runs <query>
 asof() {
     local name=$1
     new_table
-    local change=${2//T/$T} q=${3//T/$T}
+    local change=${2//T/$T} q=${3//T/$T} setup=${5//T/$T}
+    run_lines "$setup"
     sleep 2
     local ts=$($SQL --tabs "select cast(now() as text)")
     sleep 2
@@ -124,6 +125,11 @@ live truncate_twice $'truncate table T\ninsert into T values(1,1),(2,2),(3,3)' \
 live unrelated_change "" "create table T_other(i int)" "$SEL" "$ROWS"
 live new_table "" $'create table T_new(i int)\ninsert into T_new values(7)' "select * from T_new" \
     "ERR no such table"
+# views
+live new_view "" "create view T_v as select * from T" "select * from T_v" "ERR no such table"
+live drop_view "create view T_v as select * from T" "drop view T_v" "select * from T_v order by i" "$ROWS"
+live replace_view "create view T_v as select * from T" $'drop view T_v\ncreate view T_v as select i from T' \
+    "select * from T_v order by i" "$ROWS"
 # the transaction cannot write a table as it was before a schema change
 live write_old_table "" "rebuild T" "insert into T values(9,9)" "ERR was schema changed"
 
@@ -136,5 +142,9 @@ asof drop_add_index $'create index T_j on T(j)\ninsert into T values(9,9)\ndrop 
     "$SELJ" "$JS"
 asof drop_recreate $'drop table T\ncreate table T(i int, j int)\ninsert into T values(100,100)' "$SEL" "$ROWS"
 asof new_table "create table T_new(i int)" "select * from T_new" "ERR no such table"
+asof new_view "create view T_v as select * from T" "select * from T_v" "ERR no such table"
+asof drop_view "drop view T_v" "select * from T_v order by i" "$ROWS" "create view T_v as select * from T"
+asof replace_view $'drop view T_v\ncreate view T_v as select i from T' "select * from T_v order by i" "$ROWS" \
+    "create view T_v as select * from T"
 
 exit $failed

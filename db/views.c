@@ -541,6 +541,26 @@ static void timepart_free_views(timepart_views_t *views)
     Pthread_rwlock_unlock(&views_lk);
 }
 
+void timepart_views_free(timepart_views_t *views)
+{
+    if (!views)
+        return;
+    timepart_free_views_unlocked(views);
+    free(views);
+}
+
+const char *timepart_views_sqlalias(timepart_views_t *views,
+                                    const char *tablename)
+{
+    /* see _table_alias_fallback() */
+    timepart_view_t *view = _get_view(views, tablename);
+    if (!view || view->rolltype != TIMEPART_ROLLOUT_TRUNCATE ||
+        view->nshards == 0 ||
+        strcasecmp(view->shards[0].tblname, tablename) == 0)
+        return NULL;
+    return view->shards[0].tblname;
+}
+
 /**
  * Delete the oldest shard
  *

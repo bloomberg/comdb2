@@ -1,0 +1,186 @@
+#!/usr/bin/env bash
+bash -n "$0" || exit 1
+
+# A snapshot reads a time partition as of its start, also when a rollout
+# truncates a shard after it starts.  A manual partition rolls out when its
+# counter increments.
+
+dbname=$1
+SQL="cdb2sql ${CDB2_OPTIONS} ${dbname} default"
+ROWS=$'(a=1)\n(a=2)'
+n=0
+failed=0
+
+master=$($SQL --tabs 'exec procedure sys.cmd.send("bdb cluster")' | grep MASTER | cut -f1 -d":" | tr -d '[:space:]')
+
+partitions_on() {
+    local h="--host $1"
+    [[ $1 == default ]] && h=default
+    cdb2sql --tabs ${CDB2_OPTIONS} ${dbname} $h "exec procedure sys.cmd.send('partitions')" | grep -v SOURCE_ID
+}
+
+# wait until the master queues epoch $2 of partition $1 and every node has
+# the rollout
+wait_for_rollout() {
+    local i epoch node want got
+    for (( i = 0; i < 60; i++ )); do
+        epoch=$(cdb2sql --tabs ${CDB2_OPTIONS} --host ${master} ${dbname} default "select epoch from comdb2_cron_events where name='Truncate' and type='$1'")
+        [[ "$epoch" == "$2" ]] && break
+        sleep 1
+    done
+    if [[ "$epoch" != "$2" ]]; then
+        echo "FAIL: $1 did not roll out to epoch $2, epoch is '$epoch'"
+        exit 1
+    fi
+    want=$(partitions_on ${master})
+    for node in ${CLUSTER:-default}; do
+        for (( i = 0; i < 60; i++ )); do
+            got=$(partitions_on $node)
+            [[ "$got" == "$want" ]] && break
+            sleep 1
+        done
+        if [[ "$got" != "$want" ]]; then
+            echo "FAIL: $node did not apply the rollout of $1"
+            exit 1
+        fi
+    done
+}
+
+# run each line of $1; "INCR <n>" increments the counter of T and waits
+# for epoch <n>; "ALLNODES <sql>" runs <sql> on every node
+run_lines() {
+    while IFS= read -r stmt; do
+        [[ -z "$stmt" ]] && continue
+        if [[ "$stmt" == "INCR "* ]]; then
+            $SQL "put counter $T increment" >/dev/null 2>&1 || { echo "FAIL: cannot increment $T"; exit 1; }
+            wait_for_rollout $T ${stmt#INCR }
+            continue
+        fi
+        if [[ "$stmt" == "ALLNODES "* ]]; then
+            for node in ${CLUSTER:-default}; do
+                local h="--host $node"
+                [[ $node == default ]] && h=default
+                cdb2sql ${CDB2_OPTIONS} ${dbname} $h "${stmt#ALLNODES }" >/dev/null 2>&1
+            done
+            continue
+        fi
+        $SQL "$stmt" >/dev/null 2>&1 || { echo "FAIL: setup statement failed: $stmt"; exit 1; }
+    done <<< "$1"
+}
+
+# check <case> <output of the transaction> <expected>: the expected rows of
+# the statement after "select 'last'", or "ERR <text>" for an error of the
+# rest of the transaction
+check() {
+    local name=$1 out=$2 exp=$3
+    local got=$(awk '/^\(last=.last.\)$/ {p = 1; next} p == 1 {p = 2; next} p && /^\[/ {print; exit} p' <<< "$out")
+    local status=$(tail -1 <<< "$got")
+    local rows=$(sed '$d' <<< "$got")
+    if [[ "$exp" == "ERR "* ]]; then
+        sed -n '/^(last=.last.)$/,$p' <<< "$out" | grep -q "failed with.*${exp#ERR }" && return
+    else
+        [[ "$status" == *"] rc 0" && "$rows" == "$exp" ]] && return
+    fi
+    echo "FAIL: $name: expected:"
+    echo "$exp"
+    echo "got:"
+    echo "$out"
+    failed=1
+}
+
+# A partition T of 2 shards: row 1 in the oldest shard, row 2 in the
+# current shard.  The next rollout truncates the shard of row 1.
+new_partition() {
+    n=$((n + 1))
+    T=tp$n
+    run_lines "create table $T(a int) partitioned by manual retention 2 start 1
+insert into $T values(1)
+INCR 2
+insert into $T values(2)"
+}
+
+# The same, but the oldest shard is a table that existed before the
+# partition: the partition aliases it
+new_alias_partition() {
+    n=$((n + 1))
+    T=tp$n
+    run_lines "create table $T(a int)
+insert into $T values(1)
+alter table $T partitioned by manual retention 2 start 1
+INCR 2
+insert into $T values(2)"
+}
+
+# A table T, not partitioned, with rows 1 and 2
+new_table() {
+    n=$((n + 1))
+    T=tp$n
+    run_lines "create table $T(a int)
+insert into $T values(1),(2)"
+}
+
+# live <case> <make partition> <change> <query> <expected>
+live() {
+    local name=$1
+    $2
+    local change=${3//T/$T} q=${4//T/$T}
+    local fifo=$(mktemp -u)
+    mkfifo $fifo
+    $SQL - < $fifo > out.$name 2>&1 &
+    local pid=$!
+    exec 3> $fifo
+    echo "begin" >&3
+    echo "select count(*) from $T" >&3
+    sleep 2
+    run_lines "$change"
+    echo "select 'last' as last" >&3
+    echo "$q" >&3
+    echo "commit" >&3
+    exec 3>&-
+    wait $pid
+    rm -f $fifo
+    check live_$name "$(cat out.$name)" "$5"
+}
+
+# asof <case> <make partition> <change> <query> <expected>
+asof() {
+    local name=$1
+    $2
+    local change=${3//T/$T} q=${4//T/$T}
+    sleep 2
+    local ts=$($SQL --tabs "select cast(now() as text)")
+    sleep 2
+    run_lines "$change"
+    local out=$($SQL - 2>&1 <<SQLEOF
+begin transaction as of datetime $ts
+select 'last' as last
+$q
+commit
+SQLEOF
+)
+    echo "$out" > out.asof_$name
+    check asof_$name "$out" "$5"
+}
+
+SEL="select * from T order by a"
+
+live rollout new_partition "INCR 3" "$SEL" "$ROWS"
+live rollout_recache new_partition $'INCR 3\nALLNODES select 1' "$SEL" "$ROWS"
+live rollout_alias new_alias_partition "INCR 3" "$SEL" "$ROWS"
+live rollout_alias_recache new_alias_partition $'INCR 3\nALLNODES select 1' "$SEL" "$ROWS"
+live partition_table new_table "alter table T partitioned by manual retention 2 start 1" "$SEL" "$ROWS"
+live merge_partition new_alias_partition "alter table T partitioned by none" "$SEL" "$ROWS"
+live drop new_partition "drop table T" "$SEL" "$ROWS"
+live new_partition new_partition $'create table T_new(a int) partitioned by manual retention 2 start 1\ninsert into T_new values(7)' \
+    "select * from T_new" "ERR no such table"
+
+asof rollout new_partition "INCR 3" "$SEL" "$ROWS"
+asof rollout_alias new_alias_partition "INCR 3" "$SEL" "$ROWS"
+asof partition_table new_table $'alter table T partitioned by manual retention 2 start 1\nINCR 2\ninsert into T values(3)' \
+    "$SEL" "$ROWS"
+asof merge_partition new_alias_partition "alter table T partitioned by none" "$SEL" "$ROWS"
+asof drop new_partition "drop table T" "$SEL" "$ROWS"
+asof new_partition new_partition $'create table T_new(a int) partitioned by manual retention 2 start 1\ninsert into T_new values(7)' \
+    "select * from T_new" "ERR no such table"
+
+exit $failed
