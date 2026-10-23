@@ -345,6 +345,35 @@ EOF
     echo "state of a waiting retry: passed"
 }
 
+# A cancel sent while a txn is retrying should end the retries; the client
+# gets an error instead of waiting for all of them.
+function run_cancel_during_retry() {
+    echo "Test: cancel during retry"
+    set_retry_tunables 100000 0 200
+
+    local node=$(cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "SELECT comdb2_host()")
+    cdb2sql ${CDB2_OPTIONS} $dbnm --host $node - <<EOF > cancel.out 2>&1 &
+BEGIN
+UPDATE t1 SET j = NOW() WHERE i = 1;
+COMMIT
+EOF
+    local txpid=$!
+    sleep 1
+    local uuid=$(cdb2sql --tabs ${CDB2_OPTIONS} $dbnm --host $node "SELECT uuid FROM comdb2_connections WHERE pid=$txpid")
+    [ -n "$uuid" ] || failexit "cancel during retry: txn not found in comdb2_connections"
+    cdb2sql ${CDB2_OPTIONS} $dbnm --host $node "EXEC PROCEDURE sys.cmd.send('sql ucancel uuid $uuid')"
+    # 100000 retries take minutes; give the cancel 5s.
+    if ! retry_in_loop 50 0.1 "! kill -0 $txpid 2>/dev/null"; then
+        kill $txpid
+        set_retry_tunables 499 3 50
+        failexit "cancel during retry: still retrying 5s after the cancel"
+    fi
+    cat cancel.out
+    grep -q "failed with rc" cancel.out || failexit "cancel during retry: COMMIT did not fail"
+    set_retry_tunables 499 3 50
+    echo "cancel during retry: passed"
+}
+
 # When a ruleset rejects the re-queue, the rejection has already answered the
 # client. A second error would be read as the answer to the client's next
 # statement.
@@ -400,6 +429,7 @@ run_failed_requeue "when a parked retry wakes up" 0 200
 # The first retry, sent straight from the failed COMMIT.
 run_failed_requeue "on the first retry" 100000 0 first
 run_waiting_retry_state
+run_cancel_during_retry
 run_rejected_requeue "on immediate re-queue" 100000 0
 run_rejected_requeue "when a parked retry wakes up" 0 200
 verify
