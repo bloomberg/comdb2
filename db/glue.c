@@ -94,10 +94,16 @@
 #include "time_accounting.h"
 #include "schemachange.h"
 #include "db_access.h" /* gbl_check_access_controls */
+#include "seqnum_wait.h"
 #include "txn_properties.h"
 #include <comdb2_atomic.h>
 #include <bbhrtime.h>
 #include <sqllogfill.h>
+
+extern int gbl_async_dist_commit;
+extern int64_t gbl_async_dist_commit_enqueued;
+extern int64_t gbl_async_dist_commit_inline;
+extern int gbl_2pc;
 
 int (*comdb2_ipc_master_set)(char *host) = 0;
 
@@ -643,10 +649,8 @@ static const char *sync_to_str(int sync)
     }
 }
 
-static int trans_wait_for_seqnum_int(void *bdb_handle, struct dbenv *dbenv,
-                                     struct ireq *iq, char *source_node,
-                                     int timeoutms, int adaptive,
-                                     db_seqnum_type *ss)
+static int trans_wait_for_seqnum_int(void *bdb_handle, struct dbenv *dbenv, struct ireq *iq, char *source_node,
+                                     int timeoutms, int adaptive, db_seqnum_type *ss)
 {
     int rc = 0;
     int sync;
@@ -854,9 +858,40 @@ static int trans_commit_int(struct ireq *iq, void *trans, char *source_host, int
         return rc;
     }
 
+    /* before the hand-off, so the reply is delayed either way */
     if (release_schema_lk && gbl_debug_add_replication_latency) {
         logmsg(LOGMSG_USER, "Adding 5 seconds of 'replication' latency\n");
         sleep(5);
+    }
+
+    /* Hand the ack wait off to the seqnum-wait thread so this block processor
+     * returns to the pool instead of blocking; it gives the waiter the request
+     * once it is done with it (thd_req()).
+     * The waiter always waits for every node, so this only applies to plain
+     * commits under REP_SYNC_FULL.  We fall back to the inline wait for 2pc,
+     * other sync modes, rowlocks and no blkseq (toblock replies with the ack
+     * wait's rc there), the empty 0:0 commit, and a second commit in a request
+     * that already handed one off.  Also for any
+     * request with DDL: its schema changes run on their own threads, which
+     * commit on this same request at once, and only one thread may set
+     * iq->handoff.
+     * Unlike the inline wait, toblock() now finishes before the acks are in,
+     * so the locks it holds up to its end (the serializable commit_lock, the
+     * qconsume lock, views_lk for time-partition retention, the javasp lock
+     * when javasp_early_release is off) are dropped before the wait rather
+     * than after it; they guard the local commit, which is done by then.
+     * Likewise the post-commit callbacks (analyze, genid48,
+     * bpfunc success) run once the local commit is done, not after the acks. */
+    if (nowait == 0 && gbl_async_dist_commit && !gbl_rowlocks && iq->have_blkseq && !iq->handoff && iq->sorese &&
+        !iq->sorese->is_participant && !iq->sorese->is_coordinator && !gbl_2pc && thedb->rep_sync == REP_SYNC_FULL &&
+        !iq->sc_pending && !iq->tranddl && !(s->file == 0 && s->offset == 0)) {
+        iq->handoff = seqnum_wait_prepare(bdb_handle, &ss, iq);
+        if (iq->handoff) {
+            ATOMIC_ADD64(gbl_async_dist_commit_enqueued, 1);
+            return rc;
+        }
+        /* too many commits waiting already: wait here */
+        ATOMIC_ADD64(gbl_async_dist_commit_inline, 1);
     }
 
     if (nowait == 0) {

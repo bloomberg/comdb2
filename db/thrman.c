@@ -637,13 +637,10 @@ struct reqlogger *thrman_get_reqlogger(struct thr_handle *thr)
 
 /* Give away this thread's request logger (the request it holds is ended
  * elsewhere); the next thrman_get_reqlogger() allocates a new one. */
-struct reqlogger *thrman_detach_reqlogger(struct thr_handle *thr)
+void thrman_detach_reqlogger(struct thr_handle *thr)
 {
-    if (!thr)
-        return NULL;
-    struct reqlogger *logger = thr->reqlogger;
-    thr->reqlogger = NULL;
-    return logger;
+    if (thr)
+        thr->reqlogger = NULL;
 }
 
 const char *thrman_get_where(struct thr_handle *thr)

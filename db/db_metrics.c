@@ -173,6 +173,8 @@ struct comdb2_metrics_store {
     int64_t legacy_requests;
     int64_t blob_cache_shrinks;
     int64_t blob_cache_shrunk_bytes;
+    int64_t async_dist_commit_enqueued;
+    int64_t async_dist_commit_inline;
 };
 
 static struct comdb2_metrics_store stats;
@@ -450,6 +452,10 @@ comdb2_metric gbl_metrics[] = {
      STATISTIC_COLLECTION_TYPE_CUMULATIVE, &stats.blob_cache_shrinks, NULL},
     {"blob_cache_shrunk_bytes", "Bytes released by shrinking cursors' cached blob buffers", STATISTIC_INTEGER,
      STATISTIC_COLLECTION_TYPE_CUMULATIVE, &stats.blob_cache_shrunk_bytes, NULL},
+    {"async_dist_commit_enqueued", "Commits whose wait for replicants went to the seqnum-wait thread",
+     STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_CUMULATIVE, &stats.async_dist_commit_enqueued, NULL},
+    {"async_dist_commit_inline", "Commits that waited for replicants inline because that thread was full",
+     STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_CUMULATIVE, &stats.async_dist_commit_inline, NULL},
 };
 
 const char *metric_collection_type_string(comdb2_collection_type t) {
@@ -466,6 +472,8 @@ int gbl_metrics_count = sizeof(gbl_metrics) / sizeof(comdb2_metric);
 
 extern int n_commits;
 extern long n_fstrap;
+extern int64_t gbl_async_dist_commit_enqueued;
+extern int64_t gbl_async_dist_commit_inline;
 
 /* Legacy request metrics */
 int64_t gbl_fastsql_execute_inline_params;
@@ -653,6 +661,8 @@ int refresh_metrics(void)
     stats.commits = n_commits;
     stats.blob_cache_shrinks = gbl_blob_cache_shrinks;
     stats.blob_cache_shrunk_bytes = gbl_blob_cache_shrunk_bytes;
+    stats.async_dist_commit_enqueued = gbl_async_dist_commit_enqueued;
+    stats.async_dist_commit_inline = gbl_async_dist_commit_inline;
     stats.fstraps = n_fstrap;
     stats.nonsql = n_fstrap                  /* legacy protocol over socketrequest */
                    + n_qtrap                 /* legacy protocol */

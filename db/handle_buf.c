@@ -36,6 +36,7 @@
 
 #include "lockmacros.h"
 #include "comdb2.h"
+#include "seqnum_wait.h"
 #include "block_internal.h"
 #include "socket_interfaces.h"
 #include "sql.h"
@@ -634,8 +635,17 @@ static void *thd_req(void *vthd)
 #if 0
             fprintf(stderr, "%s:%d: THD=%p relablk iq=%p\n", __func__, __LINE__, pthread_self(), thd->iq);
 #endif
-            release_ireq_to_pool(thd->iq); /* this request is done, so release
-                                            * resource. */
+            if (thd->iq->handoff) {
+                /* its commit wait went to the seqnum-wait thread, which
+                 * replies and finishes the request: give it the request and
+                 * this thread's logger, and get a new logger */
+                thrman_detach_reqlogger(thr_self);
+                seqnum_wait_start(thd->iq->handoff);
+                logger = thrman_get_reqlogger(thr_self);
+            } else {
+                /* this request is done, so release resource. */
+                release_ireq_to_pool(thd->iq);
+            }
             /* get next item off hqueue */
             nxtrq = (struct dbq_entry_t *)listc_rtl(&q_reqs);
             thd->iq = 0;
