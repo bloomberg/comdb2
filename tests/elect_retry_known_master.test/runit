@@ -21,7 +21,10 @@ log=$TESTDIR/logs/$DBNAME.$replica.db
 # The replica sits out its next round while the others elect, then fails it
 q $replica "put tunable 'debug_elect_lose_round' 1" || failexit "can't set tunable on $replica"
 downgrade_master || failexit "downgrade failed"
-sleep 15
+for ((i = 0; i < 45; i++)); do
+    grep -q "not retrying election" $log && break
+    sleep 1
+done
 
 grep -q "debug_elect_lose_round, failing this round" $log || failexit "$replica never ran an election round"
 grep -q "not retrying election" $log || failexit "$replica retried the election after accepting a master"
