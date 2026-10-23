@@ -2354,16 +2354,13 @@ void pstack_self(void)
     unset_running_pstack();
 }
 
-/* Only sanctioned nodes vote; with no sanctioned list everyone does */
+/* Only sanctioned nodes vote; with no sanctioned list no one does */
 static int rep_can_vote(DB_ENV *dbenv, const char *host)
 {
     bdb_state_type *bdb_state = dbenv->app_private;
     if (!bdb_state || !bdb_state->repinfo || !bdb_state->repinfo->netinfo)
         return 1;
-    netinfo_type *netinfo = bdb_state->repinfo->netinfo;
-    if (net_get_sanctioned_node_list(netinfo, 0, NULL) == 0)
-        return 1;
-    return net_is_sanctioned(netinfo, host);
+    return net_is_sanctioned(bdb_state->repinfo->netinfo, host);
 }
 
 static void panic_func(DB_ENV *dbenv, int errval)

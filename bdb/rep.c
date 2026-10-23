@@ -1059,25 +1059,23 @@ static int sanctioned_quorum(bdb_state_type *bdb_state, int keep, int *out_num_u
 
     num_up = net_get_sanctioned_node_list(netinfo, REPMAX, hostlist);
     if (num_up == 0) {
-        /* No sanctioned list: fall back to every node we know about */
-        static int warned = 0;
-        if (!warned) {
-            logmsg(LOGMSG_WARN, "%s: sanctioned node list is empty\n", __func__);
-            warned = 1;
-        }
-        num_up = net_count_nodes(netinfo);
-        num_connected = net_count_connected_nodes(netinfo);
-    } else {
-        /* Count ourselves only if we are sanctioned */
-        int self_sanctioned = 0;
-        for (int i = 0; i < num_up && i < REPMAX; i++) {
-            if (hostlist[i] == bdb_state->repinfo->myhost) {
-                self_sanctioned = 1;
-                break;
-            }
-        }
-        num_connected = net_sanctioned_and_connected_nodes(netinfo, REPMAX, hostlist) + self_sanctioned;
+        /* No sanctioned list: elect no one, but don't depose a sitting master */
+        if (out_num_up)
+            *out_num_up = 0;
+        if (out_num_connected)
+            *out_num_connected = 0;
+        return keep;
     }
+
+    /* Count ourselves only if we are sanctioned */
+    int self_sanctioned = 0;
+    for (int i = 0; i < num_up && i < REPMAX; i++) {
+        if (hostlist[i] == bdb_state->repinfo->myhost) {
+            self_sanctioned = 1;
+            break;
+        }
+    }
+    num_connected = net_sanctioned_and_connected_nodes(netinfo, REPMAX, hostlist) + self_sanctioned;
 
     if (keep && !bdb_state->attr->elect_forbid_perfect_netsplit)
         rc = (num_connected * 2 >= num_up);
@@ -1125,7 +1123,8 @@ static void abort_election_on_exit(bdb_state_type *bdb_state)
 
 int gbl_elect_priority_bias = 0;
 int gbl_debug_elect_lose_round = 0;
-extern int gbl_debug_unsanctioned_elect;
+/* Test hook: let a node that can't vote hold elections anyway */
+int gbl_debug_unsanctioned_elect = 0;
 
 int gbl_rand_elect_timeout = 1;
 uint32_t gbl_rand_elect_min_ms = 1000;
@@ -1265,7 +1264,7 @@ elect_again:
         return NULL;
     }
 
-    /* No one tallies our vote, so don't retry an election we can't win */
+    /* No one tallies our vote, so don't hold an election we can't win */
     if (!gbl_debug_unsanctioned_elect && bdb_state->dbenv->rep_can_vote &&
         !bdb_state->dbenv->rep_can_vote(bdb_state->dbenv, bdb_state->repinfo->myhost)) {
         logmsg(LOGMSG_USER, "election will not be held, %s is not allowed to vote\n", bdb_state->repinfo->myhost);

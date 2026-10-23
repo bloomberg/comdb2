@@ -1,1 +1,1 @@
-Verify a node removed from the sanctioned list neither holds an election nor wins one, and that its votes are dropped when it holds one anyway
+Verify a node removed from the sanctioned list neither holds an election nor wins one, that its votes are dropped when it holds one anyway, and that no master is elected once the sanctioned list is empty
