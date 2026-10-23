@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 bash -n "$0" || exit 1
 
-# The physrep metadb stored procedures, run against this db as the metadb: verify errors are retried and other
-# failures are returned.
+# The physrep metadb stored procedures, run against this db as the metadb: verify errors are retried, other
+# failures are returned, and a node is never offered or linked to itself or anything downstream of it.
 
 db=$1
 set -e
@@ -89,6 +89,30 @@ fi
 echo "$out"
 [[ $out == *"rc -201"* ]] || fail "expected rc -201: $out"
 [[ $(connections) == "leaf@l1<-mid@m1 mid@m1<-src@s1 " ]] || fail "failed update_registry changed connections: $(connections)"
+
+for firstfile in 0 1; do
+    echo "== register_replicant never offers the requester or its subtree (firstfile $firstfile)"
+    build_chain $firstfile
+    out=$(sql "exec procedure sys.physrep.register_replicant('mid', 'm1', '100:0', 'src', \"'s1', 's2'\")")
+    echo "$out"
+    echo "$out" | grep -qw s1 || fail "register_replicant did not offer src@s1: $out"
+    if echo "$out" | grep -qwE 'm1|l1'; then
+        fail "register_replicant offered mid@m1 itself or its child leaf@l1: $out"
+    fi
+done
+
+echo "== update_registry refuses to link a node to itself or its own descendant"
+build_chain 0
+for src in "leaf', 'l1" "mid', 'm1"; do
+    if out=$(sql "exec procedure sys.physrep.update_registry('mid', 'm1', '$src', \"'m1'\")" 2>&1); then
+        fail "update_registry linked mid@m1 to '$src': $out"
+    fi
+    echo "$out"
+    [[ $out == *"rc -202"* ]] || fail "expected rc -202: $out"
+    [[ $(connections) == "leaf@l1<-mid@m1 mid@m1<-src@s1 " ]] || fail "refused update_registry changed connections: $(connections)"
+done
+sql "exec procedure sys.physrep.update_registry('mid', 'm1', 'src', 's2', \"'m1'\")"
+[[ $(connections) == "leaf@l1<-mid@m1 mid@m1<-src@s2 " ]] || fail "update_registry did not move mid@m1 to src@s2: $(connections)"
 
 echo "Testcase passed."
 exit 0

@@ -33,6 +33,9 @@ local function register(dbname, hostname, pfile, poffset, source_dbname, source_
     local firstfile = tunables["firstfile"]
     local cte
 
+    -- Never walk through the requester: it must not be offered itself or anything downstream of it
+    local not_requester = " AND NOT (p.dbname = '" .. dbname .. "' AND p.host = '" .. hostname .. "') "
+
     -- Two-tier selection when the metadb tracks firstfile (i.e. comdb2_physreps
     -- has a firstfile column): the primary pass is STRICT -- only sources whose
     -- reported [firstfile, file] range actually covers the replicant's pfile
@@ -54,7 +57,7 @@ local function register(dbname, hostname, pfile, poffset, source_dbname, source_
                  "         UNION ALL " ..
                  "         SELECT p.dbname, p.host, t.tier+1  " ..
                  "             FROM comdb2_physrep_connections p, tiers t, comdb2_physreps c" ..
-                 "             WHERE p.source_dbname = t.dbname AND p.source_host = t.host " ..
+                 "             WHERE p.source_dbname = t.dbname AND p.source_host = t.host " .. not_requester ..
                  "             AND p.dbname = c.dbname AND p.host = c.host " ..
                  "             AND (c.file >= " .. pfile .. " AND " ..
                  "                 c.firstfile IS NOT NULL AND c.firstfile <= " .. pfile ..  ")" ..
@@ -78,7 +81,7 @@ local function register(dbname, hostname, pfile, poffset, source_dbname, source_
                  "         UNION ALL " ..
                  "         SELECT p.dbname, p.host, t.tier+1  " ..
                  "             FROM comdb2_physrep_connections p, tiers t, comdb2_physreps c" ..
-                 "             WHERE p.source_dbname = t.dbname AND p.source_host = t.host" ..
+                 "             WHERE p.source_dbname = t.dbname AND p.source_host = t.host" .. not_requester ..
                  "             AND p.dbname = c.dbname AND p.host = c.host " ..
                  "             AND (c.last_keepalive > (NOW() - cast (600 as sec)))), " ..
                  "    child_count (dbname, host, tier, cnt) AS " ..
@@ -122,7 +125,7 @@ local function register(dbname, hostname, pfile, poffset, source_dbname, source_
                          "         UNION ALL " ..
                          "         SELECT p.dbname, p.host, t.tier+1  " ..
                          "             FROM comdb2_physrep_connections p, tiers t, comdb2_physreps c" ..
-                         "             WHERE p.source_dbname = t.dbname AND p.source_host = t.host " ..
+                         "             WHERE p.source_dbname = t.dbname AND p.source_host = t.host " .. not_requester ..
                          "             AND p.dbname = c.dbname AND p.host = c.host " ..
                          "             AND (c.file >= " .. pfile .. " AND " ..
                          "                 (c.firstfile IS NULL OR c.firstfile <= " .. pfile ..  "))), " ..
@@ -145,7 +148,7 @@ local function register(dbname, hostname, pfile, poffset, source_dbname, source_
                          "         UNION ALL " ..
                          "         SELECT p.dbname, p.host, t.tier+1  " ..
                          "             FROM comdb2_physrep_connections p, tiers t " ..
-                         "             WHERE p.source_dbname = t.dbname AND p.source_host = t.host), " ..
+                         "             WHERE p.source_dbname = t.dbname AND p.source_host = t.host" .. not_requester .. "), " ..
                          "    child_count (dbname, host, tier, cnt) AS " ..
                          "        (SELECT t.dbname, t.host, t.tier, count (*) " ..
                          "             FROM tiers t LEFT OUTER JOIN comdb2_physrep_connections p " ..
