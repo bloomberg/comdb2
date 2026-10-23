@@ -491,6 +491,14 @@ int do_alter_table(struct ireq *iq, struct schema_change_type *s,
     } else {
         sc_printf(s, "Sqlite syntax check succeeded\n");
     }
+    if ((rc = check_partial_index_tz(s, db, newdb))) {
+        Pthread_mutex_unlock(&csc2_subsystem_mtx);
+        if (local_lock)
+            unlock_schema_lk();
+        backout(newdb);
+        cleanup_newdb(newdb);
+        return rc;
+    }
     newdb->ix_blob = newdb->schema->ix_blob;
 
     Pthread_mutex_unlock(&csc2_subsystem_mtx);

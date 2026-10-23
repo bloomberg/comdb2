@@ -512,6 +512,14 @@ REGISTER_TUNABLE("enable_page_compact_backward_scan", NULL, TUNABLE_INTEGER, &gb
                  INVERSE_VALUE | READONLY | NOARG, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("enable_partial_indexes", "If set, allows partial index definitions in table schema. (Default: off)",
                  TUNABLE_BOOLEAN, &gbl_partial_indexes, READONLY | NOARG, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("partial_index_fixed_tz",
+                 "Evaluate partial index predicates in America/New_York, as verify and schema change do, instead of "
+                 "the session timezone. (Default: on)",
+                 TUNABLE_BOOLEAN, &gbl_partial_index_fixed_tz, NOARG, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("debug.allow_tzless_partial_index",
+                 "Allow new partial indexes to compare a datetime with a literal that has no timezone, so tests can "
+                 "create the tables that are grandfathered in. (Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_debug_allow_tzless_partial_index, INTERNAL, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("enable_prefault_udp", "Send lossy prefault requests to replicants. (Default: off)", TUNABLE_BOOLEAN,
                  &gbl_prefault_udp, NOARG, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("enable_selectv_range_check",
