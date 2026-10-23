@@ -68,6 +68,49 @@ function wait_for_master
     echo "$master"
 }
 
+# Prints "<master> <gen>" as this node sees it; a node without a master can block, so bound each query
+function node_view
+{
+    typeset n=$1 m g
+    m=$(timeout 5 $CDB2SQL_EXE $CDB2_OPTIONS --tabs $DBNAME --host $n "select host from comdb2_cluster where is_master='Y'" 2>/dev/null)
+    [[ -n "$m" ]] || return 1
+    g=$(timeout 5 $CDB2SQL_EXE $CDB2_OPTIONS --tabs $DBNAME --host $n "exec procedure sys.cmd.send('bdb repstat')" | awk '/st_gen:/ {print $2}' | sed 's/[^0-9]*//g')
+    [[ -n "$g" ]] || return 1
+    echo "$m $g"
+}
+
+# The given nodes (default all) must follow the same master at a generation past old_gen
+function wait_for_new_master
+{
+    typeset old_gen=$1 views n end=$((SECONDS + 60))
+    shift
+    typeset live=${@:-${nodes[@]}}
+    while (( SECONDS < end )); do
+        views=$(for n in $live; do node_view $n || echo "none 0"; done | sort -u)
+        if [[ $(wc -l <<< "$views") -eq 1 && "${views% *}" != "none" ]] && (( ${views#* } > old_gen )); then
+            echo "${views% *}"
+            return 0
+        fi
+        sleep 1
+    done
+    echo "nodes disagree after 60s: $views" >&2
+    return 1
+}
+
+# Proving a negative needs a window: the given nodes must keep seeing master at gen
+function hold_master
+{
+    typeset expect="$1 $2" n v i
+    shift 2
+    for ((i = 0; i < 10; i++)); do
+        for n in $@; do
+            v=$(node_view $n)
+            [[ "$v" == "$expect" ]] || return 1
+        done
+        sleep 1
+    done
+}
+
 function write_on
 {
     timeout 30 $CDB2SQL_EXE $CDB2_OPTIONS --tabs $DBNAME --host $1 "insert into t1 values($2)"
@@ -87,9 +130,9 @@ master=$(wait_for_master) || failexit "no master elected"
 victim=$(replicants_of $master | head -1)
 send_all "debug tcmtest routecpu $victim"
 kill_node $victim
+gen=$(get_node_gen $master) || failexit "no generation from $master"
 $CDB2SQL_EXE $CDB2_OPTIONS --tabs $DBNAME --host $master "exec procedure sys.cmd.send('downgrade')"
-sleep 5
-master=$(wait_for_master) || failexit "no master elected"
+master=$(wait_for_new_master $gen $(replicants_of $victim)) || failexit "no master elected"
 [[ "$master" != "$victim" ]] || failexit "dead node $victim reported as master"
 write_on $master 1 || failexit "majority could not write after rtcpu'd node died"
 
@@ -101,6 +144,7 @@ master=$(wait_for_master) || failexit "no master elected"
 
 # Negative: rtcpu and kill every replicant; the lone master must give up mastership
 replicants=$(replicants_of $master | xargs)
+gen=$(get_node_gen $master) || failexit "no generation from $master"
 send_all "debug tcmtest routecpu $replicants"
 masterlog=$LOGDIR/${DBNAME}.${master}.db
 before=$(grep -c "cluster is unelectable" $masterlog)
@@ -122,8 +166,8 @@ for node in $replicants; do
     start_node $node
 done
 send_all "debug tcmtest routecpu"
+master=$(wait_for_new_master $gen) || failexit "no master elected after replicants returned"
 wait_for_cluster
-master=$(wait_for_master) || failexit "no master elected"
 
 write_on $master 3 || failexit "could not write after replicants returned"
 expected="1,3"
@@ -140,10 +184,11 @@ fi
 half=$(replicants_of $master | head -$(( cluster_size - sanctioned_size / 2 )) | xargs)
 masterlog=$LOGDIR/${DBNAME}.${master}.db
 before=$(grep -c "cluster is unelectable" $masterlog)
+gen=$(get_node_gen $master) || failexit "no generation from $master"
 for node in $half; do
     kill_node $node
 done
-sleep 10
+hold_master $master $gen $(for node in ${nodes[@]}; do [[ " $half " == *" $node "* ]] || echo $node; done) || failexit "master $master changed with half the cluster up"
 (( $(grep -c "cluster is unelectable" $masterlog) == before )) || failexit "master $master stepped down with half the cluster up"
 write_on $master 4 || failexit "master $master rejected a write with half the cluster up"
 
@@ -165,8 +210,8 @@ x=$($CDB2SQL_EXE $CDB2_OPTIONS --tabs $DBNAME --host $master "select count(*) fr
 for node in $half; do
     start_node $node
 done
+master=$(wait_for_new_master $gen) || failexit "no master elected after half the cluster returned"
 wait_for_cluster
-master=$(wait_for_master) || failexit "no master elected after half the cluster returned"
 write_on $master 6 || failexit "could not write after half the cluster returned"
 expected="1,3,4,6"
 [[ -n "$ghost" ]] && send_all "bdb del $ghost" && ghost=""
