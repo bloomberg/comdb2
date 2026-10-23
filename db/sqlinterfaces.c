@@ -1870,6 +1870,7 @@ static int handle_sql_wrongstate(struct sqlthdstate *thd,
                    "sqlinterfaces: wrong sql handle state\n", 0);
 
     clnt->intrans = 0;
+    clnt->inremtrans = 0;
     reset_clnt_flags(clnt);
 
     reqlog_end_request(thd->logger, -1, __func__, __LINE__);
@@ -2052,6 +2053,7 @@ void abort_dbtran(struct sqlclntstate *clnt)
     }
 
     clnt->intrans = 0;
+    clnt->inremtrans = 0;
     sql_set_sqlengine_state(clnt, __FILE__, __LINE__,
                             SQLENG_FNSH_ABORTED_STATE);
     reset_query_effects(clnt, 0, 0);
@@ -2059,7 +2061,7 @@ void abort_dbtran(struct sqlclntstate *clnt)
 
 void handle_sql_intrans_unrecoverable_error(struct sqlclntstate *clnt)
 {
-    if (clnt && clnt->ctrl_sqlengine == SQLENG_INTRANS_STATE)
+    if (clnt && (clnt->ctrl_sqlengine == SQLENG_INTRANS_STATE || clnt->inremtrans))
         abort_dbtran(clnt);
 }
 
@@ -2086,7 +2088,7 @@ static int do_commitrollback(struct sqlthdstate *thd, struct sqlclntstate *clnt,
         clear_modsnap_state(clnt);
     }
 
-    if (!clnt->intrans) {
+    if (!clnt->intrans && !clnt->inremtrans) {
         reqlog_logf(thd->logger, REQL_QUERY, "\"%s\" ignore (no transaction)\n",
                     (clnt->sql) ? clnt->sql : "(???.)");
 
@@ -2478,6 +2480,7 @@ int handle_sql_commitrollback(struct sqlthdstate *thd,
 
     /* we are out of transaction, mark this here */
     clnt->intrans = 0;
+    clnt->inremtrans = 0;
     clnt->dbtran.shadow_tran = NULL;
 
     if (rc == SQLITE_OK) {
@@ -4099,7 +4102,7 @@ static int run_stmt(struct sqlthdstate *thd, struct sqlclntstate *clnt,
         clnt->query_rc = CDB2ERR_IO_ERROR;
     }
 
-    if (clnt->intrans == 0) {
+    if (clnt->intrans == 0 && clnt->inremtrans == 0) {
         /* is this is a begin; select; ... txn ? */
         reset_query_effects(clnt, 0, clnt->ctrl_sqlengine == SQLENG_STRT_STATE);
     }
@@ -5415,7 +5418,7 @@ void cleanup_clnt(struct sqlclntstate *clnt)
     if(clnt->evicted_appsock) {
         ATOMIC_ADD32(evicted_appsock_conns, -1);
     }
-    if (clnt->ctrl_sqlengine == SQLENG_INTRANS_STATE) {
+    if (clnt->ctrl_sqlengine == SQLENG_INTRANS_STATE || clnt->inremtrans) {
         handle_sql_intrans_unrecoverable_error(clnt);
     }
     _free_set_commands(clnt);
@@ -5618,6 +5621,7 @@ void reset_clnt(struct sqlclntstate *clnt, int initial)
 
     if (clnt->ctrl_sqlengine != SQLENG_INTRANS_STATE)
         clnt->intrans = 0;
+    clnt->inremtrans = 0;
 
     /* start off in the default transaction mode till we're told otherwise */
     clnt->dbtran.mode = gbl_sql_tranlevel_default;

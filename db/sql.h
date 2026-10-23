@@ -822,6 +822,9 @@ struct sqlclntstate {
                    SINGULAR STATEMENTS;
                    STATE OF A CLIENT TRANSACTION IS KEPT HERE
                  */
+    int inremtrans;                     /* a remote transaction was begun (pushed remote write) in
+                                           this client transaction; set independent of intrans,
+                                           which only tracks the local transaction */
     struct convert_failure fail_reason; /* detailed error */
     int early_retry;
 
