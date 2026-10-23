@@ -75,6 +75,9 @@ extern int gbl_fdb_track;
 /* How long a remote transaction request waits for an earlier one (0 = forever) */
 int gbl_fdb_sequence_timeout_ms = 60000;
 
+/* Testing: drop this many transactional cursor opens before they are sequenced */
+int gbl_fdb_test_drop_cursor_open = 0;
+
 struct svc_cursor {
     char *cid;    /* cursor id */
     char *tid;    /* trans id */
@@ -226,6 +229,17 @@ svc_cursor_t *fdb_svc_cursor_open(char *tid, char *cid, int code_release, int ve
     if (rc) {
         free(cur);
         logmsg(LOGMSG_ERROR, "%s failed open cursor sql rc=%d\n", __func__, rc);
+        return NULL;
+    }
+
+    if (cur->autocommit == 0 && gbl_fdb_test_drop_cursor_open > 0) {
+        /* simulate a request that never arrives: its sequence slot stays empty */
+        gbl_fdb_test_drop_cursor_open--;
+        logmsg(LOGMSG_USER, "%s: test: dropping cursor open tid=%s seq=%d\n", __func__, tus, seq);
+        free(cur);
+        cleanup_clnt(*pclnt);
+        free(*pclnt);
+        *pclnt = NULL;
         return NULL;
     }
 
