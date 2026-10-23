@@ -14,7 +14,6 @@
    limitations under the License.
  */
 
-#include <poll.h>
 #include <list.h>
 #include <event2/event.h>
 #include "comdb2.h"
@@ -289,6 +288,8 @@ static int srs_tran_requeue(struct sqlclntstate *clnt)
     return dispatch_sql_query_no_wait(clnt);
 }
 
+static int srs_tran_redispatch(struct sqlclntstate *clnt);
+
 int srs_tran_replay_prepare(struct sqlclntstate *clnt)
 {
     if (!clnt->osql.history) {
@@ -301,7 +302,8 @@ int srs_tran_replay_prepare(struct sqlclntstate *clnt)
     clnt->done_cb = NULL;
     clnt->verify_retries = 0;
 
-    int rc = srs_tran_requeue(clnt);
+    /* Distributed txns pause before every replay, the first one included. */
+    int rc = (clnt->dist_timestamp > 0) ? srs_tran_redispatch(clnt) : srs_tran_requeue(clnt);
     if (rc == 0) {
         return RC_INTERNAL_RETRY;
     }
@@ -334,13 +336,6 @@ static int srs_tran_replay_once(struct sqlclntstate *clnt, int(dispatch_fn)(stru
 
     clnt->verify_retries++;
     gbl_verify_tran_replays++;
-    if (clnt->dist_timestamp > 0) {
-        int pval = gbl_disttxn_random_retry_poll;
-        if (pval > 1) {
-            poll(0, 0, rand() % pval);
-        }
-    }
-
     /* Replays for SERIAL or SNAPISOL will never have select or selectv */
     if (clnt->dbtran.mode == TRANLEVEL_RECOM /* not for modsnap */) {
         /* we need to free all the shadows but selectv table (recgenid) */
@@ -412,7 +407,13 @@ static void srs_tran_redispatch_cb(int fd, short what, void *arg)
 static int srs_tran_redispatch(struct sqlclntstate *clnt)
 {
     int max_ms = gbl_verify_retry_backoff_ms;
-    if (max_ms <= 0 || clnt->verify_retries < gbl_verify_retry_count_before_backoff)
+    int count_before = gbl_verify_retry_count_before_backoff;
+    if (clnt->dist_timestamp > 0) {
+        /* Same range as the old on-thread wait: 0 .. poll-1 ms, every replay. */
+        max_ms = gbl_disttxn_random_retry_poll - 1;
+        count_before = 0;
+    }
+    if (max_ms <= 0 || clnt->verify_retries < count_before)
         return srs_tran_requeue(clnt);
     int ms = rand() % (max_ms + 1);
     struct timeval tv = {.tv_sec = ms / 1000, .tv_usec = (ms % 1000) * 1000};
