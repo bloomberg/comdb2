@@ -51,6 +51,10 @@ ${TESTSBUILDDIR}/cdb2api_setoptions ${DBNAME}
 [[ $? -ne 0 ]] && echo "cdb2api_setoptions - fail" && exit 1
 echo 'cdb2api_setoptions - pass'
 
+${TESTSBUILDDIR}/cdb2api_chunk_set_replay ${DBNAME}
+[[ $? -ne 0 ]] && echo "cdb2api_chunk_set_replay - fail" && exit 1
+echo 'cdb2api_chunk_set_replay - pass'
+
 ${CDB2SQL_EXE} ${CDB2_OPTIONS} ${DBNAME} default 'create procedure sptrace version '"'cdb2api_test'"' {local function main() db:trace('"'hello, world\!'"') end}'
 ${TESTSBUILDDIR}/cdb2api_sptrace ${DBNAME}
 [[ $? -ne 0 ]] && echo "cdb2api_sptrace - fail" && exit 1
