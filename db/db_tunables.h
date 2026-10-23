@@ -1854,7 +1854,7 @@ REGISTER_TUNABLE("debug_sleep_in_cursor_move", "Sleep N ms on each cursor move (
                  TUNABLE_INTEGER, &gbl_debug_sleep_in_cursor_move, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 
 REGISTER_TUNABLE("pagelock_release_interval_ms",
-                 "Minimum interval between lock releases by a reader while a lock waiter persists.  (Default: 25ms)",
+                 "Minimum interval between page-lock-only releases while a lock waiter persists.  (Default: 100ms)",
                  TUNABLE_INTEGER, &gbl_pagelock_release_interval_ms, 0, NULL, NULL, NULL, NULL);
 
 REGISTER_TUNABLE("pagelock_release_max_wait_ms",
