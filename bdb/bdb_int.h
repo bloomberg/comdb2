@@ -1617,6 +1617,8 @@ typedef struct udppf_rq {
     bdb_state_type *bdb_state;
     unsigned int fileid;
     unsigned int pgno;
+    int by_ufid;
+    uint8_t ufid[DB_FILE_ID_LEN];
 } udppf_rq_t;
 
 void start_udp_reader(bdb_state_type *bdb_state);
@@ -1627,6 +1629,8 @@ void auto_analyze(int, short, void *);
 int do_ack(bdb_state_type *bdb_state, DB_LSN permlsn, uint32_t generation, uint32_t rep_gen);
 void comdb2_early_ack(DB_ENV *dbenv, DB_LSN permlsn, uint32_t commit_gen, uint32_t rep_gen);
 void net_rep_throttle_init(netinfo_type *netinfo_ptr);
+void receive_prefault_ufid(void *ack_handle, void *usr_ptr, char *from_host, struct interned_string *from_interned,
+                           int usertype, void *dta, int dtalen, uint8_t is_tcp);
 void berkdb_receive_rtn(void *ack_handle, void *usr_ptr, char *from_host,
                         struct interned_string *from_host_interned,
                         int usertype, void *dta, int dtalen, uint8_t is_tcp);

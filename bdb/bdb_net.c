@@ -372,34 +372,42 @@ int udppfault_thdpool_init(void)
     return 0;
 }
 
-static int send_prefault(bdb_state_type *bdb_state, const char *tohost,
-                         unsigned int fileid, unsigned int pgno)
+int enque_udppfault_ufid(bdb_state_type *bdb_state, const uint8_t *ufid, unsigned int pgno);
+
+/* USER_TYPE_PREFAULT_UFID payload: the file's UFID, then the page number */
+enum { PREFAULT_UFID_LEN = DB_FILE_ID_LEN + sizeof(uint32_t) };
+
+/* Hints go on the replication connection (encrypted when ssl_replicant_mode is
+ * on). They are lossy: without NET_SEND_NODROP a full connection queue drops
+ * the hint instead of blocking the committing thread, and without
+ * NET_SEND_NODELAY a hint waits for the next flush of the log stream. */
+static int send_prefault(bdb_state_type *bdb_state, const char *tohost, const unsigned char *ufid, unsigned int pgno)
 {
-    ack_info *info;
+    uint8_t buf[PREFAULT_UFID_LEN];
     uint8_t *p_buf;
-    uint8_t *p_buf_end;
 
-    filepage_type filepage;
-    filepage.fileid = fileid;
-    filepage.pgno = pgno;
+    p_buf = buf_no_net_put(ufid, DB_FILE_ID_LEN, buf, buf + sizeof(buf));
+    buf_put(&pgno, sizeof(pgno), p_buf, buf + sizeof(buf));
 
-    new_ack_info(info, BDB_FILEPAGE_TYPE_LEN, bdb_state->repinfo->myhost);
-    p_buf = ack_info_data(info);
-    p_buf_end = p_buf + BDB_FILEPAGE_TYPE_LEN;
-    rep_udp_filepage_type_put(&filepage, p_buf, p_buf_end);
-
-    info->from = 0;
-    info->to = 0;
-    info->type = USER_TYPE_UDP_PREFAULT;
-    info->len = sizeof(filepage_type);
-
-    udp_send(bdb_state, info, tohost);
-
-    return 0;
+    return net_send(bdb_state->repinfo->netinfo, tohost, USER_TYPE_PREFAULT_UFID, buf, sizeof(buf), 0);
 }
 
-void udp_prefault_all(bdb_state_type *bdb_state, unsigned int fileid,
-                      unsigned int pgno)
+void receive_prefault_ufid(void *ack_handle, void *usr_ptr, char *from_host, struct interned_string *from_interned,
+                           int usertype, void *dta, int dtalen, uint8_t is_tcp)
+{
+    bdb_state_type *bdb_state = usr_ptr;
+    uint32_t pgno;
+
+    if (bdb_state->parent)
+        bdb_state = bdb_state->parent;
+    if (dtalen != PREFAULT_UFID_LEN)
+        return;
+    buf_get(&pgno, sizeof(pgno), (uint8_t *)dta + DB_FILE_ID_LEN, (uint8_t *)dta + dtalen);
+    /* runs on the network thread: only enqueue (lossy, never blocks) */
+    enque_udppfault_ufid(bdb_state, dta, pgno);
+}
+
+void udp_prefault_all(bdb_state_type *bdb_state, const unsigned char *ufid, unsigned int pgno)
 {
     repinfo_type *repinfo = bdb_state->repinfo;
     const char *hosts[REPMAX];
@@ -414,7 +422,7 @@ void udp_prefault_all(bdb_state_type *bdb_state, unsigned int fileid,
     i = net_get_all_nodes_connected(repinfo->netinfo, hosts);
 
     while (i--) {
-        send_prefault(bdb_state, hosts[i], fileid, pgno);
+        send_prefault(bdb_state, hosts[i], ufid, pgno);
     }
 }
 
