@@ -1617,6 +1617,8 @@ typedef struct udppf_rq {
     bdb_state_type *bdb_state;
     unsigned int fileid;
     unsigned int pgno;
+    int has_ufid; /* btree prefault: also check the file unique id */
+    u_int8_t ufid[DB_FILE_ID_LEN];
 } udppf_rq_t;
 
 void start_udp_reader(bdb_state_type *bdb_state);
