@@ -25,6 +25,16 @@ failexit()
     exit 1
 }
 
+# with push writes on, remote writes run over cdb2api, never over remtran
+pushw=$($SRC default "select value from comdb2_tunables where name='foreign_db_push_remote_writes'")
+[[ -z "$pushw" ]] && failexit "cannot read foreign_db_push_remote_writes"
+if [[ "$pushw" == "ON" ]]; then
+    wexp=0
+else
+    wexp=+
+fi
+echo "push writes $pushw"
+
 nodes=$($REM default "select host from comdb2_cluster")
 [[ -z "$nodes" ]] && failexit "no remote nodes"
 
@@ -88,24 +98,39 @@ check 0 "standalone local insert, remote read" <<EOF
 insert into t select id + 100 from ${RTBL} where id < 3
 EOF
 
-check + "standalone remote write" <<EOF
+check $wexp "standalone remote write" <<EOF
 insert into ${RTBL} values (11)
 EOF
 
-check + "txn remote write followed by local update, remote read" <<EOF
+check $wexp "txn remote write followed by local update, remote read" <<EOF
 begin
 insert into ${RTBL} values (12)
 update t set id=1000 where id=(select max(id) from ${RTBL})
 commit
 EOF
 
-# the read after the remote write joined the remote transaction (one remtran
-# above), but socksql does not see its own uncommitted writes: max is 11, not
-# the uncommitted 12, so local row 11 was updated and 12 was not
+# the read after the remote write joined the remote transaction, but socksql
+# does not see its own uncommitted writes: max is 11, not the uncommitted 12,
+# so local row 11 was updated and 12 was not
 res=$($SRC default "select id from t where id in (11, 12, 1000) order by id" | xargs)
 [[ "$res" != "12 1000" ]] && failexit "socksql remote read saw its own uncommitted write, got '$res'"
 
 res=$($REM default "select count(*) from t")
 [[ "$res" != "12" ]] && failexit "remote row count $res, expected 12"
+
+# the source db traces the first remtran it sends (and every 1000th after);
+# the read-only scenarios run first, so a remtran for any of them shows up
+# here; with push writes on, no remtran is sent at all
+trace=$(cat ${TESTDIR}/logs/${SECONDARY_DBNAME}*.db 2>/dev/null | grep "SENDING REMTRAN")
+echo "remtran trace: ${trace:-none}"
+if echo "$trace" | grep -qi "update t set"; then
+    failexit "remtran sent for read-only remote access"
+fi
+if [[ "$pushw" == "ON" && -n "$trace" ]]; then
+    failexit "remtran sent with push writes on"
+fi
+if [[ "$pushw" != "ON" && -z "$trace" ]]; then
+    failexit "no remtran trace for remote writes, check source db logs"
+fi
 
 echo "SUCCESS"

@@ -621,7 +621,7 @@ int handle_fdb_push_write(sqlclntstate *clnt, struct errstat *err, int n_extra_s
     fdb_t *fdb;
     int created;
     int rc;
-    int set_intrans = 0;
+    int set_inremtrans = 0;
     const char *noverify = "SET VeRiFyReTRy OFF";
     int cdb2open_flags = clnt->features.require_fastsql ? CDB2_REQUIRE_FASTSQL : 0 /* no sqlite row format here */;
 
@@ -668,10 +668,13 @@ int handle_fdb_push_write(sqlclntstate *clnt, struct errstat *err, int n_extra_s
             goto free;
         }
         if (clnt->in_client_trans) {
-            /* if not standalone, and this is the first reachout to this fdb, send begin */
-            if (!clnt->intrans) {
-                clnt->intrans = 1;
-                set_intrans = 1;
+            /* if not standalone, and this is the first reachout to this fdb, send begin;
+             * mark the remote transaction, so commit/rollback reach it even if
+             * there is no local transaction
+             */
+            if (!clnt->inremtrans) {
+                clnt->inremtrans = 1;
+                set_inremtrans = 1;
             }
 
             /* if this is 2pc, we need to send additional info to the participant */
@@ -800,7 +803,6 @@ int handle_fdb_push_write(sqlclntstate *clnt, struct errstat *err, int n_extra_s
 
             tran->last_effects = effects;
         }
-        sql_set_sqlengine_state(clnt, __FILE__, __LINE__, SQLENG_INTRANS_STATE);
     } else {
         /* SP standalone — just store effects */
         clnt->effects.num_affected = effects.num_affected;
@@ -863,13 +865,11 @@ free_push:
          * so that the postpone message works
          */
         fdb_push_free(&clnt->fdb_push);
-        if (set_intrans) {
-            /* if this tried to short call to local sqlite3BtreeBeginTrans
-             * first time we try to push, and we set clnt->intrans,
-             * and we are gonna retry the legacy mode, need to reset
-             * that back so we do not skip calling sqlite3BtreeBeginTrans
+        if (set_inremtrans) {
+            /* this was the first remote transaction, and it is gone; the
+             * legacy retry runs in a local transaction
              */
-            clnt->intrans = 0;
+            clnt->inremtrans = 0;
         }
     }
 
