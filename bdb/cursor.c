@@ -541,8 +541,14 @@ bdb_cursor_ifn_t *bdb_cursor_open(
         return NULL;
     }
 
-    dbnum = get_dbnum_by_handle(bdb_state);
-    if (dbnum == -1) {
+    /* a snapshot handle has no shadows, so it needs no dbnum */
+    if (bdb_state->snapshot_handle) {
+        if (type != BDB_OPEN_REAL) {
+            *bdberr = BDBERR_BADARGS;
+            return NULL;
+        }
+        dbnum = -1;
+    } else if ((dbnum = get_dbnum_by_handle(bdb_state)) == -1) {
         *bdberr = BDBERR_BADARGS;
         return NULL;
     }

@@ -787,6 +787,9 @@ typedef struct dbtable {
     /* gbl_schema_gen value of the last schema change that changed what a
      * read of this table sees; see sc_bump_changed_gen() */
     int64_t changed_gen;
+    /* set on a table as a snapshot saw it before a schema change (see
+     * snap_catalog.c); its tags are under this name in the tag hash */
+    char *tag_tablename;
 
     /* map of tag fields for schema version to curr schema */
     unsigned int * versmap[MAXVER + 1];
@@ -2154,6 +2157,8 @@ int getclientdatsize(const struct dbtable *db, char *sname);
 struct dbtable *getdbbynum(int num);
 /*look up managed db's by name*/
 struct dbtable *get_dbtable_by_name(const char *name);
+/* get_dbtable_by_name() without the tables of a snapshot (see snap_catalog.c) */
+struct dbtable *get_live_dbtable_by_name(const char *name);
 /* Lookup view by name */
 struct dbview *get_view_by_name(const char *view_name);
 /* Load all views from llmeta */
@@ -2748,6 +2753,7 @@ int dbq_consume_goose(struct ireq *iq, void *trans);
 
 /* sql stuff */
 int create_sqlmaster_records(void *tran);
+int create_sqlmaster_record(struct dbtable *tbl, void *tran);
 int create_sqlmaster_records_flags(void *tran, uint32_t flags);
 void form_new_style_name(char *namebuf, int len, struct schema *schema,
                          const char *csctag, const char *dbname);

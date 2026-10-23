@@ -109,6 +109,7 @@
 #include <sqlwriter.h>
 
 #include "views.h"
+#include "snap_catalog.h"
 
 int gbl_delay_sql_lock_release_sec = 5;
 
@@ -187,7 +188,7 @@ struct snap_table_check {
     int nstart;          /* -1 if not read yet */
 };
 
-void clear_snap_table_checks(dbtran_type *dbtran)
+void clear_snap_state(dbtran_type *dbtran)
 {
     for (int i = 0; i < dbtran->n_snap_checks; i++) {
         free(dbtran->snap_checks[i].tablename);
@@ -196,6 +197,7 @@ void clear_snap_table_checks(dbtran_type *dbtran)
     free(dbtran->snap_checks);
     dbtran->snap_checks = NULL;
     dbtran->n_snap_checks = 0;
+    snap_catalog_free(&dbtran->snap_catalog);
 }
 
 /* Set *changed if a schema change of the table committed after the modsnap
@@ -1965,7 +1967,7 @@ int create_datacopy_array(struct dbtable *tbl)
 
 /* This creates SQL statements that correspond to a table's schema. These
    statements are used to bootstrap sqlite. */
-static int create_sqlmaster_record(struct dbtable *tbl, void *tran)
+int create_sqlmaster_record(struct dbtable *tbl, void *tran)
 {
     int field;
     char namebuf[128];
@@ -6003,7 +6005,7 @@ int sqlite3BtreeCommit(Btree *pBt)
     }
 
     clnt->dbtran.schema_gen = 0;
-    clear_snap_table_checks(&clnt->dbtran);
+    clear_snap_state(&clnt->dbtran);
 
     reset_clnt_flags(clnt);
 
@@ -6123,7 +6125,7 @@ int sqlite3BtreeRollback(Btree *pBt, int dummy, int writeOnlyDummy)
     }
 
     clnt->dbtran.schema_gen = 0;
-    clear_snap_table_checks(&clnt->dbtran);
+    clear_snap_state(&clnt->dbtran);
 
     reset_clnt_flags(clnt);
 
@@ -8690,6 +8692,23 @@ static int sqlite3LockStmtTables_int(sqlite3_stmt *pStmt, int after_recovery)
             }
         }
 
+        /* a table as a snapshot saw it before a schema change does not
+         * change, and the snapshot holds it; it cannot be written */
+        if (snap_catalog_is_old_table(db)) {
+            if (!sqlite3_stmt_readonly(pStmt)) {
+                sqlite3_mutex_enter(sqlite3_db_mutex(p->db));
+                sqlite3VdbeError(p, "table \"%s\" was schema changed", db->tablename);
+                sqlite3VdbeTransferError(p);
+                sqlite3MakeSureDbHasErr(p->db, SQLITE_OK);
+                sqlite3_mutex_leave(sqlite3_db_mutex(p->db));
+                return SQLITE_SCHEMA;
+            }
+            if (!after_recovery)
+                db->nsql++;
+            reqlog_add_table(thrman_get_reqlogger(thrman_self()), db->tablename);
+            continue;
+        }
+
         if ((rc = bdb_lock_table_read_fromlid(db->handle, bdb_get_lid_from_cursortran(clnt->dbtran.cursor_tran))) !=
             0) {
             logmsg(LOGMSG_ERROR, "%s lock table %s returns %d\n", __func__, tab->zName, rc);
@@ -9077,8 +9096,9 @@ sqlite3BtreeCursor_cursor(Btree *pBt,      /* The btree */
 
     initialize_curtran_for_modsnap(clnt->dbtran.cursor_tran, clnt);
 
-    /* initialize the shadow, if any  */
-    cur->shadtbl = osql_get_shadow_bydb(thd->clnt, cur->db);
+    /* initialize the shadow, if any; this transaction did not write a table
+     * as a snapshot saw it before a schema change */
+    cur->shadtbl = snap_catalog_is_old_table(cur->db) ? NULL : osql_get_shadow_bydb(thd->clnt, cur->db);
 
     if (cur->ixnum == -1) {
         if (is_stat2(cur->db->tablename) || is_stat4(cur->db->tablename)) {
@@ -9202,7 +9222,11 @@ sqlite3BtreeCursor_cursor(Btree *pBt,      /* The btree */
     }
 
     enum bdb_open_type open_type;
-    if (shadow_tran && (clnt->dbtran.mode != TRANLEVEL_SOSQL)) {
+    if (snap_catalog_is_old_table(cur->db)) {
+        /* not written in this transaction: no shadows */
+        shadow_tran = NULL;
+        open_type = BDB_OPEN_REAL;
+    } else if (shadow_tran && (clnt->dbtran.mode != TRANLEVEL_SOSQL)) {
         open_type = (wrFlag) ? BDB_OPEN_BOTH_CREATE : BDB_OPEN_BOTH;
     } else {
         open_type = BDB_OPEN_REAL;
@@ -9210,7 +9234,9 @@ sqlite3BtreeCursor_cursor(Btree *pBt,      /* The btree */
     assert(clnt->dbtran.mode != TRANLEVEL_SNAPISOL || clnt->modsnap_in_progress);
     cur->bdbcur =
         bdb_cursor_open(cur->db->handle, clnt->dbtran.cursor_tran, shadow_tran, cur->ixnum, open_type,
-                        (clnt->dbtran.mode == TRANLEVEL_SOSQL) ? NULL : osql_get_shadtbl_addtbl_newcursor(cur),
+                        (clnt->dbtran.mode == TRANLEVEL_SOSQL || snap_catalog_is_old_table(cur->db))
+                            ? NULL
+                            : osql_get_shadtbl_addtbl_newcursor(cur),
                         clnt->pageordertablescan, rowlocks, rowlocks ? &clnt->holding_pagelocks_flag : NULL,
                         rowlocks ? pause_pagelock_cursors : NULL, rowlocks ? (void *)thd : NULL,
                         rowlocks ? count_pagelock_cursors : NULL, rowlocks ? (void *)thd : NULL, clnt->bdb_osql_trak,

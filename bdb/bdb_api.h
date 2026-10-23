@@ -290,6 +290,7 @@ enum OPENFLAGS { /* NOTE: For "uint32_t flags" arg to "bdb_open_*()". */
     BDB_OPEN_ADD_QDB_FILE = 0x01,
     BDB_OPEN_DEL_QDB_FILE = 0x02,
     BDB_OPEN_SKIP_SCHEMA_LK = 0x04,
+    BDB_OPEN_SNAPSHOT = 0x08, /* read-only handle on old file versions */
 };
 
 int bdb_compr2algo(const char *a);
@@ -490,6 +491,23 @@ bdb_open_more_tran(const char name[], const char dir[], int lrl, short numix,
                    const signed char ixcollattr[], const signed char ixnulls[],
                    int numdtafiles, bdb_state_type *parent_bdb_handle,
                    tran_type *tran, uint32_t flags, int *bdberr);
+
+/* Open a read-only handle on the files of table "name" that llmeta names as
+ * of the LSN of llmeta_tran (see bdb_tran_set_llmeta_snap()).  The handle is
+ * not a child of parent_bdb_handle: close it with bdb_close_snapshot(). */
+bdb_state_type *bdb_open_snapshot(const char name[], const char dir[], int lrl, short numix, const short ixlen[],
+                                  const signed char ixdups[], const signed char ixrecnum[], const signed char ixdta[],
+                                  const int ixdtalen[], const signed char ixcollattr[], const signed char ixnulls[],
+                                  int numdtafiles, bdb_state_type *parent_bdb_handle, tran_type *llmeta_tran,
+                                  int *bdberr);
+void bdb_close_snapshot(bdb_state_type *bdb_state);
+/* llmeta version of a data/blob (is_data) or index file of an open table */
+unsigned long long bdb_get_open_file_version(bdb_state_type *bdb_state, int is_data, int num);
+
+/* Make llmeta reads through tran see llmeta as of the LSN; ckp is the
+ * checkpoint LSN before it */
+void bdb_tran_set_llmeta_snap(tran_type *tran, uint32_t lsn_file, uint32_t lsn_offset, uint32_t ckp_file,
+                              uint32_t ckp_offset);
 
 /* open an existing lite table */
 bdb_state_type *bdb_open_more_lite(const char name[], const char dir[], int lrl,

@@ -103,6 +103,7 @@ struct sqlthdstate {
     int dbopen_gen;
     int analyze_gen;
     int views_gen;
+    uint64_t snap_catalog_id; /* catalog of sqldb; 0 for the current tables */
 
     /* A flag to tell us whether we are inside the query preparer plugin. This
      * is especially needed to differentiate between fdb cursors opened by core
@@ -281,10 +282,14 @@ typedef struct {
      * check_snapshot_table() */
     struct snap_table_check *snap_checks;
     int n_snap_checks;
+
+    /* modsnap: the tables as of the start LSN, if a schema change committed
+     * after it; see snap_catalog.c */
+    struct snap_catalog *snap_catalog;
 } dbtran_type;
 typedef dbtran_type trans_t;
 
-void clear_snap_table_checks(dbtran_type *dbtran);
+void clear_snap_state(dbtran_type *dbtran);
 
 /* analyze sampled (previously misnamed compressed) idx */
 typedef struct {

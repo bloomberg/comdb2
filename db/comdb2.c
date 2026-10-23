@@ -124,6 +124,7 @@ void berk_memp_sync_alarm_ms(int);
 #include "config.h"
 
 #include "views.h"
+#include "snap_catalog.h"
 
 #include <autoanalyze.h>
 #include <cdb2_constants.h>
@@ -926,6 +927,17 @@ int get_dbtable_idx_by_name(const char *tablename)
 }
 
 dbtable *get_dbtable_by_name(const char *p_name)
+{
+    dbtable *p_db = NULL;
+
+    /* a snapshot that crossed a schema change sees the tables as they were */
+    if (snap_catalog_find_table(p_name, &p_db))
+        return p_db;
+
+    return get_live_dbtable_by_name(p_name);
+}
+
+dbtable *get_live_dbtable_by_name(const char *p_name)
 {
     dbtable *p_db = NULL;
 

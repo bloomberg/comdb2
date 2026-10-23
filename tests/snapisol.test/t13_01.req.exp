@@ -6,5 +6,5 @@ done
 done
 done
 done
-[select * from foo] failed with rc -3 table "foo" was schema changed
+(i=1)
 done

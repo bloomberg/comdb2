@@ -150,6 +150,11 @@ struct tran_tag {
     u_int32_t original_lid;
     int is_curtran;
 
+    /* llmeta reads through this tran see llmeta as of llmeta_snap_lsn */
+    int llmeta_snap;
+    DB_LSN llmeta_snap_lsn;
+    DB_LSN llmeta_snap_ckp_lsn; /* checkpoint before llmeta_snap_lsn */
+
     void *usrptr;
     DB_LSN savelsn;
     struct tran_tag *parent;
@@ -827,6 +832,8 @@ struct bdb_state_tag {
     signed char caught_up; /* if we passed the recovery phase */
 
     signed char isopen;
+    /* opened by bdb_open_snapshot(): not a child of the parent */
+    signed char snapshot_handle;
     signed char envonly;
 
     signed char need_to_downgrade_and_lose;
