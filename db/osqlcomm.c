@@ -7178,11 +7178,13 @@ static int _do_process_partitioned_table_merge(struct ireq *iq, struct schema_ch
              * sc ran inline and still owns its running mark */
             _release_failed_sc(iq);
             sc_pending_unlock(iq);
-            if (rc != SC_MASTER_DOWNGRADE)
+            if (rc != SC_MASTER_DOWNGRADE) {
                 iq->osql_flags |= OSQL_FLAGS_SCDONE;
-            else
+                rc = ERR_SC;
+            } else {
+                /* keep it, the status must tell a downgrade apart */
                 iq->osql_flags &= ~OSQL_FLAGS_SCDONE;
-            rc = ERR_SC;
+            }
             goto done;
         }
 
@@ -7216,11 +7218,13 @@ static int _do_process_partitioned_table_merge(struct ireq *iq, struct schema_ch
              * sc ran inline and still owns its running mark */
             _release_failed_sc(iq);
             sc_pending_unlock(iq);
-            if (rc != SC_MASTER_DOWNGRADE)
+            if (rc != SC_MASTER_DOWNGRADE) {
                 iq->osql_flags |= OSQL_FLAGS_SCDONE;
-            else
+                rc = ERR_SC;
+            } else {
+                /* keep it, the status must tell a downgrade apart */
                 iq->osql_flags &= ~OSQL_FLAGS_SCDONE;
-            rc = ERR_SC;
+            }
             goto done;
         }
 
@@ -7678,11 +7682,13 @@ static int _process_partition_retention(struct ireq *iq)
             }
             iq->sc = NULL;
             if (rc != SC_OK) {
-                if (rc != SC_MASTER_DOWNGRADE)
+                if (rc != SC_MASTER_DOWNGRADE) {
                     iq->osql_flags |= OSQL_FLAGS_SCDONE;
-                else
+                    rc = ERR_SC;
+                } else {
+                    /* keep it, the status must tell a downgrade apart */
                     iq->osql_flags &= ~OSQL_FLAGS_SCDONE;
-                rc = ERR_SC;
+                }
             }
             break;
         }
