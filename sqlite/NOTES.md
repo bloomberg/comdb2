@@ -373,7 +373,7 @@ I started tracking this when I got to more important files (`where.c`,
 
 - **TODO**: `PRAGMA integrity_check` reports "wrong # of entries in index" for every index, because the `sqlite3BtreeIntegrityCheck()` stub in `db/sqlglue.c` never writes the `aCnt[]` counts that 3.51 now compares (upstream `d90ecb5d6e`).
 
-- **TODO**: Make `get_one_explain_line()` in `db/sqlexplain.c` describe every 3.51 opcode and P5 flag; it misses `OP_PureFunc`, `OP_ElseEq` and the `SQLITE_NULLEQ`/`SQLITE_NOTNULL` comparison flags, among others.
+- **TODO**: Make `get_one_explain_line()` in `db/sqlexplain.c` describe every 3.51 opcode and P5 flag; it misses `OP_ElseEq` and the `SQLITE_NULLEQ`/`SQLITE_NOTNULL` comparison flags, among others.
 
 - **TODO**: Port comdb2's json1.c changes to `src/json.c`: `jsonAppendSqlValue` for comdb2 types (datetime, interval, decimal), inf/nan number parsing, and `access_flag` on the `json_each`/`json_tree` modules; cson keeps its private json1.c until it is rewritten.
 

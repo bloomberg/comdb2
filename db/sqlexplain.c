@@ -633,6 +633,7 @@ void get_one_explain_line(struct sqlclntstate *clnt, sqlite3 *hndl, strbuf *out,
     case OP_CollSeq:
         strbuf_appendf(out, "Using collation sequence %s", op->p4.pColl->zName);
         break;
+    case OP_PureFunc:
     case OP_Function:
         if (op->p4.pCtx->argc > 1) {
             strbuf_appendf(out, "R%d = %s(R%d..R%d)", op->p3,
