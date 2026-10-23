@@ -1354,6 +1354,21 @@ elect_again:
         BDB_RELLOCK();
     }
 
+    if (rc == DB_REP_NEWMASTER) {
+        /* We won on our own vote2, so no NEWMASTER reaches process_berkdb: upgrade here as it would */
+        logmsg(LOGMSG_WARN, "elect_thread: won the election on our own vote, upgrading to gen %d\n", newgen);
+        BDB_WRITELOCK_REP("upgrade");
+        rc = bdb_upgrade(bdb_state, newgen, &done);
+        BDB_RELLOCK();
+        if (rc != 0) {
+            logmsg(LOGMSG_FATAL, "bdb_upgrade returned bad rcode %d\n", rc);
+            _exit(1);
+        }
+        if (done)
+            bdb_setmaster(bdb_state, bdb_state->repinfo->myhost);
+        goto give_up;
+    }
+
     if (rc != 0) {
         if (rc == DB_REP_UNAVAIL)
             logmsg(LOGMSG_WARN,
