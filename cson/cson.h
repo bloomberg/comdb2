@@ -85,6 +85,13 @@ int cson_array_append(cson_array *, cson_value *);
 int cson_array_set(cson_array *, unsigned int ndx, cson_value *);
 int cson_object_iter_init(cson_object *, cson_object_iterator *iter);
 int cson_object_set(cson_object *, char const *key, cson_value *);
+/* Cheaper than cson_object_set() for building an object: append key:value
+ * after the existing keys. The key must not already be in the object and is
+ * taken as is (not a path). cson_object_append() takes ownership of the value
+ * and frees it, like cson_array_append(). */
+int cson_object_append(cson_object *, char const *key, cson_value *);
+int cson_object_append_int(cson_object *, char const *key, cson_int_t);
+int cson_object_append_string(cson_object *, char const *key, char const *str, unsigned int n);
 int cson_object_unset(cson_object *, char const *key);
 int cson_output(cson_value *, cson_data_dest_f dest, void *destState);
 int cson_output_FILE(cson_value *, FILE *dest);
