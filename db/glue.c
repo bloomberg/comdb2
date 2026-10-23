@@ -4464,7 +4464,7 @@ void consumer_lock_read_int(dbtable *db, const char *func, int line)
     if (gbl_instrument_consumer_lock) {
         logmsg(LOGMSG_USER, "%s:%d getting consumer readlock for %s\n", func, line, db->tablename);
     }
-    Pthread_rwlock_rdlock(&db->consumer_lk);
+    Pthread_rwlock_rdlock(db->consumer_lk);
 }
 
 void consumer_lock_write_int(dbtable *db, const char *func, int line)
@@ -4472,7 +4472,7 @@ void consumer_lock_write_int(dbtable *db, const char *func, int line)
     if (gbl_instrument_consumer_lock) {
         logmsg(LOGMSG_USER, "%s:%d getting consumer writelock for %s\n", func, line, db->tablename);
     }
-    Pthread_rwlock_wrlock(&db->consumer_lk);
+    Pthread_rwlock_wrlock(db->consumer_lk);
 }
 
 void consumer_unlock_int(dbtable *db, const char *func, int line)
@@ -4480,7 +4480,7 @@ void consumer_unlock_int(dbtable *db, const char *func, int line)
     if (gbl_instrument_consumer_lock) {
         logmsg(LOGMSG_USER, "%s:%d unlocking consumer %s\n", func, line, db->tablename);
     }
-    Pthread_rwlock_unlock(&db->consumer_lk);
+    Pthread_rwlock_unlock(db->consumer_lk);
 }
 
 /* after a consumer change, make sure bdblib knows what's going on. */
