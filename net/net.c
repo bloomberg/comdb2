@@ -1805,11 +1805,17 @@ int net_del_from_sanctioned(netinfo_type *netinfo_ptr, char *host)
         else
             netinfo_ptr->sanctioned_list = ptr->next;
     }
+    int now_empty = (netinfo_ptr->sanctioned_list == NULL);
 
     Pthread_mutex_unlock(&(netinfo_ptr->sanclk));
 
     if (ptr) {
         logmsg(LOGMSG_INFO, "net_del_from_sanctioned %s\n", host);
+        if (now_empty)
+            logmsg(LOGMSG_ERROR,
+                   "net_del_from_sanctioned %s: sanctioned list is now empty, "
+                   "no node can vote or be elected master\n",
+                   host);
         myfree(ptr);
         return 0;
     } else {

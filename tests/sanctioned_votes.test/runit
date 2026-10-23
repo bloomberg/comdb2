@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 bash -n "$0" || exit 1
 
-# A node that isn't sanctioned must not hold an election or have its votes tallied
+# A node that isn't sanctioned must not hold an election or have its votes tallied,
+# and with no sanctioned nodes no master can be elected
 
 . ${TESTSROOTDIR}/tools/runit_common.sh
 . ${TESTSROOTDIR}/tools/cluster_utils.sh
@@ -40,6 +41,43 @@ function wait_for_master
     echo "$master"
 }
 
+# Prints "<master> <gen>" as this node sees it
+function node_view
+{
+    typeset node=$1 m g
+    m=$($CDB2SQL_EXE $CDB2_OPTIONS --tabs $DBNAME --host $node "select host from comdb2_cluster where is_master='Y'" 2>/dev/null)
+    [[ -n "$m" ]] || return 1
+    g=$(get_node_gen $node) || return 1
+    echo "$m $g"
+}
+
+# Every node, the removed one included, must follow the same master at a generation past old_gen
+function wait_for_new_master
+{
+    typeset old_gen=$1 views node i
+    for ((i = 0; i < 60; i++)); do
+        views=$(for node in ${nodes[@]}; do node_view $node || echo "none 0"; done | sort -u)
+        if [[ $(wc -l <<< "$views") -eq 1 && "${views% *}" != "none" ]] && (( ${views#* } > old_gen )); then
+            echo "${views% *}"
+            return 0
+        fi
+        sleep 1
+    done
+    echo "nodes disagree after 60s: $views" >&2
+    return 1
+}
+
+# Waits until pattern appears in node's log more than "before" times
+function wait_for_log
+{
+    typeset node=$1 pattern=$2 before=${3:-0} i
+    for ((i = 0; i < 30; i++)); do
+        (( $(grep -c "$pattern" $LOGDIR/${DBNAME}.${node}.db) > before )) && return 0
+        sleep 1
+    done
+    return 1
+}
+
 $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "create table t1(a int)" || failexit "create table"
 
 master=$(wait_for_master) || failexit "no master elected"
@@ -51,7 +89,9 @@ done
 function cleanup
 {
     $CDB2SQL_EXE $CDB2_OPTIONS --tabs $DBNAME --host $unsanctioned "put tunable 'debug_unsanctioned_elect' 0"
-    send_all "bdb add $unsanctioned"
+    for node in ${nodes[@]}; do
+        send_all "bdb add $node"
+    done
 }
 trap cleanup EXIT
 
@@ -60,9 +100,9 @@ ulog=$LOGDIR/${DBNAME}.${unsanctioned}.db
 before=$(grep -c "is not allowed to vote" $ulog)
 
 for ((round = 1; round <= 5; round++)); do
+    gen=$(get_node_gen $master) || failexit "no generation from $master in round $round"
     $CDB2SQL_EXE $CDB2_OPTIONS --tabs $DBNAME --host $master "exec procedure sys.cmd.send('downgrade')"
-    sleep 5
-    master=$(wait_for_master) || failexit "no master elected in round $round"
+    master=$(wait_for_new_master $gen) || failexit "nodes did not agree on a new master in round $round"
     [[ "$master" != "$unsanctioned" ]] || failexit "unsanctioned node $unsanctioned won round $round"
     $CDB2SQL_EXE $CDB2_OPTIONS --tabs $DBNAME --host $master "insert into t1 values($round)" || failexit "write failed in round $round"
 done
@@ -82,9 +122,9 @@ function count_ignored
 $CDB2SQL_EXE $CDB2_OPTIONS --tabs $DBNAME --host $unsanctioned "put tunable 'debug_unsanctioned_elect' 1" || failexit "can't set tunable on $unsanctioned"
 ignored=$(count_ignored)
 for ((round = 6; round <= 10; round++)); do
+    gen=$(get_node_gen $master) || failexit "no generation from $master in round $round"
     $CDB2SQL_EXE $CDB2_OPTIONS --tabs $DBNAME --host $master "exec procedure sys.cmd.send('downgrade')"
-    sleep 5
-    master=$(wait_for_master) || failexit "no master elected in round $round"
+    master=$(wait_for_new_master $gen) || failexit "nodes did not agree on a new master in round $round"
     [[ "$master" != "$unsanctioned" ]] || failexit "unsanctioned node $unsanctioned won round $round"
     $CDB2SQL_EXE $CDB2_OPTIONS --tabs $DBNAME --host $master "insert into t1 values($round)" || failexit "write failed in round $round"
 done
@@ -92,11 +132,36 @@ $CDB2SQL_EXE $CDB2_OPTIONS --tabs $DBNAME --host $unsanctioned "put tunable 'deb
 (( $(count_ignored) > ignored )) || failexit "no sanctioned node ignored a vote from $unsanctioned"
 
 send_all "bdb add $unsanctioned"
+
+# With an empty sanctioned list no node may vote, so no new master can be elected
+for node in ${nodes[@]}; do
+    send_all "bdb del $node"
+done
+for node in ${nodes[@]}; do
+    wait_for_log $node "sanctioned list is now empty" || failexit "$node did not report an empty sanctioned list"
+done
+before=$(grep -c "election will not be held" $LOGDIR/${DBNAME}.${master}.db)
+gen=$(get_node_gen $master) || failexit "no generation from $master"
+$CDB2SQL_EXE $CDB2_OPTIONS --tabs $DBNAME --host $master "exec procedure sys.cmd.send('downgrade')"
+wait_for_log $master "election will not be held" $before || failexit "$master held an election with no sanctioned nodes"
+# Proving a negative needs a window: give a rogue election time to finish
+for ((i = 0; i < 10; i++)); do
+    for node in ${nodes[@]}; do
+        view=$(node_view $node) || continue
+        (( ${view#* } > gen )) && failexit "$node sees new master ${view% *} with no sanctioned nodes"
+    done
+    sleep 1
+done
+
+for node in ${nodes[@]}; do
+    send_all "bdb add $node"
+done
 trap - EXIT
+master=$(wait_for_new_master $gen) || failexit "no master after restoring the sanctioned list"
+$CDB2SQL_EXE $CDB2_OPTIONS --tabs $DBNAME --host $master "insert into t1 values(11)" || failexit "write failed after restoring the sanctioned list"
 wait_for_cluster
-master=$(wait_for_master) || failexit "no master after re-adding $unsanctioned"
 x=$($CDB2SQL_EXE $CDB2_OPTIONS --tabs $DBNAME default "select count(*) from t1")
-[[ "$x" == "10" ]] || failexit "expected 10 rows, got '$x'"
+[[ "$x" == "11" ]] || failexit "expected 11 rows, got '$x'"
 
 echo "Success"
 exit 0

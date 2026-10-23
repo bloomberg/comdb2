@@ -43,8 +43,6 @@ extern int gbl_fullrecovery;
 int gbl_reproduce_ckp_bug = 0;
 
 int gbl_rep_method_max_sleep_cnt = 0;
-/* Test hook: let a node that can't vote hold elections anyway */
-int gbl_debug_unsanctioned_elect = 0;
 
 static int __rep_abort_prepared __P((DB_ENV *));
 static int __rep_bt_cmp __P((DB *, const DBT *, const DBT *));
@@ -1317,13 +1315,6 @@ __rep_elect(dbenv, nsites, priority, timeout, newgen, already_master, eidp)
 	db_rep = dbenv->rep_handle;
 	rep = db_rep->region;
 	dblp = dbenv->lg_handle;
-
-	/* Our vote wouldn't count anywhere else, so don't count it here either */
-	if (!gbl_debug_unsanctioned_elect && dbenv->rep_can_vote && !dbenv->rep_can_vote(dbenv, rep->eid)) {
-		logmsg(LOGMSG_WARN, "%s: %s is not allowed to vote, not holding an election\n",
-			__func__, rep->eid);
-		return (DB_REP_UNAVAIL);
-	}
 
 	/* This sets 'use_committed_gen' and feature-tests simultaneously */
 	if ((use_committed_gen = dbenv->attr.elect_highest_committed_gen))
