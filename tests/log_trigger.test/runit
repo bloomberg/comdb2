@@ -23,6 +23,10 @@ function override_physrep_sp()
     local mnode=`getmaster`
     # Override the register_replicant stored procedure
     ${CDB2SQL_EXE} $CDB2_OPTIONS $DBNAME --host $mnode "create procedure 'sys.physrep.register_replicant' version '1' { `cat ./register_replicant.lua`  }"
+    # No registry tables here: make the SPs that write them no-ops
+    for sp in reset_nodes update_registry keepalive keepalive_v2; do
+        ${CDB2SQL_EXE} $CDB2_OPTIONS $DBNAME --host $mnode "create procedure 'sys.physrep.$sp' version '1' { local function main() end }"
+    done
 }
 
 function setup_physical_replicant
