@@ -229,6 +229,17 @@ static void dump_page_stats(DB_ENV *dbenv) {
 
 int gbl_debug_memp_alloc_size = 0;
 static pthread_mutex_t dump_once_lk = PTHREAD_MUTEX_INITIALIZER;
+
+/*
+ * Victim search by region dirty ratio (percent of buffers that are dirty):
+ * below MPOOL_LOOKAHEAD_MIN_PCT the search is unchanged; up to
+ * MPOOL_EARLY_WRITE_PCT a dirty bucket head is passed over for a clean buffer
+ * further down the same chain; at or above it, clean buffers are scarce and
+ * scanning for them costs more than writing the dirty head, so it is written.
+ */
+#define MPOOL_LOOKAHEAD_MIN_PCT 50
+#define MPOOL_EARLY_WRITE_PCT 80
+#define MPOOL_LOOKAHEAD_DEPTH 4
 /*
  * PUBLIC: int __memp_alloc_flags __P((DB_MPOOL *, REGINFO *,
  * PUBLIC:     MPOOLFILE *, size_t, roff_t *, u_int32_t, void *));
@@ -253,6 +264,7 @@ __memp_alloc_flags(dbmp, memreg, mfp, len, offsetp, flags, retp)
 	u_int32_t buckets, buffers, high_priority, priority, put_counter;
 	u_int32_t total_buckets;
 	int aggressive, giveup, ret;
+	int lookahead, early_write;
 	void *p;
 	int sleeptime = 0;
 
@@ -284,6 +296,15 @@ __memp_alloc_flags(dbmp, memreg, mfp, len, offsetp, flags, retp)
 		len = (sizeof(BH) - sizeof(u_int8_t)) + mfp->stat.st_pagesize;
 
 	R_LOCK(dbenv, memreg);
+	{
+		u_int64_t pages = c_mp->stat.st_pages;
+		u_int64_t dirty = __atomic_load_n(&c_mp->stat.st_page_dirty, __ATOMIC_RELAXED);
+		int valid = pages != 0 && dirty <= pages;
+
+		lookahead = valid && dirty * 100 >= pages * MPOOL_LOOKAHEAD_MIN_PCT &&
+		    dirty * 100 < pages * MPOOL_EARLY_WRITE_PCT;
+		early_write = valid && dirty * 100 >= pages * MPOOL_EARLY_WRITE_PCT;
+	}
 	/*
 	 * Anything newer than 1/10th of the buffer pool is ignored during
 	 * allocation (unless allocation starts failing).
@@ -499,6 +520,22 @@ found:		if (offsetp != NULL)
 		    bhp->priority > priority)
 			goto next_hb;
 
+		/* Look past a dirty head for a cold, unpinned, clean buffer. */
+		if (lookahead && !aggressive && F_ISSET(bhp, BH_DIRTY)) {
+			BH *next = SH_TAILQ_NEXT(bhp, hq, __bh);
+			for (int i = 0; next != NULL && i < MPOOL_LOOKAHEAD_DEPTH;
+			    ++i, next = SH_TAILQ_NEXT(next, hq, __bh)) {
+				if (next->priority > high_priority)
+					break;
+				if (next->ref != 0 ||
+				    F_ISSET(next, BH_DIRTY | BH_LOCKED))
+					continue;
+				++c_mp->stat.st_rw_evict_skip;
+				bhp = next;
+				break;
+			}
+		}
+
 		/* Previous value could even be zero.
 		 * We just want it different from previous value */
 		++GET_BH_GEN(&bhp->buf);
@@ -517,7 +554,13 @@ found:		if (offsetp != NULL)
 		 */
 		ret = 0;
 		if (F_ISSET(bhp, BH_DIRTY)) {
-			if (aggressive == 0) {
+			/*
+			 * Skip the dirty head unless the region is mostly dirty;
+			 * temporary files are left alone (their caches are almost
+			 * always dirty, and writing them makes temp table reuse slow).
+			 */
+			if (aggressive == 0 &&
+			    (!early_write || F_ISSET(bh_mfp, MP_TEMP))) {
 				++c_mp->stat.st_rw_evict_skip;
 				goto next_hb;
 			}
