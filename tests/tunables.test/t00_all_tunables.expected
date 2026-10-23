@@ -820,7 +820,7 @@
 (name='queuedb_file_threshold', description='Maximum queuedb file size (in MB) before enqueueing to the alternate file.  (Default: 0)', type='INTEGER', value='0', read_only='Y')
 (name='queuedb_genid_filename', description='Use genid in queuedb filenames.  (Default: on)', type='BOOLEAN', value='ON', read_only='Y')
 (name='queuedb_timeout_sec', description='Unassign Lua consumer/trigger if no heartbeat received for this time', type='INTEGER', value='10', read_only='N')
-(name='rand_udp_fails', description='Rate of drop of UDP packets (for testing).', type='INTEGER', value='0', read_only='N')
+(name='rand_udp_fails', description='Percentage of outgoing UDP packets to drop (for testing).', type='INTEGER', value='0', read_only='N')
 (name='random_lock_release_interval', description='', type='INTEGER', value='0', read_only='Y')
 (name='random_rowlocks', description='Grab random, guaranteed non-conflicting rowlocks', type='BOOLEAN', value='OFF', read_only='N')
 (name='rangextlim', description='', type='INTEGER', value='16', read_only='Y')
