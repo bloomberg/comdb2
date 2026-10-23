@@ -149,7 +149,7 @@ static void adjustStats(int iSize, int increment){
 ** This routine checks the guards at either end of the allocation and
 ** if they are incorrect it asserts.
 */
-static struct MemBlockHdr *sqlite3MemsysGetHeader(void *pAllocation){
+static struct MemBlockHdr *sqlite3MemsysGetHeader(const void *pAllocation){
   struct MemBlockHdr *p;
   int *pInt;
   u8 *pU8;
@@ -379,7 +379,7 @@ void sqlite3MemSetDefault(void){
 ** Set the "type" of an allocation.
 */
 void sqlite3MemdebugSetType(void *p, u8 eType){
-  if( p && sqlite3GlobalConfig.m.xMalloc==sqlite3MemMalloc ){
+  if( p && sqlite3GlobalConfig.m.xFree==sqlite3MemFree ){
     struct MemBlockHdr *pHdr;
     pHdr = sqlite3MemsysGetHeader(p);
     assert( pHdr->iForeGuard==FOREGUARD );
@@ -396,9 +396,9 @@ void sqlite3MemdebugSetType(void *p, u8 eType){
 **
 **     assert( sqlite3MemdebugHasType(p, MEMTYPE_HEAP) );
 */
-int sqlite3MemdebugHasType(void *p, u8 eType){
+int sqlite3MemdebugHasType(const void *p, u8 eType){
   int rc = 1;
-  if( p && sqlite3GlobalConfig.m.xMalloc==sqlite3MemMalloc ){
+  if( p && sqlite3GlobalConfig.m.xFree==sqlite3MemFree ){
     struct MemBlockHdr *pHdr;
     pHdr = sqlite3MemsysGetHeader(p);
     assert( pHdr->iForeGuard==FOREGUARD );         /* Allocation is valid */
@@ -418,9 +418,9 @@ int sqlite3MemdebugHasType(void *p, u8 eType){
 **
 **     assert( sqlite3MemdebugNoType(p, MEMTYPE_LOOKASIDE) );
 */
-int sqlite3MemdebugNoType(void *p, u8 eType){
+int sqlite3MemdebugNoType(const void *p, u8 eType){
   int rc = 1;
-  if( p && sqlite3GlobalConfig.m.xMalloc==sqlite3MemMalloc ){
+  if( p && sqlite3GlobalConfig.m.xFree==sqlite3MemFree ){
     struct MemBlockHdr *pHdr;
     pHdr = sqlite3MemsysGetHeader(p);
     assert( pHdr->iForeGuard==FOREGUARD );         /* Allocation is valid */

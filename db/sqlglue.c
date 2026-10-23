@@ -799,7 +799,7 @@ void clear_query_hash(hash_t *h, int destroy)
         hash_free(h);
 }
 
-static void addSorterCost(const VdbeSorter *pSorter, hash_t *h, void *l)
+static void addSorterCost(int nfind, int nmove, int nwrite, hash_t *h, void *l)
 {
     struct query_path_component fnd = {{0}}, *qc;
 
@@ -812,10 +812,10 @@ static void addSorterCost(const VdbeSorter *pSorter, hash_t *h, void *l)
         listc_abl(l, qc);
     }
 
-    qc->nfind += pSorter->nfind;
-    qc->nnext += pSorter->nmove;
+    qc->nfind += nfind;
+    qc->nnext += nmove;
     /* note: we record writes in record routines on the master */
-    qc->nwrite += pSorter->nwrite;
+    qc->nwrite += nwrite;
 }
 
 static void addCursorCost(BtCursor *pCur, hash_t *h, void *l)
@@ -1239,7 +1239,7 @@ int mem_to_ondisk(void *outbuf, const struct field *f, struct mem_info *info, bi
                 } else
                     s = m->z;
 
-                if (sqlite3AtoF(s, &rValue, sqlite3Strlen30(s), SQLITE_UTF8) ==
+                if (sqlite3AtoF(s, &rValue, sqlite3Strlen30(s), SQLITE_UTF8) <=
                         0 &&
                     rc != -1) {
                     static int once = 1;
@@ -1520,13 +1520,14 @@ int sqlite_to_ondisk(struct schema *s, const void *inp, int len, void *outp,
     if (fail_reason)
         init_convert_failure_reason(fail_reason);
 
-    hdroffset = sqlite3GetVarint32(in, &hdrsz);
+    hdroffset = getVarint32(in, hdrsz);
     dataoffset = hdrsz;
     while (hdroffset < hdrsz) {
-        hdroffset += sqlite3GetVarint32(in + hdroffset, &type);
+        hdroffset += getVarint32(in + hdroffset, type);
         info.null = (type == 0);
         f = &s->member[fld];
-        dataoffset += sqlite3VdbeSerialGet(in + dataoffset, type, &m);
+        sqlite3VdbeSerialGet(in + dataoffset, type, &m);
+        dataoffset += sqlite3VdbeSerialTypeLen(type);
 
         info.fldidx = fld;
 
@@ -3409,7 +3410,7 @@ static inline int sqlite3VdbeCompareRecordPacked(KeyInfo *pKeyInfo, int k1len,
                         "sqlite3VdbeAllocUnpackedRecord()\n");
         return 0;
     }
-    sqlite3VdbeRecordUnpack(pKeyInfo, k2len, key2, rec);
+    sqlite3VdbeRecordUnpack(k2len, key2, rec);
 
     int cmp = sqlite3VdbeRecordCompare(k1len, key1, rec);
     sqlite3DbFree(pKeyInfo->db, rec);
@@ -3812,6 +3813,306 @@ int temp_table_cmp(KeyInfo *pKeyInfo, int k1len, const void *key1, int k2len,
         return sqlite3VdbeRecordCompare(k1len, key1, (UnpackedRecord *)key2);
 }
 
+/*
+** Comdb2 owns the two routines below.  Upstream in-lined both into the
+** OP_MakeRecord opcode and no longer provides them, but comdb2 packs records
+** in several places outside the VDBE, so we keep a copy here.
+**
+** Any change here must be mirrored in OP_MakeRecord, and vice versa.  A future
+** merge will not necessarily raise a conflict to remind you.
+*/
+
+/*
+** Return the serial-type for the value stored in pMem, and its encoded length
+** in *pLen.
+*/
+u32 sqlite3VdbeSerialType(Mem *pMem, int file_format, u32 *pLen){
+  int flags = pMem->flags;
+  u32 n;
+
+  assert( pLen!=0 );
+  if( flags&MEM_Null ){
+    *pLen = 0;
+    return 0;
+  }
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+  if( flags&MEM_Master ) {
+    *pLen = 8;
+    return (SQLITE_MAX_U32-2);
+  }
+  if( flags&MEM_Int ){
+    *pLen = 8;
+    return 6;
+  }
+  if( flags&MEM_IntReal ){
+    /* Upstream stores an integral real as a real once it costs 8 bytes either
+    ** way, which is always the case for comdb2. */
+    *pLen = 8;
+    pMem->u.r = (double)pMem->u.i;
+    pMem->flags &= ~MEM_IntReal;
+    pMem->flags |= MEM_Real;
+    return 7;
+  }
+#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+  if( flags&(MEM_Int|MEM_IntReal) ){
+    /* Figure out whether to use 1, 2, 4, 6 or 8 bytes. */
+#   define MAX_6BYTE ((((i64)0x00008000)<<32)-1)
+    i64 i = pMem->u.i;
+    u64 u;
+    testcase( flags & MEM_Int );
+    testcase( flags & MEM_IntReal );
+    if( i<0 ){
+      u = ~i;
+    }else{
+      u = i;
+    }
+    if( u<=127 ){
+      if( (i&1)==i && file_format>=4 ){
+        *pLen = 0;
+        return 8+(u32)u;
+      }else{
+        *pLen = 1;
+        return 1;
+      }
+    }
+    if( u<=32767 ){ *pLen = 2; return 2; }
+    if( u<=8388607 ){ *pLen = 3; return 3; }
+    if( u<=2147483647 ){ *pLen = 4; return 4; }
+    if( u<=MAX_6BYTE ){ *pLen = 6; return 5; }
+    *pLen = 8;
+    if( flags&MEM_IntReal ){
+      /* If the value is IntReal and is going to take up 8 bytes to store
+      ** as an integer, then we might as well make it an 8-byte floating
+      ** point value */
+      pMem->u.r = (double)pMem->u.i;
+      pMem->flags &= ~MEM_IntReal;
+      pMem->flags |= MEM_Real;
+      return 7;
+    }
+    return 6;
+  }
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+  if( flags&MEM_Real ){
+    *pLen = 8;
+    return 7;
+  }
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+  if( flags&MEM_Interval ){
+    /* use a rezerved serial to specify an interval */
+    if ( pMem->du.tv.type==INTV_DSUS_TYPE ){
+      *pLen = sizeof(intv_t);
+      return (SQLITE_MAX_U32-1);
+    }else{
+      *pLen = SIZE_OF_INT_DSMS;
+      return 10;
+    }
+  }
+  if( flags&MEM_Datetime ){
+    /* use a rezerved serial to specify a datetime */
+    *pLen = sizeof(dttz_t);
+    if( pMem->du.dt.dttz_prec==DTTZ_PREC_USEC ){
+      return SQLITE_MAX_U32;
+    }
+    return 11;
+  }
+  assert( (pMem->db && pMem->db->mallocFailed) || flags&(MEM_Str|MEM_Blob) );
+#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+  assert( pMem->db->mallocFailed || flags&(MEM_Str|MEM_Blob) );
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+  assert( pMem->n>=0 );
+  n = (u32)pMem->n;
+  if( flags & MEM_Zero ){
+    n += pMem->u.nZero;
+  }
+  *pLen = n;
+  return ((n*2) + 12 + ((flags&MEM_Str)!=0));
+}
+
+/*
+** Write the serialized data blob for the value stored in pMem into 
+** buf. It is assumed that the caller has allocated sufficient space.
+** Return the number of bytes written.
+**
+** nBuf is the amount of space left in buf[].  The caller is responsible
+** for allocating enough space to buf[] to hold the entire field, exclusive
+** of the pMem->u.nZero bytes for a MEM_Zero value.
+**
+** Return the number of bytes actually written into buf[].  The number
+** of bytes in the zero-filled tail is included in the return value only
+** if those bytes were zeroed in buf[].
+*/ 
+u32 sqlite3VdbeSerialPut(u8 *buf, Mem *pMem, u32 serial_type){
+  u32 len;
+
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+  if( serial_type==6 ){
+    int64_t *p = (int64_t *)buf;
+    *p = flibc_htonll(pMem->u.i);
+    return sizeof(long long);
+  }
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+  /* Integer and Real */
+  if( serial_type<=7 && serial_type>0 ){
+    u64 v;
+    u32 i;
+    if( serial_type==7 ){
+      assert( sizeof(v)==sizeof(pMem->u.r) );
+      memcpy(&v, &pMem->u.r, sizeof(v));
+      swapMixedEndianFloat(v);
+    }else{
+      v = pMem->u.i;
+    }
+    len = i = sqlite3SmallTypeSizes[serial_type];
+    assert( i>0 );
+    do{
+      buf[--i] = (u8)(v&0xFF);
+      v >>= 8;
+    }while( i );
+    return len;
+  }
+
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+  if( serial_type==10 ){
+    /* R5 interval */
+    intv_t *p = (intv_t *)buf;
+
+#ifdef _SUN_SOURCE
+    intv_t scratch;
+    p = &scratch;
+#endif
+
+    memset(p, 0, SIZE_OF_INT_DSMS);
+    p->type = htonl(pMem->du.tv.type);
+    p->sign = htonl(pMem->du.tv.sign);
+
+    if( pMem->du.tv.type==INTV_DS_TYPE ){
+      p->u.ds.days = htonl( pMem->du.tv.u.ds.days );
+      p->u.ds.hours = htonl( pMem->du.tv.u.ds.hours );
+      p->u.ds.mins = htonl( pMem->du.tv.u.ds.mins );
+      p->u.ds.sec = htonl( pMem->du.tv.u.ds.sec );
+      p->u.ds.frac = htonl( pMem->du.tv.u.ds.frac );
+    }else if( pMem->du.tv.type==INTV_DSUS_TYPE ){
+      /* For R5 millisecond interval compatiblity. */
+      p->u.ds.days = htonl( pMem->du.tv.u.ds.days );
+      p->u.ds.hours = htonl( pMem->du.tv.u.ds.hours );
+      p->u.ds.mins = htonl( pMem->du.tv.u.ds.mins );
+      p->u.ds.sec = htonl( pMem->du.tv.u.ds.sec );
+      p->u.ds.frac = htonl( pMem->du.tv.u.ds.frac/1000 );
+    }else if( pMem->du.tv.type==INTV_YM_TYPE){
+      p->u.ym.years = htonl( pMem->du.tv.u.ym.years );
+      p->u.ym.months = htonl( pMem->du.tv.u.ym.months );
+    }else{
+      p->u.dec = pMem->du.tv.u.dec; /*TODO LINUX*/
+    }
+
+#ifdef _SUN_SOURCE
+    memcpy(buf, &scratch, SIZE_OF_INT_DSMS);
+#endif
+
+    return SIZE_OF_INT_DSMS;
+  }
+
+  if( serial_type==(SQLITE_MAX_U32-1) ){
+    /* R6 variable precision interval */
+    intv_t *p = (intv_t *)buf;
+
+#ifdef _SUN_SOURCE
+    intv_t scratch;
+    p = &scratch;
+#endif
+
+    bzero(p, sizeof(*p));
+    p->type = htonl(pMem->du.tv.type);
+    p->sign = htonl(pMem->du.tv.sign);
+
+    if( pMem->du.tv.type==INTV_DS_TYPE || pMem->du.tv.type==INTV_DSUS_TYPE ){
+      p->u.ds.days = htonl( pMem->du.tv.u.ds.days );
+      p->u.ds.hours = htonl( pMem->du.tv.u.ds.hours );
+      p->u.ds.mins = htonl( pMem->du.tv.u.ds.mins );
+      p->u.ds.sec = htonl( pMem->du.tv.u.ds.sec );
+      p->u.ds.frac = htonl( pMem->du.tv.u.ds.frac );
+      p->u.ds.prec = htons( pMem->du.tv.u.ds.prec );
+      p->u.ds.conv = htons( pMem->du.tv.u.ds.conv );
+    }else if( pMem->du.tv.type==INTV_YM_TYPE ){
+      p->u.ym.years = htonl( pMem->du.tv.u.ym.years );
+      p->u.ym.months = htonl( pMem->du.tv.u.ym.months );
+    }else{
+      p->u.dec = pMem->du.tv.u.dec; /*TODO LINUX*/
+    }
+
+#ifdef _SUN_SOURCE
+    memcpy(buf, &scratch, sizeof(intv_t));
+#endif
+
+    return sizeof(intv_t);
+  }
+
+  if( serial_type==11 ){
+    /* R5 datetime*/
+    dttz_t *p = (dttz_t *)buf;
+
+#ifdef _SUN_SOURCE
+    dttz_t scratch;
+    p = &scratch;
+#endif
+
+    bzero(p, sizeof(*p));
+    p->dttz_sec = flibc_htonll( pMem->du.dt.dttz_sec );
+    if( pMem->du.dt.dttz_prec==DTTZ_PREC_USEC ){
+      /* For R5 millisecond datetime compatiblity. */
+      p->dttz_frac = htonl( pMem->du.dt.dttz_frac/1000 );
+    }else{
+      p->dttz_frac = htonl( pMem->du.dt.dttz_frac );
+    }
+    p->dttz_prec = htons( DTTZ_PREC_MSEC );
+    p->dttz_conv = htons( pMem->du.dt.dttz_conv );
+
+#ifdef _SUN_SOURCE
+    memcpy(buf, &scratch, sizeof(dttz_t));
+#endif
+
+    return sizeof(dttz_t);
+  }
+  if ( serial_type==(SQLITE_MAX_U32-2) ) {
+      pMem->u.i = 0;
+      return sizeof(long long);
+  }
+
+  if( serial_type==SQLITE_MAX_U32 ){
+    /* R6 variable precision datetime*/
+    dttz_t *p = (dttz_t *)buf;
+
+#ifdef _SUN_SOURCE
+    dttz_t scratch;
+    p = &scratch;
+#endif
+
+    bzero(p, sizeof(*p));
+    p->dttz_sec = flibc_htonll( pMem->du.dt.dttz_sec );
+    p->dttz_frac = htonl( pMem->du.dt.dttz_frac );
+    p->dttz_prec = htons( pMem->du.dt.dttz_prec );
+    p->dttz_conv = htons( pMem->du.dt.dttz_conv );
+
+#ifdef _SUN_SOURCE
+    memcpy(buf, &scratch, sizeof(dttz_t));
+#endif
+
+    return sizeof(dttz_t);
+  }
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+  /* String or blob */
+  if( serial_type>=12 ){
+    assert( pMem->n + ((pMem->flags & MEM_Zero)?pMem->u.nZero:0)
+             == (int)sqlite3VdbeSerialTypeLen(serial_type) );
+    len = pMem->n;
+    if( len>0 ) memcpy(buf, pMem->z, len);
+    return len;
+  }
+
+  /* NULL or constants 0 or 1 */
+  return 0;
+}
+
 /* This is OP_MakeRecord from vdbe.c. */
 void sqlite3VdbeRecordPack(UnpackedRecord *unpacked, Mem *pOut)
 {
@@ -4049,6 +4350,9 @@ int sqlite3BtreeClose(Btree *pBt)
     }
 
     BtCursor *tmp;
+    /* Avoid double-closing ephemeral btrees, they are closed automatically
+     * when the last cursor on them closes. */
+    pBt->is_single = 0;
     LISTC_FOR_EACH_SAFE(&pBt->cursors, pCur, tmp, lnk)
     {
         rc = sqlite3BtreeCloseCursor(pCur);
@@ -4236,7 +4540,7 @@ int sqlite3BtreeOpen(
         bt->reqlogger = thrman_get_reqlogger(thrman_self());
         bt->btreeid = id++;
         bt->is_temporary = 1;
-        int masterPgno;
+        Pgno masterPgno;
         assert(tmptbl_clone == NULL);
         rc = sqlite3BtreeCreateTable(bt, &masterPgno, BTREE_INTKEY);
         if (rc != SQLITE_OK) goto done;
@@ -4244,6 +4548,9 @@ int sqlite3BtreeOpen(
         listc_init(&bt->cursors, offsetof(BtCursor, lnk));
         if (flags & BTREE_UNORDERED) {
             bt->is_hashtable = 1;
+        }
+        if (flags & BTREE_SINGLE) {
+            bt->is_single = 1;
         }
         thd->bttmp = bt;
         *ppBtree = bt;
@@ -4728,6 +5035,29 @@ int sqlite3BtreeFirst(BtCursor *pCur, int *pRes)
     return rc;
 }
 
+/* TODO: always "not empty" for now: the answer only lets OP_IfEmpty skip work,
+ * and finding out would cost a seek that is recorded in the cursor's read
+ * ranges */
+int sqlite3BtreeIsEmpty(BtCursor *pCur, int *pRes)
+{
+    *pRes = 0;
+    return SQLITE_OK;
+}
+
+/*
+ * These solve a problem for SQLite that comdb2 doesn't have.
+ *
+ * It used to be possible for an UPDATE to fire a trigger that then deleted the
+ * row that the UPDATE's cursor was pointing at. "Pinning" the cursor is
+ * SQLite's way of disallowing writes to the page, so the trigger fails instead
+ * of silently invalidating the cursor.
+ *
+ * We don't support pre-commit triggers as of writing this, so this situation
+ * can't happen for us.
+ */
+void sqlite3BtreeCursorPin(BtCursor *pCur) {}
+void sqlite3BtreeCursorUnpin(BtCursor *pCur) {}
+
 /*
  ** Copy the complete content of pBtFrom into pBtTo.  A transaction
  ** must be active for both files.
@@ -4895,13 +5225,18 @@ int sqlite3BtreeIsInStmt(Btree *pBt)
 /*
  ** Return the currently defined page size
  */
-int sqlite3BtreeGetReserve(Btree *pBt)
+int sqlite3BtreeGetRequestedReserve(Btree *pBt)
 {
     /* space wasted in a page: don't care. how about a byte? */
-    reqlog_logf(pBt->reqlogger, REQL_TRACE, "GetReserve(pBt %d)       = %d\n",
-                pBt->btreeid, 1);
+    reqlog_logf(pBt->reqlogger, REQL_TRACE,
+                "GetRequestedReserve(pBt %d)       = %d\n", pBt->btreeid, 1);
     return 1;
 }
+
+/* this is only reachable from a file control -
+ * sqlite3_file_control(SQLITE_FCNTL_RESET_CACHE) - and we don't use SQLite's
+ * page cache anyways */
+void sqlite3BtreeClearCache(Btree *pBt) {}
 
 /*
 From: D. Richard Hipp <DRH@HWACI.COM>
@@ -5923,23 +6258,6 @@ done:
 }
 
 /*
- ** Return non-zero if a transaction is active.
- */
-int sqlite3BtreeIsInTrans(Btree *pBt)
-{
-    struct sql_thread *thd = pthread_getspecific(query_info_key);
-    int rc = (thd && thd->clnt) ? thd->clnt->intrans : 0;
-
-/* UNIMPLEMENTED */
-/* FIXME TODO XXX #if 0'ed out the foll */
-#if 0
-   reqlog_logf(pBt->reqlogger, REQL_TRACE, "IsInTrans(pBt %d)      = %s\n",
-         pBt->btreeid, rc ? "yes" : "no");
-#endif
-    return rc;
-}
-
-/*
  ** Return the value of the 'auto-vacuum' property. If auto-vacuum is
  ** enabled 1 is returned. Otherwise 0.
  */
@@ -5975,7 +6293,7 @@ void set_tmptbl(struct sp_tmptbl *tmptbl)
  **     BTREE_INTKEY                    Used for SQL tables with rowid keys
  **     BTREE_BLOBKEY                   Used for SQL indices
  */
-int sqlite3BtreeCreateTable(Btree *pBt, int *piTable, int flags)
+int sqlite3BtreeCreateTable(Btree *pBt, Pgno *piTable, int flags)
 {
     int bdberr = 0;
     int rc = SQLITE_OK;
@@ -6919,6 +7237,25 @@ done:
     return rc;
 }
 
+/* SQLite splits the moveto into a table variant and an index variant. Both
+ * carry `bias', the vdbe opcode that issued the seek; upstream's index variant
+ * has no such argument. */
+int sqlite3BtreeTableMoveto(BtCursor *pCur, /* The cursor to be moved */
+                            i64 intKey,     /* The table key */
+                            int bias,       /* used to detect the vdbe operation */
+                            int *pRes)      /* Write search results here */
+{
+    return sqlite3BtreeMovetoUnpacked(pCur, NULL, intKey, bias, pRes);
+}
+
+int sqlite3BtreeIndexMoveto(BtCursor *pCur,            /* The cursor to be moved */
+                            UnpackedRecord *pIdxKey,   /* Unpacked index key */
+                            int bias,                  /* used to detect the vdbe operation */
+                            int *pRes)                 /* Write search results here */
+{
+    return sqlite3BtreeMovetoUnpacked(pCur, pIdxKey, 0, bias, pRes);
+}
+
 /*
  ** For the entry that cursor pCur is point to, return as
  ** many bytes of the key or data as are available on the local
@@ -7060,15 +7397,15 @@ void addVdbeToThdCost(int type, int *data)
 }
 
 /* append the costs of the sorter to the thd query stats */
-void addVdbeSorterCost(const VdbeSorter *pSorter)
+void addVdbeSorterCost(int nfind, int nmove, int nwrite)
 {
     struct sql_thread *thd = pthread_getspecific(query_info_key);
     if (thd == NULL)
         return;
 
     if (!thd->clnt->loading_stat) {
-        addSorterCost(pSorter, thd->query_hash, &thd->query_stats);
-        addSorterCost(pSorter, thd->query_hash_subrequest, &thd->query_stats_subrequest);
+        addSorterCost(nfind, nmove, nwrite, thd->query_hash, &thd->query_stats);
+        addSorterCost(nfind, nmove, nwrite, thd->query_hash_subrequest, &thd->query_stats_subrequest);
     }
 }
 
@@ -7214,6 +7551,7 @@ int sqlite3BtreeCloseCursor(BtCursor *pCur)
         }
     }
 
+    int close_bt = 0;
     if (thd) {
         Pthread_mutex_lock(&thd->lk);
         if (pCur->on_list)
@@ -7227,7 +7565,12 @@ int sqlite3BtreeCloseCursor(BtCursor *pCur)
             if (other->pCursorHintTableCursor == pCur)
                 other->pCursorHintTableCursor = NULL;
         }
+        close_bt = pCur->bt && pCur->bt->is_single &&
+                   listc_size(&pCur->bt->cursors) == 0;
         Pthread_mutex_unlock(&thd->lk);
+    }
+    if (close_bt) {
+        sqlite3BtreeClose(pCur->bt);
     }
 
 done:
@@ -7246,7 +7589,7 @@ done:
  ** read cursors on the table.  Open write cursors are moved to the
  ** root of the table.
  */
-int sqlite3BtreeClearTable(Btree *pBt, int iTable, int *pnChange)
+int sqlite3BtreeClearTable(Btree *pBt, int iTable, i64 *pnChange)
 {
     /* So here's Uncle Mike's lesson learned #6943925: if you have
      * a routine that "should never be called", make darn sure it's
@@ -9096,7 +9439,7 @@ BtCursor *sqlite3BtreeFakeValidCursor(void){
 int sqlite3BtreeCursor(
     Vdbe *vdbe,               /* Vdbe running the show */
     Btree *pBt,               /* BTree containing table to open */
-    int iTable,               /* Index of root page */
+    Pgno iTable,              /* Index of root page */
     int wrFlag,               /* 1 for writing.  0 for read-only. */
     int forOpen,              /* 1 for open mode.  0 for create mode. */
     struct KeyInfo *pKeyInfo, /* First argument to compare function */
@@ -9123,12 +9466,14 @@ int sqlite3BtreeCursor(
     cur->open_flags = wrFlag;
     /*printf("Open Cursor rootpage=%d flags=%x\n", iTable, wrFlag);*/
 
+    /* sanity check: avoid u32 -> int overflow */
+    assert(iTable <= INT_MAX);
     cur->rootpage = iTable;
     cur->pKeyInfo = pKeyInfo;
 
     if (pBt->is_temporary) { /* temp table */
         assert(iTable >= 1); /* can never be zero or negative */
-        int pgno = iTable;
+        Pgno pgno = iTable;
         if (forOpen) {
             /*
             ** NOTE: When being called to open a temporary (table) cursor in
@@ -9639,7 +9984,7 @@ int sqlite3BtreeInsert(
                                 "sqlite3VdbeAllocUnpackedRecord()\n");
                 return 0;
             }
-            sqlite3VdbeRecordUnpack(pCur->pKeyInfo, nKey, pKey, rec);
+            sqlite3VdbeRecordUnpack(nKey, pKey, rec);
         }
 
         if (pCur->ixnum == -1) {
@@ -10044,13 +10389,15 @@ int sqlite3BtreeData(BtCursor *pCur, u32 offset, u32 amt, void *pBuf)
  ** and a pointer to that error message is returned.  The calling function
  ** is responsible for freeing the error message when it is done.
  */
-char *sqlite3BtreeIntegrityCheck(Btree *pBt, int *aRoot, int nRoot, int mxErr,
-                                 int *pnErr)
+int sqlite3BtreeIntegrityCheck(sqlite3 *db, Btree *pBt, Pgno *aRoot,
+                               sqlite3_value *aCnt, int nRoot, int mxErr,
+                               int *pnErr, char **pzOut)
 {
     int rc = SQLITE_OK;
     int i;
 
     *pnErr = 0;
+    *pzOut = NULL;
 
     reqlog_logf(pBt->reqlogger, REQL_TRACE, "IntegrityCheck(pBt %d pages",
                 pBt->btreeid);
@@ -10058,7 +10405,7 @@ char *sqlite3BtreeIntegrityCheck(Btree *pBt, int *aRoot, int nRoot, int mxErr,
         reqlog_logf(pBt->reqlogger, REQL_TRACE, "%d ", aRoot[i]);
     }
     reqlog_logf(pBt->reqlogger, REQL_TRACE, ")    = %s\n", sqlite3ErrStr(rc));
-    return NULL;
+    return rc;
 }
 
 /* obtain comdb2_rowid and optionally print it as a decimal string */
@@ -11663,12 +12010,30 @@ void print_cooked_access(BtCursor *pCur, int col)
 #endif
 
 /*
- ** Return non-zero if a read (or write) transaction is active.
+ ** Return the current transaction state of the Btree: one of
+ ** SQLITE_TXN_NONE, SQLITE_TXN_READ, or SQLITE_TXN_WRITE.
+ **
+ ** comdb2 does not distinguish read vs write at this layer, so an
+ ** active transaction is reported as WRITE.
  */
-int sqlite3BtreeIsInReadTrans(Btree *p)
+int sqlite3BtreeTxnState(Btree *p)
 {
-    /* TODO: called where? need? */
-    return sqlite3BtreeIsInTrans(p);
+    if (p == NULL)
+        return SQLITE_TXN_NONE;
+    struct sql_thread *thd = pthread_getspecific(query_info_key);
+    int intrans = (thd && thd->clnt) ? thd->clnt->intrans : 0;
+    return intrans ? SQLITE_TXN_WRITE : SQLITE_TXN_NONE;
+}
+
+/*
+ ** Return the page number of the last page in the database file.
+ **
+ ** comdb2 has no fixed-size paged file; return 0 ("no limit"), which
+ ** disables the upstream rootpage bounds check in sqlite3InitCallback.
+ */
+Pgno sqlite3BtreeLastPage(Btree *p)
+{
+    return 0;
 }
 
 int sqlite3BtreeIsInBackup(Btree *p)
@@ -11746,7 +12111,7 @@ int gbl_direct_count = 1;
  ** Otherwise, if an error is encountered (i.e. an IO error or database
  ** corruption) an SQLite error code is returned.
  */
-int sqlite3BtreeCount(BtCursor *pCur, i64 *pnEntry)
+int sqlite3BtreeCount(sqlite3 *db, BtCursor *pCur, i64 *pnEntry)
 {
     struct sql_thread *thd = pCur->thd;
     struct sqlclntstate *clnt = pCur->clnt;
@@ -11832,6 +12197,23 @@ int sqlite3BtreeCount(BtCursor *pCur, i64 *pnEntry)
  ** this routine.
  */
 int sqlite3BtreeCursorSize(void) { return sizeof(BtCursor); }
+
+#ifdef SQLITE_DEBUG
+/*
+ ** Return true if and only if the Btree object will be automatically
+ ** closed with the BtCursor closes.  This is used within assert() statements
+ ** only.
+ */
+int sqlite3BtreeClosesWithCursor(Btree *pBt, BtCursor *pCur)
+{
+    return pBt->is_single && listc_size(&pBt->cursors) == 1 &&
+           pBt->cursors.top == pCur && pCur->bt == pBt;
+}
+
+/* this is debug only and only reachable from a test control -
+ * sqlite3_test_control(SQLITE_TESTCTRL_SEEK_COUNT) */
+sqlite3_uint64 sqlite3BtreeSeekCount(Btree *pBt) { return 0; }
+#endif
 
 /*
  ** Initialize memory that will be converted into a BtCursor object.
@@ -11974,7 +12356,7 @@ sqlite3_file *sqlite3PagerJrnlFile(Pager *pPager) { return NULL; }
 /*
  ** Return the full pathname of the database file.
  */
-const char *sqlite3PagerFilename(Pager *pPager, int dummy) { return NULL; }
+const char *sqlite3PagerFilename(const Pager *pPager, int dummy) { return NULL; }
 
 /*
  ** Return the approximate number of bytes of memory currently
@@ -11987,7 +12369,7 @@ void sqlite3PagerShrink(Pager *pPager) {}
 u8 sqlite3PagerIsreadonly(Pager *pPager) { return 0; }
 
 /* TODO: does this need any modification? */
-void sqlite3PagerCacheStat(Pager *pPager, int eStat, int reset, int *pnVal) {}
+void sqlite3PagerCacheStat(Pager *pPager, int eStat, int reset, u64 *pnVal) {}
 
 int sqlite3PagerExclusiveLock(Pager *pPager) { return SQLITE_OK; }
 
@@ -12007,6 +12389,15 @@ int sqlite3BtreeCursorIsValidNN(BtCursor *pCur){
   assert( pCur!=0 );
   /* TODO: This is not right. */
   return 1;
+}
+
+/*
+ ** Only OP_RowCell calls this, and only the transfer optimization emits
+ ** OP_RowCell, which comdb2 compiles out with SQLITE_OMIT_XFER_OPT.
+ */
+int sqlite3BtreeTransferRow(BtCursor *pDest, BtCursor *pSrc, i64 iKey)
+{
+    return SQLITE_INTERNAL;
 }
 
 /*
@@ -12503,10 +12894,9 @@ int fdb_packedsqlite_extract_genid(char *key, int *outlen, char *outbuf)
     Mem m = {{0}};
 
     /* extract genid */
-    hdroffset = sqlite3GetVarint32((unsigned char *)key, &hdrsz);
+    hdroffset = getVarint32((unsigned char *)key, hdrsz);
     dataoffset = hdrsz;
-    hdroffset +=
-        sqlite3GetVarint32((unsigned char *)key + hdroffset, (u32 *)&type);
+    hdroffset += getVarint32((unsigned char *)key + hdroffset, type);
 
     /* Sanity checks */
     if (type != 6 || hdroffset != dataoffset) {
@@ -12537,15 +12927,15 @@ void fdb_packedsqlite_process_sqlitemaster_row(char *row, int rowlen,
     int fld;
     char *str = NULL;
 
-    hdroffset = sqlite3GetVarint32((unsigned char *)row, &hdrsz);
+    hdroffset = getVarint32((unsigned char *)row, hdrsz);
     dataoffset = hdrsz;
     fld = 0;
     while (hdroffset < hdrsz) {
-        hdroffset +=
-            sqlite3GetVarint32((unsigned char *)row + hdroffset, &type);
+        hdroffset += getVarint32((unsigned char *)row + hdroffset, type);
         prev_dataoffset = dataoffset;
-        dataoffset += sqlite3VdbeSerialGet(
+        sqlite3VdbeSerialGet(
             (unsigned char *)row + prev_dataoffset, type, &m);
+        dataoffset += sqlite3VdbeSerialTypeLen(type);
 
         if (fld < 7 && fld != 3 && fld != 6) {
             str = (char *)malloc(m.n + 1);
@@ -12721,17 +13111,17 @@ void stat4dump(int more, char *table, int istrace)
                 continue;
             }
             outFunc("]  sample:{");
-            void *in = idx->aSample[k].p;
+            u8 *in = idx->aSample[k].p;
             u32 hdrsz;
-            u8 hdroffset = sqlite3GetVarint32(in, &hdrsz);
+            u8 hdroffset = getVarint32(in, hdrsz);
             u32 dataoffset = hdrsz;
             sep = "";
             while (hdroffset < hdrsz) {
                 u32 type;
                 Mem m = {{0}};
-                hdroffset += sqlite3GetVarint32(((uint8_t*)in) + hdroffset, &type);
-                dataoffset +=
-                    sqlite3VdbeSerialGet(((uint8_t*)in) + dataoffset, type, &m);
+                hdroffset += getVarint32(in + hdroffset, type);
+                sqlite3VdbeSerialGet(in + dataoffset, type, &m);
+                dataoffset += sqlite3VdbeSerialTypeLen(type);
                 if (m.flags & MEM_Null) {
                     outFunc("%sNULL", sep);
                 } else if (m.flags & MEM_Int) {
