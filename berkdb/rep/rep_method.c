@@ -1290,7 +1290,7 @@ __rep_elect(dbenv, nsites, priority, timeout, newgen, already_master, eidp)
 	DB_LSN lsn = {0};
 	DB_REP *db_rep;
 	REP *rep;
-	int done, in_progress, ret, tiebreaker, use_committed_gen, send_vote2;
+	int done, in_progress, ret, tiebreaker, use_committed_gen, send_vote2, selfwin = 0;
 	u_int32_t egen, committed_gen = 0, orig_tally, pid, sec, usec;
 	char *send_vote;
 
@@ -1541,6 +1541,15 @@ restart:
 				__db_err(dbenv,
 					"Counted my vote %d", rep->votes);
 #endif
+			/* If our own vote2 makes the majority no peer vote2 emits NEWMASTER, so claim it here */
+			if (nsites > 1 && rep->votes > rep->nsites / 2 &&
+				!F_ISSET(rep, REP_F_MASTERELECT)) {
+				logmsg(LOGMSG_USER,
+						"%s line %d elected master %s for egen %d on own vote2 (votes %d)\n",
+						__func__, __LINE__, rep->eid, egen, rep->votes);
+				__rep_elect_master(dbenv, rep, eidp);
+				selfwin = 1;
+			}
 		}
 		logmsg(LOGMSG_USER,
 				"%s line %d setting PHASE2 clearing PHASE1\n", __func__, __LINE__);
@@ -1549,6 +1558,10 @@ restart:
 	}
 	MUTEX_UNLOCK(dbenv, db_rep->rep_mutexp);
 	Pthread_mutex_unlock(&rep_candidate_lock);
+	if (selfwin) {
+		ret = DB_REP_NEWMASTER;
+		goto err;
+	}
 	if (send_vote == db_eid_invalid) {
 		/* We do not have enough votes to elect. */
 #ifdef DIAGNOSTIC
@@ -1645,8 +1658,8 @@ lockdone:
 	 */
 	logmsg(LOGMSG_USER,
             "%s line %d ret is %d\n", __func__, __LINE__, ret);
-	assert(ret == 0 || ret == DB_REP_UNAVAIL);
-	if (ret == 0 || ret == DB_REP_UNAVAIL) {
+	assert(ret == 0 || ret == DB_REP_UNAVAIL || ret == DB_REP_NEWMASTER);
+	if (ret == 0 || ret == DB_REP_UNAVAIL || ret == DB_REP_NEWMASTER) {
 		__rep_elect_done(dbenv, rep, 0, __func__, __LINE__);
 	} else if (orig_tally) {
 		F_SET(rep, orig_tally);
