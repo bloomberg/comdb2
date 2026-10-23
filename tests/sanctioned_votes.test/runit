@@ -137,8 +137,18 @@ send_all "bdb add $unsanctioned"
 for node in ${nodes[@]}; do
     send_all "bdb del $node"
 done
+# A local "bdb del" logs to the requesting session, so ask each node for its list instead
+function wait_for_empty_sanc
+{
+    typeset node=$1 i
+    for ((i = 0; i < 30; i++)); do
+        $CDB2SQL_EXE $CDB2_OPTIONS --tabs $DBNAME --host $node "exec procedure sys.cmd.send('bdb sanc')" | grep -q "^node " || return 0
+        sleep 1
+    done
+    return 1
+}
 for node in ${nodes[@]}; do
-    wait_for_log $node "sanctioned list is now empty" || failexit "$node did not report an empty sanctioned list"
+    wait_for_empty_sanc $node || failexit "$node still has a sanctioned list"
 done
 before=$(grep -c "election will not be held" $LOGDIR/${DBNAME}.${master}.db)
 gen=$(get_node_gen $master) || failexit "no generation from $master"
