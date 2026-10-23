@@ -1,0 +1,3 @@
+wait_for_seqnum_trace 1
+setattr enable_seqnum_generations 1
+setattr verify_master_lease_trace 1

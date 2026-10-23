@@ -1,0 +1,3 @@
+durable_lsns on
+setattr wait_for_seqnum_trace 1
+setattr verify_master_lease_trace 1

@@ -1,0 +1,1 @@
+Verify only acks from sanctioned nodes count toward durability, and that nothing is durable with an empty sanctioned list

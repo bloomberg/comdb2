@@ -83,5 +83,7 @@ rowlocks_blkseq.test
 sc_async_constraints.test
 sigstopcluster.test
 weighted_standing_queue.test -- failing in rhel8 + podman
+sanctioned_evensplit.test -- cuts the network with sudo iptables; run by hand on test clusters
+sanctioned_evensplit_lease_generated.test
 
 # vim: set sw=4 ts=4 et:
