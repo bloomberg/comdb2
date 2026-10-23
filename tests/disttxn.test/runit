@@ -3582,6 +3582,45 @@ function testcase_finish
     fi
 }
 
+# A master swing during a distributed txn makes its COMMIT fail early on the
+# replicant (the txn aborts instead of committing), so the retry starts with the
+# txn still marked distributed. Its wait before replaying, up to
+# disttxn_random_retry_poll ms, should not hold a SQL thread: comdb2_connections
+# shows waiting_to_retry, not running.
+function dist_retry_waits_off_thread
+{
+    typeset master=$(find_master) node mach
+    for mach in $CLUSTER; do
+        [[ "$mach" != "$master" ]] && node=$mach && break
+    done
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "insert into t1(a) values(-1)" >/dev/null 2>&1
+    toggle_tunable disttxn_random_retry_poll 60000 0 1
+    (
+        echo "begin"
+        echo "update t1 set a = -1 where a = -1"
+        echo "insert into $SECONDARY_DBNAME.t1(a) values(-1)"
+        sleep 15
+        echo "commit"
+    ) | $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME --host $node - > dist_retry.out 2>&1 &
+    typeset pid=$!
+    sleep 2
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME --host $master "exec procedure sys.cmd.send('downgrade')" >/dev/null 2>&1
+    sleep 13
+    typeset waited=0 i st
+    for i in $(seq 1 50); do
+        st=$($CDB2SQL_EXE -tabs $CDB2_OPTIONS $DBNAME --host $node "select state from comdb2_connections where pid=$pid")
+        echo "dist retry state: $st"
+        [[ "$st" == "waiting_to_retry" ]] && waited=1 && break
+        sleep 0.1
+    done
+    retry_in_loop 700 0.1 "! kill -0 $pid 2>/dev/null" || kill $pid
+    cat dist_retry.out
+    toggle_tunable disttxn_random_retry_poll 500 0 1
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "delete from t1 where a = -1" >/dev/null 2>&1
+    $CDB2SQL_EXE $SECONDARY_CDB2_OPTIONS $SECONDARY_DBNAME default "delete from t1 where a = -1" >/dev/null 2>&1
+    [[ "$waited" == "1" ]] || fail_exit "distributed retry never shown as waiting_to_retry"
+}
+
 function run_test
 {
     # Bulk-test
@@ -3706,6 +3745,11 @@ function run_test
     testcase="exit_coordinator_after_commit"
     testcase_preamble $testcase
     exit_coordinator_after_commit
+    testcase_finish $testcase
+
+    testcase="dist_retry_waits_off_thread"
+    testcase_preamble $testcase
+    dist_retry_waits_off_thread
     testcase_finish $testcase
 }
 
