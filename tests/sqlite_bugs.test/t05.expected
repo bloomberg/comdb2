@@ -1,0 +1,4 @@
+(test='---- test#6 ----')
+[CREATE TABLE ctas1 AS SELECT 1 AS x, 2 AS y] failed with rc -3 near "AS": syntax error
+[SELECT x, y FROM ctas1] failed with rc -3 no such table: ctas1
+[DROP TABLE ctas1] failed with rc -3 no such table: ctas1

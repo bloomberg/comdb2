@@ -569,9 +569,18 @@ static int lookupName(
 
   /* If a column from a table in pSrcList is referenced, then record
   ** this fact in the pSrcList.a[].colUsed bitmask.  Column 0 causes
-  ** bit 0 to be set.  Column 1 sets bit 1.  And so forth.  If the
-  ** column number is greater than the number of bits in the bitmask
-  ** then set the high-order bit of the bitmask.
+  ** bit 0 to be set.  Column 1 sets bit 1.  And so forth.
+  **
+  ** The colUsed mask is an optimization used to help determine if an
+  ** index is a covering index.  The correct answer is still obtained
+  ** if the mask contains extra bits.  But omitting bits from the mask
+  ** might result in an incorrect answer.
+  **
+  ** The high-order bit of the mask is a "we-use-them-all" bit.
+  ** If the column number is greater than the number of bits in the bitmask
+  ** then set the high-order bit of the bitmask.  If generated columns are
+  ** supported, also set the high-order bit for generated-column references,
+  ** as that adds dependencies that are difficult to track.
   */
   if( pExpr->iColumn>=0 && pMatch!=0 ){
     int n = pExpr->iColumn;
@@ -579,7 +588,14 @@ static int lookupName(
     if( n>=BMS ){
       n = BMS-1;
     }
+    assert( pExpr->y.pTab!=0 );
     assert( pMatch->iCursor==pExpr->iTable );
+#if defined(TF_HasGenerated) && defined(COLFLAG_GENERATED)
+    if( pExpr->y.pTab->tabFlags & TF_HasGenerated ){
+      Column *pCol = pExpr->y.pTab->aCol + pExpr->iColumn;
+      if( pCol->colFlags & COLFLAG_GENERATED ) n = BMS-1;
+    }
+#endif
     pMatch->colUsed |= ((Bitmask)1)<<n;
   }
 
@@ -625,9 +641,26 @@ Expr *sqlite3CreateColumnExpr(sqlite3 *db, SrcList *pSrc, int iSrc, int iCol){
       p->iColumn = -1;
     }else{
       p->iColumn = (ynVar)iCol;
-      testcase( iCol==BMS );
-      testcase( iCol==BMS-1 );
-      pItem->colUsed |= ((Bitmask)1)<<(iCol>=BMS ? BMS-1 : iCol);
+      #if defined(TF_HasGenerated) && defined(COLFLAG_GENERATED)
+      Table *pTab = p->y.pTab;
+      if( pTab->tabFlags & TF_HasGenerated ){
+        Column *pColumn = pTab->aCol + iCol;
+        if( pColumn->colFlags & COLFLAG_GENERATED ){
+          testcase( pTab->nCol==63 );
+          testcase( pTab->nCol==64 );
+          if( pTab->nCol>=64 ){
+            pItem->colUsed = ALLBITS;
+          }else{
+            pItem->colUsed = MASKBIT(pTab->nCol)-1;
+          }
+        }
+      }else
+      #endif
+      {
+        testcase( iCol==BMS );
+        testcase( iCol==BMS-1 );
+        pItem->colUsed |= ((Bitmask)1)<<(iCol>=BMS ? BMS-1 : iCol);
+      }
     }
   }
   return p;

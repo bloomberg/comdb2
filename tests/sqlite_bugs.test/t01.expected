@@ -1,0 +1,17 @@
+(test='---- test#2 ----')
+[CREATE TABLE gc0(c0, c1 NOT NULL AS (c0==0))] failed with rc -3 No type specified.
+[INSERT INTO gc0(c0) VALUES(0)] failed with rc -3 no such table: gc0
+[PRAGMA integrity_check] failed with rc -3 not authorized
+[CREATE TABLE gc1(x, y AS(x+1))] failed with rc -3 No type specified.
+[INSERT INTO gc1 VALUES(10)] failed with rc -3 no such table: gc1
+[SELECT y FROM gc1 JOIN gc1 USING (y,y)] failed with rc -3 no such table: gc1
+[CREATE INDEX gc1y ON gc1(y)] failed with rc -3 Table not found
+[SELECT y FROM gc1 JOIN gc1 USING (y,y)] failed with rc -3 no such table: gc1
+[CREATE TABLE gc3(aa INT PRIMARY KEY, bb UNIQUE AS(aa))] failed with rc -3 No type specified.
+[INSERT INTO gc3 VALUES(1)] failed with rc -3 no such table: gc3
+[SELECT 100 AS tag, aa, bb FROM gc3] failed with rc -3 no such table: gc3
+[DELETE FROM gc3 WHERE (SELECT bb FROM gc3)] failed with rc -3 no such table: gc3
+[SELECT 200 AS tag, aa, bb FROM gc3] failed with rc -3 no such table: gc3
+[DROP TABLE gc0] failed with rc -3 no such table: gc0
+[DROP TABLE gc1] failed with rc -3 no such table: gc1
+[DROP TABLE gc3] failed with rc -3 no such table: gc3
