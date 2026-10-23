@@ -2,7 +2,7 @@
 bash -n "$0" || exit 1
 
 # The physrep metadb stored procedures, run against this db as the metadb: verify errors are retried, other
-# failures are returned, and a node is never offered or linked to itself or anything downstream of it.
+# failures are returned, a node is never offered or linked to its own subtree, and a cycle cannot hang registration.
 
 db=$1
 set -e
@@ -113,6 +113,19 @@ for src in "leaf', 'l1" "mid', 'm1"; do
 done
 sql "exec procedure sys.physrep.update_registry('mid', 'm1', 'src', 's2', \"'m1'\")"
 [[ $(connections) == "leaf@l1<-mid@m1 mid@m1<-src@s2 " ]] || fail "update_registry did not move mid@m1 to src@s2: $(connections)"
+
+for firstfile in 0 1; do
+    echo "== register_replicant returns despite a cycle it is not part of (firstfile $firstfile)"
+    build_chain $firstfile
+    add_node $firstfile leaf l2
+    # mid@m1 <-> leaf@l1 is a cycle; leaf@l2 registering from mid@m1 walks it without passing through itself
+    link mid m1 leaf l1
+    rc=0
+    out=$(timeout 60 cdb2sql --tabs ${CDB2_OPTIONS} $db default "exec procedure sys.physrep.register_replicant('leaf', 'l2', '100:0', 'mid', \"'m1'\")" 2>&1) || rc=$?
+    [[ $rc != 124 ]] || fail "register_replicant did not return with a cycle in the topology"
+    [[ $rc == 0 ]] || fail "register_replicant failed rc $rc: $out"
+    echo "$out" | grep -qw m1 || fail "register_replicant did not offer mid@m1: $out"
+done
 
 echo "Testcase passed."
 exit 0
