@@ -1,0 +1,111 @@
+#!/usr/bin/env bash
+bash -n "$0" || exit 1
+
+# With an empty sanctioned list no new master can be elected, but the sitting master stays
+
+. ${TESTSROOTDIR}/tools/runit_common.sh
+. ${TESTSROOTDIR}/tools/cluster_utils.sh
+
+export debug=1
+[[ $debug == "1" ]] && set -x
+
+if [[ -z "$CLUSTER" ]]; then
+    echo "This test requires a cluster"
+    exit 0
+fi
+
+nodes=($CLUSTER)
+if [[ ${#nodes[@]} -lt 3 ]]; then
+    echo "This test requires at least 3 nodes"
+    exit 0
+fi
+
+export LOGDIR=$TESTDIR/logs
+
+function send_all
+{
+    typeset n
+    for n in ${nodes[@]}; do
+        timeout 5 $CDB2SQL_EXE $CDB2_OPTIONS --tabs $DBNAME --host $n "exec procedure sys.cmd.send('$1')" >/dev/null 2>&1
+    done
+}
+
+# Prints "<master> <gen>" as this node sees it; a node without a master can block, so bound each query
+function node_view
+{
+    typeset n=$1 m g
+    m=$(timeout 5 $CDB2SQL_EXE $CDB2_OPTIONS --tabs $DBNAME --host $n "select host from comdb2_cluster where is_master='Y'" 2>/dev/null)
+    [[ -n "$m" ]] || return 1
+    g=$(timeout 5 $CDB2SQL_EXE $CDB2_OPTIONS --tabs $DBNAME --host $n "exec procedure sys.cmd.send('bdb repstat')" | awk '/st_gen:/ {print $2}' | sed 's/[^0-9]*//g')
+    [[ -n "$g" ]] || return 1
+    echo "$m $g"
+}
+
+function wait_for_empty_sanc
+{
+    typeset n=$1 i
+    for ((i = 0; i < 30; i++)); do
+        $CDB2SQL_EXE $CDB2_OPTIONS --tabs $DBNAME --host $n "exec procedure sys.cmd.send('bdb sanc')" | grep -q "^node " || return 0
+        sleep 1
+    done
+    return 1
+}
+
+# Proving a negative needs a window: every node must keep seeing the same master and generation
+function hold_master
+{
+    typeset expect="$1 $2" n v i
+    for ((i = 0; i < 10; i++)); do
+        for n in ${nodes[@]}; do
+            v=$(node_view $n)
+            [[ "$v" == "$expect" ]] || failexit "$n sees '$v', expected '$expect'"
+        done
+        sleep 1
+    done
+}
+
+$CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "create table t1(a int)" || failexit "create table"
+master=$(get_master_and_fail_if_not_found) || failexit "no master elected"
+gen=$(get_node_gen $master) || failexit "no generation from $master"
+for n in ${nodes[@]}; do
+    [[ "$n" != "$master" ]] && replicant=$n && break
+done
+
+function cleanup
+{
+    typeset n
+    for n in ${nodes[@]}; do
+        send_all "bdb add $n"
+    done
+}
+trap cleanup EXIT
+
+for n in ${nodes[@]}; do
+    send_all "bdb del $n"
+done
+for n in ${nodes[@]}; do
+    wait_for_empty_sanc $n || failexit "$n still has a sanctioned list"
+done
+hold_master $master $gen
+$CDB2SQL_EXE $CDB2_OPTIONS --tabs $DBNAME --host $master "insert into t1 values(1)" || failexit "write failed with an empty sanctioned list"
+
+# The bounce makes the master re-check its quorum, which it must keep with an empty list; the
+# replicant restarts with the lrl's sanctioned list, but has no majority to elect itself
+kill_restart_node $replicant 0 0
+end=$((SECONDS + 120))
+while [[ "$(node_view $replicant)" != "$master $gen" ]]; do
+    (( SECONDS < end )) || failexit "$replicant did not rejoin $master at generation $gen: $(node_view $replicant)"
+    sleep 1
+done
+hold_master $master $gen
+$CDB2SQL_EXE $CDB2_OPTIONS --tabs $DBNAME --host $master "insert into t1 values(2)" || failexit "write failed after bouncing $replicant"
+
+trap - EXIT
+cleanup
+$CDB2SQL_EXE $CDB2_OPTIONS --tabs $DBNAME --host $master "insert into t1 values(3)" || failexit "write failed after restoring the sanctioned list"
+wait_for_cluster
+x=$($CDB2SQL_EXE $CDB2_OPTIONS --tabs $DBNAME --host $replicant "select count(*) from t1")
+[[ "$x" == "3" ]] || failexit "expected 3 rows on $replicant, got '$x'"
+
+echo "Success"
+exit 0
