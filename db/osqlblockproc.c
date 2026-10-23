@@ -1474,6 +1474,68 @@ static int bplog_schemachange_run(struct ireq *iq, uuid_t uuid, void *pscs)
     return rc;
 }
 
+/* returns 1 if every schema change handed off has signaled its status, i.e.
+ * no thread (a resumed partition merge) can still be using iq
+ */
+static int _sc_statuses_done(struct ireq *iq)
+{
+    struct schema_change_status *status;
+    int done = 1;
+
+    LISTC_FOR_EACH(&iq->scs_status, status, lnk)
+    {
+        Pthread_mutex_lock(&status->mtx);
+        done = status->async_done;
+        Pthread_mutex_unlock(&status->mtx);
+        if (!done)
+            break;
+    }
+    return done;
+}
+
+/* stop live schema change writes to the new table */
+static void _sc_live_off(struct schema_change_type *sc)
+{
+    live_sc_off(sc->db);
+    while (sc->logical_livesc) {
+        usleep(200);
+    }
+    if (sc->db->sc_live_logical) {
+        bdb_clear_logical_live_sc(sc->db->handle, 1);
+        sc->db->sc_live_logical = 0;
+    }
+}
+
+/* a master downgrade caught this schema change: release the in-memory state
+ * and free the sc, but leave persistent and replicated changes (llmeta, new
+ * btree-s) so that the new master can resume it
+ */
+static void _sc_release_on_downgrade(struct ireq *iq, struct schema_change_type *sc)
+{
+    /* this can happen for multiddl, if one table finished do_ddl
+     * while the second table was caught by downgrade
+     */
+    if (sc->newdb && sc->newdb->handle) {
+        int bdberr = 0;
+        _sc_live_off(sc);
+        sc_set_downgrading(sc);
+        if (!sc->newdb_borrowed) {
+            bdb_close_only(sc->newdb->handle, &bdberr);
+            freedb(sc->newdb);
+        }
+        sc->newdb = NULL;
+    }
+    /*
+     * This can happen if
+     * 1. a table is caught by downgrade during do_ddl
+     *      (in which case newdb will have been cleaned in do_schema_change_tran_int())
+     * 2. a table finished do_ddl and another got caught by a downgrade
+     *      (in which case newdb was freed in the block above)
+     */
+    sc_set_running(iq, sc, sc->tablename, 0, gbl_myhostname, time(NULL), __func__, __LINE__);
+    free_schema_change_type(sc);
+}
+
 /* wait for all schema changes to finish;
  * at this point any running schema change is linked in iq->sc_pending
  */
@@ -1555,40 +1617,10 @@ int bplog_schemachange_wait(struct ireq *iq, int rc)
         sc = iq->sc_pending;
         while (sc != NULL) {
             next = sc->sc_next;
-            /* this can happen for multiddl, if one table finished do_ddl
-             * while the second table was caught by downgrade
-             */
-            if (sc->newdb && sc->newdb->handle) {
-                int bdberr = 0;
-                live_sc_off(sc->db);
-                while (sc->logical_livesc) {
-                    usleep(200);
-                }
-                if (sc->db->sc_live_logical) {
-                    bdb_clear_logical_live_sc(sc->db->handle, 1);
-                    sc->db->sc_live_logical = 0;
-                }
-                if (rc == ERR_NOMASTER) {
-                        sc_set_downgrading(sc);
-                        if (!sc->newdb_borrowed) {
-                            bdb_close_only(sc->newdb->handle, &bdberr);
-                            freedb(sc->newdb);
-                        }
-                        sc->newdb = NULL;
-                }
-            }
-            if (rc == ERR_NOMASTER) {
-                /*
-                 * This can happen if
-                 * 1. a table is caught by downgrade during do_ddl
-                 *      (in which case newdb will have been cleaned in do_schema_change_tran_int())
-                 * 2. a table finished do_ddl and another got caught by a downgrade
-                 *      (in which case newdb was freed in the block above)
-                 */
-                sc_set_running(iq, sc, sc->tablename, 0, gbl_myhostname,
-                               time(NULL), __func__, __LINE__);
-                free_schema_change_type(sc);
-            }
+            if (rc == ERR_NOMASTER)
+                _sc_release_on_downgrade(iq, sc);
+            else if (sc->newdb && sc->newdb->handle)
+                _sc_live_off(sc);
             sc = next;
         }
         if (rc == ERR_NOMASTER)
@@ -1660,9 +1692,11 @@ int get_schema_change_txns(struct ireq *iq, tran_type **logi,
     return 0;
 }
 
-static int _resume_sc_multiddl_txn_finalize(struct ireq *iq)
+/* downgraded is set by the caller if a schema change already reported a master
+ * downgrade through its status */
+static int _resume_sc_multiddl_txn_finalize(struct ireq *iq, int downgraded)
 {
-    struct schema_change_type *sc;
+    struct schema_change_type *sc, *next;
     tran_type *parent_trans = NULL;
     int error = 0;
     uuid_t uuid;
@@ -1681,6 +1715,10 @@ static int _resume_sc_multiddl_txn_finalize(struct ireq *iq)
         if (sc->sc_rc == SC_OK) {
             sc->sc_next = iq->sc_pending;
             iq->sc_pending = sc;
+        } else if (sc->sc_rc == SC_MASTER_DOWNGRADE) {
+            logmsg(LOGMSG_ERROR, "%s: shard '%s' caught by master downgrade\n", __func__, sc->tablename);
+            _sc_release_on_downgrade(iq, sc);
+            downgraded = 1;
         } else {
             logmsg(LOGMSG_ERROR, "%s: shard '%s', rc %d\n", __func__,
                    sc->tablename, sc->sc_rc);
@@ -1693,9 +1731,27 @@ static int _resume_sc_multiddl_txn_finalize(struct ireq *iq)
         sc = iq->sc;
     }
     iq->sc_locked = 0;
-    iq->osql_flags |= OSQL_FLAGS_SCDONE;
     iq->sc_tran = NULL;
     iq->sc_logical_tran = NULL;
+
+    if (downgraded) {
+        /* a downgrade is resumable: release the rest like bplog_schemachange_wait
+         * does for ERR_NOMASTER, before backout touches them, and abort without
+         * SCDONE so the abort callback keeps the sc list for the new master
+         */
+        logmsg(LOGMSG_ERROR, "%s: master downgrade, leaving schema change to the new master\n", __func__);
+        sc = iq->sc_pending;
+        iq->sc_pending = NULL;
+        while (sc != NULL) {
+            next = sc->sc_next;
+            _sc_release_on_downgrade(iq, sc);
+            sc = next;
+        }
+        iq->osql_flags &= ~OSQL_FLAGS_SCDONE;
+        rc = ERR_NOMASTER;
+        goto abort_sc;
+    }
+    iq->osql_flags |= OSQL_FLAGS_SCDONE;
 
     /* early error takes precedence here, i.e. not being able to submit all schema changes;
      * we detect that by setting iq->errstat.errval
@@ -1793,7 +1849,7 @@ void *resume_sc_tpt_finalize_thd(void *arg)
     comdb2_name_thread(__func__);
     backend_thread_event(thedb, COMDB2_THR_EVENT_START);
 
-    int rc = _resume_sc_multiddl_txn_finalize(iq);
+    int rc = _resume_sc_multiddl_txn_finalize(iq, 0);
     if (rc) {
         logmsg(LOGMSG_ERROR, "%s failed to finalize rc %d\n", __func__, rc);
     }
@@ -1806,6 +1862,7 @@ void *resume_sc_multiddl_txn_finalize_thd(void *arg)
 {
     struct ireq *iq = (struct ireq *)arg;
     struct errstat xerr = {0};
+    int downgraded = 0;
 
     if (iq->scs_status.count == 0) {
         if (iq->errstat.errval == 0) {
@@ -1843,6 +1900,8 @@ void *resume_sc_multiddl_txn_finalize_thd(void *arg)
             /* retrieve the first error */
             xerr = status->xerr;
         }
+        if (status->xerr.errval == SC_MASTER_DOWNGRADE)
+            downgraded = 1;
         _destroy_sc_status(iq, status);
     }
 
@@ -1863,7 +1922,7 @@ void *resume_sc_multiddl_txn_finalize_thd(void *arg)
     /* at this point, the schema changes have ran and are linked in sc_pending;
      * run the regular finalize routine; this waits for schema changes to finish
      */
-    int rc = _resume_sc_multiddl_txn_finalize(iq);
+    int rc = _resume_sc_multiddl_txn_finalize(iq, downgraded);
     if (rc) {
         logmsg(LOGMSG_ERROR, "%s failed to finalize rc %d\n", __func__, rc);
     }
@@ -1935,9 +1994,18 @@ int resume_sc_multiddl_txn(sc_list_t *scl)
      *
      */
     rc = bplog_schemachange_run(iq, scl->uuid, &scs);
-    if (rc && !iq->sc_pending) {
+    /* iq->sc_pending alone is not a reliable "nothing started" test: a resumed
+     * partition merge returns after dispatching a thread that links into
+     * sc_pending later, and still uses iq until it signals its status
+     */
+    if (rc && _sc_statuses_done(iq) && !iq->sc_pending) {
         /* nothing got started, there is nothing to unwind */
         logmsg(LOGMSG_ERROR, "%s uuid %s failed to start, rc %d\n", __func__, us, rc);
+        struct schema_change_status *status, *tmp;
+        LISTC_FOR_EACH_SAFE(&iq->scs_status, status, tmp, lnk)
+        {
+            _destroy_sc_status(iq, status);
+        }
         /* SCDONE marks a failure that is not resumable (anything but a master
          * downgrade); remove the sc list, otherwise every new master would
          * try, and fail, to resume it again
