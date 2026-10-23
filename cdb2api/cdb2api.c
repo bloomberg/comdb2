@@ -6349,8 +6349,13 @@ after_delay:
           send error - do not retry, surface it to the client. errstr was
           already set by cdb2_send_query. Only reachable when
           comdb2_feature:fail_on_identity_failure is on. */
-        if (cdb2_fail_on_identity_failure && rc == CDB2ERR_ACCESS)
-            return rc;
+        if (cdb2_fail_on_identity_failure && rc == CDB2ERR_ACCESS) {
+            if (hndl->in_trans && !is_commit) {
+                hndl->error_in_trans = rc;
+                hndl->client_side_error = 1;
+            }
+            PRINT_AND_RETURN(rc);
+        }
         sprintf(hndl->errstr, "%s: Can't send query to the db", __func__);
         newsql_disconnect(hndl, hndl->sb, __LINE__);
         hndl->retry_all = 1;
