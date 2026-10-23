@@ -1,0 +1,5 @@
+Check client transactions with remote writes pushed over cdb2api: remote-only
+and mixed local/remote transactions commit and rollback correctly, a local
+update or delete after a pushed remote write runs in a proper local
+transaction, a remote-only transaction is rolled back when the client
+disconnects, and the transaction effects are reported correctly.

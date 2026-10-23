@@ -2561,7 +2561,7 @@ int newsql_should_dispatch(struct sqlclntstate *clnt, int *commit_rollback)
 
 void newsql_reset(struct sqlclntstate *clnt)
 {
-    if (clnt->ctrl_sqlengine == SQLENG_INTRANS_STATE) {
+    if (clnt->ctrl_sqlengine == SQLENG_INTRANS_STATE || clnt->inremtrans) {
         /* Discard the pending transaction when receiving RESET from the
                sockpool. We reach here if
                1) the handle is in a open transaction, and
