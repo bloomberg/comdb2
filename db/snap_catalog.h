@@ -20,9 +20,11 @@
 #include <stdint.h>
 
 struct dbtable;
+struct dbview;
 struct sqlclntstate;
 struct sql_thread;
 struct snap_catalog;
+struct timepart_views;
 
 /* A schema change is about to become visible.  Call with the schema lock
  * held exclusively, before the commit. */
@@ -36,9 +38,17 @@ void snap_catalog_prepare(struct sqlclntstate *clnt, uint64_t *id);
 /* Copy the sqlite_master entries of the catalog of clnt to thd */
 int snap_catalog_copy_rootpages(struct sqlclntstate *clnt, struct sql_thread *thd);
 
+/* The time partitions of the catalog of clnt, or NULL if the snapshot sees
+ * the current ones */
+struct timepart_views *snap_catalog_views(struct sqlclntstate *clnt);
+
 /* Return 1 and set *db (NULL: no such table) if the snapshot of the current
  * sql thread sees its own tables; return 0 if it sees the current tables. */
 int snap_catalog_find_table(const char *name, struct dbtable **db);
+
+/* Return 1 and set *view (NULL: no such view) if the snapshot of the current
+ * sql thread sees its own views; return 0 if it sees the current views. */
+int snap_catalog_find_view(const char *name, struct dbview **view);
 
 /* 1 if db is a table as a snapshot saw it before a schema change */
 int snap_catalog_is_old_table(const struct dbtable *db);

@@ -123,12 +123,21 @@ int views_read_view(void *tran, const char *name, char **pstr)
  */
 char *views_read_all_views(void)
 {
+    return views_read_all_views_tran(NULL);
+}
+
+/**
+ * Read the llmeta cson representation of all the views through tran
+ *
+ */
+char *views_read_all_views_tran(void *tran)
+{
     char *blob = NULL;
     int blob_len = 0;
     int rc;
 
     rc =
-        bdb_get_table_csonparameters(NULL, LLMETA_TABLE_NAME, &blob, &blob_len);
+        bdb_get_table_csonparameters(tran, LLMETA_TABLE_NAME, &blob, &blob_len);
     if (rc) {
         return NULL;
     }

@@ -2163,6 +2163,9 @@ struct dbtable *get_live_dbtable_by_name(const char *name);
 struct dbview *get_view_by_name(const char *view_name);
 /* Load all views from llmeta */
 int llmeta_load_views(struct dbenv *, void *);
+/* The views in llmeta through tran; free with free_view_hash() */
+hash_t *llmeta_read_views(void *tran);
+void free_view_hash(hash_t *view_hash);
 /*look up managed queue db's by name*/
 struct dbtable *getqueuebyname(const char *name);
 struct dbtable *getfdbbyrmtnameenv(struct dbenv *dbenv, const char *tblname);

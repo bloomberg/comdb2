@@ -4539,12 +4539,12 @@ check_version:
             get_copy_rootpages_nolock(thd->sqlthd);
         thd->snap_catalog_id = snap_catalog_id;
         if (clnt->dbtran.cursor_tran) {
-            if (thedb->timepart_views) {
+            timepart_views_t *views = snap_catalog_id ? snap_catalog_views(clnt) : thedb->timepart_views;
+            if (views) {
                 const int latched_clnt_is_readonly = clnt->is_readonly;
                 clnt->is_readonly = 0;
                 /* how about we are gonna add the views ? */
-                rc = views_sqlite_update(thedb->timepart_views, thd->sqldb,
-                                         &xerr, 0);
+                rc = views_sqlite_update(views, thd->sqldb, &xerr, 0);
                 clnt->is_readonly = latched_clnt_is_readonly;
                 if (rc != VIEW_NOERR) {
                     logmsg(LOGMSG_FATAL,
