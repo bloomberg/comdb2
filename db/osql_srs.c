@@ -432,6 +432,13 @@ int srs_tran_replay(struct sqlclntstate *clnt)
         return 0;
     }
 
+    /* Cancelled while it waited.  The worker turned the cancel into stop_this_statement,
+       but the replayed statements below would reset it, so honour it here. */
+    if (clnt->thd->sqlthd->stop_this_statement) {
+        srs_tran_replay_end(clnt, 0, 0);
+        return 0;
+    }
+
     // replay all the stmts
     rc = srs_tran_replay_once(clnt, run_sql_query);
 
