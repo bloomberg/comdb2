@@ -5769,8 +5769,11 @@ int osql_comm_signal_sqlthr_rc(const char *host, unsigned long long rqid,
 #if 0
   printf("Send %d rqid=%llu tmp=%llu\n",  NET_OSQL_SIGNAL, rqid, osql_log_time());
 #endif
-    /* lazy again, works just because node!=0 */
-    int irc = offload_net_send(host, type, buf, msglen, 1, NULL, 0);
+    /* nodrop: queue it even if the buffer to that node is full, rather than
+     * retry; the seqnum waiter sends every handed-off reply, so one slow node
+     * must not stall it */
+    osql_comm_t *comm = get_thecomm();
+    int irc = comm ? net_send_nodrop(comm->handle_sibling, host, type, buf, msglen, 1) : -1;
     if (irc) {
         irc = -1;
         logmsg(LOGMSG_ERROR, "%s: error sending done to %s!\n", __func__,
