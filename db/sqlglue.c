@@ -3420,7 +3420,7 @@ unsigned long long release_locks_on_si_lockwait_cnt = 0;
 int gbl_debug_pagelock_release_trace = 0;
 /* Do not re-release page locks more often than this while a waiter persists;
    without it we release once per cursor move for the life of the scan. */
-int gbl_pagelock_release_interval_ms = 25;
+int gbl_pagelock_release_interval_ms = 100;
 /* If a waiter is still parked after this long, page locks were not what it
    wanted (a schema change wants our table lock): fall back to a full release
    so it can proceed, rather than starving it for the length of the query.
