@@ -2561,6 +2561,7 @@ int newsql_should_dispatch(struct sqlclntstate *clnt, int *commit_rollback)
 
 void newsql_reset(struct sqlclntstate *clnt)
 {
+    struct newsql_appdata *appdata = clnt->appdata;
     if (clnt->ctrl_sqlengine == SQLENG_INTRANS_STATE) {
         /* Discard the pending transaction when receiving RESET from the
                sockpool. We reach here if
@@ -2577,6 +2578,12 @@ void newsql_reset(struct sqlclntstate *clnt)
     clnt->osql.count_changes = 1;
     clnt->heartbeat = 1;
     clnt->dbtran.mode = gbl_sql_tranlevel_default;
+    /* Not covered by reset_clnt(). The next client re-sends its own SET
+       commands, and asks to skip in-transaction results on its own BEGIN. */
+    appdata->send_intrans_response = 1;
+    clnt->hasql_on = 0;
+    clnt->high_availability_flag = 0;
+    clnt->bdb_osql_trak = 0;
 }
 
 void free_newsql_appdata(struct sqlclntstate *clnt)
