@@ -1,0 +1,140 @@
+#!/usr/bin/env bash
+bash -n "$0" || exit 1
+
+# A snapshot reads the tables as of its start, also when a schema change
+# commits after it starts: the table as it was, a dropped table, and no table
+# that was created later.
+
+dbname=$1
+SQL="cdb2sql ${CDB2_OPTIONS} ${dbname} default"
+ROWS=$'(i=1, j=1)\n(i=2, j=2)\n(i=3, j=3)'
+JS=$'(j=1)\n(j=2)\n(j=3)'
+n=0
+failed=0
+
+# run each line of $1; "ALLNODES <sql>" runs <sql> on every node
+run_lines() {
+    while IFS= read -r stmt; do
+        [[ -z "$stmt" ]] && continue
+        if [[ "$stmt" == "ALLNODES "* ]]; then
+            for node in ${CLUSTER:-default}; do
+                local h="--host $node"
+                [[ $node == default ]] && h=default
+                cdb2sql ${CDB2_OPTIONS} ${dbname} $h "${stmt#ALLNODES }" >/dev/null 2>&1
+            done
+            continue
+        fi
+        $SQL "$stmt" >/dev/null 2>&1 || { echo "FAIL: setup statement failed: $stmt"; exit 1; }
+    done <<< "$1"
+}
+
+# check <case> <output of the transaction> <expected>: the expected rows of
+# the statement after "select 'last'", or "ERR <text>" for an error of the
+# rest of the transaction.  The output has the rows of each statement, then a
+# "[statement] rc 0" line; errors come from stderr, so not in order.
+check() {
+    local name=$1 out=$2 exp=$3
+    local got=$(awk '/^\(last=.last.\)$/ {p = 1; next} p == 1 {p = 2; next} p && /^\[/ {print; exit} p' <<< "$out")
+    local status=$(tail -1 <<< "$got")
+    local rows=$(sed '$d' <<< "$got")
+    if [[ "$exp" == "ERR "* ]]; then
+        sed -n '/^(last=.last.)$/,$p' <<< "$out" | grep -q "failed with.*${exp#ERR }" && return
+    else
+        [[ "$status" == *"] rc 0" && "$rows" == "$exp" ]] && return
+    fi
+    echo "FAIL: $name: expected:"
+    echo "$exp"
+    echo "got:"
+    echo "$out"
+    failed=1
+}
+
+new_table() {
+    n=$((n + 1))
+    T=t$n
+    run_lines "create table $T(i int, j int)
+insert into $T values(1,1),(2,2),(3,3)"
+}
+
+# live <case> <setup> <change> <query> <expected>: a snapshot reads the
+# table, the change commits, and the snapshot runs <query>; T in the
+# arguments is the table of the case
+live() {
+    local name=$1
+    new_table
+    local setup=${2//T/$T} change=${3//T/$T} q=${4//T/$T}
+    run_lines "$setup"
+    local fifo=$(mktemp -u)
+    mkfifo $fifo
+    $SQL - < $fifo > out.$name 2>&1 &
+    local pid=$!
+    exec 3> $fifo
+    echo "begin" >&3
+    echo "select count(*) from $T" >&3
+    sleep 2
+    run_lines "$change"
+    echo "select 'last' as last" >&3
+    echo "$q" >&3
+    echo "commit" >&3
+    exec 3>&-
+    wait $pid
+    rm -f $fifo
+    check live_$name "$(cat out.$name)" "$5"
+}
+
+# asof <case> <change> <query> <expected>: the change commits after a
+# timestamp, and a snapshot as of that timestamp runs <query>
+asof() {
+    local name=$1
+    new_table
+    local change=${2//T/$T} q=${3//T/$T}
+    sleep 2
+    local ts=$($SQL --tabs "select cast(now() as text)")
+    sleep 2
+    run_lines "$change"
+    local out=$($SQL - 2>&1 <<SQLEOF
+begin transaction as of datetime $ts
+select 'last' as last
+$q
+commit
+SQLEOF
+)
+    echo "$out" > out.asof_$name
+    check asof_$name "$out" "$4"
+}
+
+SEL="select * from T order by i"
+SELJ="select j from T where j > 0 order by j"
+
+live insert "" "insert into T values(4,4)" "$SEL" "$ROWS"
+live add_column "" "alter table T add k int" "$SEL" "$ROWS"
+live add_column_insert "" $'alter table T add k int\ninsert into T values(5,5,5)' "$SEL" "$ROWS"
+live alter_rebuild "" "alter table T { schema { int i null=yes longlong j null=yes } }" "$SEL" "$ROWS"
+live rebuild "" $'insert into T values(4,4)\nrebuild T' "$SEL" "$ROWS"
+live truncate "" $'truncate table T\ninsert into T values(9,9)' "$SEL" "$ROWS"
+live drop "" "drop table T" "$SEL" "$ROWS"
+live drop_recreate "" $'drop table T\ncreate table T(i int, j int)\ninsert into T values(100,100)' "$SEL" "$ROWS"
+live add_index "" $'insert into T values(4,4)\ncreate index T_j on T(j)' "$SELJ" "$JS"
+live drop_index "create index T_j on T(j)" $'insert into T values(4,4)\ndrop index T_j on T' "$SELJ" "$JS"
+# every node caches the new table version before the snapshot reads again
+live add_index_point "" $'update T set j = 20 where i = 2\ncreate index T_j on T(j)\nALLNODES select 1' \
+    "select i, j from T where j = 2" "(i=2, j=2)"
+live truncate_twice $'truncate table T\ninsert into T values(1,1),(2,2),(3,3)' \
+    $'truncate table T\ninsert into T values(9,9)\nALLNODES select 1' "$SEL" "$ROWS"
+live unrelated_change "" "create table T_other(i int)" "$SEL" "$ROWS"
+live new_table "" $'create table T_new(i int)\ninsert into T_new values(7)' "select * from T_new" \
+    "ERR no such table"
+# the transaction cannot write a table as it was before a schema change
+live write_old_table "" "rebuild T" "insert into T values(9,9)" "ERR was schema changed"
+
+asof insert "insert into T values(4,4)" "$SEL" "$ROWS"
+asof add_column $'alter table T add k int\ninsert into T values(9,9,9)' "$SEL" "$ROWS"
+asof rebuild $'rebuild T\ninsert into T values(9,9)' "$SEL" "$ROWS"
+asof truncate $'truncate table T\ninsert into T values(9,9)' "$SEL" "$ROWS"
+asof add_index $'insert into T values(9,9)\ncreate index T_j on T(j)' "$SELJ" "$JS"
+asof drop_add_index $'create index T_j on T(j)\ninsert into T values(9,9)\ndrop index T_j on T\ncreate index T_j2 on T(j)' \
+    "$SELJ" "$JS"
+asof drop_recreate $'drop table T\ncreate table T(i int, j int)\ninsert into T values(100,100)' "$SEL" "$ROWS"
+asof new_table "create table T_new(i int)" "select * from T_new" "ERR no such table"
+
+exit $failed

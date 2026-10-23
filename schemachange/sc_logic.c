@@ -40,6 +40,7 @@
 #include "logmsg.h"
 #include "comdb2_atomic.h"
 #include "sc_callbacks.h"
+#include "snap_catalog.h"
 #include "views.h"
 #include "bdb_int.h"
 #include <debug_switches.h>
@@ -333,6 +334,7 @@ int llog_scdone_rename_wrapper(bdb_state_type *bdb_state,
     }
     /* replicants do this in scdone_callback */
     sc_bump_changed_gen(s->done_type, s->db ? s->db : get_dbtable_by_name(s->tablename));
+    snap_catalog_schema_changed();
 
     if (!tran)
         rc = bdb_llog_scdone(bdb_state, s->done_type, mashup, oldlen + newlen,

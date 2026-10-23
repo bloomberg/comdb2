@@ -81,6 +81,7 @@ set(src
   sqllog.c
   sqllogfill.c
   sqlmaster.c
+  snap_catalog.c
   sqloffload.c
   sqlpool.c
   sqlstat1.c

@@ -250,7 +250,7 @@ struct schema *find_tag_schema(const struct dbtable *table, const char *tagname)
     struct schema *s;
     if (!table) return NULL;
     lock_taglock_read();
-    s = find_tag_schema_lk(table->tablename, tagname);
+    s = find_tag_schema_lk(table->tag_tablename ? table->tag_tablename : table->tablename, tagname);
     unlock_taglock();
     return s;
 }
@@ -6362,7 +6362,7 @@ int load_csc2_versions(dbtable *tbl, tran_type *tran)
             logmsg(LOGMSG_ERROR, "Could not create schema version: %d\n", i);
             return 1;
         }
-        add_tag_schema(tbl->tablename, schema);
+        add_tag_schema(tbl->tag_tablename ? tbl->tag_tablename : tbl->tablename, schema);
         free(csc2);
     }
     return 0;

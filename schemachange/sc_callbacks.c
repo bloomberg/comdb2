@@ -17,6 +17,7 @@
 #include <memory_sync.h>
 #include "schemachange.h"
 #include "sc_callbacks.h"
+#include "snap_catalog.h"
 #include "sc_global.h"
 #include "sc_add_table.h"
 #include "sc_schema.h"
@@ -1395,6 +1396,9 @@ int scdone_callback(bdb_state_type *bdb_state, const char table[], void *arg,
 {
     /* a rename passes the new name in arg */
     char *newname = (type == rename_table && arg) ? strdup(arg) : NULL;
+
+    /* before the change is visible: the commit is already in the log */
+    snap_catalog_schema_changed();
 
     int rc = SCDONE_CALLBACKS[type](table, arg, type);
 
