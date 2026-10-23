@@ -72,6 +72,12 @@
 
 extern int gbl_fdb_track;
 
+/* How long a remote transaction request waits for an earlier one (0 = forever) */
+int gbl_fdb_sequence_timeout_ms = 60000;
+
+/* Testing: drop this many transactional cursor opens before they are sequenced */
+int gbl_fdb_test_drop_cursor_open = 0;
+
 struct svc_cursor {
     char *cid;    /* cursor id */
     char *tid;    /* trans id */
@@ -226,6 +232,17 @@ svc_cursor_t *fdb_svc_cursor_open(char *tid, char *cid, int code_release, int ve
         return NULL;
     }
 
+    if (cur->autocommit == 0 && gbl_fdb_test_drop_cursor_open > 0) {
+        /* simulate a request that never arrives: its sequence slot stays empty */
+        gbl_fdb_test_drop_cursor_open--;
+        logmsg(LOGMSG_USER, "%s: test: dropping cursor open tid=%s seq=%d\n", __func__, tus, seq);
+        free(cur);
+        cleanup_clnt(*pclnt);
+        free(*pclnt);
+        *pclnt = NULL;
+        return NULL;
+    }
+
     if (cur->autocommit == 0) {
         /* surprise, if tran_clnt != NULL, it is LOCKED, PINNED, FROZED */
         tran_clnt = fdb_svc_trans_get(tid);
@@ -240,7 +257,9 @@ svc_cursor_t *fdb_svc_cursor_open(char *tid, char *cid, int code_release, int ve
                 Pthread_mutex_unlock(&tran_clnt->dtran_mtx);
             }
             free(cur);
+            cleanup_clnt(*pclnt);
             free(*pclnt);
+            *pclnt = NULL;
             return NULL;
         }
 
@@ -268,7 +287,16 @@ svc_cursor_t *fdb_svc_cursor_open(char *tid, char *cid, int code_release, int ve
            OCC lockless
            must have been selling snake oil in a previous life
          */
-        fdb_sequence_request(tran_clnt, trans, seq);
+        if (fdb_sequence_request(tran_clnt, trans, seq)) {
+            listc_rfl(&trans->cursors, cur);
+            Pthread_mutex_unlock(&tran_clnt->dtran_mtx);
+            free(cur);
+            (*pclnt)->dbtran.shadow_tran = NULL;
+            cleanup_clnt(*pclnt);
+            free(*pclnt);
+            *pclnt = NULL;
+            return NULL;
+        }
 
         /* free this guy */
         Pthread_mutex_unlock(&tran_clnt->dtran_mtx);
@@ -1210,10 +1238,41 @@ int fdb_svc_trans_get_tid(char *cid, char *tid)
  *
  * NOTE: this is called with dtran_mtx locked, and returns it LOCKED!
  */
-void fdb_sequence_request(struct sqlclntstate *tran_clnt, fdb_tran_t *trans,
-                          int seq)
+int fdb_sequence_wait(struct sqlclntstate *tran_clnt, fdb_tran_t *trans, int seq)
 {
-    while (trans->seq < seq) {
+    int begin = comdb2_time_epochms();
+    int start = begin;
+    int last_seq = trans->seq;
+
+    while (trans->seq < seq || trans->seq_broken) {
+        int now = comdb2_time_epochms();
+        const char *why = NULL;
+
+        /* earlier requests are still arriving: only time a real stall */
+        if (trans->seq != last_seq) {
+            last_seq = trans->seq;
+            start = now;
+        }
+
+        /* An earlier request that never arrives must not park this thread forever */
+        if (trans->seq_broken)
+            why = "an earlier request gave up";
+        else if (gbl_fdb_sequence_timeout_ms > 0 && now - start > gbl_fdb_sequence_timeout_ms)
+            why = "timed out";
+        else if (db_is_exiting())
+            why = "db exiting";
+
+        if (why) {
+            uuidstr_t us;
+            /* this request will never be sequenced, so no later one can run:
+               fail them now instead of letting each wait out the timeout */
+            trans->seq_broken = 1;
+            logmsg(LOGMSG_ERROR, "%s: giving up on tid=%s waiting for seq %d (at %d): %s after %d ms (%d ms total)\n",
+                   __func__, comdb2uuidstr((unsigned char *)trans->tid, us), seq, trans->seq, why, now - start,
+                   now - begin);
+            return -1;
+        }
+
         /* free this guy */
         Pthread_mutex_unlock(&tran_clnt->dtran_mtx);
 
@@ -1225,8 +1284,17 @@ void fdb_sequence_request(struct sqlclntstate *tran_clnt, fdb_tran_t *trans,
         Pthread_mutex_lock(&tran_clnt->dtran_mtx);
     }
 
+    return 0;
+}
+
+int fdb_sequence_request(struct sqlclntstate *tran_clnt, fdb_tran_t *trans, int seq)
+{
+    if (fdb_sequence_wait(tran_clnt, trans, seq))
+        return -1;
+
     /* bump the transactional sequence */
     trans->seq++;
+    return 0;
 }
 
 /* pack an sqlite unpacked row to a packed row */
