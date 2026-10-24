@@ -5653,6 +5653,42 @@ static void parse_dbresponse(CDB2DBINFORESPONSE *dbinfo_response, char valid_hos
         *s_mode = PEER_SSL_ALLOW;
 }
 
+/* "set transaction chunk N" applies to the next transaction only;
+ * "set transaction chunk throttle ..." is a connection property. */
+static int is_chunk_set_command(const char *set_command)
+{
+    const char *p = &set_command[sizeof("SET") - 1];
+
+    cdb2_skipws(p);
+    if (strncasecmp(p, "transaction", 11) != 0)
+        return 0;
+    p += sizeof("TRANSACTION");
+    cdb2_skipws(p);
+    if (strncasecmp(p, "chunk", 5) != 0)
+        return 0;
+    p += sizeof("CHUNK");
+    cdb2_skipws(p);
+    return strncasecmp(p, "throttle", 8) != 0;
+}
+
+/* The server ends chunk mode with the transaction. Drop the chunk set so a
+ * new connection doesn't replay it and re-enable chunk mode there. */
+static void remove_chunk_set_commands(cdb2_hndl_tp *hndl)
+{
+    int i = 0;
+    while (i < hndl->num_set_commands) {
+        if (!is_chunk_set_command(hndl->commands[i])) {
+            ++i;
+            continue;
+        }
+        free(hndl->commands[i]);
+        memmove(&hndl->commands[i], &hndl->commands[i + 1], sizeof(char *) * (hndl->num_set_commands - i - 1));
+        hndl->num_set_commands--;
+        if (i < hndl->num_set_commands_sent)
+            hndl->num_set_commands_sent--;
+    }
+}
+
 static void process_set_local(cdb2_hndl_tp *hndl, const char *set_command)
 {
     const char *p = &set_command[sizeof("SET") - 1];
@@ -5679,18 +5715,9 @@ static void process_set_local(cdb2_hndl_tp *hndl, const char *set_command)
         return;
     }
 
-    if (strncasecmp(p, "transaction", 11) == 0) {
-        p += sizeof("TRANSACTION");
-        cdb2_skipws(p);
-        // only set is chunk to true, don't set to false here
-        if (strncasecmp(p, "chunk", 5) == 0) {
-            p += sizeof("CHUNK");
-            cdb2_skipws(p);
-            if (strncasecmp(p, "throttle", 8) != 0)
-                hndl->is_chunk = CHUNK_IN_PROGRESS;
-        }
-        return;
-    }
+    // only set is chunk to true, don't set to false here
+    if (is_chunk_set_command(set_command))
+        hndl->is_chunk = CHUNK_IN_PROGRESS;
 }
 
 /*
@@ -6856,6 +6883,7 @@ int cdb2_run_statement_typed(cdb2_hndl_tp *hndl, const char *sql, int ntypes, co
     if (hndl->is_chunk == CHUNK_COMPLETE) {
         // this isn't a chunk statement anymore
         hndl->is_chunk = CHUNK_NO;
+        remove_chunk_set_commands(hndl);
     }
 
     hndl->is_set = 0;
