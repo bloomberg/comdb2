@@ -205,6 +205,10 @@ static inline int osql_should_restart(struct sqlclntstate *clnt, int rc,
 /* see below */
 enum { OSQL_START_KEEP_RQID = 1, OSQL_START_NO_REORDER = 2, OSQL_START_IS_FINAL = 4 };
 extern int gbl_debug_disttxn_trace;
+/* Test: replay this many commits twice, failing recover_deadlock on the first restart */
+int gbl_debug_fail_commit_restart = 0;
+static __thread int fail_restart_recover_deadlock, forced_replays;
+
 static int osql_sock_start_int(struct sqlclntstate *clnt, int type,
                                int start_flags)
 {
@@ -245,6 +249,10 @@ static int osql_sock_start_int(struct sqlclntstate *clnt, int type,
 
 retry:
     rc = clnt_check_bdb_lock_desired(clnt);
+    if (!rc && fail_restart_recover_deadlock && clnt->dbtran.cursor_tran) {
+        fail_restart_recover_deadlock = 0;
+        rc = recover_deadlock_flags(thedb->bdb_env, clnt, NULL, 0, __func__, __LINE__, RECOVER_DEADLOCK_FORCE_FAIL);
+    }
     if (rc) {
         logmsg(LOGMSG_ERROR, "recover_deadlock returned %d\n", rc);
         /* keep_rqid: session is being restarted, don't zero rqid */
@@ -1163,6 +1171,16 @@ retry:
             if (gbl_random_blkseq_replays && ((rand() % 50) == 0)) {
                 logmsg(LOGMSG_ERROR, "%s line %d forcing random blkseq retry\n",
                        __func__, __LINE__);
+                osql->xerr.errval = ERR_NOMASTER;
+            }
+            /* The first replay's restart fails recover_deadlock, the second waits on the master again */
+            if (gbl_debug_fail_commit_restart > 0 && !forced_replays) {
+                gbl_debug_fail_commit_restart--;
+                fail_restart_recover_deadlock = 1;
+                forced_replays = 2;
+            }
+            if (forced_replays > 0) {
+                logmsg(LOGMSG_USER, "%s: forcing a replay, %d left\n", __func__, --forced_replays);
                 osql->xerr.errval = ERR_NOMASTER;
             }
             /* we got a return from block processor \

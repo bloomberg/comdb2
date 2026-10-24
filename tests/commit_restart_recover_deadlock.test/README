@@ -1,0 +1,1 @@
+Verify a commit replays past a failed recover_deadlock on its osql restart, once, without crashing
