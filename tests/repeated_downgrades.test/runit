@@ -87,4 +87,4 @@ downgrade $DBNAME &> downgrade.out &
 dgpid=$!
 trap "kill $dgpid" INT EXIT
 
-${TESTSBUILDDIR}/inscntdel --dbname $DBNAME --numthreads $N --iterations 1000
+${TESTSBUILDDIR}/inscntdel --dbname $DBNAME --numthreads $N --iterations 1000 --snapshot

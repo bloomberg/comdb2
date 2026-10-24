@@ -1786,7 +1786,7 @@ static int populate_modsnap_state(struct sqlclntstate *clnt)
 done:
     unlock_schema_lk();
     BDB_RELLOCK();
-    return 0;
+    return rc;
 }
 
 void clear_modsnap_state(struct sqlclntstate *clnt)
@@ -1828,9 +1828,15 @@ int handle_sql_begin(struct sqlthdstate *thd, struct sqlclntstate *clnt,
 
     /* Latch the last commit LSN */
     assert(!clnt->modsnap_in_progress);
-    if (clnt->dbtran.mode == TRANLEVEL_SNAPISOL && (populate_modsnap_state(clnt) != 0)) {
-        rc = SQLITE_INTERNAL;
-        goto done;
+    if (clnt->dbtran.mode == TRANLEVEL_SNAPISOL && populate_modsnap_state(clnt) != 0 && !clnt->osql.replay &&
+        sideeffects == TRANS_CLNTCOMM_NORMAL) {
+        /* No durable start lsn: hasql retries a not-durable begin */
+        sql_set_sqlengine_state(clnt, __FILE__, __LINE__, SQLENG_NORMAL_PROCESS);
+        Pthread_mutex_unlock(&clnt->wait_mutex);
+        send_run_error(clnt, "Transaction is not durable", CDB2ERR_NOTDURABLE);
+        rc = SQLITE_CLIENT_CHANGENODE;
+        reqlog_end_request(thd->logger, rc, __func__, __LINE__);
+        return rc;
     }
 
     if (clnt->osql.replay)
@@ -2193,6 +2199,7 @@ static int do_commitrollback(struct sqlthdstate *thd, struct sqlclntstate *clnt,
                                                bdb_attr_get(thedb->bdb_attr, BDB_ATTR_DURABLE_LSNS),
                                                gbl_replicant_retry_on_not_durable);
                             } else {
+                                rc = CDB2ERR_NOTDURABLE;
                                 sql_debug_logf(clnt, __func__, __LINE__,
                                                "returned CDB2ERR_NOTDURABLE for SQLITE_CLIENT_CHANGENODE "
                                                "durable-lsns=%d, retry-on-not-durable=%d\n",
@@ -3467,7 +3474,10 @@ int get_prepared_stmt(struct sqlthdstate *thd, struct sqlclntstate *clnt,
     curtran_assert_nolocks();
     assert(!clnt->modsnap_in_progress || clnt->in_client_trans);
     if (clnt->dbtran.mode == TRANLEVEL_SNAPISOL && !clnt->modsnap_in_progress && populate_modsnap_state(clnt)) {
-        return SQLITE_INTERNAL;
+        /* sql_statement_done needs it, and a nested replay hasn't set it */
+        if (!clnt->sql_ref && clnt->sql)
+            clnt->sql_ref = create_string_ref(clnt->sql);
+        return SQLITE_CLIENT_CHANGENODE;
     }
     if (gbl_sleep_5s_after_caching_table_versions) {
         sleep(5);
@@ -4345,6 +4355,9 @@ retry_legacy_remote:
             } else if (irc == ERR_PREPARE_RETRY) {
                 write_response(clnt, RESPONSE_ERROR_PREPARE_RETRY, err.errstr, 0);
                 rc = 0;
+            } else if (rc == SQLITE_CLIENT_CHANGENODE) {
+                send_run_error(clnt, "Transaction is not durable", CDB2ERR_NOTDURABLE);
+                handle_sqlite_error(thd, clnt, &rec, rc);
             } else {
                 handle_sqlite_error(thd, clnt, &rec, rc);
             }
@@ -4990,6 +5003,10 @@ void sqlengine_work_appsock(struct sqlthdstate *thd, struct sqlclntstate *clnt)
         }
         goto done;
     }
+
+    /* A new transaction may start in a new generation */
+    if (clnt->ctrl_sqlengine == SQLENG_NORMAL_PROCESS)
+        clnt->init_gen = 0;
 
     /* everything going in is cursor based */
     int rc = get_curtran(thedb->bdb_env, clnt);

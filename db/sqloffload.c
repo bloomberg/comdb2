@@ -335,7 +335,8 @@ static int rese_commit(struct sqlclntstate *clnt, struct sql_thread *thd,
         if (irc) {
             logmsg(LOGMSG_ERROR, "%s: failed to abort sorese transaction rc=%d\n",
                     __func__, rc);
-            rc = SQLITE_ERROR;
+            /* Can't reach the master: retryable, and SQLITE_ERROR reads as a dup to the client */
+            rc = SQLITE_CLIENT_CHANGENODE;
             goto goback;
         }
 
