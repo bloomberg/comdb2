@@ -12,24 +12,21 @@
 -- physrep that had restarted but not yet begun replicating was handed out as a
 -- viable source.  The replicant then rejected it locally in
 -- physrep_allowed_source(), found no candidate leaders, and retried forever.
-local function main(dbname, hostname, lsn, source_dbname, source_hosts)
+local max_verify_retries = 10
 
-    local pfile, poffset = string.match(lsn, "(%d+):(%d+)")
-    pfile = tonumber(pfile)
-    poffset = tonumber(poffset)
-    print(
-        "physrep_register_replicant: dbname = '" .. dbname .. "', hostname = '" .. hostname ..
-        "', file = " .. pfile .. ", offset = " .. poffset .. ", source_dbname = '" .. source_dbname .. "', source_hosts = '" ..
-        source_hosts .. "'")
+-- Returns the commit rc and the candidate rows, which are emitted only once the commit succeeds.
+local function register(dbname, hostname, pfile, poffset, source_dbname, source_hosts, tunables)
+    local candidates = {}
 
     db:begin()
 
-    -- Retrieve physrep tunables
-    local tunables = sys.physrep_tunables(source_dbname)
-
     -- The physical replicant is attempting a fresh registration; remove it
     -- from the comdb2_physrep_connections table.
-    db:exec("DELETE FROM comdb2_physrep_connections WHERE dbname = '" ..  dbname .. "' AND host = '" .. hostname .. "'")
+    local _, rc = db:exec("DELETE FROM comdb2_physrep_connections WHERE dbname = '" ..  dbname .. "' AND host = '" .. hostname .. "'")
+    if rc ~= 0 then
+        db:rollback()
+        return rc, candidates
+    end
 
     local physrep_fanout = tunables["physrep_fanout"]
     local physrep_max_candidates = tunables["physrep_max_candidates"]
@@ -96,7 +93,8 @@ local function main(dbname, hostname, lsn, source_dbname, source_hosts)
     end
 
     print("physrep_register_replicant: sql = " .. cte)
-    local rs, rc = db:exec(cte)
+    local rs
+    rs, rc = db:exec(cte)
     local foundrow = 0
 
     if (rc == 0) then
@@ -104,7 +102,7 @@ local function main(dbname, hostname, lsn, source_dbname, source_hosts)
             local row = rs:fetch()
             while row do
                 foundrow = 1
-                db:emit(row)
+                table.insert(candidates, {tier = row.tier, dbname = row.dbname, host = row.host})
                 row = rs:fetch()
             end
         end
@@ -160,16 +158,18 @@ local function main(dbname, hostname, lsn, source_dbname, source_hosts)
             end
         
             rs, rc = db:exec(cte)
+            if rc ~= 0 then
+                db:rollback()
+                return rc, {}
+            end
 
             foundrow = 0
-            if (rc == 0) then
-                if rs then
-                    local row = rs:fetch()
-                    while row do
-                        foundrow = 1
-                        db:emit(row)
-                        row = rs:fetch()
-                    end
+            if rs then
+                local row = rs:fetch()
+                while row do
+                    foundrow = 1
+                    table.insert(candidates, {tier = row.tier, dbname = row.dbname, host = row.host})
+                    row = rs:fetch()
                 end
             end
         end
@@ -181,8 +181,48 @@ local function main(dbname, hostname, lsn, source_dbname, source_hosts)
         -- its state set to 'Pending'. This information will give an estimate on how
         -- many replicant registrations are currently in progress.
         -- We could deny further requests if there are too many pending requests.
-        db:exec("INSERT INTO comdb2_physreps(dbname, host, state) VALUES ('" ..  dbname .. "', '" .. hostname .. "', 'Pending')" ..
-        " ON CONFLICT (dbname, host) DO UPDATE SET state = 'Pending'")
+        _, rc = db:exec("INSERT INTO comdb2_physreps(dbname, host, state) VALUES ('" ..  dbname .. "', '" .. hostname .. "', 'Pending')" ..
+                        " ON CONFLICT (dbname, host) DO UPDATE SET state = 'Pending'")
     end
-    db:commit()
+    if rc ~= 0 then
+        db:rollback()
+        return rc, {}
+    end
+    return db:commit(), candidates
+end
+
+local function main(dbname, hostname, lsn, source_dbname, source_hosts)
+
+    local pfile, poffset = string.match(lsn, "(%d+):(%d+)")
+    pfile = tonumber(pfile)
+    poffset = tonumber(poffset)
+    print(
+        "physrep_register_replicant: dbname = '" .. dbname .. "', hostname = '" .. hostname ..
+        "', file = " .. pfile .. ", offset = " .. poffset .. ", source_dbname = '" .. source_dbname .. "', source_hosts = '" ..
+        source_hosts .. "'")
+
+    db:num_columns(3)
+    db:column_name("tier", 1)
+    db:column_type("int", 1)
+    db:column_name("dbname", 2)
+    db:column_type("text", 2)
+    db:column_name("host", 3)
+    db:column_type("text", 3)
+
+    -- Retrieve physrep tunables
+    local tunables = sys.physrep_tunables(source_dbname)
+
+    local rc, candidates
+    for i = 1, max_verify_retries do
+        rc, candidates = register(dbname, hostname, pfile, poffset, source_dbname, source_hosts, tunables)
+        if rc ~= db.err_verify then
+            break
+        end
+    end
+    if rc ~= 0 then
+        return -201, "sys.physrep.register_replicant failed rc " .. rc .. ": " .. db:error()
+    end
+    for _, row in ipairs(candidates) do
+        db:emit(row)
+    end
 end
