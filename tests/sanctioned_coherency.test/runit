@@ -1,0 +1,130 @@
+#!/usr/bin/env bash
+bash -n "$0" || exit 1
+
+# With coherency_sanctioned_only the master gives no coherency lease to a node
+# outside the sanctioned list, so that node can't serve sql
+
+. ${TESTSROOTDIR}/tools/runit_common.sh
+. ${TESTSROOTDIR}/tools/cluster_utils.sh
+
+export debug=1
+[[ $debug == "1" ]] && set -x
+
+if [[ -z "$CLUSTER" ]]; then
+    echo "This test requires a cluster"
+    exit 0
+fi
+
+nodes=($CLUSTER)
+if [[ ${#nodes[@]} -lt 3 ]]; then
+    echo "This test requires at least 3 nodes"
+    exit 0
+fi
+
+function send_all
+{
+    for node in ${nodes[@]}; do
+        $CDB2SQL_EXE $CDB2_OPTIONS --tabs $DBNAME --host $node "exec procedure sys.cmd.send('$1')" >/dev/null 2>&1
+    done
+}
+
+function set_all
+{
+    for node in ${nodes[@]}; do
+        $CDB2SQL_EXE $CDB2_OPTIONS --tabs $DBNAME --host $node "put tunable 'coherency_sanctioned_only' $1" >/dev/null 2>&1
+    done
+}
+
+function state_of
+{
+    $CDB2SQL_EXE $CDB2_OPTIONS --tabs $DBNAME --host $master "select coherent_state from comdb2_cluster where host = '$1'"
+}
+
+# Write until $1's state on the master is (or, with "!", isn't) coherent
+function wait_for_state
+{
+    typeset node=$1 want=$2 state
+    for ((i = 0; i < 30; i++)); do
+        $CDB2SQL_EXE $CDB2_OPTIONS --tabs $DBNAME --host $master "insert into t1 values($i)" >/dev/null
+        state=$(state_of $node)
+        if [[ "$want" == "!coherent" ]]; then
+            [[ "$state" != "coherent" ]] && return 0
+        else
+            [[ "$state" == "coherent" ]] && return 0
+        fi
+        sleep 1
+    done
+    return 1
+}
+
+function serves_sql
+{
+    timeout 20 $CDB2SQL_EXE $CDB2_OPTIONS --tabs $DBNAME --host $1 "select 1" >/dev/null 2>&1
+}
+
+$CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "create table t1(a int)" || failexit "create table"
+master=$(get_master_and_fail_if_not_found) || failexit "no master"
+unsanctioned=""
+for node in ${nodes[@]}; do
+    [[ "$node" != "$master" ]] && unsanctioned=$node && break
+done
+
+function cleanup
+{
+    set_all 0
+    send_all "bdb add $unsanctioned"
+}
+trap cleanup EXIT
+
+# The tunable alone changes nothing while every node is sanctioned
+set_all 1
+wait_for_state $unsanctioned coherent || failexit "$unsanctioned not coherent with every node sanctioned"
+serves_sql $unsanctioned || failexit "$unsanctioned can't serve sql with every node sanctioned"
+
+# Off the sanctioned list: no lease, so no sql
+send_all "bdb del $unsanctioned"
+wait_for_state $unsanctioned '!coherent' || failexit "$unsanctioned stayed coherent off the sanctioned list"
+sleep 2
+if serves_sql $unsanctioned; then
+    failexit "$unsanctioned served sql off the sanctioned list"
+fi
+x=$($CDB2SQL_EXE $CDB2_OPTIONS --tabs $DBNAME --host $master "select count(*) from t1")
+[[ "$x" -gt 0 ]] || failexit "master lost writes while $unsanctioned was incoherent"
+
+# Tunable off: the node is a full replicant again even though it isn't sanctioned
+set_all 0
+wait_for_state $unsanctioned coherent || failexit "$unsanctioned didn't become coherent with the tunable off"
+serves_sql $unsanctioned || failexit "$unsanctioned can't serve sql with the tunable off"
+
+# Tunable on and node sanctioned again: coherent
+set_all 1
+send_all "bdb add $unsanctioned"
+wait_for_state $unsanctioned coherent || failexit "$unsanctioned didn't become coherent once sanctioned"
+serves_sql $unsanctioned || failexit "$unsanctioned can't serve sql once sanctioned"
+
+# With no sanctioned nodes no replicant gets a lease; re-adding them restores every one
+function readd_all
+{
+    for node in ${nodes[@]}; do
+        send_all "bdb add $node"
+    done
+}
+trap "readd_all; cleanup" EXIT
+for node in ${nodes[@]}; do
+    send_all "bdb del $node"
+done
+for node in ${nodes[@]}; do
+    [[ "$node" == "$master" ]] && continue
+    wait_for_state $node '!coherent' || failexit "$node stayed coherent with no sanctioned nodes"
+done
+readd_all
+for node in ${nodes[@]}; do
+    [[ "$node" == "$master" ]] && continue
+    wait_for_state $node coherent || failexit "$node didn't become coherent once every node was sanctioned again"
+    serves_sql $node || failexit "$node can't serve sql once every node was sanctioned again"
+done
+
+set_all 0
+trap - EXIT
+echo "Success"
+exit 0

@@ -1,0 +1,1 @@
+Verify that with coherency_sanctioned_only a non-sanctioned node goes incoherent and stops serving sql, that no replicant is coherent with an empty sanctioned list, and that nodes serve again once sanctioned

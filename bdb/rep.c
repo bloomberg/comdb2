@@ -489,6 +489,8 @@ void bdb_transfermaster(bdb_state_type *bdb_state)
 }
 
 int gbl_set_coherent_state_trace = 1;
+/* Only sanctioned nodes may become coherent, and so serve sql */
+int gbl_coherency_sanctioned_only = 0;
 
 char *coherent_state_to_str(int state)
 {
@@ -522,6 +524,33 @@ static inline void set_coherent_state(bdb_state_type *bdb_state,
         logmsg(LOGMSG_USER, "%s line %d %s state is already %s\n",
                 func, line, host->str, coherent_state_to_str(state));
     }
+}
+
+static int coherency_allowed(bdb_state_type *bdb_state, struct interned_string *host)
+{
+    struct interned_string *sanc[REPMAX];
+    int nsanc;
+
+    if (!gbl_coherency_sanctioned_only)
+        return 1;
+
+    /* With no sanctioned list, no node may be coherent */
+    nsanc = net_get_sanctioned_node_list_interned(bdb_state->repinfo->netinfo, REPMAX, sanc);
+    for (int i = 0; i < nsanc && i < REPMAX; i++) {
+        if (sanc[i] == host)
+            return 1;
+    }
+    return 0;
+}
+
+/* Treat a node that may not be coherent like one that is routed off */
+static int coherency_nodeup(bdb_state_type *bdb_state, struct interned_string *host, int *is_drtest)
+{
+    if (!coherency_allowed(bdb_state, host)) {
+        *is_drtest = 0;
+        return 0;
+    }
+    return bdb_state->callback->nodeup_drtest_rtn(bdb_state, host->str, is_drtest);
 }
 
 void bdb_transfermaster_tonode(bdb_state_type *bdb_state, struct interned_string *tohost)
@@ -2645,7 +2674,7 @@ static void got_new_seqnum_from_node(bdb_state_type *bdb_state,
         if (h->coherent_state == STATE_INCOHERENT ||
             h->coherent_state == STATE_INCOHERENT_WAIT) {
             if (bdb_state->callback->nodeup_drtest_rtn) {
-                nodeup = bdb_state->callback->nodeup_drtest_rtn(bdb_state, host, &is_drtest);
+                nodeup = coherency_nodeup(bdb_state, hostinterned, &is_drtest);
                 int in_penalty = downgrade_penalty && (gettimeofday_ms() - h->last_downgrade_time) <= downgrade_penalty;
                 /* A node already INCOHERENT_WAIT stays there while it is dr-tested offline
                  * or within the downgrade penalty: nothing to re-evaluate on its acks */
@@ -2997,7 +3026,7 @@ static int bdb_wait_for_seqnum_from_node_int(bdb_state_type *bdb_state,
     }
     int is_drtest = 0;
     if (bdb_state->callback->nodeup_drtest_rtn)
-        if (!(bdb_state->callback->nodeup_drtest_rtn(bdb_state, host->str, &is_drtest)))
+        if (!coherency_nodeup(bdb_state, host, &is_drtest))
             node_is_rtcpu = 1;
 
     /* dont wait if it's in a skipped state */
