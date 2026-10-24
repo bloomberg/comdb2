@@ -13,6 +13,7 @@
 -- viable source.  The replicant then rejected it locally in
 -- physrep_allowed_source(), found no candidate leaders, and retried forever.
 local max_verify_retries = 10
+local max_topology_depth = 32
 
 -- Returns the commit rc and the candidate rows, which are emitted only once the commit succeeds.
 local function register(dbname, hostname, pfile, poffset, source_dbname, source_hosts, tunables)
@@ -32,6 +33,11 @@ local function register(dbname, hostname, pfile, poffset, source_dbname, source_
     local physrep_max_candidates = tunables["physrep_max_candidates"]
     local firstfile = tunables["firstfile"]
     local cte
+
+    -- Never walk through the requester: it must not be offered itself or anything downstream of it
+    local not_requester = " AND NOT (p.dbname = '" .. dbname .. "' AND p.host = '" .. hostname .. "') "
+    -- Bound the walk so a cycle elsewhere in the topology cannot make it run forever
+    local depth_cap = " AND t.tier < " .. max_topology_depth .. " "
 
     -- Two-tier selection when the metadb tracks firstfile (i.e. comdb2_physreps
     -- has a firstfile column): the primary pass is STRICT -- only sources whose
@@ -54,7 +60,7 @@ local function register(dbname, hostname, pfile, poffset, source_dbname, source_
                  "         UNION ALL " ..
                  "         SELECT p.dbname, p.host, t.tier+1  " ..
                  "             FROM comdb2_physrep_connections p, tiers t, comdb2_physreps c" ..
-                 "             WHERE p.source_dbname = t.dbname AND p.source_host = t.host " ..
+                 "             WHERE p.source_dbname = t.dbname AND p.source_host = t.host " .. not_requester .. depth_cap ..
                  "             AND p.dbname = c.dbname AND p.host = c.host " ..
                  "             AND (c.file >= " .. pfile .. " AND " ..
                  "                 c.firstfile IS NOT NULL AND c.firstfile <= " .. pfile ..  ")" ..
@@ -78,7 +84,7 @@ local function register(dbname, hostname, pfile, poffset, source_dbname, source_
                  "         UNION ALL " ..
                  "         SELECT p.dbname, p.host, t.tier+1  " ..
                  "             FROM comdb2_physrep_connections p, tiers t, comdb2_physreps c" ..
-                 "             WHERE p.source_dbname = t.dbname AND p.source_host = t.host" ..
+                 "             WHERE p.source_dbname = t.dbname AND p.source_host = t.host" .. not_requester .. depth_cap ..
                  "             AND p.dbname = c.dbname AND p.host = c.host " ..
                  "             AND (c.last_keepalive > (NOW() - cast (600 as sec)))), " ..
                  "    child_count (dbname, host, tier, cnt) AS " ..
@@ -122,7 +128,7 @@ local function register(dbname, hostname, pfile, poffset, source_dbname, source_
                          "         UNION ALL " ..
                          "         SELECT p.dbname, p.host, t.tier+1  " ..
                          "             FROM comdb2_physrep_connections p, tiers t, comdb2_physreps c" ..
-                         "             WHERE p.source_dbname = t.dbname AND p.source_host = t.host " ..
+                         "             WHERE p.source_dbname = t.dbname AND p.source_host = t.host " .. not_requester .. depth_cap ..
                          "             AND p.dbname = c.dbname AND p.host = c.host " ..
                          "             AND (c.file >= " .. pfile .. " AND " ..
                          "                 (c.firstfile IS NULL OR c.firstfile <= " .. pfile ..  "))), " ..
@@ -145,7 +151,7 @@ local function register(dbname, hostname, pfile, poffset, source_dbname, source_
                          "         UNION ALL " ..
                          "         SELECT p.dbname, p.host, t.tier+1  " ..
                          "             FROM comdb2_physrep_connections p, tiers t " ..
-                         "             WHERE p.source_dbname = t.dbname AND p.source_host = t.host), " ..
+                         "             WHERE p.source_dbname = t.dbname AND p.source_host = t.host" .. not_requester .. depth_cap .. "), " ..
                          "    child_count (dbname, host, tier, cnt) AS " ..
                          "        (SELECT t.dbname, t.host, t.tier, count (*) " ..
                          "             FROM tiers t LEFT OUTER JOIN comdb2_physrep_connections p " ..
