@@ -613,6 +613,8 @@ reset:
  * Same as handle_fdb_push, but for writes
  *
  */
+int gbl_debug_fail_push_write_on_replay = 0;
+
 int handle_fdb_push_write(sqlclntstate *clnt, struct errstat *err, int n_extra_sets, const char **sets, const char *sql)
 {
     fdb_push_connector_t *push = clnt->fdb_push;
@@ -711,6 +713,12 @@ int handle_fdb_push_write(sqlclntstate *clnt, struct errstat *err, int n_extra_s
         goto hndl_err;
     }
 
+    if (clnt->osql.replay != OSQL_RETRY_NONE && clnt->verify_retries <= gbl_debug_fail_push_write_on_replay) {
+        logmsg(LOGMSG_USER, "%s: debug failing replayed push write, retry %d\n", __func__, clnt->verify_retries);
+        rc = -1;
+        goto hndl_err;
+    }
+
     cdb2_effects_tp effects = {0};
     if (!clnt->in_client_trans || clnt->verifyretry_off || clnt->use_2pc) {
         rc = cdb2_get_effects(hndl, &effects);
@@ -740,10 +748,10 @@ int handle_fdb_push_write(sqlclntstate *clnt, struct errstat *err, int n_extra_s
 
     if (clnt->use_2pc && tran->writes_status == FDB_TRAN_WRITES) {
         /* if this is 2pc, make sure we have a local transaction to coordinate remote writes */
-        int rc = osql_sock_start_deferred(clnt);
+        rc = osql_sock_start_deferred(clnt);
         if (rc) {
             logmsg(LOGMSG_ERROR, "%s: failed to start sosql, rc=%d\n", __func__, rc);
-            return rc;
+            goto put; /* release the fdb lock */
         }
     }
 
@@ -847,7 +855,11 @@ hndl_err:
         goto free;
     }
     errstat_set_rcstrf(err, rc, "%s", errstr);
-    if (!is_stored_proc(clnt)) {
+    if (clnt->osql.replay != OSQL_RETRY_NONE) {
+        /* no client to answer; the caller fails this replay attempt */
+        logmsg(LOGMSG_ERROR, "%s: replayed write to %s failed rc %d \"%s\" retry %d\n", __func__, push->remotedb, rc,
+               errstr ? errstr : "", clnt->verify_retries);
+    } else if (!is_stored_proc(clnt)) {
         int irc = write_response(clnt, RESPONSE_ERROR, (void *)errstr, rc);
         if (irc) {
             logmsg(LOGMSG_DEBUG, "Failed to write error to client");

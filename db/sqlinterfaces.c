@@ -4324,6 +4324,14 @@ retry_legacy_remote:
                     rec.stmt = NULL;
                 }
                 rc = handle_fdb_push_write(clnt, &err, 0, NULL, clnt->sql);
+                /* 2pc remote writes commit with the local txn, so a verify replay must re-push them */
+                if (rc == 0 && clnt->use_2pc && clnt->in_client_trans && srs_tran_add_query(clnt))
+                    logmsg(LOGMSG_ERROR, "Fail to add remote write to transaction replay session\n");
+                if (rc && rc != -2 && clnt->osql.replay != OSQL_RETRY_NONE) {
+                    /* no client sees a replayed write; abort this attempt so it never commits without it */
+                    clnt->early_retry = EARLY_ERR_VERIFY;
+                    sql_set_sqlengine_state(clnt, __FILE__, __LINE__, SQLENG_INTRANS_STATE);
+                }
             }
             if (rc == -2) {
                 logmsg(LOGMSG_WARN, "QUERY %s disable push\n", clnt->sql);
@@ -5435,8 +5443,8 @@ void cleanup_clnt(struct sqlclntstate *clnt)
     if (clnt->dist_txnid) {
         free(clnt->dist_txnid);
         clnt->dist_txnid = NULL;
-        clnt->dist_timestamp = 0;
     }
+    clnt->dist_timestamp = 0;
     if (clnt->coordinator_dbname) {
         free(clnt->coordinator_dbname);
         clnt->coordinator_dbname = NULL;
@@ -5687,8 +5695,8 @@ void reset_clnt(struct sqlclntstate *clnt, int initial)
     if (clnt->dist_txnid) {
         free(clnt->dist_txnid);
         clnt->dist_txnid = NULL;
-        clnt->dist_timestamp = 0;
     }
+    clnt->dist_timestamp = 0;
 
     clear_session_tbls(clnt);
 

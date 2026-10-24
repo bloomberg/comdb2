@@ -17,7 +17,7 @@ export comdb2db_hosts="${SENARY_DBNAME}:1234"
 export COMDB2DB_DBNAME=${SENARY_DBNAME}
 export COMDB2DB_OPTIONS=${SENARY_CDB2_OPTIONS}
 export LOGDIR=$TESTDIR/logs
-export LONGINSERTTIME=10000
+export LONGINSERTTIME=30000
 
 export LONGUPDATETIME=30000
 export FAIL_ON_LONG_INSERT=1
@@ -3354,6 +3354,84 @@ function test_verify_retry
     done
 }
 
+function count_failed_replay_writes
+{
+    cat $LOGDIR/${DBNAME}.db $LOGDIR/${DBNAME}.*.db 2>/dev/null | grep -c "debug failing replayed push write"
+}
+
+# Fail pushed writes on the first $1 replays; a txn must commit everywhere or nowhere.
+# With $3 == 0 the txn has only remote writes, so the first replayed statement is a push.
+function replay_push_write_failure
+{
+    typeset fails=$1
+    typeset expect_all=$2
+    typeset local=${3:-1}
+    typeset records=300
+    typeset committed=""
+    typeset ncommitted=0
+    typeset j=0
+    typeset r=0
+    typeset localins=""
+    typeset tables="$SECONDARY_DBNAME.t1 $TERTIARY_DBNAME.t1 $QUATERNARY_DBNAME.t1 $QUINARY_DBNAME.t1"
+    typeset before=$(count_failed_replay_writes)
+
+    if [[ "$local" == "1" ]]; then
+        tables="t1 $tables"
+    fi
+
+    toggle_verify_retry_max 10
+    toggle_tunable debug_fail_push_write_on_replay $fails 0 1
+    toggle_random_verify_errors 1
+    while [[ $j -lt $records ]]; do
+        [[ "$local" == "1" ]] && localins="insert into t1(a) values($j)"
+        echo "begin
+$localins
+insert into $SECONDARY_DBNAME.t1(a) values($j)
+insert into $TERTIARY_DBNAME.t1(a) values($j)
+insert into $QUATERNARY_DBNAME.t1(a) values($j)
+insert into $QUINARY_DBNAME.t1(a) values($j)
+commit
+" | $CDB2SQL_EXE $DEBUGTRACE $CDB2_OPTIONS $DBNAME default - >/dev/null 2>&1
+        r=$?
+        if [[ "$r" == "0" ]]; then
+            committed="$committed $j"
+            let ncommitted=ncommitted+1
+        elif [[ "$expect_all" == "1" ]]; then
+            fail_exit "replay_push_write_failure $fails $local: txn $j failed"
+        fi
+        let j=j+1
+    done
+    toggle_random_verify_errors 0
+    toggle_tunable debug_fail_push_write_on_replay 0 0 1
+    toggle_verify_retry_max 499
+
+    typeset after=$(count_failed_replay_writes)
+    # remote-only txns may not draw a verify error; consistency below is the real check for them
+    if [[ "$local" == "1" ]]; then
+        [[ "$after" -gt "$before" ]] || fail_exit "replay_push_write_failure $fails: no replayed push write was failed"
+        [[ "$expect_all" == "1" || "$ncommitted" -lt "$records" ]] || fail_exit "replay_push_write_failure $fails: no txn failed"
+    else
+        typeset x=$($CDB2SQL_EXE -tabs $CDB2_OPTIONS $DBNAME default "select count(*) from t1")
+        [[ "$x" == "0" ]] || fail_exit "replay_push_write_failure $fails $local: local t1 has $x rows"
+    fi
+
+    typeset expected=$(echo $committed | tr ' ' '\n' | sort -n | tr '\n' ' ')
+    for tbl in $tables; do
+        typeset found=$($CDB2SQL_EXE -tabs $CDB2_OPTIONS $DBNAME default "select a from $tbl order by a" | tr '\n' ' ')
+        [[ "$found" == "$expected" ]] || fail_exit "replay_push_write_failure $fails $local: $tbl has \"$found\", expected \"$expected\""
+    done
+    echo "replay_push_write_failure $fails $local: committed $ncommitted of $records, failed $(( after - before )) replayed writes"
+    delete_records
+}
+
+function test_replay_push_write_failure
+{
+    replay_push_write_failure 1000 0
+    replay_push_write_failure 1 1
+    replay_push_write_failure 1000 0 0
+    replay_push_write_failure 1 1 0
+}
+
 function test_verify_participant_constraint_violation
 {
     typeset cnt=0
@@ -3609,14 +3687,10 @@ function run_test
     no_coordinator_writes
     testcase_finish $testcase
 
-    # This test is flakey- peridically returns 'unknown error'..
-    # also fixed by fdb push-mode.  Disable until push-mode verify-retry
-    # is implemented- will re-test thoroughly then
-
-    #testcase="verify_no_distcommit"
-    #testcase_preamble $testcase
-    #verify_no_distcommit
-    #testcase_finish $testcase
+    testcase="verify_no_distcommit"
+    testcase_preamble $testcase
+    verify_no_distcommit
+    testcase_finish $testcase
 
     # Writes to comdb2_distributed_transactions
     testcase="allow_write_to_disttxn_table"
@@ -3675,7 +3749,17 @@ function run_test
     test_compound_distributed_deadlocks
     testcase_finish $testcase
 
-    # Verify-retry test
+    # Verify-retry tests
+    testcase="test_verify_retry"
+    testcase_preamble $testcase
+    test_verify_retry
+    testcase_finish $testcase
+
+    testcase="test_replay_push_write_failure"
+    testcase_preamble $testcase
+    test_replay_push_write_failure
+    testcase_finish $testcase
+
     testcase="test_verify_participant_constraint_violation"
     testcase_preamble $testcase
     test_verify_participant_constraint_violation
