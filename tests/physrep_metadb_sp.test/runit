@@ -1,0 +1,94 @@
+#!/usr/bin/env bash
+bash -n "$0" || exit 1
+
+# The physrep metadb stored procedures, run against this db as the metadb: verify errors are retried and other
+# failures are returned.
+
+db=$1
+set -e
+
+master=$(cdb2sql --tabs ${CDB2_OPTIONS} $db default "select host from comdb2_cluster where is_master='Y'")
+
+function sql
+{
+    cdb2sql --tabs ${CDB2_OPTIONS} $db default "$@"
+}
+
+function fail
+{
+    echo "FAILED: $*"
+    exit 1
+}
+
+function create_tables
+{
+    local firstfile=$1
+    sql "drop table if exists comdb2_physrep_connections"
+    sql "drop table if exists comdb2_physreps"
+    if [[ $firstfile == 1 ]]; then
+        sql "create table comdb2_physreps(dbname cstring(60), host cstring(120), file int, offset int, firstfile int, last_keepalive datetime, state cstring(60), unique (dbname, host))"
+    else
+        sql "create table comdb2_physreps(dbname cstring(60), host cstring(120), file int, offset int, last_keepalive datetime, state cstring(60), unique (dbname, host))"
+    fi
+    sql "create table comdb2_physrep_connections(dbname cstring(60), host cstring(120), source_dbname cstring(60), source_host cstring(120), unique (dbname, host, source_dbname, source_host), foreign key(dbname, host) references comdb2_physreps(dbname, host) on delete cascade)"
+}
+
+# add_node <firstfile> <dbname> <host>
+function add_node
+{
+    if [[ $1 == 1 ]]; then
+        sql "insert into comdb2_physreps(dbname, host, file, offset, firstfile, last_keepalive, state) values ('$2', '$3', 100, 0, 1, now(), 'Active')"
+    else
+        sql "insert into comdb2_physreps(dbname, host, file, offset, last_keepalive, state) values ('$2', '$3', 100, 0, now(), 'Active')"
+    fi
+}
+
+# link <dbname> <host> <source_dbname> <source_host>
+function link
+{
+    sql "insert into comdb2_physrep_connections values ('$1', '$2', '$3', '$4')"
+}
+
+function connections
+{
+    sql "select dbname || '@' || host || '<-' || source_dbname || '@' || source_host from comdb2_physrep_connections order by 1" | tr '\n' ' '
+}
+
+# src@s1 <- mid@m1 <- leaf@l1: mid replicates from src, and leaf from mid
+function build_chain
+{
+    local firstfile=$1
+    create_tables $firstfile
+    add_node $firstfile src s1
+    add_node $firstfile src s2
+    add_node $firstfile mid m1
+    add_node $firstfile leaf l1
+    link mid m1 src s1
+    link leaf l1 mid m1
+}
+
+echo "== reset_nodes retries a verify error"
+build_chain 0
+# Every other record insert on the master fails verify; m2 has no physreps row, so its upsert is one
+cdb2sql ${CDB2_OPTIONS} --host $master $db "exec procedure sys.cmd.send('on alternate_verify_fail')"
+rc=0
+sql "exec procedure sys.physrep.reset_nodes('mid', \"'m1' 'm2'\", 'Inactive')" || rc=$?
+cdb2sql ${CDB2_OPTIONS} --host $master $db "exec procedure sys.cmd.send('off alternate_verify_fail')"
+[[ $rc == 0 ]] || fail "reset_nodes returned $rc"
+[[ $(sql "select count(*) from comdb2_physrep_connections where dbname = 'mid'") == 0 ]] ||
+    fail "reset_nodes left mid's connection: $(connections)"
+[[ $(sql "select count(*) from comdb2_physreps where dbname = 'mid' and state = 'Inactive'") == 2 ]] ||
+    fail "reset_nodes did not mark m1 and m2 Inactive"
+
+echo "== update_registry returns a failure that is not a verify error"
+build_chain 0
+# m9 has no physreps row, so linking it violates the foreign key
+if out=$(sql "exec procedure sys.physrep.update_registry('mid', 'm9', 'src', 's2', \"'m1'\")" 2>&1); then
+    fail "update_registry succeeded despite a foreign key violation: $out"
+fi
+echo "$out"
+[[ $out == *"rc -201"* ]] || fail "expected rc -201: $out"
+[[ $(connections) == "leaf@l1<-mid@m1 mid@m1<-src@s1 " ]] || fail "failed update_registry changed connections: $(connections)"
+
+echo "Testcase passed."
+exit 0
