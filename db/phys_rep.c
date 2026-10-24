@@ -544,6 +544,9 @@ int physrep_get_metadb_or_local_hndl(cdb2_hndl_tp **hndl) {
       ?  get_metadb_hndl(hndl) : get_local_hndl(hndl);
 }
 
+/* sys.physrep.update_registry refused the link: the source is downstream of us */
+#define PHYSREP_REGISTRY_REFUSED_CYCLE -202
+
 static int update_registry(cdb2_hndl_tp *repl_metadb, const char *remote_dbname, const char *remote_host)
 {
     char cmd[120 + nodes_list_sz];
@@ -586,6 +589,11 @@ static int update_registry(cdb2_hndl_tp *repl_metadb, const char *remote_dbname,
     } else {
         physrep_logmsg(LOGMSG_ERROR, "%s:%d Failed to execute (rc: %d)\n", __func__, __LINE__, rc);
         return 1;
+    }
+    if (rc != CDB2_OK_DONE) {
+        physrep_logmsg(LOGMSG_ERROR, "%s:%d sys.physrep.update_registry failed (rc: %d) %s\n", __func__, __LINE__, rc,
+                       cdb2_errstr(repl_metadb));
+        return rc;
     }
     return 0;
 }
@@ -652,7 +660,8 @@ static int send_reset_nodes_int(cdb2_hndl_tp *hndl, const char *state)
         if (rc == CDB2_OK_DONE)
             rc = 0;
     } else {
-        physrep_logmsg(LOGMSG_ERROR, "%s:%d Failed to execute (rc: %d)\n", __func__, __LINE__, rc);
+        physrep_logmsg(LOGMSG_ERROR, "%s:%d Failed to execute (rc: %d) %s\n", __func__, __LINE__, rc,
+                       cdb2_errstr(hndl));
         rc = -1;
     }
 
@@ -1125,14 +1134,20 @@ static DB_Connection *find_new_repl_db(cdb2_hndl_tp *repl_metadb, cdb2_hndl_tp *
                 /* cov == -1 (unknown): fall through; handle_truncation is the backstop. */
             }
 
-            physrep_logmsg(LOGMSG_USER, "Attached to '%s' db '%s' for replication\n", cnct->hostname, cnct->dbname);
-
             /* Execute sys.physrep.update_registry() on the replication metadb cluster */
             rc = update_registry(repl_metadb, cnct->dbname, cnct->hostname);
-            if (rc != 0) {
+            if (rc == PHYSREP_REGISTRY_REFUSED_CYCLE) {
+                physrep_logmsg(LOGMSG_ERROR, "%s:%d source %s@%s is downstream of me, skipping\n", __func__, __LINE__,
+                               cnct->dbname, cnct->hostname);
+                cnct->last_failed = time(NULL);
+                cdb2_close(*repl_db);
+                continue;
+            } else if (rc != 0) {
                 physrep_logmsg(LOGMSG_ERROR, "%s:%d Failed to exec sys.physrep.update_registry() on %s:%s\n", __func__,
                                __LINE__, cnct->dbname, cnct->hostname);
             }
+
+            physrep_logmsg(LOGMSG_USER, "Attached to '%s' db '%s' for replication\n", cnct->hostname, cnct->dbname);
 
             cnct->last_cnct = time(NULL);
             cnct->is_up = 1;
@@ -1277,7 +1292,13 @@ static int send_keepalive_int(cdb2_hndl_tp *metadb)
     ATOMIC_ADD64(gbl_physrep_metadb_sql_count, 1);
     rc = cdb2_run_statement(metadb, cmd);
     if (rc == CDB2_OK) {
-        while (cdb2_next_record(metadb) == CDB2_OK) {
+        while ((rc = cdb2_next_record(metadb)) == CDB2_OK) {
+        }
+        if (rc == CDB2_OK_DONE) {
+            rc = CDB2_OK;
+        } else {
+            physrep_logmsg(LOGMSG_ERROR, "%s:%d keepalive failed (rc: %d) %s\n", __func__, __LINE__, rc,
+                           cdb2_errstr(metadb));
         }
     } else if (gbl_physrep_debug)
         physrep_logmsg(LOGMSG_USER, "%s:%d Failed to send keepalive\n", __func__, __LINE__);
@@ -1648,7 +1669,14 @@ repl_loop:
                 repl_db_cnct = &rev_db_cnct;
 
                 rc = update_registry(repl_metadb, rev_conn_hndl->remote_dbname, rev_conn_hndl->remote_host);
-                if (rc != 0) {
+                if (rc == PHYSREP_REGISTRY_REFUSED_CYCLE) {
+                    physrep_logmsg(LOGMSG_ERROR,
+                                   "%s:%d source %s@%s is downstream of me, dropping reverse connection\n", __func__,
+                                   __LINE__, rev_conn_hndl->remote_dbname, rev_conn_hndl->remote_host);
+                    close_repl_connection(repl_db_cnct, repl_db, __func__, __LINE__);
+                    cdb2_close(repl_metadb);
+                    goto sleep_and_retry;
+                } else if (rc != 0) {
                     physrep_logmsg(LOGMSG_ERROR, "%s:%d Failed to exec sys.physrep.update_registry() (rc: %d)\n",
                                    __func__, __LINE__, rc);
                 }
@@ -2093,10 +2121,14 @@ int start_physrep_threads() {
     // Sources are 'Active' or 'Inactive'.  The casing has to match the state
     // that sys.physrep.register_replicant filters on -- see register_self().
     if (gbl_physrep_source_dbname == NULL) {
-        send_reset_nodes("Active", 0);
+        rc = send_reset_nodes("Active", 0);
         // Physreps are 'Inactive' until they begin replicating
     } else {
-        send_reset_nodes("Inactive", 0);
+        rc = send_reset_nodes("Inactive", 0);
+    }
+    if (rc != 0) {
+        physrep_logmsg(LOGMSG_ERROR, "%s:%d Failed to reset info in replication metadb tables (rc: %d)\n", __func__,
+                       __LINE__, rc);
     }
 
     // Treat altmeta like a source: physreps which list it as primary meta
