@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 bash -n "$0" || exit 1
 
-# The physrep metadb stored procedures, run against this db as the metadb: verify errors are retried and other
-# failures are returned.
+# The physrep metadb stored procedures, run against this db as the metadb: verify errors are retried, other
+# failures are returned, a node is never offered or linked to its own subtree, and a cycle cannot hang registration.
 
 db=$1
 set -e
@@ -89,6 +89,86 @@ fi
 echo "$out"
 [[ $out == *"rc -201"* ]] || fail "expected rc -201: $out"
 [[ $(connections) == "leaf@l1<-mid@m1 mid@m1<-src@s1 " ]] || fail "failed update_registry changed connections: $(connections)"
+
+for firstfile in 0 1; do
+    echo "== register_replicant never offers the requester or its subtree (firstfile $firstfile)"
+    build_chain $firstfile
+    out=$(sql "exec procedure sys.physrep.register_replicant('mid', 'm1', '100:0', 'src', \"'s1', 's2'\")")
+    echo "$out"
+    echo "$out" | grep -qw s1 || fail "register_replicant did not offer src@s1: $out"
+    if echo "$out" | grep -qwE 'm1|l1'; then
+        fail "register_replicant offered mid@m1 itself or its child leaf@l1: $out"
+    fi
+done
+
+echo "== update_registry refuses to link a node to itself or its own descendant"
+build_chain 0
+for src in "leaf', 'l1" "mid', 'm1"; do
+    if out=$(sql "exec procedure sys.physrep.update_registry('mid', 'm1', '$src', \"'m1'\")" 2>&1); then
+        fail "update_registry linked mid@m1 to '$src': $out"
+    fi
+    echo "$out"
+    [[ $out == *"rc -202"* ]] || fail "expected rc -202: $out"
+    [[ $(connections) == "leaf@l1<-mid@m1 mid@m1<-src@s1 " ]] || fail "refused update_registry changed connections: $(connections)"
+done
+sql "exec procedure sys.physrep.update_registry('mid', 'm1', 'src', 's2', \"'m1'\")"
+[[ $(connections) == "leaf@l1<-mid@m1 mid@m1<-src@s2 " ]] || fail "update_registry did not move mid@m1 to src@s2: $(connections)"
+
+echo "== update_registry refuses to link a node below its grandchild"
+build_chain 0
+add_node 0 leaf2 x1
+link leaf2 x1 leaf l1
+if out=$(sql "exec procedure sys.physrep.update_registry('mid', 'm1', 'leaf2', 'x1', \"'m1'\")" 2>&1); then
+    fail "update_registry linked mid@m1 to its grandchild leaf2@x1: $out"
+fi
+echo "$out"
+[[ $out == *"rc -202"* ]] || fail "expected rc -202: $out"
+[[ $(connections) == "leaf2@x1<-leaf@l1 leaf@l1<-mid@m1 mid@m1<-src@s1 " ]] || fail "refused update_registry changed connections: $(connections)"
+
+echo "== update_registry links a sibling to the same source"
+build_chain 0
+add_node 0 leaf l2
+sql "exec procedure sys.physrep.update_registry('leaf', 'l2', 'mid', 'm1', \"'l2'\")"
+[[ $(connections) == "leaf@l1<-mid@m1 leaf@l2<-mid@m1 mid@m1<-src@s1 " ]] || fail "update_registry did not link leaf@l2 to mid@m1: $(connections)"
+
+for firstfile in 0 1; do
+    echo "== register_replicant returns despite a cycle it is not part of (firstfile $firstfile)"
+    build_chain $firstfile
+    add_node $firstfile leaf l2
+    # mid@m1 <-> leaf@l1 is a cycle; leaf@l2 registering from mid@m1 walks it without passing through itself
+    link mid m1 leaf l1
+    rc=0
+    out=$(timeout 60 cdb2sql --tabs ${CDB2_OPTIONS} $db default "exec procedure sys.physrep.register_replicant('leaf', 'l2', '100:0', 'mid', \"'m1'\")" 2>&1) || rc=$?
+    [[ $rc != 124 ]] || fail "register_replicant did not return with a cycle in the topology"
+    [[ $rc == 0 ]] || fail "register_replicant failed rc $rc: $out"
+    echo "$out" | grep -qw m1 || fail "register_replicant did not offer mid@m1: $out"
+done
+
+echo "== update_registry returns despite a cycle above the source"
+build_chain 0
+add_node 0 a a1
+add_node 0 b b1
+# a@a1 <-> b@b1 is a cycle the caller is not part of; the walk up from a@a1 stops at the depth cap
+link a a1 b b1
+link b b1 a a1
+rc=0
+out=$(timeout 60 cdb2sql --tabs ${CDB2_OPTIONS} $db default "exec procedure sys.physrep.update_registry('leaf', 'l1', 'a', 'a1', \"'l1'\")" 2>&1) || rc=$?
+[[ $rc != 124 ]] || fail "update_registry did not return with a cycle above the source"
+[[ $rc == 0 ]] || fail "update_registry failed rc $rc: $out"
+[[ $(connections) == "a@a1<-b@b1 b@b1<-a@a1 leaf@l1<-a@a1 mid@m1<-src@s1 " ]] || fail "update_registry did not move leaf@l1 to a@a1: $(connections)"
+
+echo "== update_registry finds the caller at the depth cap"
+create_tables 0
+add_node 0 c h0
+# c@h(i) replicates from c@h(i-1); c@h0 is 32 steps up from c@h32, the deepest the walk goes
+for i in $(seq 1 32); do
+    add_node 0 c h$i
+    link c h$i c h$((i - 1))
+done
+if out=$(sql "exec procedure sys.physrep.update_registry('c', 'h0', 'c', 'h32', \"'h0'\")" 2>&1); then
+    fail "update_registry linked c@h0 to its descendant 32 levels down: $out"
+fi
+[[ $out == *"rc -202"* ]] || fail "expected rc -202: $out"
 
 echo "Testcase passed."
 exit 0
