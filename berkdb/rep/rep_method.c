@@ -1288,6 +1288,8 @@ err:
 	return ret;
 }
 
+extern int gbl_elect_master_req_ms;
+
 /*
  * __rep_elect --
  *	Called after master failure to hold/participate in an election for
@@ -1307,7 +1309,7 @@ __rep_elect(dbenv, nsites, priority, timeout, newgen, already_master, eidp)
 	DB_REP *db_rep;
 	REP *rep;
 	int done, in_progress, ret, tiebreaker, use_committed_gen, send_vote2, selfwin = 0, nvoters;
-	u_int32_t egen, committed_gen = 0, orig_tally, pid, sec, usec;
+	u_int32_t egen, committed_gen = 0, orig_tally, pid, sec, usec, mreq_timeout;
 	char *send_vote, *early_vote2;
 
 	*already_master = 0;
@@ -1371,7 +1373,11 @@ __rep_elect(dbenv, nsites, priority, timeout, newgen, already_master, eidp)
 	logmsg(LOGMSG_USER,
 			"%s start sending master req\n", __func__);
 	send_master_req(dbenv, __func__, __LINE__);
-	ret = __rep_wait(dbenv, timeout / 4, eidp, newgen, 0, REP_F_EPHASE1);
+	/* A live master answers within a round trip, and answers our vote1 as well */
+	mreq_timeout = timeout / 4;
+	if (gbl_elect_master_req_ms > 0 && mreq_timeout > gbl_elect_master_req_ms * 1000)
+		mreq_timeout = gbl_elect_master_req_ms * 1000;
+	ret = __rep_wait(dbenv, mreq_timeout, eidp, newgen, 0, REP_F_EPHASE1);
 	switch (ret) {
 	case 0:
 		/* Check if we found a master. */

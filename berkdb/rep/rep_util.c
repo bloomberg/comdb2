@@ -45,6 +45,7 @@ int bdb_num_connected_nodes(struct bdb_state_tag *);
 #endif
 
 int gbl_verbose_master_req = 0;
+int gbl_elect_master_req_ms = 200;
 int gbl_trace_repmore_reqs = 0;
 extern int gbl_create_mode;
 

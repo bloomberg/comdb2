@@ -1511,6 +1511,9 @@ REGISTER_TUNABLE("rep_process_msg_print_rc", "Print rc from rep_process_msg.", T
                  &gbl_rep_process_msg_print_rc, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("verbose_master_req", "Print trace showing master-req protocol.", TUNABLE_BOOLEAN,
                  &gbl_verbose_master_req, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("elect_master_req_ms",
+                 "Longest an election waits for a master to answer its master-req. (Default: 200)", TUNABLE_INTEGER,
+                 &gbl_elect_master_req_ms, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("verbose_send_cohlease", "Print trace from lease-issue thread.", TUNABLE_BOOLEAN,
                  &gbl_verbose_send_coherency_lease, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("reset_on_unelectable_cluster", "Reset master if unelectable.", TUNABLE_BOOLEAN,
