@@ -2470,6 +2470,8 @@ struct __db_env {
 			__P((const char *));
 	int	 (*rep_can_vote)
 			__P((DB_ENV *, const char *));
+	int	 (*rep_num_voters)
+			__P((DB_ENV *));
 	void *(*rep_is_log_trigger) 
 			__P((const char *));
 	int  (*rep_log_trigger_cb)
@@ -2726,6 +2728,7 @@ struct __db_env {
 	int  (*get_rep_db_pagesize) __P((DB_ENV *, int *));
 	int  (*set_rep_ignore) __P((DB_ENV *, int (*func)(const char *filename)));
 	int  (*set_rep_can_vote) __P((DB_ENV *, int (*func)(DB_ENV *, const char *host)));
+	int  (*set_rep_num_voters) __P((DB_ENV *, int (*func)(DB_ENV *)));
 	int  (*set_log_trigger) __P((DB_ENV *, void *(*is_trigger)(const char *filename),
 					int (*trigger_cb)(void *, const DB_LSN *lsn, const DB_LSN *commit_lsn, const char *filename, u_int32_t op, const void *log)));
 	void *tx_handle;		/* Txn handle and methods. */
