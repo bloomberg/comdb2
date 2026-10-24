@@ -2718,6 +2718,55 @@ berkdb_get_max_rep_retries()
 	return max_replication_trans_retries;
 }
 
+/* When (comdb2_time_epochms) the replication thread started trying to take
+ * the locks of the transaction it is applying, 0 if it isn't.  Set by the
+ * first attempt and kept across DB_LOCK_DEADLOCK retries, so it measures how
+ * long the transaction has been blocked, not just the current attempt; cleared
+ * once its locks are all held, or when the retry loop gives up.  Readers use
+ * it to bound how long they may hold up replication. */
+int gbl_rep_lock_time_ms = 0;
+/* The same for the current attempt only.  The watcher's rep_wait_core_ms
+ * abort uses this, so it keeps firing only for one attempt blocked that long. */
+int gbl_rep_lock_attempt_time_ms = 0;
+static uint64_t rep_lock_first_us;
+
+static void
+rep_lock_attempt_begin(void)
+{
+	int now = comdb2_time_epochms();
+	if (gbl_rep_lock_time_ms == 0) {
+		gbl_rep_lock_time_ms = now;
+		rep_lock_first_us = bb_berkdb_fasttime();
+	}
+	assert(gbl_rep_lock_attempt_time_ms == 0);
+	gbl_rep_lock_attempt_time_ms = now;
+	if (gbl_bb_berkdb_enable_thread_stats) {
+		bb_berkdb_get_thread_stats()->rep_lock_attempts++;
+		bb_berkdb_get_process_stats()->rep_lock_attempts++;
+	}
+}
+
+static void
+rep_lock_attempt_end(void)
+{
+	assert(gbl_rep_lock_attempt_time_ms != 0);
+	gbl_rep_lock_attempt_time_ms = 0;
+}
+
+/* The transaction holds all its locks, or we stopped trying */
+static void
+rep_lock_txn_done(void)
+{
+	if (gbl_rep_lock_time_ms == 0)
+		return;
+	if (gbl_bb_berkdb_enable_thread_stats) {
+		uint64_t d = bb_berkdb_fasttime() - rep_lock_first_us;
+		bb_berkdb_get_thread_stats()->rep_lock_txn_time_us += d;
+		bb_berkdb_get_process_stats()->rep_lock_txn_time_us += d;
+	}
+	gbl_rep_lock_time_ms = 0;
+}
+
 static inline int
 logical_rectype(int rectype)
 {
@@ -4054,6 +4103,7 @@ gap_check:		use_range = 0;
 						dbenv->replicant_use_minwrite_noread = 1;
 
 					if (ret == DB_LOCK_DEADLOCK_CUSTOM) {
+						rep_lock_txn_done();
 						ret = DB_LOCK_DEADLOCK;
 						goto err;
 					}
@@ -4065,6 +4115,8 @@ gap_check:		use_range = 0;
 				 * deadlock may be a rep_handle_dead and we need to give the watcher
 				 * thread a chance to fix it. */
 			} while (ret == DB_LOCK_DEADLOCK);
+			/* normally done once the locks are held; this covers errors */
+			rep_lock_txn_done();
 		}
 		/* Now flush the log unless we're running TXN_NOSYNC. */
 		if (ret == 0 && !F_ISSET(dbenv, DB_ENV_TXN_NOSYNC))
@@ -4931,7 +4983,6 @@ debug_dump_lsns(DB_LSN commit_lsn, LSN_COLLECTION * lc, int ret)
 extern int gbl_replicant_gather_rowlocks;
 
 static unsigned long long getlock_poll_count = 0;
-int gbl_rep_lock_time_ms = 0;
 int gbl_collect_before_locking = 1;
 
 static int retrieve_locks_from_prepare(DB_ENV *dbenv, DB_LSN *lsn, DBT *locks, u_int32_t *lflags, int *endianize)
@@ -5356,8 +5407,7 @@ __rep_process_txn_int(dbenv, rctl, rec, ltrans, maxlsn, commit_gen, rep_gen, loc
 		if (!endianize && gbl_is_physical_replicant && !LOG_SWAPPED()) {
 			flags |= LOCK_GET_LIST_FORCEFLIP;
 		}
-		assert(gbl_rep_lock_time_ms == 0);
-		gbl_rep_lock_time_ms = comdb2_time_epochms();
+		rep_lock_attempt_begin();
 
 		/* Safeguard lock-get-list on a tunable */
 		DBT lock_dbt_copy = {0};
@@ -5382,13 +5432,21 @@ __rep_process_txn_int(dbenv, rctl, rec, ltrans, maxlsn, commit_gen, rep_gen, loc
 			}
 			free(lock_dbt_copy.data);
 		}
-		assert(gbl_rep_lock_time_ms != 0);
-		gbl_rep_lock_time_ms = 0;
+		rep_lock_attempt_end();
+
+		/* count every attempt's time, failed ones too: a transaction that
+		 * keeps losing deadlocks spends its time in the attempts that fail */
+		if (td_stats) {
+			x2 = bb_berkdb_fasttime(), d = (x2 - x1);
+			t->rep_lock_time_us += d;
+			p->rep_lock_time_us += d;
+		}
 
 		if (ret != 0) {
 			line = __LINE__;
 			goto err;
 		}
+		rep_lock_txn_done();
 
 		// The LSN passed to `set_commit_context` becomes the new modsnap start lsn
 		//
@@ -5408,12 +5466,6 @@ __rep_process_txn_int(dbenv, rctl, rec, ltrans, maxlsn, commit_gen, rep_gen, loc
 		if (context) {
 			set_commit_context(context, commit_gen,
 				&(rctl->lsn), args, rectype);
-		}
-
-		if (td_stats) {
-			x2 = bb_berkdb_fasttime(), d = (x2 - x1);
-			t->rep_lock_time_us += d;
-			p->rep_lock_time_us += d;
 		}
 
 		if (__txn_commit_map_enabled()) {
@@ -6322,8 +6374,7 @@ bad_resize:	;
 		memcpy(lock_dbt_copy.data, lock_dbt->data, lock_dbt->size);
 	}
 
-	assert(gbl_rep_lock_time_ms == 0);
-	gbl_rep_lock_time_ms = comdb2_time_epochms();
+	rep_lock_attempt_begin();
 	/* The txn's locks are all taken here, off the commit record, so this is the
 	 * only arm that reaches them -- redo itself takes no locks. The row is up
 	 * while we wait on them; the workers' rows carry the same client_id. */
@@ -6345,21 +6396,23 @@ bad_resize:	;
 		}
 		free(lock_dbt_copy.data);
 	}
-	assert(gbl_rep_lock_time_ms != 0);
-	gbl_rep_lock_time_ms = 0;
-	if (ret != 0)
-		goto err;
+	rep_lock_attempt_end();
 
-	if (ret == 0 && rp->context && !throwdeadlock) {
-		set_commit_context(rp->context, commit_gen,
-			&(rctl->lsn), args, rectype);
-	}
-
+	/* count every attempt's time, failed ones too: a transaction that keeps
+	 * losing deadlocks spends its time in the attempts that fail */
 	if (td_stats) {
 		x2 = bb_berkdb_fasttime();
 		d = (x2 - x1);
 		t->rep_lock_time_us += d;
 		p->rep_lock_time_us += d;
+	}
+	if (ret != 0)
+		goto err;
+	rep_lock_txn_done();
+
+	if (ret == 0 && rp->context && !throwdeadlock) {
+		set_commit_context(rp->context, commit_gen,
+			&(rctl->lsn), args, rectype);
 	}
 
 	if (throwdeadlock)

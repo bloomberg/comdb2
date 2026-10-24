@@ -5582,7 +5582,7 @@ int send_rep_log_req(DB_ENV *dbenv, char *master_eid, DB_LSN *startlsn, DB_LSN *
 void *watcher_thread(void *arg)
 {
     bdb_state_type *bdb_state;
-    extern int gbl_rep_lock_time_ms;
+    extern int gbl_rep_lock_attempt_time_ms;
     extern int gbl_truncating_log;
     char *master_host = db_eid_invalid;
     int stopped_count = 0;
@@ -5658,7 +5658,9 @@ void *watcher_thread(void *arg)
             create_master_lease_thread(bdb_state);
         }
 
-        int rep_lock_wait_time_ms = gbl_rep_lock_time_ms;
+        /* the current lock-list attempt, not the whole transaction: this aborts,
+           and has only ever fired for one attempt blocked that long */
+        int rep_lock_wait_time_ms = gbl_rep_lock_attempt_time_ms;
         int rep_wait_core_ms = gbl_rep_wait_core_ms;
         int elapsed;
 
