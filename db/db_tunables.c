@@ -329,6 +329,8 @@ extern int gbl_rep_wait_release_ms;
 extern int gbl_debug_sleep_in_cursor_move;
 extern int gbl_recover_deadlock_sync_dta;
 extern int gbl_pagelock_release_interval_ms;
+extern int gbl_rep_yield_retries;
+extern int gbl_rep_yield_sleep_ms;
 extern int gbl_pagelock_release_max_wait_ms;
 extern int gbl_debug_pagelock_release_trace;
 extern int gbl_debug_recover_deadlock_skip_sync_dta;

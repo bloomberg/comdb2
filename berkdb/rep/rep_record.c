@@ -2718,6 +2718,18 @@ berkdb_get_max_rep_retries()
 	return max_replication_trans_retries;
 }
 
+/* How many times the transaction this node is applying right now has lost a
+ * deadlock and been retried.  Written only by the replication thread's retry
+ * loop below and cleared on every way out of it; read without a lock by sql
+ * readers, which step aside once it reaches rep_yield_retries (see
+ * rep_yield_to_replication in db/sqlinterfaces.c). */
+volatile int gbl_rep_txn_deadlock_retries = 0;
+/* For comdb2_metrics: the most deadlocks one transaction lost, and how many
+ * transactions reached rep_yield_retries */
+int gbl_rep_max_txn_deadlocks = 0;
+int64_t gbl_rep_yield_txns = 0;
+extern int gbl_rep_yield_retries;
+
 static inline int
 logical_rectype(int rectype)
 {
@@ -4038,8 +4050,13 @@ gap_check:		use_range = 0;
 						p->rep_deadlock_retries++;
 					}
 					num_retries++;
+					gbl_rep_txn_deadlock_retries = num_retries;
+					if (num_retries == gbl_rep_yield_retries)
+						gbl_rep_yield_txns++;
 					if (num_retries > rep->stat.max_replication_trans_retries)
 						rep->stat.max_replication_trans_retries = num_retries;
+					if (num_retries > gbl_rep_max_txn_deadlocks)
+						gbl_rep_max_txn_deadlocks = num_retries;
 					if (max_replication_trans_retries < INT_MAX &&
 						num_retries >= max_replication_trans_retries &&
 						dbenv->replicant_use_minwrite_noread) {
@@ -4054,6 +4071,7 @@ gap_check:		use_range = 0;
 						dbenv->replicant_use_minwrite_noread = 1;
 
 					if (ret == DB_LOCK_DEADLOCK_CUSTOM) {
+						gbl_rep_txn_deadlock_retries = 0;
 						ret = DB_LOCK_DEADLOCK;
 						goto err;
 					}
@@ -4065,6 +4083,7 @@ gap_check:		use_range = 0;
 				 * deadlock may be a rep_handle_dead and we need to give the watcher
 				 * thread a chance to fix it. */
 			} while (ret == DB_LOCK_DEADLOCK);
+			gbl_rep_txn_deadlock_retries = 0;
 		}
 		/* Now flush the log unless we're running TXN_NOSYNC. */
 		if (ret == 0 && !F_ISSET(dbenv, DB_ENV_TXN_NOSYNC))

@@ -2725,6 +2725,7 @@ void clnt_reset_release_state(struct sqlclntstate *clnt)
     clnt->pagelock_release_first_ms = 0;
     clnt->pagelock_release_last_ms = 0;
     clnt->dbg_pagelock_releases = 0;
+    clnt->rep_yield_last_ms = 0;
     clnt->sync_dta_generation = 0;
 
     clnt->last_release_func = NULL;
@@ -3420,7 +3421,7 @@ unsigned long long release_locks_on_si_lockwait_cnt = 0;
 int gbl_debug_pagelock_release_trace = 0;
 /* Do not re-release page locks more often than this while a waiter persists;
    without it we release once per cursor move for the life of the scan. */
-int gbl_pagelock_release_interval_ms = 100;
+int gbl_pagelock_release_interval_ms = 25;
 /* If a waiter is still parked after this long, page locks were not what it
    wanted (a schema change wants our table lock): fall back to a full release
    so it can proceed, rather than starving it for the length of the query.
@@ -3743,6 +3744,11 @@ static int cursor_move_postop(BtCursor *pCur)
        Stay out of it here. */
     if (bdb_lock_desired(thedb->bdb_env))
         return 0;
+
+    /* Replication keeps losing deadlocks to readers: step aside even if no
+       one waits on our own locks (see rep_yield_to_replication). */
+    if (rep_yield_to_replication(clnt, __func__, __LINE__, &rc))
+        return rc;
 
     /* Release PAGE LOCKS ONLY, keeping the curtran and therefore our table
        read locks.  That is enough to unblock the page-lock waiter that brought
