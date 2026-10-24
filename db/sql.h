@@ -756,6 +756,8 @@ struct sqlclntstate {
     int pagelock_release_last_ms;  /* when we last released page locks */
     int pagelock_release_first_ms; /* when this waiter was first seen */
     int dbg_pagelock_releases;     /* count, for trace/diagnostics */
+    /* when this request last yielded to replication (rep_yield_to_replication) */
+    int rep_yield_last_ms;
 
     /* Bumped by every sync_index_data_cursors() pass and stamped into the
        cursors it captured, so the deferred-seek skip can tell "captured by the
@@ -1575,6 +1577,9 @@ void sync_index_data_cursors(struct sql_thread *thd);
 const char *clnt_last_release_str(struct sqlclntstate *clnt, char *buf, size_t sz);
 /* clear the release pacing / last-release state; call once per run */
 void clnt_reset_release_state(struct sqlclntstate *clnt);
+/* step aside for a replicated transaction that keeps losing deadlocks to
+ * readers; returns 1 if it released (rc in *rc), 0 if not */
+int rep_yield_to_replication(struct sqlclntstate *clnt, const char *func, int line, int *rc);
 
 void clearClientSideRow(struct sqlclntstate *clnt);
 struct temptable get_tbl_by_rootpg(const sqlite3 *, int);

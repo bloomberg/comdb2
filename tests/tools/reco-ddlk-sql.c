@@ -16,6 +16,11 @@ static const int C2 = 1000; // for each row in b, number of rows in c
 static char *master_node;
 static int total_incoherent;
 
+/* for the results summary */
+static int coherency_checks, incoherent_checks, max_incoherent;
+static int64_t slowest_write_ms;
+static char slowest_write[128];
+
 static pthread_mutex_t printlk = PTHREAD_MUTEX_INITIALIZER;
 #define Printf(...)                         \
 ({                                          \
@@ -76,7 +81,15 @@ static void who_master(void)
 static int num_incoherent(void)
 {
     cdb2_hndl_tp *master = hndl(master_node);
-    int rc = cdb2_run_statement(master, "SELECT count(*) FROM comdb2_cluster where coherent_state != 'coherent'");
+    const char *sql = "SELECT count(*) FROM comdb2_cluster where coherent_state != 'coherent'";
+    int rc = cdb2_run_statement(master, sql);
+    /* A busy host can make connecting to the master time out: that isn't
+     * what this test checks, so retry it a few times */
+    for (int tries = 1; rc == CDB2ERR_CONNECT_ERROR && tries < 10; ++tries) {
+        Printf("%s cdb2_run_statement rc:%d %s, retrying\n", __func__, rc, cdb2_errstr(master));
+        sleep(1);
+        rc = cdb2_run_statement(master, sql);
+    }
     if (rc != 0) {
         Printf("%s cdb2_run_statement rc:%d %s\n", __func__, rc, cdb2_errstr(master));
         exit(1);
@@ -95,6 +108,9 @@ static int num_incoherent(void)
         exit(1);
     }
     cdb2_close(master);
+    ++coherency_checks;
+    if (count > 0) ++incoherent_checks;
+    if (count > max_incoherent) max_incoherent = count;
     return count;
 }
 static void run_stmt_(const char *where, cdb2_hndl_tp *db_hndl, const char *sql)
@@ -188,9 +204,24 @@ static void insert(void)
     timersub(&finish, &start, &elapsed);
     Printf("%s finished time:%ldsec\n", __func__, elapsed.tv_sec);
 }
+/* With RECO_PIN_READERS set, every reader connects to the same replicant
+ * instead of being spread over the cluster: many readers on one node is what
+ * makes replication lose deadlock after deadlock to them there. */
+static char *reader_node;
+static void pin_readers(void)
+{
+    if (!getenv("RECO_PIN_READERS")) return;
+    cdb2_hndl_tp *db = hndl(NULL);
+    int rc = cdb2_run_statement(db, "SELECT host FROM comdb2_cluster WHERE is_master = 'N' ORDER BY host LIMIT 1");
+    if (rc == 0 && cdb2_next_record(db) == CDB2_OK) reader_node = strdup(cdb2_column_value(db, 0));
+    while (rc == 0 && cdb2_next_record(db) == CDB2_OK)
+        ;
+    cdb2_close(db);
+    Printf("%s: readers on %s\n", __func__, reader_node ? reader_node : "any node (no replicant)");
+}
 static void *reader(void *data)
 {
-    cdb2_hndl_tp *db = hndl(NULL);
+    cdb2_hndl_tp *db = hndl(reader_node);
     int i = (intptr_t)data;
     char *order = i % 2 == 0 ? "ASC" : "DESC";
     char buf[1024];
@@ -211,8 +242,17 @@ static void *reader(void *data)
         Printf("%s: cdb2_run_statement rc:%d %s\n", __func__, rc, cdb2_errstr(db));
         exit(1);
     }
+    /* The looping readers are there to contend with the writer: once it is
+     * done, stop rather than drain the rest of a 1M row join, which takes
+     * minutes on a busy host. Reader 99 is the final full read. */
+    int stop_when_done = (i != 99);
+    int stopped = 0;
     int counter = 0;
     while ((rc = cdb2_next_record(db)) == CDB2_OK) {
+        if (stop_when_done && done) {
+            stopped = 1;
+            break;
+        }
         int do_exit = 0;
         ++counter;
         int col = 0;
@@ -368,12 +408,12 @@ static void *reader(void *data)
             exit(1);
         }
     }
-    if (rc != CDB2_OK_DONE) {
+    if (!stopped && rc != CDB2_OK_DONE) {
         Printf("%s: cdb2_next_record rc:%d %s\n", __func__, rc, cdb2_errstr(db));
         exit(1);
     }
     cdb2_close(db);
-    if (counter) Printf("%s %2d: rows:%d\n", __func__, i, counter);
+    if (counter) Printf("%s %2d: rows:%d%s\n", __func__, i, counter, stopped ? " (stopped, writer done)" : "");
     return NULL;
 }
 static void *readers(void *data)
@@ -422,6 +462,11 @@ static void test_stmt(const char *sql, int upd, int del)
         }
     }
     cdb2_close(db);
+    int64_t ms = elapsed.tv_sec * 1000 + elapsed.tv_usec / 1000;
+    if (ms > slowest_write_ms) {
+        slowest_write_ms = ms;
+        snprintf(slowest_write, sizeof(slowest_write), "%s", sql);
+    }
     int inco = num_incoherent();
     Printf("%s:  %s  time:%ldsec  num_updated:%d  num_deleted:%d  num-incoherent:%d\n",
             sql, upd ? "update" : "delete", elapsed.tv_sec, effects.num_updated, effects.num_deleted, inco);
@@ -514,6 +559,70 @@ static int runit(void)
 
     return total_incoherent;
 }
+/* Results summary: what the master saw, and per node what replication and the
+ * readers went through (from comdb2_metrics; "n/a" if the server does not
+ * have the metric).  It never fails the test. */
+static const char *metric_names[] = {"rep_max_txn_deadlocks", "rep_yield_txns", "rep_yields_cursor_move",
+                                     "rep_yields_emit_row", "emit_row_lock_releases"};
+static const char *metric_labels[] = {"rep txn max deadlocks", "rep txns reaching rep_yield_retries",
+                                      "yields at cursor-move", "yields at emit-row", "emit-row releases"};
+#define NMETRICS (sizeof(metric_names) / sizeof(metric_names[0]))
+static void node_summary(const char *host, int is_master)
+{
+    char val[NMETRICS][32];
+    for (int m = 0; m < NMETRICS; ++m) strcpy(val[m], "n/a");
+    cdb2_hndl_tp *db = NULL;
+    if (cdb2_open(&db, dbname, host, CDB2_DIRECT_CPU) == 0 &&
+        cdb2_run_statement(db, "SELECT name, CAST(value AS INTEGER) FROM comdb2_metrics WHERE name IN "
+                               "('rep_max_txn_deadlocks', 'rep_yield_txns', 'rep_yields_cursor_move', "
+                               "'rep_yields_emit_row', 'emit_row_lock_releases')") == 0) {
+        while (cdb2_next_record(db) == CDB2_OK) {
+            const char *name = cdb2_column_value(db, 0);
+            if (!name || cdb2_column_type(db, 1) != CDB2_INTEGER) continue;
+            for (int m = 0; m < NMETRICS; ++m) {
+                if (strcmp(name, metric_names[m]) == 0)
+                    snprintf(val[m], sizeof(val[m]), "%" PRId64, *(int64_t *)cdb2_column_value(db, 1));
+            }
+        }
+    }
+    if (db) cdb2_close(db);
+    char line[512];
+    int len = snprintf(line, sizeof(line), "%s (%s%s):", host, is_master ? "master" : "replicant",
+                       reader_node && strcmp(reader_node, host) == 0 ? ", readers here" : "");
+    for (int m = 0; m < NMETRICS && len < sizeof(line); ++m)
+        len += snprintf(line + len, sizeof(line) - len, "  %s:%s", metric_labels[m], val[m]);
+    Printf("%s\n", line);
+}
+static void print_summary(long total_sec)
+{
+    Printf("=== reco-ddlk-sql results ===\n");
+    Printf("master %s: coherency checks:%d  checks with num-incoherent > 0:%d  max num-incoherent:%d\n",
+           master_node, coherency_checks, incoherent_checks, max_incoherent);
+    cdb2_hndl_tp *db = NULL;
+    int nodes = 0;
+    if (cdb2_open(&db, dbname, tier, 0) == 0 &&
+        cdb2_run_statement(db, "SELECT host, is_master FROM comdb2_cluster ORDER BY host") == 0) {
+        char *hosts[16];
+        int is_master[16];
+        while (cdb2_next_record(db) == CDB2_OK && nodes < 16) {
+            const char *host = cdb2_column_value(db, 0), *im = cdb2_column_value(db, 1);
+            if (!host) continue;
+            hosts[nodes] = strdup(host);
+            is_master[nodes] = im && strcmp(im, "Y") == 0;
+            ++nodes;
+        }
+        for (int n = 0; n < nodes; ++n) {
+            node_summary(hosts[n], is_master[n]);
+            free(hosts[n]);
+        }
+    }
+    if (db) cdb2_close(db);
+    if (!nodes) Printf("nodes: n/a\n");
+    Printf("slowest write: %" PRId64 ".%03" PRId64 "sec  %s\n", slowest_write_ms / 1000, slowest_write_ms % 1000,
+           slowest_write[0] ? slowest_write : "n/a");
+    Printf("total time: %ldsec\n", total_sec);
+    Printf("=== end of reco-ddlk-sql results ===\n");
+}
 static void setup(void)
 {
     cdb2_hndl_tp *db = hndl(NULL);
@@ -539,6 +648,7 @@ int main(int argc, char **argv)
 
     who_master();
     setup();
+    pin_readers();
 
     struct timeval start, finish, elapsed;
     gettimeofday(&start, NULL);
@@ -546,6 +656,7 @@ int main(int argc, char **argv)
     gettimeofday(&finish, NULL);
     timersub(&finish, &start, &elapsed);
 
+    print_summary(elapsed.tv_sec);
     if (rc) {
         Printf("failed  =>  time:%ldsec  num-incoherent:%d\n", elapsed.tv_sec, total_incoherent);
     } else {

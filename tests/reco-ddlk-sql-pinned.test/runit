@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+# reco-ddlk-sql with all 16 readers on one replicant
+export RECO_PIN_READERS=1
+exec $TESTSBUILDDIR/reco-ddlk-sql $DBNAME
