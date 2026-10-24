@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+bash -n "$0" || exit 1
+
+source ${TESTSROOTDIR}/tools/runit_common.sh
+
+# A "local" handle needs the database on the machine it runs on
+if [[ -n "$CLUSTER" ]]; then
+    node=$(echo "$CLUSTER" | awk '{print $1}')
+    cfg=${DBDIR}/local_pooled.cfg
+    scp -o StrictHostKeyChecking=no ${CDB2_CONFIG} $node:$cfg || failexit "Couldn't copy config to $node"
+    ssh -o StrictHostKeyChecking=no $node "${TESTSBUILDDIR}/cdb2api_local_pooled ${DBNAME} $cfg" ||
+        failexit "cdb2api_local_pooled failed on $node"
+else
+    ${TESTSBUILDDIR}/cdb2api_local_pooled ${DBNAME} ${CDB2_CONFIG} || failexit "cdb2api_local_pooled failed"
+fi
+
+echo "Success!"

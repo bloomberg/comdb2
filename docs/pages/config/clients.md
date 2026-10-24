@@ -38,6 +38,28 @@ options.  The only options currently supported are the port number (port=) and d
 [room affinity](#room) for how the dc option is used.  The port number, if omitted, will be queried 
 from the specified machines.
 
+## Connecting to a database on the same machine
+
+Passing `"local"` (case-insensitive) as the `type` argument to [cdb2_open](c_api.html#cdb2open) connects to the
+instance of the database running on the application's own machine, e.g.
+
+```
+cdb2sql mydb local "select 1"
+```
+
+A `local` handle:
+
+  * Uses `localhost` as its only host, so the database does not need to be listed in any configuration file.
+    The port is looked up from `pmux` on the local machine (see [pmuxport](#pmuxport)).
+  * Behaves as if opened with `CDB2_DIRECT_CPU`: it never fails over to other nodes in the cluster.  If the local
+    instance is down or unreachable, the call fails instead of trying another machine.  Cluster information sent
+    back by the database is ignored, so the handle stays on the local node.
+  * Allows queries to run on the master, so it works whether the local node is the master or a replicant.
+  * Pools its connection like any other handle: when it is closed cleanly, later `local` handles for the same
+    database can reuse the connection.
+
+This is mostly useful for tests, administrative scripts, and tools that run on the database machine itself.
+
 ## Client configuration files
 
 ### Destinations

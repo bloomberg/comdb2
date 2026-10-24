@@ -8117,6 +8117,17 @@ static int cdb2_get_dbhosts(cdb2_hndl_tp *hndl)
     if (rc != 0)
         goto after_callback;
 
+    if (strcasecmp(hndl->type, "local") == 0) {
+        hndl->num_hosts = 1;
+        strcpy(hndl->hosts[0], "localhost");
+        hndl->flags |= CDB2_DIRECT_CPU;
+
+        /* Skip dbinfo, including the one through a pooled connection below,
+           to avoid pulling other hosts in the cluster. */
+        rc = 0;
+        goto after_callback;
+    }
+
     if (cdb2_use_env_vars) {
         if ((hndl->db_default_type_override_env || (!cdb2cfg_override && !default_type_override_env))) {
             /* Try dbinfo query without any host info. */
@@ -8145,28 +8156,17 @@ static int cdb2_get_dbhosts(cdb2_hndl_tp *hndl)
         strcpy(comdb2db_name, cdb2_comdb2dbname);
     }
 
-    if (strcasecmp(hndl->type, "local") == 0) {
-        hndl->num_hosts = 1;
-        strcpy(hndl->hosts[0], "localhost");
-        hndl->flags |= CDB2_DIRECT_CPU;
-
-        /* Skip dbinfo to avoid pulling other hosts in the cluster. */
-        rc = 0;
-        goto after_callback;
-    } else {
-        rc = get_comdb2db_hosts(hndl, comdb2db_hosts, comdb2db_ports, &master, comdb2db_name, &num_comdb2db_hosts,
-                                &comdb2db_num, hndl->dbname, hndl->hosts, &(hndl->num_hosts), &hndl->dbnum, 1,
-                                hndl->shards, &(hndl->num_shards));
-        if (rc != 0 || (num_comdb2db_hosts == 0 && hndl->num_hosts == 0)) {
-            if (hndl->num_shards > 0) { // can't query comdb2db for room info but we found shards. Let's continue
-                rc = 0;
-                goto after_callback;
-            }
-            sprintf(hndl->errstr, "cdb2_get_dbhosts: no %s hosts found.",
-                    comdb2db_name);
-            rc = -1;
+    rc = get_comdb2db_hosts(hndl, comdb2db_hosts, comdb2db_ports, &master, comdb2db_name, &num_comdb2db_hosts,
+                            &comdb2db_num, hndl->dbname, hndl->hosts, &(hndl->num_hosts), &hndl->dbnum, 1, hndl->shards,
+                            &(hndl->num_shards));
+    if (rc != 0 || (num_comdb2db_hosts == 0 && hndl->num_hosts == 0)) {
+        if (hndl->num_shards > 0) { // can't query comdb2db for room info but we found shards. Let's continue
+            rc = 0;
             goto after_callback;
         }
+        sprintf(hndl->errstr, "cdb2_get_dbhosts: no %s hosts found.", comdb2db_name);
+        rc = -1;
+        goto after_callback;
     }
 
     if (!hndl->max_call_time)
