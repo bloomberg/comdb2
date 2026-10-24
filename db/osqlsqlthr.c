@@ -1220,6 +1220,8 @@ retry:
                             if (gbl_master_swing_sock_restart_sleep) {
                                 sleep(gbl_master_swing_sock_restart_sleep);
                             }
+                            /* A commit needs no curtran, so retry past a failed recover_deadlock */
+                            clnt->recover_deadlock_rcode = 0;
                             goto retry;
                         }
                     }
