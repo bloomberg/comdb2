@@ -2363,6 +2363,19 @@ static int rep_can_vote(DB_ENV *dbenv, const char *host)
     return net_is_sanctioned(bdb_state->repinfo->netinfo, host);
 }
 
+int is_electable(bdb_state_type *bdb_state, int *out_num_up, int *out_num_connected);
+
+/* Sanctioned voters we are connected to, ourselves included; 0 if unknown */
+static int rep_num_voters(DB_ENV *dbenv)
+{
+    bdb_state_type *bdb_state = dbenv->app_private;
+    int num_connected = 0;
+    if (!bdb_state || !bdb_state->repinfo || !bdb_state->repinfo->netinfo)
+        return 0;
+    is_electable(bdb_state, NULL, &num_connected);
+    return num_connected;
+}
+
 static void panic_func(DB_ENV *dbenv, int errval)
 {
     bdb_state_type *bdb_state = dbenv->app_private;
@@ -2544,6 +2557,7 @@ static DB_ENV *dbenv_open(bdb_state_type *bdb_state)
 
     dbenv->set_log_trigger(dbenv, log_trigger_btree_trigger, log_trigger_callback);
     dbenv->set_rep_can_vote(dbenv, rep_can_vote);
+    dbenv->set_rep_num_voters(dbenv, rep_num_voters);
 
 #ifdef BDB_VERB_REPLICATION_DEFAULT
     /* turn on verbose replication by default, so I can see what's happening

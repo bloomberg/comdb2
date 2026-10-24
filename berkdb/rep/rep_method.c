@@ -72,6 +72,7 @@ static int __rep_set_rep_db_pagesize __P((DB_ENV *, int));
 static int __rep_get_rep_db_pagesize __P((DB_ENV *, int *));
 static int __rep_set_ignore __P((DB_ENV *, int (*func)(const char *filename)));
 static int __rep_set_can_vote __P((DB_ENV *, int (*func)(DB_ENV *, const char *host)));
+static int __rep_set_num_voters __P((DB_ENV *, int (*func)(DB_ENV *)));
 static int __rep_set_log_trigger __P((DB_ENV *, void *(*is_log_trigger)(const char *filename), int (*log_trigger_cb)(void *trigger, const DB_LSN *lsn, const DB_LSN *commit_lsn, const char *filename, u_int32_t rectype, const void *log)));
 static int __rep_start __P((DB_ENV *, DBT *, u_int32_t, u_int32_t));
 static int __rep_stat __P((DB_ENV *, DB_REP_STAT **, u_int32_t));
@@ -136,6 +137,7 @@ __rep_dbenv_create(dbenv)
 		dbenv->set_rep_signal_logfill = __rep_set_signal_logfill;
 		dbenv->set_rep_ignore = __rep_set_ignore;
 		dbenv->set_rep_can_vote = __rep_set_can_vote;
+		dbenv->set_rep_num_voters = __rep_set_num_voters;
 		dbenv->set_log_trigger = __rep_set_log_trigger;
 		dbenv->set_truncate_sc_callback = __rep_set_truncate_sc_callback;
 		dbenv->set_rep_truncate_callback = __rep_set_rep_truncate_callback;
@@ -1063,6 +1065,20 @@ __rep_set_can_vote(dbenv, f_can_vote)
 	return (0);
 }
 
+/*
+ * __rep_set_num_voters --
+ *  Register function which counts the voters we are connected to, ourselves included
+ */
+static int
+__rep_set_num_voters(dbenv, f_num_voters)
+	DB_ENV *dbenv;
+	int (*f_num_voters) __P((DB_ENV *));
+{
+	PANIC_CHECK(dbenv);
+	dbenv->rep_num_voters = f_num_voters;
+	return (0);
+}
+
 static int
 __rep_set_rep_send_ack(dbenv, f_send_ack)
 	DB_ENV *dbenv;
@@ -1290,9 +1306,9 @@ __rep_elect(dbenv, nsites, priority, timeout, newgen, already_master, eidp)
 	DB_LSN lsn = {0};
 	DB_REP *db_rep;
 	REP *rep;
-	int done, in_progress, ret, tiebreaker, use_committed_gen, send_vote2, selfwin = 0;
+	int done, in_progress, ret, tiebreaker, use_committed_gen, send_vote2, selfwin = 0, nvoters;
 	u_int32_t egen, committed_gen = 0, orig_tally, pid, sec, usec;
-	char *send_vote;
+	char *send_vote, *early_vote2;
 
 	*already_master = 0;
 	PANIC_CHECK(dbenv);
@@ -1390,6 +1406,7 @@ restart:
 		return (ret);
 	tiebreaker = pid ^ sec ^ usec ^ (u_int) rand() ^ P_TO_UINT32(&pid);
 
+	nvoters = dbenv->rep_num_voters ? dbenv->rep_num_voters(dbenv) : 0;
 	Pthread_mutex_lock(&rep_candidate_lock);
 	MUTEX_LOCK(dbenv, db_rep->rep_mutexp);
 
@@ -1432,12 +1449,13 @@ restart:
 	send_vote = db_eid_invalid;
 	egen = rep->egen;
 	committed_gen = rep->committed_gen;
-	send_vote2 = (rep->sites >= rep->nsites && rep->w_priority != 0);
+	send_vote2 = __rep_phase1_done(rep, nvoters);
 	logmsg(LOGMSG_USER,
 			"%s line %d send_vote2 is %d, rep->sites is %d, rep->nsites is %d\n",
 			__func__, __LINE__, send_vote2, rep->sites, rep->nsites);
 
 	/* If we have all vote1, change to PHASE2 immediately */
+	early_vote2 = db_eid_invalid;
 	if (send_vote2) {
 		logmsg(LOGMSG_USER, "%s line %d clearing PHASE1 setting PHASE2\n", __func__, __LINE__);
 		F_SET(rep, REP_F_EPHASE2);
@@ -1445,7 +1463,8 @@ restart:
 		if (rep->winner == rep->eid) {
 			(void)__rep_tally(dbenv, rep, rep->eid,
 					&rep->votes, egen, rep->v2tally_off, __func__, __LINE__);
-		}
+		} else
+			early_vote2 = rep->winner;
 	}
 
 	MUTEX_UNLOCK(dbenv, db_rep->rep_mutexp);
@@ -1463,6 +1482,18 @@ restart:
 			__func__, __LINE__, rep->gen, egen);
 		__rep_send_vote(dbenv, &lsn, nsites, priority, tiebreaker, egen,
 			db_eid_broadcast, REP_VOTE1);
+	}
+
+	/* Phase 1 ended on our own vote1, so vote for the winner now as the VOTE1 handler would */
+	if (early_vote2 != db_eid_invalid) {
+		logmsg(LOGMSG_USER, "%s line %d sending early vote2 to %s egen=%d\n",
+			__func__, __LINE__, early_vote2, egen);
+		if (use_committed_gen)
+			__rep_send_gen_vote(dbenv, NULL, 0, 0, 0, egen,
+				committed_gen, early_vote2, REP_GEN_VOTE2);
+		else
+			__rep_send_vote(dbenv, NULL, 0, 0, 0, egen,
+				early_vote2, REP_VOTE2);
 	}
 
 	ret = __rep_wait(dbenv, timeout, eidp, newgen, egen, REP_F_EPHASE1);

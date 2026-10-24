@@ -1170,7 +1170,7 @@ __rep_process_message(dbenv, control, rec, eidp, ret_lsnp, commit_gen, newgen, n
 	int nlsns = 0;
 	DB_LSN rep_start_lsn;
 	u_int32_t vi_last_write_gen, vi_egen;
-	int vi_nsites, vi_priority, vi_tiebreaker;
+	int vi_nsites, vi_priority, vi_tiebreaker, nvoters;
 
 	char *master;
 	static time_t report_last = 0;
@@ -2387,6 +2387,7 @@ rep_verify_err:if (logc != NULL && (t_ret = __log_c_close(logc)) != 0 &&
 					__func__, __LINE__, *eidp, rp->gen, vi_egen, rep->egen, vig->last_write_gen);
 		}
 
+		nvoters = dbenv->rep_num_voters ? dbenv->rep_num_voters(dbenv) : 0;
 		Pthread_mutex_lock(&rep_candidate_lock);
 		MUTEX_LOCK(dbenv, db_rep->rep_mutexp);
 
@@ -2511,7 +2512,7 @@ rep_verify_err:if (logc != NULL && (t_ret = __log_c_close(logc)) != 0 &&
 		 * and not short-circuit once we reach more than half.  The
 		 * real winner's vote may be in the last half.
 		 */
-		done = rep->sites >= rep->nsites && rep->w_priority != 0;
+		done = __rep_phase1_done(rep, nvoters);
 		if (done) {
 #ifdef DIAGNOSTIC
 			if (FLD_ISSET(dbenv->verbose, DB_VERB_REPLICATION)) {
@@ -7156,6 +7157,27 @@ __rep_newfile(dbenv, rc, lsnp)
 		*lsnp = lp->lsn;
 		return (0);
 	}
+}
+
+/*
+ * __rep_phase1_done --
+ * PUBLIC: int __rep_phase1_done __P((REP *, int));
+ *
+ * Phase 1 is done once every site has voted, or every voter we are
+ * connected to has and they are a majority: waiting longer can only
+ * add a vote from a disconnected site, which the timeout would not
+ * wait for either.  Called with the db_rep mutex held.
+ */
+int
+__rep_phase1_done(rep, nvoters)
+	REP *rep;
+	int nvoters;
+{
+	if (rep->w_priority == 0)
+		return (0);
+	if (rep->sites >= rep->nsites)
+		return (1);
+	return (nvoters > 0 && rep->sites >= nvoters && rep->sites > rep->nsites / 2);
 }
 
 /*
