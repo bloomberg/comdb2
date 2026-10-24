@@ -1,0 +1,69 @@
+#!/usr/bin/env bash
+bash -n "$0" || exit 1
+
+# A commit whose osql restart fails recover_deadlock must retry, not crash on the stale rcode
+
+. ${TESTSROOTDIR}/tools/runit_common.sh
+
+export debug=1
+[[ $debug == "1" ]] && set -x
+
+nodes=(${CLUSTER:-$(hostname)})
+
+function sql
+{
+    $CDB2SQL_EXE $CDB2_OPTIONS --tabs $DBNAME default "$@"
+}
+
+function on_all
+{
+    typeset n
+    for n in ${nodes[@]}; do
+        if [[ -z "$CLUSTER" ]]; then
+            sql "$1" || return 1
+        else
+            $CDB2SQL_EXE $CDB2_OPTIONS --tabs $DBNAME --host $n "$1" || return 1
+        fi
+    done
+}
+
+# Prints how many armed replays are left across the cluster
+function armed
+{
+    typeset n t=0 v
+    for n in ${nodes[@]}; do
+        if [[ -z "$CLUSTER" ]]; then
+            v=$(sql "select value from comdb2_tunables where name='debug_fail_commit_restart'")
+        else
+            v=$($CDB2SQL_EXE $CDB2_OPTIONS --tabs $DBNAME --host $n "select value from comdb2_tunables where name='debug_fail_commit_restart'")
+        fi
+        [[ -n "$v" ]] || { echo "unreadable on $n"; return; }
+        t=$((t + v))
+    done
+    echo $t
+}
+
+sql "create table t1(a int)" || failexit "create table"
+
+v=0
+for iso in "blocksql" "read committed" "snapshot isolation" "serial"; do
+    for txn in 0 1; do
+        v=$((v + 1))
+        on_all "put tunable 'debug_fail_commit_restart' = 1" || failexit "arm tunable"
+        if [[ $txn == 1 ]]; then
+            out=$(printf "set transaction $iso\nbegin\ninsert into t1 values($v)\ncommit\n" | $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default 2>&1)
+        else
+            out=$(printf "set transaction $iso\ninsert into t1 values($v)\n" | $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default 2>&1)
+        fi
+        echo "$out"
+        [[ "$out" == *"failed"* ]] && failexit "$iso txn=$txn commit failed: $out"
+        # One node ran the commit and used up its armed replay
+        [[ $(armed) == $(( ${#nodes[@]} - 1 )) ]] || failexit "$iso txn=$txn: replay was not forced"
+        on_all "put tunable 'debug_fail_commit_restart' = 0" || failexit "disarm tunable (a node may have crashed)"
+        x=$(sql "select count(*) from t1 where a=$v")
+        [[ "$x" == "1" ]] || failexit "$iso txn=$txn: expected 1 row for $v, got '$x'"
+    done
+done
+
+echo "Success"
+exit 0

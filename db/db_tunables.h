@@ -2549,6 +2549,11 @@ REGISTER_TUNABLE("replicant_retry_on_not_durable", "Replicant retries non-durabl
 REGISTER_TUNABLE("debug_force_non_durable", "Debug tunable which makes all commits not durable.  (Default: off)",
                  TUNABLE_BOOLEAN, &gbl_debug_force_non_durable, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 
+REGISTER_TUNABLE(
+    "debug_fail_commit_restart",
+    "Test only: replay this many commits twice, failing recover_deadlock on the first restart.  (Default: 0)",
+    TUNABLE_INTEGER, &gbl_debug_fail_commit_restart, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+
 REGISTER_TUNABLE("not_durable_retries",
                  "Have a node retry a non-durable transaction this many times before giving up.  (Default: 100)",
                  TUNABLE_INTEGER, &gbl_not_durable_retries, 0, NULL, NULL, NULL, NULL);
