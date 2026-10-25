@@ -1,0 +1,8 @@
+1 set hasql on
+1 set transaction serializable
+1 begin
+1 select * from t1 where a = 1
+2 insert into t1 values(1)
+1 disconnect
+1 insert into t2 values(1)
+1 commit
