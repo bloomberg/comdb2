@@ -193,6 +193,9 @@ struct tran_tag {
     /* lsn when the tran obj was created */
     DB_LSN birth_lsn;
 
+    /* serializable: lsn its reads start at, if not the current lsn */
+    DB_LSN serial_start_lsn;
+
     /* Birth lsn of oldest outstanding logical txn at start time */
     DB_LSN oldest_txn_at_start;
 

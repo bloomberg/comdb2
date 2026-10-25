@@ -740,6 +740,16 @@ static tran_type *bdb_tran_begin_logical_int(bdb_state_type *bdb_state,
 
 extern int gbl_extended_sql_debug_trace;
 
+/* Where a serializable shadow's reads start, if not the current lsn */
+int bdb_tran_get_serial_start_lsn(tran_type *tran, unsigned int *file, unsigned int *offset)
+{
+    if (!tran || tran->serial_start_lsn.file == 0)
+        return -1;
+    *file = tran->serial_start_lsn.file;
+    *offset = tran->serial_start_lsn.offset;
+    return 0;
+}
+
 int bdb_tran_get_start_file_offset(bdb_state_type *bdb_state, tran_type *tran,
                                    int *file, int *offset)
 {
