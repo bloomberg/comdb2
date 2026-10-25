@@ -330,6 +330,7 @@ bdb_osql_trn_t *bdb_osql_trn_register(bdb_state_type *bdb_state,
 
             /* Otherwise we'll do backfill */
             backfill_required = 1;
+            shadow_tran->serial_start_lsn = arg_lsn;
         }
     }
 

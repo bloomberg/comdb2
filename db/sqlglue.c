@@ -5307,6 +5307,11 @@ int initialize_shadow_trans(struct sqlclntstate *clnt)
             return rc;
         }
 
+        /* the serial check must cover every commit after the snapshot the
+         * reads use, which can be older than our current lsn */
+        if (clnt->arr)
+            bdb_tran_get_serial_start_lsn(clnt->dbtran.shadow_tran, &clnt->arr->file, &clnt->arr->offset);
+
         break;
     /* we handle communication with a blockprocess when all is over */
 
