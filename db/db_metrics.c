@@ -100,6 +100,11 @@ struct comdb2_metrics_store {
     int64_t temptable_spills;
     int64_t net_drops;
     int64_t rep_deadlocks;
+    int64_t rep_max_txn_deadlocks;
+    int64_t rep_yield_txns;
+    int64_t rep_yields_cursor_move;
+    int64_t rep_yields_emit_row;
+    int64_t emit_row_lock_releases;
     int64_t rw_evicts;
     int64_t standing_queue_time;
     int64_t minimum_truncation_file;
@@ -305,6 +310,16 @@ comdb2_metric gbl_metrics[] = {
      STATISTIC_COLLECTION_TYPE_CUMULATIVE, &stats.net_drops, NULL},
     {"rep_deadlocks", "Replication deadlocks", STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_CUMULATIVE,
      &stats.rep_deadlocks, NULL},
+    {"rep_max_txn_deadlocks", "Most deadlocks one replicated transaction lost before it was applied", STATISTIC_INTEGER,
+     STATISTIC_COLLECTION_TYPE_LATEST, &stats.rep_max_txn_deadlocks, NULL},
+    {"rep_yield_txns", "Replicated transactions that lost rep_yield_retries deadlocks", STATISTIC_INTEGER,
+     STATISTIC_COLLECTION_TYPE_CUMULATIVE, &stats.rep_yield_txns, NULL},
+    {"rep_yields_cursor_move", "Times a reader yielded to replication at a cursor move", STATISTIC_INTEGER,
+     STATISTIC_COLLECTION_TYPE_CUMULATIVE, &stats.rep_yields_cursor_move, NULL},
+    {"rep_yields_emit_row", "Times a reader yielded to replication when emitting a row", STATISTIC_INTEGER,
+     STATISTIC_COLLECTION_TYPE_CUMULATIVE, &stats.rep_yields_emit_row, NULL},
+    {"emit_row_lock_releases", "Times a reader released its locks when emitting a row because they were wanted",
+     STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_CUMULATIVE, &stats.emit_row_lock_releases, NULL},
     {"rw_evictions", "Dirty page evictions", STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_CUMULATIVE, &stats.rw_evicts,
      NULL},
     {"standing_queue_time", "How long the database has had a standing queue", STATISTIC_INTEGER,
@@ -506,6 +521,11 @@ extern int64_t gbl_sql_read_committed_requests;
 extern int64_t gbl_sql_serializable_requests;
 extern int64_t gbl_sql_snapshot_requests;
 extern int64_t gbl_sql_snapshot_asof_requests;
+extern int gbl_rep_max_txn_deadlocks;
+extern int64_t gbl_rep_yield_txns;
+extern int64_t gbl_rep_yields;
+extern int64_t gbl_rep_yields_emit_row;
+extern int64_t gbl_emit_row_lock_releases;
 
 static void update_sqllogfill_metrics()
 {
@@ -820,6 +840,11 @@ int refresh_metrics(void)
     stats.net_drops = get_hosts_metric("replication", NET_DROPS);
 
     bdb_rep_deadlocks(thedb->bdb_env, &stats.rep_deadlocks);
+    stats.rep_max_txn_deadlocks = gbl_rep_max_txn_deadlocks;
+    stats.rep_yield_txns = gbl_rep_yield_txns;
+    stats.rep_yields_emit_row = gbl_rep_yields_emit_row;
+    stats.rep_yields_cursor_move = gbl_rep_yields - stats.rep_yields_emit_row;
+    stats.emit_row_lock_releases = gbl_emit_row_lock_releases;
 
     stats.weighted_standing_queue_time = metrics_weighted_standing_queue_time();
     if (gbl_track_weighted_queue_metrics_separately)

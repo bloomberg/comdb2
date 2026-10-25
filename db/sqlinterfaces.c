@@ -186,7 +186,9 @@ int gbl_eventlog_fullhintsql = 1;
 
 comdb2_query_preparer_t *query_preparer_plugin;
 int gbl_sql_recover_time = 10;
+extern int gbl_pagelock_release_interval_ms;
 int gbl_debug_recover_deadlock_evbuffer = 0;
+int64_t gbl_emit_row_lock_releases = 0; /* recover_deadlock_evbuffer releases */
 int gbl_sql_row_delay_msecs = 0; /* testing delay per sql row, before sending the row */
 
 /* Client sql requests by isolation level, and point-in-time snapshot txns */
@@ -2873,6 +2875,8 @@ static const char *rlocks_reason_str(rlocks_reason_t reason)
         return "slow reader";
     case RLOCKS_REASON_SORT:
         return "page-lock waiter seen from inside a sort";
+    case RLOCKS_REASON_REP_YIELD:
+        return "yield to replication";
     default:
         return "unknown";
     }
@@ -5789,8 +5793,92 @@ int sbuf_is_local(COMDB2BUF *sb)
     return 0;
 }
 
+/* Readers yield to replication.
+ *
+ * On a replicant the replication thread takes a transaction's page locks in
+ * the order of the master's commit record (data and blob pages before the
+ * index), while a reader holds an index leaf and then fetches that row's data
+ * and blob pages.  A reader waiting on a page that replication already holds,
+ * while holding one replication wants, closes a cycle; the replicant deadlock
+ * policy (DB_LOCK_MINWRITE_NOREAD) never picks a reader, so replication loses,
+ * drops everything and retries the whole transaction.  With enough readers on
+ * the node new cycles form faster than it gets through.  The waiter-driven
+ * releases cannot help: a reader in a cycle is blocked in a lock wait and
+ * never reaches them.
+ *
+ * So once the transaction being applied has lost rep_yield_retries deadlocks,
+ * readers on this node step aside at their next safe point, whether or not
+ * anyone is waiting on them: drop page locks only (the curtran, and with it
+ * our table locks, is kept, so no schema change can run under the query), sleep
+ * up to rep_yield_sleep_ms -- less if the transaction gets through -- and carry
+ * on; cursors re-position lazily on their next move, as after any page-lock
+ * release.  A reader yields at most once per pagelock_release_interval_ms so
+ * it keeps making progress.
+ *
+ * Returns 1 if it released (the release's rc in *rc), 0 if it did nothing. */
+int gbl_rep_yield_retries = 10;
+int gbl_rep_yield_sleep_ms = 50;
+int64_t gbl_rep_yields = 0;
+int64_t gbl_rep_yields_emit_row = 0; /* of those, at the emit-row safe point */
+int rep_yield_to_replication(struct sqlclntstate *clnt, const char *func, int line, int *rc)
+{
+    extern int gbl_rep_txn_deadlock_retries;
+    static int last_print;
+
+    int retries = ATOMIC_LOAD32(gbl_rep_txn_deadlock_retries);
+    if (gbl_rep_yield_retries <= 0 || retries < gbl_rep_yield_retries)
+        return 0;
+    /* only the replication thread of a replicant sets the count; be explicit */
+    if (thedb->master == gbl_myhostname)
+        return 0;
+    /* only from the sql thread that owns clnt (sql_flush_cb can run elsewhere) */
+    struct sql_thread *thd = pthread_getspecific(query_info_key);
+    if (!thd || thd->clnt != clnt || !clnt->dbtran.cursor_tran)
+        return 0;
+    /* the page-lock-only release is used for these modes only (see
+     * cursor_move_postop): it relies on the dta-cursor sync before releasing,
+     * and modsnap/serializable cursors are not repositioned by it */
+    if (clnt->dbtran.mode == TRANLEVEL_SNAPISOL || clnt->dbtran.mode == TRANLEVEL_SERIAL ||
+        !clnt->recover_deadlock_sync_dta)
+        return 0;
+    /* the bdb write lock is wanted: the callers' full release handles that */
+    if (bdb_lock_desired(thedb->bdb_env))
+        return 0;
+    int now = comdb2_time_epochms();
+    if (clnt->rep_yield_last_ms && (now - clnt->rep_yield_last_ms) < gbl_pagelock_release_interval_ms)
+        return 0;
+
+    *rc = release_locks_int(RLOCKS_REASON_REP_YIELD, func, line, clnt, RECOVER_DEADLOCK_PAGELOCKS_ONLY);
+    if (*rc == 0) {
+        /* page locks are gone, table locks are kept: wait for replication */
+        for (int slept = 0; slept < gbl_rep_yield_sleep_ms; slept += 5) {
+            if (ATOMIC_LOAD32(gbl_rep_txn_deadlock_retries) < gbl_rep_yield_retries || bdb_lock_desired(thedb->bdb_env))
+                break;
+            int step = gbl_rep_yield_sleep_ms - slept;
+            poll(NULL, 0, step < 5 ? step : 5);
+        }
+    }
+    clnt->rep_yield_last_ms = comdb2_time_epochms();
+    int64_t n = ATOMIC_ADD64(gbl_rep_yields, 1);
+    int sec = now / 1000, last = ATOMIC_LOAD32(last_print);
+    if (sec != last && CAS32(last_print, last, sec)) {
+        logmsg(LOGMSG_USER,
+               "%s: readers yielded to replication %" PRId64 " times, %" PRId64 " at emit-row (txn retried %d times)\n",
+               __func__, n, gbl_rep_yields_emit_row, retries);
+    }
+    return 1;
+}
+
 int recover_deadlock_evbuffer(struct sqlclntstate *clnt)
 {
+    int rc;
+    /* replication is losing deadlocks to readers: step aside even if no one
+     * waits on our own locks */
+    if (rep_yield_to_replication(clnt, __func__, __LINE__, &rc)) {
+        ATOMIC_ADD64(gbl_rep_yields_emit_row, 1);
+        return rc;
+    }
+
     int waiters = -1, lock_desired = -1;
     if ((waiters = bdb_curtran_has_waiters(thedb->bdb_env, clnt->dbtran.cursor_tran)) == 0
         && (lock_desired = bdb_lock_desired(thedb->bdb_env)) == 0
@@ -5812,6 +5900,7 @@ int recover_deadlock_evbuffer(struct sqlclntstate *clnt)
         else
             logmsg(LOGMSG_USER, "%s lock-desired:%d delay:%d\n", __func__, lock_desired, ms);
     }
+    ATOMIC_ADD64(gbl_emit_row_lock_releases, 1);
     return recover_deadlock_flags(thedb->bdb_env, clnt, NULL, ms, __func__, __LINE__, flags);
 }
 
