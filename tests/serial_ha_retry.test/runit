@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+bash -n "$0" || exit 1
+
+source $TESTSROOTDIR/tools/runstepper.sh
+
+# An HA retry replays a serializable transaction at its original snapshot,
+# which is older than the node's current lsn.  The serial check must start
+# at that snapshot, or a write that committed before the retry is missed.
+dbname=$1
+
+cdb2sql ${CDB2_OPTIONS} $dbname default "create table t1 (a int)" || exit 1
+cdb2sql ${CDB2_OPTIONS} $dbname default "create table t2 (a int)" || exit 1
+
+runstepper $dbname t00.req t00.output 1
+if ! diff t00.expected t00.output; then
+    echo "failed t00"
+    exit 1
+fi
+echo "Success"
