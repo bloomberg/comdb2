@@ -318,9 +318,10 @@ static void process_work_item(struct seqnum_wait *item)
 
     switch (item->cur_state) {
     case SEQNUM_WAIT_INIT: {
-        /* As the inline wait decides them.  trans_commit_int() refuses to
-         * hand off when any of these tunables is set; re-read them anyway, as
-         * they can come on between the hand-off and here. */
+        /* As the inline wait decides them: durable LSNs and the replicant
+         * retry on non-durable commits work as they do inline.
+         * trans_commit_int() refuses to hand off under 2pc; re-read it anyway,
+         * as it can come on between the hand-off and here. */
         int is_final = item->iq->sorese ? item->iq->sorese->is_final : 0;
         int non_durable_retry =
             gbl_replicant_retry_on_not_durable && (!is_final || !gbl_ignore_final_non_durable_retry);
