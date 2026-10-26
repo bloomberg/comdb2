@@ -1,0 +1,3 @@
+# One SQL thread, so every statement in runit reuses the same sql_thread
+sqlenginepool maxt 1
+sqlenginepool mint 1

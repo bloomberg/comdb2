@@ -4070,9 +4070,9 @@ int sqlite3BtreeClose(Btree *pBt)
     /* Reset thd pointers */
     thd = pthread_getspecific(query_info_key);
     if (thd) {
-        if (pBt->is_temporary && thd->bttmp == pBt)
+        if (thd->bttmp == pBt)
             thd->bttmp = NULL;
-        else if (thd->bt == pBt)
+        if (thd->bt == pBt)
             thd->bt = NULL;
     }
 
@@ -9116,7 +9116,9 @@ int sqlite3BtreeCursor(
     struct sqlclntstate *clnt = cur->clnt;
     struct sql_thread *thd = cur->thd;
 
-    if (thd->bt == NULL)
+    /* thd->bt is walked to reach the table cursors (e.g. to reset them before
+     * a chunk commit); temp tables are reached through thd->bttmp instead */
+    if (thd->bt == NULL && !pBt->is_temporary)
         thd->bt = pBt;
     cur->writeTransaction = clnt->writeTransaction;
 
