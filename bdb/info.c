@@ -616,6 +616,8 @@ static void cache_stats(FILE *out, bdb_state_type *bdb_state, int extra)
             logmsgf(LOGMSG_USER, out, "  st_page_create: %"PRId64"\n", (*i)->st_page_create);
             logmsgf(LOGMSG_USER, out, "  st_page_in    : %"PRId64"\n", (*i)->st_page_in);
             logmsgf(LOGMSG_USER, out, "  st_page_out   : %"PRId64"\n", (*i)->st_page_out);
+            logmsgf(LOGMSG_USER, out, "  st_page_pf_in : %" PRId64 "\n", (*i)->st_page_pf_in);
+            logmsgf(LOGMSG_USER, out, "  st_page_pf_in_late: %" PRId64 "\n", (*i)->st_page_pf_in_late);
         }
 
         free(fsp);
