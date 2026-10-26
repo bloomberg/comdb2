@@ -5125,6 +5125,29 @@ void berkdb_receive_test(void *ack_handle, void *usr_ptr, char *from_host,
 static void udppfault_do_work_pp(struct thdpool *pool, void *work,
                                  void *thddata, int op);
 
+/* Prefault a page named by UFID, only if this node has the file open; a file
+ * it doesn't know yet, or has closed, is not opened here */
+extern unsigned int udp_pf_ufid_pinned, udp_pf_ufid_skipped;
+
+static void udppfault_ufid_do_work(udppf_rq_t *req)
+{
+    DB_ENV *dbenv = req->bdb_state->dbenv;
+    DB *dbp;
+    void *pin;
+
+    if (__ufid_prefault_pin(dbenv, req->ufid, &dbp, &pin) != 0) {
+        __atomic_add_fetch(&udp_pf_ufid_skipped, 1, __ATOMIC_RELAXED);
+        return;
+    }
+    __atomic_add_fetch(&udp_pf_ufid_pinned, 1, __ATOMIC_RELAXED);
+
+    touch_page(dbp->mpf, req->pgno);
+    if (gbl_prefault_latency > 0)
+        sleep(gbl_prefault_latency);
+
+    __ufid_prefault_unpin(dbenv, pin);
+}
+
 static void udppfault_do_work(struct thdpool *pool, void *work, void *thddata)
 {
     bdb_state_type *bdb_state;
@@ -5135,6 +5158,10 @@ static void udppfault_do_work(struct thdpool *pool, void *work, void *thddata)
     int ret;
 
     udppf_rq_t *req = (udppf_rq_t *)work;
+    if (req->by_ufid) {
+        udppfault_ufid_do_work(req);
+        return;
+    }
     bdb_state = req->bdb_state;
     fileid = req->fileid;
     pgno = req->pgno;
@@ -5232,6 +5259,28 @@ int enque_udppfault_filepage(bdb_state_type *bdb_state, unsigned int fileid,
     if (rc != 0) {
         free(qdata);
     }
+    return rc;
+}
+
+int enque_udppfault_ufid(bdb_state_type *bdb_state, const uint8_t *ufid, unsigned int pgno)
+{
+    udppf_rq_t *qdata;
+    int rc;
+
+    qdata = calloc(1, sizeof(udppf_rq_t));
+    if (qdata == NULL) {
+        logmsg(LOGMSG_FATAL, "failed to malloc udp prefault request\n");
+        exit(1);
+    }
+
+    qdata->bdb_state = bdb_state;
+    qdata->by_ufid = 1;
+    memcpy(qdata->ufid, ufid, DB_FILE_ID_LEN);
+    qdata->pgno = pgno;
+
+    rc = thdpool_enqueue(gbl_udppfault_thdpool, udppfault_do_work_pp, qdata, 0, NULL, 0);
+    if (rc != 0)
+        free(qdata);
     return rc;
 }
 

@@ -2071,8 +2071,7 @@ int bdb_get_num_sc_done(bdb_state_type *bdb_state, tran_type *tran,
 void udp_ping_ip(bdb_state_type *, char *ip);
 void udp_ping_all(bdb_state_type *);
 void udp_ping(bdb_state_type *, char *to);
-void udp_prefault_all(bdb_state_type *bdb_state, unsigned int fileid,
-                      unsigned int pgno);
+void udp_prefault_all(bdb_state_type *bdb_state, const unsigned char *ufid, unsigned int pgno);
 void tcp_ping_all(bdb_state_type *);
 void tcp_ping(bdb_state_type *, char *to);
 void ping_all(bdb_state_type *);
