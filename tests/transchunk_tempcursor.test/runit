@@ -1,0 +1,51 @@
+#!/usr/bin/env bash
+bash -n "$0" || exit 1
+
+# A chunked transaction resets every table cursor before each chunk commit.
+# If the first cursor a fresh SQL thread opened was on a temp table, the
+# thread used to keep a pointer to that temp btree after it was freed, the
+# reset missed the real cursors, and the next insert crashed on a freed
+# shadow table.
+
+dbnm=$1
+export CDB2_DISABLE_SOCKPOOL=1
+
+host=$(echo $CLUSTER | awk '{print $1}')
+if [[ -n "$host" ]]; then
+    hostflags="--host $host"
+else
+    hostflags=""
+fi
+r="${CDB2SQL_EXE} -s -tabs ${CDB2_OPTIONS} $dbnm default $hostflags"
+
+failexit() {
+    echo "Failed: $1"
+    exit -1
+}
+
+nrows=5001
+i=0
+for q in "select 1 union select 2" \
+         "select distinct value % 3 from generate_series(1, 10)" \
+         "select 1 where 1 in (select value from generate_series(1, 10))"; do
+    i=$((i + 1))
+    tbl=t$i
+
+    # A schema change makes the SQL thread reopen its sqlite handle, so the
+    # next statement opens the first cursor on that handle
+    $r "create table $tbl(a int)" || failexit "create table $tbl"
+    $r "$q" > /dev/null || failexit "$q"
+
+    $r - <<EOF
+set transaction chunk 100
+begin
+insert into $tbl select value from generate_series(1, $nrows)
+commit
+EOF
+    [[ $? -eq 0 ]] || failexit "chunked insert into $tbl after: $q"
+
+    count=$($r "select count(*) from $tbl")
+    [[ "$count" == "$nrows" ]] || failexit "$tbl has $count rows, expected $nrows"
+done
+
+echo "Success"
