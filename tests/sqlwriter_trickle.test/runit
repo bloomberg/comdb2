@@ -1,0 +1,37 @@
+#!/usr/bin/env bash
+bash -n "$0" || exit 1
+
+source ${TESTSROOTDIR}/tools/runit_common.sh
+
+# A client killed mid-query makes the server's next heartbeat write fail in
+# sql_trickle_int.  The trace must identify the client, not just the fd.
+
+node=`$CDB2SQL_EXE --tabs ${CDB2_OPTIONS} $DBNAME default 'select comdb2_node()'`
+if [[ -z "$CLUSTER" ]]; then
+    log=${TESTDIR}/logs/${DBNAME}.db
+else
+    log=${TESTDIR}/logs/${DBNAME}.${node}.db
+fi
+
+$CDB2SQL_EXE ${CDB2_OPTIONS} $DBNAME --host $node "select sleep(30)" &
+pid=$!
+sleep 2
+kill -9 $pid
+wait $pid 2>/dev/null
+
+line=""
+for i in $(seq 1 30); do
+    line=$(grep "sql_trickle_int write failed .* pid:$pid " $log | tail -1)
+    [[ -n "$line" ]] && break
+    sleep 1
+done
+
+[[ -z "$line" ]] && failexit "no sql_trickle_int trace for pid $pid in $log"
+echo "$line"
+
+echo "$line" | grep -q "origin:[^? ]" || failexit "origin missing"
+echo "$line" | grep -q "argv0:[^ ]*cdb2sql" || failexit "argv0 missing"
+echo "$line" | grep -q "outstanding:[0-9]" || failexit "outstanding missing"
+echo "$line" | grep -q "last-write:[0-9]*s ago" || failexit "last-write missing"
+
+echo "Success"

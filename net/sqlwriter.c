@@ -402,8 +402,12 @@ static void sql_trickle_int(struct sqlwriter *writer, int fd)
     }
     const int n = wr_evbuffer(writer, fd);
     if (n <= 0) {
+        int err = errno;
         writer->bad = 1;
-        logmsg(LOGMSG_ERROR, "%s write failed fd:%d rc:%d err:%s\n", __func__, fd, n, strerror(errno));
+        logmsg(LOGMSG_ERROR,
+               "%s write failed fd:%d origin:%s argv0:%s pid:%d outstanding:%d%s last-write:%.0fs ago rc:%d err:%s\n",
+               __func__, fd, clnt_origin(writer->clnt), clnt_argv0(writer->clnt), clnt_pid(writer->clnt), outstanding,
+               outstanding ? "" : " (heartbeat)", difftime(time(NULL), writer->sent_at), n, strerror(err));
         sql_disable_heartbeat(writer);
         return;
     }

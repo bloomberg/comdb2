@@ -1685,6 +1685,23 @@ void clnt_increase_netwaitus(struct sqlclntstate *clnt, int this_many_us)
     clnt->netwaitus += this_many_us;
 }
 
+/* Called from the sqlwriter heartbeat callback, which runs on the same event
+ * thread that replaces client info (newsql_set_client_info), so no race */
+const char *clnt_origin(struct sqlclntstate *clnt)
+{
+    return (clnt && clnt->origin) ? clnt->origin : "?";
+}
+
+const char *clnt_argv0(struct sqlclntstate *clnt)
+{
+    return (clnt && clnt->argv0) ? clnt->argv0 : "?";
+}
+
+int clnt_pid(struct sqlclntstate *clnt)
+{
+    return clnt ? clnt->conninfo.pid : 0;
+}
+
 static void log_queue_time(struct reqlogger *logger, struct sqlclntstate *clnt)
 {
     if (!gbl_track_queue_time)

@@ -71,4 +71,7 @@ typedef void(sql_dispatch_timeout_fn)(struct sqlclntstate *);
 void sql_wait_for_leader(struct sqlwriter *, sql_dispatch_timeout_fn *);
 
 void clnt_increase_netwaitus(struct sqlclntstate *clnt, int this_many_us);
+const char *clnt_origin(struct sqlclntstate *);
+const char *clnt_argv0(struct sqlclntstate *);
+int clnt_pid(struct sqlclntstate *);
 #endif /* INCLUDED_SQLWRITER_H */
