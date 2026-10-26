@@ -3652,7 +3652,11 @@ static void do_add_host(int accept_fd, short what, void *data)
 static inline int skip_send(struct event_info *e, int nodrop, int check_hello)
 {
     if (e->fd == -1 || e->decomissioned || (check_hello && !e->got_hello)) return -3;
-    if (e->wr_full && !nodrop) return -2;
+    if (e->wr_full && !nodrop) {
+        if (e->host_node_ptr)
+            e->host_node_ptr->num_queue_full++;
+        return -2;
+    }
     return 0;
 }
 
