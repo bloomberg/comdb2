@@ -2500,7 +2500,7 @@ newsql_loop_result newsql_loop(struct sqlclntstate *clnt, CDB2SQLQUERY *sql_quer
     }
     if (sql_query->client_info) {
         if (clnt->rawnodestats) {
-            release_node_stats(clnt->origin_argv0 ? clnt->origin_argv0 : clnt->argv0, clnt->stack, clnt->origin);
+            release_node_stats_ptr(clnt->rawnodestats);
             clnt->rawnodestats = NULL;
         }
         if (clnt->conninfo.pid && clnt->conninfo.pid != sql_query->client_info->pid) {

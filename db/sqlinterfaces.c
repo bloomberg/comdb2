@@ -5418,7 +5418,7 @@ void cleanup_clnt(struct sqlclntstate *clnt)
     }
     _free_set_commands(clnt);
     if (clnt->rawnodestats) {
-        release_node_stats(clnt->origin_argv0 ? clnt->origin_argv0 : clnt->argv0, clnt->stack, clnt->origin);
+        release_node_stats_ptr(clnt->rawnodestats);
         clnt->rawnodestats = NULL;
     }
     close_sp(clnt);
@@ -5604,7 +5604,7 @@ void reset_clnt(struct sqlclntstate *clnt, int initial)
     clnt_try_enable_logdel(clnt);
 
     if (clnt->rawnodestats) {
-        release_node_stats(clnt->origin_argv0 ? clnt->origin_argv0 : clnt->argv0, clnt->stack, clnt->origin);
+        release_node_stats_ptr(clnt->rawnodestats);
         clnt->rawnodestats = NULL;
     }
     clnt->recno = 1;
