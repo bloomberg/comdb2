@@ -1534,6 +1534,11 @@ int bdb_trans_should_wait(tran_type *trans);
 void bdb_trans_set_nowait(tran_type *trans);
 
 int bdb_get_num_notcoherent(bdb_state_type *bdb_state);
+/* Set by a schema change convert thread while its row is admitted by the
+ * back-pressure gate: its log records are queued instead of dropped */
+extern __thread int bdb_sc_nodrop_logputs;
+/* Replicant connections with more than half / a sixteenth of wr_max queued on this node */
+int bdb_rep_net_num_over_half(bdb_state_type *bdb_state, size_t *wr_max, int *num_over_low, int64_t *bytes_sent);
 void bdb_get_notcoherent_list(bdb_state_type *bdb_state,
                               const char *nodes_list[REPMAX], size_t max_nodes,
                               int *num_notcoherent, int *since_epoch);

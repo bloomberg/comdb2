@@ -979,10 +979,9 @@ REGISTER_TUNABLE("nullsort", NULL, TUNABLE_ENUM,
 REGISTER_TUNABLE("num_contexts", NULL, TUNABLE_INTEGER, &gbl_num_contexts,
                  READONLY | NOZERO, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("num_record_converts",
-                 "During schema changes, pack this many records into a "
-                 "transaction. (Default: 100)",
-                 TUNABLE_INTEGER, &gbl_num_record_converts, READONLY | NOZERO,
-                 NULL, NULL, NULL, NULL);
+                 "During schema changes, wait for replication after this "
+                 "many records per convert thread. (Default: 100)",
+                 TUNABLE_INTEGER, &gbl_num_record_converts, READONLY | NOZERO, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE(
     "old_column_names",
     "Generate and use column names from sqlite version 3.8.9 (Default: on)",
@@ -2631,9 +2630,13 @@ REGISTER_TUNABLE("alternate_normalize",
                  TUNABLE_BOOLEAN, &gbl_alternate_normalize,
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 
+REGISTER_TUNABLE("sc_net_backpressure",
+                 "Schema change waits before converting a record while a replicant connection has more than half "
+                 "of its network write buffer queued.  (Default: on)",
+                 TUNABLE_BOOLEAN, &gbl_sc_net_backpressure, 0, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("sc_logbytes_per_second",
-                 "Throttle schema-changes to this many logbytes per second.  (Default: 10000000)",
-                 TUNABLE_INTEGER, &gbl_sc_logbytes_per_second, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+                 "Throttle schema-changes to this many logbytes per second.  (Default: 167772160)", TUNABLE_INTEGER,
+                 &gbl_sc_logbytes_per_second, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 
 REGISTER_TUNABLE("net_somaxconn",
                  "listen() backlog setting.  (Default: 0, implies system default)",

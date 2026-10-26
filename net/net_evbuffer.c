@@ -396,6 +396,8 @@ struct event_info {
     struct evbuffer *wr_buf;
     struct event *wr_ev;
     time_t wr_full;
+    int over_half;
+    int over_low;
 };
 
 #define EVENT_HASH_KEY_SZ 128
@@ -619,6 +621,9 @@ struct net_info {
     char *app;
     size_t rd_max;
     size_t wr_max;
+    int num_over_half; /* connections with more than wr_max / 2 pending */
+    int num_over_low;  /* connections with more than wr_max / 16 pending */
+    int64_t bytes_sent;
     struct event *unix_ev;
     struct evbuffer *unix_buf;
     struct evconnlistener *listener;
@@ -988,6 +993,14 @@ static void do_disable_write(struct event_info *e)
         evbuffer_free(e->wr_buf);
         e->wr_buf = NULL;
     }
+    if (e->over_half) {
+        e->over_half = 0;
+        ATOMIC_ADD32(e->net_info->num_over_half, -1);
+    }
+    if (e->over_low) {
+        e->over_low = 0;
+        ATOMIC_ADD32(e->net_info->num_over_low, -1);
+    }
     e->got_hello = 0;
     e->got_hello_reply = 0;
 }
@@ -1137,6 +1150,22 @@ static void check_rd_full(struct event_info *e)
     //hprintf("SUSPENDING RD outstanding:%zumb\n", max_bytes / MB(1));
 }
 
+/* Call with wr_lk held */
+static void update_queued_marks(struct event_info *e)
+{
+    size_t pending = evbuffer_get_length(e->flush_buf) + evbuffer_get_length(e->wr_buf);
+    int over = pending > e->net_info->wr_max / 2;
+    if (over != e->over_half) {
+        e->over_half = over;
+        ATOMIC_ADD32(e->net_info->num_over_half, over ? 1 : -1);
+    }
+    over = pending > e->net_info->wr_max / 16;
+    if (over != e->over_low) {
+        e->over_low = over;
+        ATOMIC_ADD32(e->net_info->num_over_low, over ? 1 : -1);
+    }
+}
+
 static void check_wr_full(struct event_info *e)
 {
     if (e->wr_full) return;
@@ -1178,9 +1207,11 @@ static void writecb(int fd, short what, void *data)
             return;
         }
         e->sent_at = time(NULL);
+        ATOMIC_ADD64(e->net_info->bytes_sent, rc);
         Pthread_mutex_lock(&e->wr_lk);
         evbuffer_add_buffer(e->wr_buf, e->flush_buf);
         len = evbuffer_get_length(e->wr_buf);
+        update_queued_marks(e);
         if (len == 0) {
             event_del(e->wr_ev);
             if (e->wr_full) {
@@ -1199,6 +1230,7 @@ static void flush_evbuffer(struct event_info *e, int nodelay)
         event_add(e->wr_ev, NULL);
     }
     check_wr_full(e);
+    update_queued_marks(e);
 }
 
 static void send_decom_all(int dummyfd, short what, void *data)
@@ -3688,7 +3720,11 @@ static void do_add_host(int accept_fd, short what, void *data)
 static inline int skip_send(struct event_info *e, int nodrop, int check_hello)
 {
     if (e->fd == -1 || e->decomissioned || (check_hello && !e->got_hello)) return -3;
-    if (e->wr_full && !nodrop) return -2;
+    if (e->wr_full && !nodrop) {
+        if (e->host_node_ptr)
+            e->host_node_ptr->num_queue_full++;
+        return -2;
+    }
     return 0;
 }
 
@@ -4284,6 +4320,21 @@ void net_queue_stat_iterate_evbuffer(netinfo_type *netinfo_ptr, QSTATITERFP func
         func(arg, &stat); /* net_to_systable */
         Pthread_mutex_destroy(&stat.lock);
     }
+}
+
+int net_num_over_half(netinfo_type *netinfo_ptr, size_t *wr_max, int *num_over_low, int64_t *bytes_sent)
+{
+    struct net_info *n = netinfo_ptr->net_info;
+    if (!n) {
+        *wr_max = 0;
+        *num_over_low = 0;
+        *bytes_sent = 0;
+        return 0;
+    }
+    *wr_max = n->wr_max;
+    *num_over_low = ATOMIC_LOAD32(n->num_over_low);
+    *bytes_sent = ATOMIC_LOAD64(n->bytes_sent);
+    return ATOMIC_LOAD32(n->num_over_half);
 }
 
 void increase_net_buf(void)

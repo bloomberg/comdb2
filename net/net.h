@@ -407,6 +407,9 @@ int sync_state_to_protobuf(int);
 struct fdb_hbeats;
 struct dist_hbeats;
 void increase_net_buf(void);
+/* Connections with more than half (return value) and a sixteenth (num_over_low) of wr_max queued,
+ * and total bytes written to sockets on this net */
+int net_num_over_half(netinfo_type *netinfo_ptr, size_t *wr_max, int *num_over_low, int64_t *bytes_sent);
 int enable_fdb_heartbeats(struct fdb_hbeats*);
 int disable_fdb_heartbeats_and_free(struct fdb_hbeats *);
 int enable_dist_heartbeats(struct dist_hbeats *);
