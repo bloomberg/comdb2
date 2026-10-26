@@ -668,7 +668,7 @@
 (name='null_blob_fix', description='', type='BOOLEAN', value='ON', read_only='Y')
 (name='nullfkey', description='Do not enforce foreign key constraints for null keys. (Default: on)', type='BOOLEAN', value='ON', read_only='Y')
 (name='num_contexts', description='', type='INTEGER', value='16', read_only='Y')
-(name='num_record_converts', description='During schema changes, pack this many records into a transaction. (Default: 100)', type='INTEGER', value='100', read_only='Y')
+(name='num_record_converts', description='During schema changes, wait for replication after this many records per convert thread. (Default: 100)', type='INTEGER', value='100', read_only='Y')
 (name='num_write_retries', description='number of times to retry writes on ENOSPC', type='INTEGER', value='128', read_only='N')
 (name='numberkdbcaches', description='Split the cache into this many segments.', type='INTEGER', value='0', read_only='N')
 (name='numtimesbehind', description='', type='INTEGER', value='1000000000', read_only='N')
