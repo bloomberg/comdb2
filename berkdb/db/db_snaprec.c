@@ -294,7 +294,7 @@ __db_pg_alloc_snap_recover(dbenv, dbtp, lsnp, op, pagep)
 	if (argp->pgno == pgno_in) {
 		__db_pg_alloc_target_undo(file_dbp, pagep, (__db_pg_alloc_args *) argp);
 	} else if (PGNO_BASE_MD == pgno_in) {
-		__db_pg_free_meta_undo((DBMETA *) pagep, (__db_pg_freedata_args *) argp);
+		__db_pg_alloc_meta_undo(file_dbp, (DBMETA *) pagep, argp);
 		if (argp->pgno > ((DBMETA *) pagep)->last_pgno) {
 			((DBMETA *) pagep)->last_pgno = argp->pgno;
 		}
