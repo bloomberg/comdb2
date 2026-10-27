@@ -1852,6 +1852,13 @@ REGISTER_TUNABLE("client_heartbeat_ms",
 
 REGISTER_TUNABLE("debug_sleep_in_cursor_move", "Sleep N ms on each cursor move (testing only).  (Default: 0)",
                  TUNABLE_INTEGER, &gbl_debug_sleep_in_cursor_move, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("debug_sleep_in_cursor_description",
+                 "Sleep N ms after picking the index schema to describe a cursor (testing only).  (Default: 0)",
+                 TUNABLE_INTEGER, &gbl_debug_sleep_in_cursor_description, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL,
+                 NULL);
+REGISTER_TUNABLE("debug_sleep_before_fingerprint",
+                 "Sleep N ms after a statement runs, before its fingerprint is recorded (testing only).  (Default: 0)",
+                 TUNABLE_INTEGER, &gbl_debug_sleep_before_fingerprint, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 
 REGISTER_TUNABLE("debug_trace_sorter_rewind",
                  "Log the wall time spent in the sqlite sorter's rewind step, and in each spill to disk made "

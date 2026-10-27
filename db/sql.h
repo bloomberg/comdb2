@@ -638,6 +638,9 @@ struct sqlworkstate {
     const char *zNormSql; /* Normalized version of latest SQL query. */
     char *zOrigNormSql;   /* Normalized version of original SQL query. */
     struct sql_state rec; /* Prepared statement for original SQL query. */
+    /* Formed at prepare: by statement end the table locks may be gone, and
+     * taking the schema lock behind them would invert the lock order. */
+    struct string_ref *query_plan_ref;
     unsigned char aFingerprint[FINGERPRINTSZ]; /* MD5 of normalized SQL. */
     char zRuleRes[300];   /* Ruleset match result, if any. */
 };

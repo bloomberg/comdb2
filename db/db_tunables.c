@@ -330,6 +330,8 @@ extern int gbl_debug_sleep_in_cursor_move;
 extern int gbl_debug_trace_sorter_rewind;
 extern int gbl_sort_release_check_interval;
 extern int gbl_sort_release_probe_interval_us;
+extern int gbl_debug_sleep_in_cursor_description;
+extern int gbl_debug_sleep_before_fingerprint;
 extern int gbl_recover_deadlock_sync_dta;
 extern int gbl_pagelock_release_interval_ms;
 extern int gbl_pagelock_release_max_wait_ms;
