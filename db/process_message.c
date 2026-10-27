@@ -5068,7 +5068,8 @@ clipper_usage:
                 if (!db) {
                     logmsg(LOGMSG_ERROR, "Could not find table '%s'\n", table);
                 } else {
-                    int lrc = bdb_del_table_csonparameters(NULL, table);
+                    int bdberr;
+                    int lrc = bdb_del_table_csonparameters(NULL, table, &bdberr);
                     if (lrc)
                         logmsg(LOGMSG_ERROR, "Error deleting tbl params for tbl %s\n", table);
                     else

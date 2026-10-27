@@ -2189,7 +2189,7 @@ int partition_llmeta_write(void *tran, timepart_view_t *view, int override,
             errstat_set_rcstrf(err, VIEW_ERR_EXIST,
                                "Partition %s already exists", view->name);
         else
-            errstat_set_rcstrf(err, VIEW_ERR_LLMETA,
+            errstat_set_rcstrf(err, rc == VIEW_ERR_DEADLOCK ? rc : VIEW_ERR_LLMETA,
                                "Failed to llmeta save view %s", view->name);
         goto done;
     }
@@ -2208,7 +2208,7 @@ int partition_llmeta_delete(void *tran, const char *name, struct errstat *err)
 {
     int rc = views_write_view(tran, name, NULL, 1 /*unused*/);
     if (rc != VIEW_NOERR) {
-        errstat_set_rcstrf(err, VIEW_ERR_LLMETA,
+        errstat_set_rcstrf(err, rc == VIEW_ERR_DEADLOCK ? rc : VIEW_ERR_LLMETA,
                            "Unable to remove partition %s", name);
     }
     return rc;
@@ -3437,7 +3437,7 @@ int partition_truncate_callback(tran_type *tran, struct schema_change_type *s)
     if (rc) {
         logmsg(LOGMSG_ERROR, "%s Failed to write partition %s llmeta %d %s\n",
                __func__, s->timepartition_name, err.errval, err.errstr);
-        return rc;
+        return rc == VIEW_ERR_DEADLOCK ? RC_INTERNAL_RETRY : rc;
     }
 
     rc = bdb_llog_partition(thedb->bdb_env, tran, s->newpartition->name,

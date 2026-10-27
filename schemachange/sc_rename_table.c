@@ -73,12 +73,13 @@ int finalize_alias_table(struct ireq *iq, struct schema_change_type *s,
 
     hash_sqlalias_db(db, s->newtable);
 
-    rc = bdb_set_table_sqlalias(db->tablename, tran, db->sqlaliasname);
+    int bdberr;
+    rc = bdb_set_table_sqlalias(db->tablename, tran, db->sqlaliasname, &bdberr);
     if (rc) {
         /* undo alias */
-        sc_errf(s, "bdb_set_table_sqlalias failed rc %d\n", rc);
+        sc_errf(s, "bdb_set_table_sqlalias failed rc %d bdberr %d\n", rc, bdberr);
         hash_sqlalias_db(db, db->tablename);
-        return rc;
+        return bdberr == BDBERR_DEADLOCK ? RC_INTERNAL_RETRY : rc;
     }
 
     gbl_sc_commit_count++;

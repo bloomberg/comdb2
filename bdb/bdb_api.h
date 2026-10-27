@@ -2230,16 +2230,16 @@ int bdb_set_genid_format(uint64_t genid_format, int *bdberr);
 int bdb_get_table_csonparameters(tran_type *tran, const char *table,
                                  char **value, int *len);
 int bdb_set_table_csonparameters(void *parent_tran, const char *table,
-                                 const char *value, int len);
-int bdb_del_table_csonparameters(void *parent_tran, const char *table);
+                                 const char *value, int len, int *bdberr);
+int bdb_del_table_csonparameters(void *parent_tran, const char *table, int *bdberr);
 int bdb_clear_table_parameter(void *parent_tran, const char *table,
-                              const char *parameter);
+                              const char *parameter, int *bdberr);
 int bdb_get_table_parameter(const char *table, const char *parameter,
                             char **value);
 int bdb_get_table_parameter_tran(const char *table, const char *parameter,
                                  char **value, tran_type *tran);
 int bdb_set_table_parameter(void *parent_tran, const char *table,
-                            const char *parameter, const char *value);
+                            const char *parameter, const char *value, int *bdberr);
 
 int bdb_disable_page_scan_for_table(bdb_state_type *bdb_state);
 int bdb_enable_page_scan_for_table(bdb_state_type *bdb_state);
@@ -2307,7 +2307,7 @@ int bdb_table_version_upsert(bdb_state_type *bdb_state, tran_type *tran,
  *
  */
 int bdb_set_table_sqlalias(const char *tablename, tran_type *tran,
-                           char *newname);
+                           char *newname, int *bdberr);
 
 /**
  * Get the sql alias for a table "bdb_state->name"" in newname (malloced)
@@ -2320,7 +2320,7 @@ int bdb_get_table_sqlalias_tran(const char *tablename, tran_type *tran,
  * Delete the sql alias for a table "bdb_state->name
  *
  */
-int bdb_del_table_sqlalias_tran(const char *tablename, tran_type *tran);
+int bdb_del_table_sqlalias_tran(const char *tablename, tran_type *tran, int *bdberr);
 
 /**
  * Set the TABLE VERSION ENTRY for table "bdb_state->name" to "val"

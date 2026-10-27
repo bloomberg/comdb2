@@ -93,16 +93,18 @@ err:
 }
 
 int gen_shard_llmeta_write_serialized_str(tran_type *tran, const char *tablename, const char *str) {
-	int rc;
+	int rc, bdberr;
 	if (str){
-		rc = bdb_set_table_parameter(tran, LLMETA_GENERIC_SHARD, tablename, str);
+		rc = bdb_set_table_parameter(tran, LLMETA_GENERIC_SHARD, tablename, str, &bdberr);
 	} else {
 		/* this is a partition drop */
-		rc = bdb_clear_table_parameter(tran, LLMETA_GENERIC_SHARD, tablename);
+		rc = bdb_clear_table_parameter(tran, LLMETA_GENERIC_SHARD, tablename, &bdberr);
 	}
 
 	if (rc) {
-		logmsg(LOGMSG_ERROR, "FAILED TO WRITE SHARD STRING TO LLMETA. RC: %d\n", rc);
+		logmsg(LOGMSG_ERROR, "FAILED TO WRITE SHARD STRING TO LLMETA. RC: %d BDBERR: %d\n", rc, bdberr);
+		if (bdberr == BDBERR_DEADLOCK)
+			rc = RC_INTERNAL_RETRY;
 	}
 	return rc;
 }

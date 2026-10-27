@@ -1039,7 +1039,7 @@ static int finalize_merge_table(struct ireq *iq, struct schema_change_type *s,
 int finalize_alter_table(struct ireq *iq, struct schema_change_type *s,
                          tran_type *transac)
 {
-    int rc, bdberr;
+    int rc = 0, bdberr;
     struct dbtable *db = s->db;
     struct dbtable *newdb = s->newdb;
     void *old_bdb_handle, *new_bdb_handle;
@@ -1189,9 +1189,11 @@ int finalize_alter_table(struct ireq *iq, struct schema_change_type *s,
 
     /* do we have a piggybacked rename */
     if (!strncasecmp(s->tablename, s->newtable, strlen(s->tablename))) {
-        rc = bdb_set_table_sqlalias(s->tablename, transac, NULL);
+        rc = bdb_set_table_sqlalias(s->tablename, transac, NULL, &bdberr);
         if (rc) {
-            sc_errf(s, "bdb_set_table_sqlalias failed rc %d\n", rc);
+            sc_errf(s, "bdb_set_table_sqlalias failed rc %d bdberr %d\n", rc, bdberr);
+            if (bdberr == BDBERR_DEADLOCK)
+                rc = RC_INTERNAL_RETRY;
             BACKOUT;
         }
         hash_del(thedb->sqlalias_hash, db);
@@ -1288,7 +1290,7 @@ int finalize_alter_table(struct ireq *iq, struct schema_change_type *s,
             logmsg(LOGMSG_ERROR, "Failed to partition table %s rc %d \"%s\"\n",
                    s->tablename, rc, err.errstr);
             sc_errf(s, "partition_llmeta_write failed \"alter\"\n");
-            return -1;
+            return rc == VIEW_ERR_DEADLOCK ? RC_INTERNAL_RETRY : -1;
         }
 
         /* make the in-memory alias */
@@ -1305,7 +1307,7 @@ int finalize_alter_table(struct ireq *iq, struct schema_change_type *s,
         rc = partition_llmeta_delete(transac, s->timepartition_name, &err);
         if (rc) {
             sc_errf(s, "Failed to remove partition llmeta %d\n", err.errval);
-            return SC_INTERNAL_ERROR;
+            return rc == VIEW_ERR_DEADLOCK ? RC_INTERNAL_RETRY : SC_INTERNAL_ERROR;
         }
         db->timepartition_name = NULL;
     }
@@ -1331,7 +1333,7 @@ backout:
            db->tablename, db->schema_version, db->instant_schema_change,
            db->lrl, db->odh, db->handle);
 
-    return -1;
+    return rc == RC_INTERNAL_RETRY ? rc : -1;
 
 failed:
     /* TODO why do we do this stuff if we're just going to clean_exit()? */

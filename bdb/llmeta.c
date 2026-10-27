@@ -8573,7 +8573,8 @@ retry:
         return -1;
     }
 
-    trans = bdb_tran_begin(llmeta_bdb_state, ptran, &bdberr);
+    /* Write in the caller's transaction: a child of it is one more level of nesting */
+    trans = ptran ? ptran : bdb_tran_begin(llmeta_bdb_state, NULL, &bdberr);
     if (!trans) {
         if (bdberr == BDBERR_DEADLOCK) {
             int dp = gbl_llmeta_deadlock_poll;
@@ -8617,7 +8618,9 @@ retry:
         }
     }
 
-    if (!rc) {
+    if (!rc && ptran) {
+        return 0;
+    } else if (!rc) {
         rc = bdb_tran_commit(llmeta_bdb_state, trans, &bdberr);
         if (rc || bdberr != BDBERR_NOERROR) {
             if (bdberr == BDBERR_DEADLOCK && !ptran) {
@@ -8635,6 +8638,8 @@ retry:
 
             return -1;
         }
+    } else if (ptran) {
+        return -1;
     } else {
         rc = bdb_tran_abort(llmeta_bdb_state, trans, &bdberr);
         if (rc || bdberr != BDBERR_NOERROR) {
@@ -9211,44 +9216,52 @@ rep:
  */
 static int llmeta_del_set_blob(void *parent_tran, llmetakey_t key,
                                const char *table, const char *value, int len,
-                               int deleteonly)
+                               int deleteonly, int *bdberr)
 {
 #ifdef DEBUG_LLMETA
     fprintf(stderr, "%s\n", __func__);
 #endif
-    if (llmeta_bdb_state == NULL)
+    *bdberr = BDBERR_NOERROR;
+    if (llmeta_bdb_state == NULL) {
+        *bdberr = BDBERR_MISC;
         return -1;
-    void *tran = NULL;
-    int rc, bdberr;
+    }
+    /* Write in the caller's transaction: a child of it is one more level of
+     * nesting.  On an error the caller aborts its transaction, and retries from
+     * the top level if *bdberr is BDBERR_DEADLOCK. */
+    void *tran = parent_tran;
+    int rc, abort_bdberr;
     int retry = 0;
 
-rep:
-
-    if ((tran = bdb_tran_begin(llmeta_bdb_state, parent_tran, &bdberr)) ==
-        NULL) {
-        logmsg(LOGMSG_ERROR, "%s: bdb_tran_begin bdberr:%d retries:%d\n", __func__,
-                bdberr, retry);
-        rc = bdberr;
-        goto err;
-    }
     char llkey[LLMETA_IXLEN] = {0};
     key = htonl(key);
     memcpy(llkey, &key, sizeof(key));
     if (table)
         memcpy((llkey + sizeof(key)), table, strnlen(table, LLMETA_IXLEN - sizeof(key)));
 
+rep:
+    *bdberr = BDBERR_NOERROR;
+    if (!parent_tran && (tran = bdb_tran_begin(llmeta_bdb_state, NULL, bdberr)) == NULL) {
+        logmsg(LOGMSG_ERROR, "%s: bdb_tran_begin bdberr:%d retries:%d\n", __func__,
+                *bdberr, retry);
+        rc = -1;
+        goto err;
+    }
+
     int fndlen;
     char *tmpstr = NULL;
     if ((rc = bdb_lite_exact_var_fetch_tran(llmeta_bdb_state, tran, llkey,
                                             (void **)&tmpstr, &fndlen,
-                                            &bdberr)) != 0) {
+                                            bdberr)) != 0) {
 
-        if (bdberr == BDBERR_FETCH_DTA) {
+        if (*bdberr == BDBERR_FETCH_DTA) {
             // not found -- just add
+            rc = 0;
+            *bdberr = BDBERR_NOERROR;
             goto add;
         }
         logmsg(LOGMSG_ERROR, "%s: bdb_lite_exact_fetch_tran rc:%d bdberr:%d\n",
-                __func__, rc, bdberr);
+                __func__, rc, *bdberr);
         goto err;
     }
 
@@ -9257,57 +9270,58 @@ rep:
     fprintf(
         stderr,
         "%s: bdb_lite_exact_fetch_tran found:%s fndlen:%d rc:%d bdberr:%d\n",
-        __func__, tmpstr, fndlen, rc, bdberr);
+        __func__, tmpstr, fndlen, rc, *bdberr);
 #endif
     free(tmpstr);
 
-    if ((rc = bdb_lite_exact_del(llmeta_bdb_state, tran, llkey, &bdberr)) !=
+    if ((rc = bdb_lite_exact_del(llmeta_bdb_state, tran, llkey, bdberr)) !=
         0) {
         logmsg(LOGMSG_ERROR, "%s: bdb_lite_exact_del rc:%d bdberr:%d\n", __func__,
-                rc, bdberr);
+                rc, *bdberr);
         goto err;
     }
 add:
     if (!deleteonly &&
         (rc = bdb_lite_add(llmeta_bdb_state, tran, (void *)value,
                            len, // include \0
-                           llkey, &bdberr)) != 0) {
+                           llkey, bdberr)) != 0) {
         logmsg(LOGMSG_ERROR, "%s: bdb_lite_add failed rc:%d bdberr:%d\n", __func__,
-                rc, bdberr);
+                rc, *bdberr);
         goto err;
     }
-    if ((rc = bdb_tran_commit(llmeta_bdb_state, tran, &bdberr)) != 0) {
+    if (!parent_tran && (rc = bdb_tran_commit(llmeta_bdb_state, tran, bdberr)) != 0) {
         logmsg(LOGMSG_ERROR, "%s bdb_tran_commit rc:%d bdberr:%d\n", __func__, rc,
-                bdberr);
+                *bdberr);
     }
     return rc;
 err:
-    if (tran && (rc = bdb_tran_abort(llmeta_bdb_state, tran, &bdberr)) != 0) {
-        logmsg(LOGMSG_ERROR, "%s bdb_tran_abort rc:%d bdberr:%d\n", __func__, rc,
-                bdberr);
-        goto out;
+    if (parent_tran)
+        return rc;
+    if (tran && bdb_tran_abort(llmeta_bdb_state, tran, &abort_bdberr) != 0) {
+        logmsg(LOGMSG_ERROR, "%s bdb_tran_abort bdberr:%d\n", __func__, abort_bdberr);
+        return rc;
     }
-    if (retry < gbl_maxretries && (bdberr == BDBERR_NOERROR || bdberr == BDBERR_DEADLOCK) && !parent_tran) {
+    if (retry < gbl_maxretries && *bdberr == BDBERR_DEADLOCK) {
         int dp = gbl_llmeta_deadlock_poll;
         if (dp > 1)
             poll(NULL, 0, rand() % dp);
         ++retry;
         goto rep;
     }
-out:
     return rc;
 }
 
 static inline int llmeta_del_blob(void *parent_tran, llmetakey_t key,
-                                  const char *table)
+                                  const char *table, int *bdberr)
 {
-    return llmeta_del_set_blob(parent_tran, key, table, NULL, 0, 1);
+    return llmeta_del_set_blob(parent_tran, key, table, NULL, 0, 1, bdberr);
 }
 
 static inline int llmeta_set_blob(void *parent_tran, llmetakey_t key,
-                                  const char *table, const char *value, int len)
+                                  const char *table, const char *value, int len,
+                                  int *bdberr)
 {
-    return llmeta_del_set_blob(parent_tran, key, table, value, len, 0);
+    return llmeta_del_set_blob(parent_tran, key, table, value, len, 0, bdberr);
 }
 
 /* return parameters for tbl into value
@@ -9320,15 +9334,15 @@ int bdb_get_table_csonparameters(tran_type *tran, const char *table,
 }
 
 int bdb_set_table_csonparameters(void *parent_tran, const char *table,
-                                 const char *value, int len)
+                                 const char *value, int len, int *bdberr)
 {
     return llmeta_set_blob(parent_tran, LLMETA_TABLE_PARAMETERS, table, value,
-                           len);
+                           len, bdberr);
 }
 
-int bdb_del_table_csonparameters(void *parent_tran, const char *table)
+int bdb_del_table_csonparameters(void *parent_tran, const char *table, int *bdberr)
 {
-    return llmeta_del_blob(parent_tran, LLMETA_TABLE_PARAMETERS, table);
+    return llmeta_del_blob(parent_tran, LLMETA_TABLE_PARAMETERS, table, bdberr);
 }
 
 #include <cson.h>
@@ -9348,6 +9362,8 @@ int bdb_get_table_parameter_tran(const char *table, const char *parameter,
     char *blob = NULL;
     int len;
     int rc = bdb_get_table_csonparameters(tran, table, &blob, &len);
+    if (rc < 0)
+        return rc;
     assert(rc == 0 || (rc == 1 && blob == NULL));
 
     if (blob == NULL)
@@ -9426,14 +9442,20 @@ int bdb_get_table_parameter(const char *table, const char *parameter,
 }
 
 int bdb_set_table_parameter(void *parent_tran, const char *table,
-                            const char *parameter, const char *value)
+                            const char *parameter, const char *value, int *bdberr)
 {
 #ifdef DEBUG_LLMETA
     fprintf(stderr, "%s()\n", __func__);
 #endif
     char *blob = NULL;
     int len;
+    *bdberr = BDBERR_NOERROR;
     int rc = bdb_get_table_csonparameters(parent_tran, table, &blob, &len);
+    if (rc < 0) {
+        logmsg(LOGMSG_ERROR, "%s: failed to read parameters of %s rc %d\n", __func__, table, rc);
+        *bdberr = BDBERR_MISC;
+        return rc;
+    }
     assert(rc == 0 || (rc == 1 && blob == NULL));
 
     cson_value *rootV = NULL;
@@ -9526,11 +9548,14 @@ int bdb_set_table_parameter(void *parent_tran, const char *table,
         logmsg(LOGMSG_ERROR, "cson_output_buffer returned rc %d", rc);
     } else if (buf.used > 2) {
         // JSON data is the first (buf.used) bytes of (buf.mem).
-        bdb_set_table_csonparameters(parent_tran, table, (const char *)buf.mem,
-                                     buf.used); // save to llmeta blob
+        rc = bdb_set_table_csonparameters(parent_tran, table, (const char *)buf.mem,
+                                          buf.used, bdberr); // save to llmeta blob
     } else {
-        bdb_del_table_csonparameters(parent_tran, table);
+        rc = bdb_del_table_csonparameters(parent_tran, table, bdberr);
     }
+    if (rc)
+        logmsg(LOGMSG_ERROR, "%s: failed to write parameters of %s rc %d bdberr %d\n", __func__, table, rc,
+               *bdberr);
 
     // Clean up
     cson_value_free(rootV);
@@ -9539,9 +9564,9 @@ int bdb_set_table_parameter(void *parent_tran, const char *table,
 }
 
 int bdb_clear_table_parameter(void *parent_tran, const char *table,
-                              const char *parameter)
+                              const char *parameter, int *bdberr)
 {
-    return bdb_set_table_parameter(parent_tran, table, parameter, NULL);
+    return bdb_set_table_parameter(parent_tran, table, parameter, NULL, bdberr);
 }
 
 /**
@@ -9549,11 +9574,11 @@ int bdb_clear_table_parameter(void *parent_tran, const char *table,
  *
  */
 int bdb_set_table_sqlalias(const char *tablename, tran_type *tran,
-                           char *newname)
+                           char *newname, int *bdberr)
 {
     int rc = 0;
 
-    rc = bdb_set_table_parameter(tran, tablename, "sqlalias", newname);
+    rc = bdb_set_table_parameter(tran, tablename, "sqlalias", newname, bdberr);
 
     return rc;
 }
@@ -9576,9 +9601,9 @@ int bdb_get_table_sqlalias_tran(const char *tablename, tran_type *tran,
  * Delete the sql alias for a table "bdb_state->name"
  *
  */
-int bdb_del_table_sqlalias_tran(const char *tablename, tran_type *tran)
+int bdb_del_table_sqlalias_tran(const char *tablename, tran_type *tran, int *bdberr)
 {
-    return bdb_set_table_parameter(tran, tablename, "sqlalias", NULL);
+    return bdb_set_table_parameter(tran, tablename, "sqlalias", NULL, bdberr);
 }
 
 struct queue_key {
@@ -11196,23 +11221,26 @@ int bdb_rename_files(bdb_state_type *bdb_state, tran_type *tran,
 
 /* rename csonparameters for table "oldname" */
 int bdb_rename_table_csonparameters(void *tran, const char *oldname,
-                                    const char *newname)
+                                    const char *newname, int *bdberr)
 {
     char *cson = NULL;
     int cson_len = 0;
     int rc;
 
+    *bdberr = BDBERR_NOERROR;
     rc = bdb_get_table_csonparameters(tran, oldname, &cson, &cson_len);
     if (rc) {
         if (rc == 1)
             rc = 0; /* not found */
+        else
+            *bdberr = BDBERR_MISC;
         goto done;
     }
-    rc = bdb_del_table_csonparameters(tran, oldname);
+    rc = bdb_del_table_csonparameters(tran, oldname, bdberr);
     if (rc) {
         goto done;
     }
-    rc = bdb_set_table_csonparameters(tran, newname, cson, cson_len);
+    rc = bdb_set_table_csonparameters(tran, newname, cson, cson_len, bdberr);
     if (rc) {
         goto done;
     }
@@ -11234,7 +11262,7 @@ int bdb_rename_table_metadata(bdb_state_type *bdb_state, tran_type *tran,
         return rc;
 
     /* rename cson parameters */
-    rc = bdb_rename_table_csonparameters(tran, bdb_state->name, newname);
+    rc = bdb_rename_table_csonparameters(tran, bdb_state->name, newname, bdberr);
     if (rc)
         return rc;
 

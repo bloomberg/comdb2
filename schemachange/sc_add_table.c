@@ -403,7 +403,7 @@ int finalize_add_table(struct ireq *iq, struct schema_change_type *s,
             logmsg(LOGMSG_ERROR, "Failed to create partition %s rc %d \"%s\"\n",
                    s->timepartition_name, rc, err.errstr);
             sc_errf(s, "partition_llmeta_write failed \"add\"\n");
-            return -1;
+            return rc == VIEW_ERR_DEADLOCK ? RC_INTERNAL_RETRY : -1;
         }
         /* drop partition llmeta, if we remove the partition (i.e. instead
          * of merging another table in, in which case tablename is provided)
@@ -430,25 +430,26 @@ int finalize_add_table(struct ireq *iq, struct schema_change_type *s,
             logmsg(LOGMSG_ERROR, "Failed to update partition %s retention rc %d \"%s\"\n", s->timepartition_name, rc,
                    err.errstr);
             sc_errf(s, "partition_llmeta_write failed \"retention\"\n");
-            return -1;
+            return rc == VIEW_ERR_DEADLOCK ? RC_INTERNAL_RETRY : -1;
         }
     } else if (s->partition.type == PARTITION_MERGE && s->partition.u.mergetable.tablename[0] == '\0') {
         struct errstat err = {0};
-        if (partition_llmeta_delete(tran, s->timepartition_name, &err)) {
+        if ((rc = partition_llmeta_delete(tran, s->timepartition_name, &err)) != 0) {
             sc_errf(s, "Failed to remove partition llmeta %d\n", err.errval);
             logmsg(LOGMSG_ERROR, "Failed to remove partition llmeta %d\n", err.errval);
-            return SC_INTERNAL_ERROR;
+            return rc == VIEW_ERR_DEADLOCK ? RC_INTERNAL_RETRY : SC_INTERNAL_ERROR;
         }
     } else if (s->partition.type == PARTITION_ADD_GENSHARD) {
         /* NOTE: for the purpose of this test stub, we create an sql alias; the actual
          * sharding will have a view created here 
          */
         hash_sqlalias_db(db, s->partition.u.genshard.tablename);
-        rc = bdb_set_table_sqlalias(db->tablename, tran, db->sqlaliasname);
+        int bdberr;
+        rc = bdb_set_table_sqlalias(db->tablename, tran, db->sqlaliasname, &bdberr);
         if (rc) {
             hash_sqlalias_db(db, NULL);
             logmsg(LOGMSG_ERROR, "Failed to alias genshard table");
-            return -1;
+            return bdberr == BDBERR_DEADLOCK ? RC_INTERNAL_RETRY : -1;
         }
         db->numdbs = s->partition.u.genshard.numdbs;
         db->dbnames = (char **)malloc(sizeof(char*) * db->numdbs);
@@ -468,14 +469,14 @@ int finalize_add_table(struct ireq *iq, struct schema_change_type *s,
         }
         /*write to llmeta*/
         struct errstat err = {0};
-        if (gen_shard_llmeta_add(tran, s->partition.u.genshard.tablename, s->partition.u.genshard.numdbs, 
+        if ((rc = gen_shard_llmeta_add(tran, s->partition.u.genshard.tablename, s->partition.u.genshard.numdbs,
                     s->partition.u.genshard.dbnames, s->partition.u.genshard.numcols, s->partition.u.genshard.columns,
-                    s->partition.u.genshard.shardnames, &err)) {
+                    s->partition.u.genshard.shardnames, &err)) != 0) {
             sc_errf(s, "failed to write shard info to llmeta for shard %s. rc: %d, err: %s\n", s->partition.u.genshard.tablename, rc, err.errstr);
             logmsg(LOGMSG_ERROR, "failed to write shard info to llmeta for shard %s. rc: %d, err: %s\n",
                    s->partition.u.genshard.tablename, rc, err.errstr);
             hash_sqlalias_db(db, NULL);
-            return -1;
+            return rc == RC_INTERNAL_RETRY ? rc : -1;
         }
     }
 
