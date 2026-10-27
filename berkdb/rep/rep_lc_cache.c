@@ -563,6 +563,20 @@ __lc_cache_feed(DB_ENV *dbenv, DB_LSN lsn, DBT dbt)
 					goto err;
 				}
 
+				if (e->lc.child_utxnids == NULL) {
+					if ((ret= __os_malloc(dbenv, sizeof(LISTC_T(UTXNID)), &e->lc.child_utxnids) != 0)) {
+						goto err;
+					}
+
+					listc_init(e->lc.child_utxnids, offsetof(UTXNID, lnk));
+				}
+
+				/* The child's own children (grandchildren of the parent) commit with the parent too. */
+				if (ce->lc.child_utxnids != NULL) {
+					while ((utxnid_track = listc_rtl(ce->lc.child_utxnids)) != NULL)
+						listc_atl(e->lc.child_utxnids, utxnid_track);
+				}
+
 				/* We're done with the child. Zap the child's nlsns so free_ent doesn't free it
 				 * since we now have pointers to it inside the parent. */
 				ce->lc.nlsns = 0;
@@ -571,13 +585,6 @@ __lc_cache_feed(DB_ENV *dbenv, DB_LSN lsn, DBT dbt)
 
 				if ((ret = __os_malloc(dbenv, sizeof(UTXNID), &utxnid_track)) != 0) {
 					goto err;
-				}
-				if (e->lc.child_utxnids == NULL) {
-					if ((ret= __os_malloc(dbenv, sizeof(LISTC_T(UTXNID)), &e->lc.child_utxnids) != 0)) {
-						goto err;
-					}
-
-					listc_init(e->lc.child_utxnids, offsetof(UTXNID, lnk));
 				}
 
 				utxnid_track->utxnid = child_utxnid;
