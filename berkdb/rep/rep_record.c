@@ -162,6 +162,7 @@ extern int __txn_commit_map_enabled(void);
  * include llog_auto.h -- as with the other llog rectypes named in this file. */
 #define REP_LLOG_FINGERPRINT 10022
 #define REP_LLOG_CLIENTINFO 10023
+#define REP_LLOG_TRACE 10024
 extern int gbl_log_fingerprint;
 extern int bdb_fingerprint_from_logrec(DB_ENV *, void *, unsigned char *, size_t);
 extern int gbl_log_clientinfo;
@@ -169,7 +170,7 @@ extern void *bdb_clientinfo_from_logrec(DB_ENV *, void *);
 extern void bdb_clientinfo_free(void *);
 extern u_int32_t bdb_clientinfo_id(void *);
 extern void bdb_replication_thread_begin(u_int32_t, u_int32_t);
-extern void *bdb_trace_rep_start(const void *, int);
+extern void *bdb_trace_from_logrec(DB_ENV *, void *);
 extern void bdb_trace_rep_done(void *, int, uint64_t, uint64_t);
 extern void bdb_trace_rep_free(void *);
 extern void bdb_replication_thread_client(void *);
@@ -410,23 +411,6 @@ void send_master_req(DB_ENV *dbenv, const char *func, int line)
 					call_count, req_count);
 			lastpr = now;
 	}
-}
-
-/* Starts the replication side of comdb2_trace if logrec is the master's trace
- * __db_debug record. */
-static void *
-__rep_trace_from_logrec(DB_ENV *dbenv, void *logrec)
-{
-	__db_debug_args *argp = NULL;
-	void *trace = NULL;
-
-	if (__db_debug_read(dbenv, logrec, &argp) != 0)
-		return NULL;
-	if (argp->op.size == 4 &&
-		memcmp(argp->op.data, COMDB2_TRACE_DEBUG_OP, 4) == 0)
-		trace = bdb_trace_rep_start(argp->data.data, argp->data.size);
-	__os_free(dbenv, argp);
-	return trace;
 }
 
 void
@@ -6834,8 +6818,8 @@ __rep_collect_txn_from_log(dbenv, lsnp, lc, had_serializable_records, rp)
 				lc->clientinfo =
 					bdb_clientinfo_from_logrec(dbenv, data.data);
 			if (lc->want_trace && lc->trace == NULL &&
-				rectype == DB___db_debug)
-				lc->trace = __rep_trace_from_logrec(dbenv, data.data);
+				rectype == REP_LLOG_TRACE)
+				lc->trace = bdb_trace_from_logrec(dbenv, data.data);
 
 			__rep_classify_type(rectype, had_serializable_records);
 			if (gbl_ufid_add_on_collect && !DB_RECTYPE_IS_LOGICAL(rectype) && DB_RECTYPE_HAS_UFID(rectype)) {
@@ -6980,8 +6964,8 @@ __rep_collect_txn_txnid_int(dbenv, lsnp, lc, had_serializable_records, rp, txnid
 				if (want_clientinfo && lc->clientinfo == NULL && rectype == REP_LLOG_CLIENTINFO)
 					lc->clientinfo = bdb_clientinfo_from_logrec(
 						dbenv, lc->array[i].rec.data);
-				else if (want_trace && lc->trace == NULL && rectype == DB___db_debug)
-					lc->trace = __rep_trace_from_logrec(dbenv, lc->array[i].rec.data);
+				else if (want_trace && lc->trace == NULL && rectype == REP_LLOG_TRACE)
+					lc->trace = bdb_trace_from_logrec(dbenv, lc->array[i].rec.data);
 			}
 
 			if (had_serializable_records)

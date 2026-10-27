@@ -1417,6 +1417,10 @@ extern int gbl_log_clientinfo;
 int bdb_llog_clientinfo_tran(bdb_state_type *bdb_state, tran_type *tran, const char *taskname, const char *host,
                              int pid, int *bdberr);
 
+/* Log the opaque comdb2_trace payload of this txn. Caller gates on gbl_log_trace. */
+extern int gbl_log_trace;
+int bdb_llog_trace_tran(bdb_state_type *bdb_state, tran_type *tran, const void *payload, int len, int *bdberr);
+
 /* Longest taskname/host comdb2_replication keeps; longer is truncated. */
 #define BDB_CLIENTINFO_STRSZ 64
 
@@ -2537,7 +2541,6 @@ void bdb_set_seqnum(void *in_bdb_state);
 int bdb_trans_track(bdb_state_type *bdb_state, tran_type *tran);
 
 int bdb_debug_log(bdb_state_type *bdb_state, tran_type *tran, int op);
-int bdb_debug_log_trace(bdb_state_type *bdb_state, tran_type *tran, const void *payload, int len);
 
 /* Log a debug record carrying data in tran.  Recovery and replication ignore
  * it, so it advances the log without modifying any file. */

@@ -1844,6 +1844,14 @@ REGISTER_TUNABLE("log_clientinfo",
                  "downgrading any node. (Default: off)",
                  TUNABLE_BOOLEAN, &gbl_log_clientinfo, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 
+REGISTER_TUNABLE("log_trace",
+                 "Master logs the trace payload of a transaction, so replicants "
+                 "can trace applying it. Keep off until the whole cluster is "
+                 "upgraded -- a replicant that does not know the record type "
+                 "aborts -- and turn it off before downgrading any node. "
+                 "(Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_log_trace, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+
 REGISTER_TUNABLE("client_heartbeat_ms",
                  "Number of milliseconds between client api heartbeats.  "
                  "(Default: 100)",

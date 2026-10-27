@@ -322,6 +322,7 @@ extern int gbl_osql_send_fingerprint;
 extern int gbl_osql_send_clientinfo;
 extern int gbl_log_fingerprint;
 extern int gbl_log_clientinfo;
+extern int gbl_log_trace;
 extern int gbl_create_default_user;
 extern int gbl_allow_neg_column_size;
 extern int gbl_client_heartbeat_ms;

@@ -26,10 +26,6 @@
 
 #define COMDB2_TRACE_MAXLEN 64
 
-/* op of the __db_debug record carrying the master's payload; must stay 4 bytes
- * and not read as 1, 2 or 3, which recovery and addrem interpret */
-#define COMDB2_TRACE_DEBUG_OP "TRCE"
-
 struct reqlogger;
 
 struct comdb2_trace_hooks {

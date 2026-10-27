@@ -823,11 +823,12 @@ static int trans_commit_int(struct ireq *iq, void *trans, char *source_host, int
     /* TODO: support distributed transactions */
     int trace = iq->trace && release_schema_lk && iq->sorese && !iq->sorese->dist_txnid && !logical && !iq->tranddl;
     int distcommit_ms = -1;
-    if (trace) {
+    if (trace && gbl_log_trace) {
         char payload[COMDB2_TRACE_MAXLEN];
+        int bdberr;
         int len = gbl_trace_hooks->master_log_payload(iq->trace, payload, sizeof(payload));
-        if (len > 0 && len <= sizeof(payload) && bdb_debug_log_trace(bdb_handle, trans, payload, len) != 0)
-            logmsg(LOGMSG_ERROR, "%s: failed to log trace\n", __func__);
+        if (len > 0 && len <= sizeof(payload) && bdb_llog_trace_tran(bdb_handle, trans, payload, len, &bdberr) != 0)
+            logmsg(LOGMSG_ERROR, "%s: failed to log trace, bdberr %d\n", __func__, bdberr);
     }
 
     int startms = comdb2_time_epochms();

@@ -29,6 +29,7 @@ if(COMDB2_TEST)
   add_subdirectory(simpleauth)
   add_subdirectory(sockreqtest)
   add_subdirectory(fail)
+  add_subdirectory(tracetest)
 endif()
 
 set(COMDB2_EXTRA_PLUGINS ${EXTRA_PLUGINS} CACHE PATH "Path to additional plugins")

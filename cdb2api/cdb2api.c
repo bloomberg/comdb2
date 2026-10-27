@@ -4642,10 +4642,6 @@ static int cdb2_send_query(cdb2_hndl_tp *hndl, cdb2_hndl_tp *event_hndl, COMDB2B
         callbackrc = cdb2_invoke_callback(event_hndl, e, 1, CDB2_SQL, sql);
         PROCESS_EVENT_CTRL_BEFORE(event_hndl, e, rc, callbackrc, overwrite_rc);
     }
-    const void *trace = event_hndl->trace;
-    int trace_len = event_hndl->trace_len;
-    event_hndl->trace = NULL;
-    event_hndl->trace_len = 0;
     if (overwrite_rc)
         goto after_callback;
 
@@ -4734,10 +4730,10 @@ static int cdb2_send_query(cdb2_hndl_tp *hndl, cdb2_hndl_tp *event_hndl, COMDB2B
     }
 
     /* hndl is NULL for the comdb2db lookup */
-    if (hndl && trace && trace_len > 0) {
+    if (hndl && hndl->trace && hndl->trace_len > 0) {
         sqlquery.has_trace = 1;
-        sqlquery.trace.data = (uint8_t *)trace;
-        sqlquery.trace.len = trace_len;
+        sqlquery.trace.data = (uint8_t *)hndl->trace;
+        sqlquery.trace.len = hndl->trace_len;
     }
 
     query.sqlquery = &sqlquery;
@@ -6987,6 +6983,10 @@ after_callback:
         free(hndl->stmt_types);
         hndl->stmt_types = NULL;
     }
+
+    /* kept across this statement's resends (ssl upgrade, retries) */
+    hndl->trace = NULL;
+    hndl->trace_len = 0;
 
     return rc;
 }
