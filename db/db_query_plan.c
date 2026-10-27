@@ -42,6 +42,9 @@ struct string_ref *form_query_plan(struct sqlclntstate *clnt, sqlite3_stmt *stmt
     if (!v)
         return NULL;
 
+    /* Keeps a schema change from replacing the dbtables we describe */
+    assert_rdlock_schema_lk();
+
     struct strbuf *query_plan_buf = strbuf_new();
     for (int pc = 0; pc < v->nOp; pc++) {
         op = &v->aOp[pc];

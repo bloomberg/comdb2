@@ -1,0 +1,17 @@
+Races a schema change against forming a statement's query plan.
+
+The fingerprint code records a query plan per statement, built from the
+table's index schemas.  It used to be formed after the statement ran, when a
+socksql write has already released its table locks, so a rebuild finalizing
+then freed the schemas being read.  The plan is now formed at prepare time,
+under the schema lock.
+
+Taking the schema lock after the statement ran is not an option: a read still
+holds its table locks there, and finalize takes the schema lock before the
+table lock, so the two deadlock.  The last scenario checks for that.
+
+debug_sleep_in_cursor_description widens the window between picking the
+index schema and reading it.  debug_sleep_before_fingerprint holds a statement
+with its table locks between running and recording its fingerprint.
+debug.poison_freed_schemas (COMDB2_TEST builds only) makes a read of a freed
+schema crash instead of passing unnoticed.
