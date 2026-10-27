@@ -26,13 +26,13 @@
 #include "views.h"
 #include "gen_shard.h"
 
-static int delete_table(struct dbtable *db, tran_type *tran)
+static int delete_table(struct dbtable *db, tran_type *tran, int *bdberr)
 {
     remove_constraint_pointers(db);
 
-    int rc, bdberr;
-    if ((rc = bdb_close_only_sc(db->handle, tran, &bdberr))) {
-        fprintf(stderr, "bdb_close_only rc %d bdberr %d\n", rc, bdberr);
+    int rc;
+    if ((rc = bdb_close_only_sc(db->handle, tran, bdberr))) {
+        fprintf(stderr, "bdb_close_only rc %d bdberr %d\n", rc, *bdberr);
         return -1;
     }
 
@@ -40,8 +40,7 @@ static int delete_table(struct dbtable *db, tran_type *tran)
     rem_dbtable_from_thedb_dbs(db);
     MEMORY_SYNC;
     delete_schema(table);
-    bdb_del_table_csonparameters(tran, table);
-    return 0;
+    return bdb_del_table_csonparameters(tran, table, bdberr);
 }
 
 int do_drop_table(struct ireq *iq, struct schema_change_type *s,
@@ -97,7 +96,10 @@ int finalize_drop_table(struct ireq *iq, struct schema_change_type *s,
         return rc;
     }
 
-    delete_table(db, tran);
+    if ((rc = delete_table(db, tran, &bdberr)) != 0) {
+        sc_errf(s, "Failed to delete table parameters rc %d bdberr %d\n", rc, bdberr);
+        return bdberr == BDBERR_DEADLOCK ? RC_INTERNAL_RETRY : rc;
+    }
     /*Now that we don't have any data, please clear unwanted schemas.*/
     bdberr = bdb_reset_csc2_version(tran, db->tablename, db->schema_version, 0);
     if (bdberr != BDBERR_NOERROR) return -1;
@@ -139,7 +141,7 @@ int finalize_drop_table(struct ireq *iq, struct schema_change_type *s,
         rc = partition_llmeta_delete(tran, s->timepartition_name, &err);
         if (rc) {
             sc_errf(s, "Failed to remove partition llmeta %d\n", err.errval);
-            return SC_INTERNAL_ERROR;
+            return rc == VIEW_ERR_DEADLOCK ? RC_INTERNAL_RETRY : SC_INTERNAL_ERROR;
         }
     } else if (s->partition.type == PARTITION_RETENTION && s->publish) {
         /* decreasing retention: persist the reconfigured (smaller) ring
@@ -158,14 +160,14 @@ int finalize_drop_table(struct ireq *iq, struct schema_change_type *s,
         rc = partition_llmeta_write(tran, s->newpartition, 1, &err);
         if (rc) {
             sc_errf(s, "Failed to update partition %s retention rc %d\n", s->timepartition_name, err.errval);
-            return SC_INTERNAL_ERROR;
+            return rc == VIEW_ERR_DEADLOCK ? RC_INTERNAL_RETRY : SC_INTERNAL_ERROR;
         }
     } else if (s->partition.type == PARTITION_REM_GENSHARD) {
         struct errstat err = {0};
         rc = gen_shard_llmeta_remove(tran, db->sqlaliasname, &err);
         if (rc) {
             logmsg(LOGMSG_ERROR, "Failed to remove llmeta entry for sharded table %s\n", s->tablename);
-            return SC_INTERNAL_ERROR;
+            return rc == RC_INTERNAL_RETRY ? rc : SC_INTERNAL_ERROR;
         }
     }
 

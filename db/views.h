@@ -61,6 +61,8 @@ enum view_partition_errors {
     VIEW_ERR_CREATE = -11 /* error with pthread create */
     ,
     VIEW_ERR_ALL_SHARDS = -12 /* last shard was processed */
+    ,
+    VIEW_ERR_DEADLOCK = -13 /* llmeta deadlock; abort and retry from the top level */
 };
 
 typedef struct timepart_view timepart_view_t;
