@@ -3494,8 +3494,8 @@ int64_t gbl_blob_cache_shrunk_bytes;
 static inline void rd_blob_count_shrink(int oldcap, int newcap)
 {
     if (newcap < oldcap) {
-        __sync_fetch_and_add(&gbl_blob_cache_shrinks, 1);
-        __sync_fetch_and_add(&gbl_blob_cache_shrunk_bytes, (int64_t)(oldcap - newcap));
+        ATOMIC_ADD64(gbl_blob_cache_shrinks, 1);
+        ATOMIC_ADD64(gbl_blob_cache_shrunk_bytes, (int64_t)(oldcap - newcap));
     }
 }
 
