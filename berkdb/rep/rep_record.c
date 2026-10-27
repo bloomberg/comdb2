@@ -1057,9 +1057,11 @@ __rep_verify_will_recover(dbenv, control, rec)
 	DB_LSN lsn;
 	LOG *lp;
 	DB_LOGC *logc;
+	DB_REP *db_rep;
+	REP *rep;
 	int will_recover = 0;
 	int ret;
-	u_int32_t rectype;
+	u_int32_t rectype, mygen;
 	dblp = dbenv->lg_handle;
 	lp = dblp->reginfo.primary;
 	rp = (REP_CONTROL *)control->data;
@@ -1072,6 +1074,20 @@ __rep_verify_will_recover(dbenv, control, rec)
 
 	if (IS_ZERO_LSN(lp->verify_lsn))
 		goto done;
+
+	/* __rep_process_message drops a REP_VERIFY from an older generation;
+	 * don't make the caller wait on the bdb writelock for it */
+	db_rep = dbenv->rep_handle;
+	rep = db_rep->region;
+	MUTEX_LOCK(dbenv, db_rep->rep_mutexp);
+	mygen = gbl_is_physical_replicant ? rep->log_gen : rep->gen;
+	MUTEX_UNLOCK(dbenv, db_rep->rep_mutexp);
+	if (rp->gen < mygen) {
+		if (gbl_rep_verify_will_recover_trace)
+			logmsg(LOGMSG_USER, "%s ignoring REP_VERIFY from older gen %u, mygen is %u\n",
+				__func__, rp->gen, mygen);
+		goto done;
+	}
 
 	if ((ret = __log_cursor(dbenv, &logc)) != 0)
 		goto done;
