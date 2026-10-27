@@ -3426,12 +3426,12 @@ static void _extract_info(timepart_view_t *view, char **name_dup, int *period,
     comdb2uuidcpy(*source_id, view->source_id);
 }
 
-/* called for a truncate rollout before finalize commits the tran */
-int partition_truncate_callback(tran_type *tran, struct schema_change_type *s)
+/* called for a truncate rollout before finalize changes the table; a deadlock
+ * here must fail before that */
+int partition_truncate_llmeta_write(tran_type *tran, struct schema_change_type *s)
 {
     struct errstat err = {0};
     int rc;
-    int bdberr = 0;
 
     rc = partition_llmeta_write(tran, s->newpartition, 1, &err);
     if (rc) {
@@ -3439,6 +3439,14 @@ int partition_truncate_callback(tran_type *tran, struct schema_change_type *s)
                __func__, s->timepartition_name, err.errval, err.errstr);
         return rc == VIEW_ERR_DEADLOCK ? RC_INTERNAL_RETRY : rc;
     }
+    return 0;
+}
+
+/* called for a truncate rollout after finalize, before it commits the tran */
+int partition_truncate_callback(tran_type *tran, struct schema_change_type *s)
+{
+    int rc;
+    int bdberr = 0;
 
     rc = bdb_llog_partition(thedb->bdb_env, tran, s->newpartition->name,
                             &bdberr);

@@ -1069,6 +1069,49 @@ int finalize_alter_table(struct ireq *iq, struct schema_change_type *s,
         BACKOUT;
     }
 
+    /* Write the sql alias and the partition before any change to in-memory
+     * state: a deadlock here must fail before that */
+    if (!strncasecmp(s->tablename, s->newtable, strlen(s->tablename))) {
+        /* piggybacked rename */
+        rc = bdb_set_table_sqlalias(s->tablename, transac, NULL, &bdberr);
+        if (rc) {
+            sc_errf(s, "bdb_set_table_sqlalias failed rc %d bdberr %d\n", rc, bdberr);
+            if (bdberr == BDBERR_DEADLOCK)
+                rc = RC_INTERNAL_RETRY;
+            BACKOUT;
+        }
+    }
+    if ((s->partition.type == PARTITION_ADD_TIMED || s->partition.type == PARTITION_ADD_TIMED_RETRO ||
+         s->partition.type == PARTITION_ADD_MANUAL) &&
+        s->publish) {
+        /* this is an alter to partition an existing table */
+        struct errstat err = {0};
+        assert(s->newpartition);
+        rc = partition_llmeta_write(transac, s->newpartition, 0, &err);
+        if (rc) {
+            logmsg(LOGMSG_ERROR, "Failed to partition table %s rc %d \"%s\"\n",
+                   s->tablename, rc, err.errstr);
+            sc_errf(s, "partition_llmeta_write failed \"alter\"\n");
+            rc = (rc == VIEW_ERR_DEADLOCK) ? RC_INTERNAL_RETRY : -1;
+            BACKOUT;
+        }
+    } else if (s->partition.type == PARTITION_REMOVE && s->publish) {
+        /* if this is a shard, remove the llmeta partition entry */
+        if (!db->timepartition_name) {
+            sc_errf(s,
+                    "Drop partitioned table failed, shard %s not registered\n",
+                    db->tablename);
+            BACKOUT;
+        }
+        struct errstat err = {0};
+        rc = partition_llmeta_delete(transac, s->timepartition_name, &err);
+        if (rc) {
+            sc_errf(s, "Failed to remove partition llmeta %d\n", err.errval);
+            rc = (rc == VIEW_ERR_DEADLOCK) ? RC_INTERNAL_RETRY : -1;
+            BACKOUT;
+        }
+    }
+
     if (get_db_bthash_tran(db, &olddb_bthashsz, transac) != 0)
         olddb_bthashsz = 0;
 
@@ -1189,13 +1232,6 @@ int finalize_alter_table(struct ireq *iq, struct schema_change_type *s,
 
     /* do we have a piggybacked rename */
     if (!strncasecmp(s->tablename, s->newtable, strlen(s->tablename))) {
-        rc = bdb_set_table_sqlalias(s->tablename, transac, NULL, &bdberr);
-        if (rc) {
-            sc_errf(s, "bdb_set_table_sqlalias failed rc %d bdberr %d\n", rc, bdberr);
-            if (bdberr == BDBERR_DEADLOCK)
-                rc = RC_INTERNAL_RETRY;
-            BACKOUT;
-        }
         hash_del(thedb->sqlalias_hash, db);
         free(db->sqlaliasname);
         db->sqlaliasname = NULL;
@@ -1283,32 +1319,9 @@ int finalize_alter_table(struct ireq *iq, struct schema_change_type *s,
     if ((s->partition.type == PARTITION_ADD_TIMED || s->partition.type == PARTITION_ADD_TIMED_RETRO ||
          s->partition.type == PARTITION_ADD_MANUAL) &&
         s->publish) {
-        struct errstat err = {0};
-        assert(s->newpartition);
-        rc = partition_llmeta_write(transac, s->newpartition, 0, &err);
-        if (rc) {
-            logmsg(LOGMSG_ERROR, "Failed to partition table %s rc %d \"%s\"\n",
-                   s->tablename, rc, err.errstr);
-            sc_errf(s, "partition_llmeta_write failed \"alter\"\n");
-            return rc == VIEW_ERR_DEADLOCK ? RC_INTERNAL_RETRY : -1;
-        }
-
-        /* make the in-memory alias */
+        /* make the in-memory alias; the llmeta write is done above */
         timepart_alias_table(s->newpartition, db);
     } else if (s->partition.type == PARTITION_REMOVE && s->publish) {
-        /* if this is a shard, remove the llmeta partition entry */
-        if (!db->timepartition_name) {
-            sc_errf(s,
-                    "Drop partitioned table failed, shard %s not registered\n",
-                    db->tablename);
-            return SC_INTERNAL_ERROR;
-        }
-        struct errstat err = {0};
-        rc = partition_llmeta_delete(transac, s->timepartition_name, &err);
-        if (rc) {
-            sc_errf(s, "Failed to remove partition llmeta %d\n", err.errval);
-            return rc == VIEW_ERR_DEADLOCK ? RC_INTERNAL_RETRY : SC_INTERNAL_ERROR;
-        }
         db->timepartition_name = NULL;
     }
 
