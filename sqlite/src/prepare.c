@@ -989,9 +989,14 @@ static int sqlite3Prepare(
   }
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
   /* A push write keeps its VDBE and returns its code to the caller, so it
-  ** must take the success path below. */
+  ** must take the success path below. The parser has already set an error
+  ** message for this code, which that path does not expect. */
   int isPushWrite = sParse.rc==SQLITE_SCHEMA_PUSH_REMOTE_WRITE;
-  if( isPushWrite ) sParse.rc = SQLITE_OK;
+  if( isPushWrite ){
+    sParse.rc = SQLITE_OK;
+    sqlite3DbFree(db, sParse.zErrMsg);
+    sParse.zErrMsg = 0;
+  }
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   if( sParse.rc!=SQLITE_OK && sParse.rc!=SQLITE_DONE ){
     if( sParse.checkSchema && db->init.busy==0 ){
