@@ -1639,6 +1639,10 @@ int bdb_get_file_version_index_by_name(tran_type *tran, const char *name,
 
 int bdb_del_file_versions(bdb_state_type *bdb_state, tran_type *input_trans,
                           int *bdberr);
+int bdb_set_renamed_file(tran_type *tran, unsigned long long version, const char *newname,
+                         unsigned long long newversion, int *bdberr);
+int bdb_get_renamed_file(tran_type *tran, unsigned long long version, char newname[], size_t len,
+                         unsigned long long *newversion, int *bdberr);
 int bdb_chg_file_versions(bdb_state_type *bdb_state, tran_type *input_trans,
                           const char *new_tbl_name, int *bdberr);
 
