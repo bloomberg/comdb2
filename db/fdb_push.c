@@ -167,6 +167,17 @@ int fdb_push_write_setup(Parse *pParse, enum ast_type type, Table *pTab)
     if (pDb->version < FDB_VER_CDB2API)
         return -1;
 
+    /* an older remote db resolves unqualified tables to its own tables;
+     * do not push a statement that reads tables of other dbs to it; never
+     * push a statement reading system tables, they hold this db data
+     */
+    int other_dbs = fdb_stmt_uses_other_dbs(pParse, pTab->iDb);
+    if (other_dbs == 2 || (other_dbs && pDb->version < FDB_VER_PUSH_SRCDB)) {
+        logmsg(LOGMSG_DEBUG, "%s: QUERY %s reads other dbs (%d), remote version %d\n", __func__, clnt->sql, other_dbs,
+               pDb->version);
+        return -1;
+    }
+
     enum mach_class fdb_class;
     int fdb_local;
     if (get_fdb_class(pDb->zDbSName, &fdb_class, &fdb_local))
@@ -677,6 +688,12 @@ int handle_fdb_push_write(sqlclntstate *clnt, struct errstat *err, int n_extra_s
                 set_inremtrans = 1;
             }
 
+            /* identify this db, node and client transaction to the remote */
+            rc = fdb_rempush_set(clnt, fdb, tran->fcon.hndl);
+            if (rc) {
+                goto hndl_err;
+            }
+
             /* if this is 2pc, we need to send additional info to the participant */
             if (clnt->use_2pc) {
                 fdb_init_disttxn(clnt);
@@ -695,6 +712,12 @@ int handle_fdb_push_write(sqlclntstate *clnt, struct errstat *err, int n_extra_s
                 goto hndl_err;
             }
             tran->writes_status = FDB_TRAN_BEGIN;
+        } else {
+            /* identify this db and node to the remote */
+            rc = fdb_rempush_set(clnt, fdb, tran->fcon.hndl);
+            if (rc) {
+                goto hndl_err;
+            }
         }
     }
     hndl = tran->fcon.hndl;
@@ -869,7 +892,7 @@ free_push:
             /* this was the first remote transaction, and it is gone; the
              * legacy retry runs in a local transaction
              */
-            clnt->inremtrans = 0;
+            fdb_clear_inremtrans(clnt);
         }
     }
 

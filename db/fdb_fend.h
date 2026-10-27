@@ -75,8 +75,9 @@
 #define FDB_VER_CDB2API 7
 #define FDB_VER_WR_CDB2API 8
 #define FDB_VER_2PC_CDB2API 9
+#define FDB_VER_PUSH_SRCDB 10
 
-#define FDB_VER FDB_VER_2PC_CDB2API
+#define FDB_VER FDB_VER_PUSH_SRCDB
 
 extern int gbl_fdb_default_ver;
 
@@ -411,6 +412,24 @@ void fdb_init_disttxn(sqlclntstate *clnt);
  *
  */
 int fdb_2pc_set(sqlclntstate *clnt, fdb_t *fdb, cdb2_hndl_tp *hndl);
+
+/* source db: identify this db, node and transaction to a db we push writes to */
+int fdb_rempush_set(sqlclntstate *clnt, fdb_t *fdb, cdb2_hndl_tp *hndl);
+/* source db: pushed remote transaction ended, drop its txnid */
+void fdb_clear_inremtrans(sqlclntstate *clnt);
+/* remote db: parse SET REMPUSH_* */
+int process_fdb_set_rempush(sqlclntstate *clnt, char *sqlstr, char *err, int errlen);
+void fdb_free_rempush_set(sqlclntstate *clnt);
+/* remote db: resolve an unqualified table of a pushed statement to the
+ * source db; returns the source dbname, or NULL if not redirected */
+const char *fdb_rempush_srcdb(const char *table);
+/* remote db: validate the source node after the source db was discovered */
+int fdb_rempush_validate(char *err, int errlen);
+/* source db: does the prepared statement access tables outside db iDb?
+ * returns 0 if no, 1 for tables of other dbs, 2 for system tables of this db
+ */
+struct Parse;
+int fdb_stmt_uses_other_dbs(struct Parse *pParse, int iDb);
 
 /**
  *  Create a fdb push connector
