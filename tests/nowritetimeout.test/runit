@@ -15,4 +15,5 @@ if [ $? -ne 0 ]; then
         exit 1
     fi
 fi
+export NOWRITETIMEOUT_STALL_HOOK=${TESTSROOTDIR}/nowritetimeout.test/stall_hook.sh
 ${TESTSBUILDDIR}/nowritetimeout $dbnm
