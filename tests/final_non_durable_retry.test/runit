@@ -13,6 +13,9 @@ export transaction="0"
 [[ "$DBNAME" == *"snapshot"* ]] && isolation="snapshot isolation"
 [[ "$DBNAME" == *"serial"* ]] && isolation="serial"
 [[ "$DBNAME" == *"transaction"* ]] && transaction="1"
+# snapshot and serial commits return not-durable (402); the others return 210
+nd_rc=210
+[[ "$isolation" == "snapshot isolation" || "$isolation" == "serial" ]] && nd_rc=402
 [[ $debug == "1" ]] && set -x
 
 function force_all_non_durable
@@ -145,7 +148,7 @@ EOF
 
     echo "$x"
     if [[ "$transaction" == "1" ]]; then
-        [[ "$x" != *"[commit] failed with rc 210"* ]] && failexit "final insert should been non-durable"
+        [[ "$x" != *"[commit] failed with rc $nd_rc"* ]] && failexit "final insert should been non-durable"
     else
         [[ "$x" != *"Non-durable write"* ]] && failexit "final insert should been non-durable"
     fi
@@ -187,7 +190,7 @@ EOF
 
     echo "$x"
     if [[ "$transaction" == "1" ]]; then
-        [[ "$x" != *"[commit] failed with rc 210"* ]] && failexit "final insert should been non-durable"
+        [[ "$x" != *"[commit] failed with rc $nd_rc"* ]] && failexit "final insert should been non-durable"
     else
         [[ "$x" != *"Non-durable write"* ]] && failexit "final insert should have been non-durable"
     fi
