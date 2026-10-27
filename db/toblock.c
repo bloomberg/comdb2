@@ -160,6 +160,8 @@ const char *gbl_blockop_name_xrefs[NUM_BLOCKOP_OPCODES];
 #define LOG_TAG_HIT()                                                                                                  \
     do {                                                                                                               \
         if (gbl_tagged_request_callback) {                                                                             \
+            iq->tagged_table = iq->usedb->tablename;                                                                   \
+            iq->tagged_blockop = iq->block_opcode;                                                                     \
             gbl_tagged_request_callback(iq);                                                                           \
         }                                                                                                              \
     } while (0)

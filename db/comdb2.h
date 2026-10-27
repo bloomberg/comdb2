@@ -1394,6 +1394,13 @@ struct ireq {
     uint8_t region3; /* used for offsetof */
 
     uint64_t startus; /* thread handling; start time stamp */
+
+    /* latched by toblock before gbl_tagged_request_callback: the table and
+     * the blockop of the hit.  tagged_blockop is 0 for non-block requests,
+     * which report iq->usedb and iq->opcode instead. */
+    const char *tagged_table;
+    int tagged_blockop;
+
     /* for waking up socket thread. */
     void *request_data;
     char *tag;
