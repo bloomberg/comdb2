@@ -1,0 +1,92 @@
+#!/usr/bin/env bash
+bash -n "$0" || exit 1
+
+. ${TESTSROOTDIR}/tools/runit_common.sh
+. ${TESTSROOTDIR}/tools/cluster_utils.sh
+
+dbnm=$1
+TT="${TESTSBUILDDIR}/trace_test ${dbnm}"
+
+function logfile
+{
+    if [[ -z "$CLUSTER" ]]; then
+        echo "$TESTDIR/logs/$dbnm.db"
+    else
+        echo "$TESTDIR/logs/$dbnm.$1.db"
+    fi
+}
+
+# wait_log <node> <pattern> <expected count>
+function wait_log
+{
+    local n
+    for i in $(seq 1 10); do
+        n=$(grep -c "$2" $(logfile $1))
+        [[ "$n" == "$3" ]] && return 0
+        sleep 1
+    done
+    failexit "$1: '$2' appears $n times, expected $3"
+}
+
+function printlog
+{
+    local master=$(getmaster)
+    $CDB2SQL_EXE $CDB2_OPTIONS $dbnm --host $master "exec procedure sys.cmd.send('flush')" >/dev/null
+    if [[ -z "$CLUSTER" ]]; then
+        $COMDB2_EXE --tool cdb2_printlog -h $DBDIR/logs
+    else
+        ssh -n -o StrictHostKeyChecking=no $master "$COMDB2_EXE --tool cdb2_printlog -h $DBDIR/logs" 2>/dev/null
+    fi
+}
+
+master=$(getmaster)
+nodes=$(getclusternodes)
+replicants=$(echo "$nodes" | grep -v "^$master$")
+# a replicant if there is one, so the payload goes over osql
+sqlnode=$(echo "$replicants" | head -1)
+sqlnode=${sqlnode:-$master}
+
+$CDB2SQL_EXE $CDB2_OPTIONS $dbnm default "create table t(a int)" || failexit "create"
+
+# log_trace off: master sees the payload, nothing goes in the log
+$TT $sqlnode aabbccdd01 "insert into t values(1)" || failexit "insert 1"
+wait_log $master "tracetest master_start aabbccdd01 from $sqlnode" 1
+wait_log $master "tracetest master_end aabbccdd01 rc 0" 1
+for n in $replicants; do
+    wait_log $n "tracetest rep_end aabbccdd01" 0
+done
+[[ $(printlog | grep -c "trace: rec: 10024") == 0 ]] || failexit "trace record logged with log_trace off"
+
+sendtocluster "put tunable log_trace 1"
+
+# longer than the 4 bytes osql_send_trace packs inline
+long=$(printf '%02x' $(seq 1 40))
+$TT $sqlnode $long "insert into t values(2)" || failexit "insert 2"
+wait_log $master "tracetest master_end $long rc 0" 1
+for n in $replicants; do
+    wait_log $n "tracetest rep_end $long rc 0" 1
+done
+
+# once per txn
+$TT $sqlnode aabbccdd03 "begin" "insert into t values(3)" "insert into t values(4)" "commit" || failexit "txn"
+wait_log $master "tracetest master_end aabbccdd03 rc 0" 1
+for n in $replicants; do
+    wait_log $n "tracetest rep_end aabbccdd03 rc 0" 1
+done
+
+out=$(printlog)
+[[ $(echo "$out" | grep -c "trace: rec: 10024") == 2 ]] || failexit "expected 2 trace records"
+[[ $(echo "$out" | grep -c "payload: $long$") == 1 ]] || failexit "long payload not logged"
+[[ $(echo "$out" | grep -c "payload: aabbccdd03$") == 1 ]] || failexit "txn payload not logged once"
+
+# recovery replays the trace records
+bounce_database >bounce.out 2>&1
+sleep 10
+wait_for_db $dbnm || failexit "db did not come back"
+assertcnt t 4
+for n in $nodes; do
+    grep -q "unknown record type" $(logfile $n) && failexit "$n: unknown record type"
+done
+
+echo "Success"
+exit 0

@@ -1388,6 +1388,8 @@ const struct berkdb_thread_stats *bdb_get_process_stats(void);
 #define BDB_FP_ROLE_APPLY 3 /* 'A' -- replicant applying from the log */
 
 void bdb_fingerprint_rtstats_set(const unsigned char *fingerprint, size_t fplen, int has_main_entry);
+/* this thread's cumulative bufferpool page-ins, any role */
+void bdb_thread_pagein_counts(uint64_t *pagein, uint64_t *pagein_io);
 void bdb_fingerprint_rtstats_set_write(const unsigned char *fingerprint, size_t fplen, int has_main_entry);
 void bdb_fingerprint_rtstats_set_apply(const unsigned char *fingerprint, size_t fplen, int has_main_entry);
 /* Declare a role with no fingerprint, so work that has none is still
@@ -1414,6 +1416,10 @@ int bdb_llog_fingerprint_tran(bdb_state_type *bdb_state, tran_type *tran, const 
 extern int gbl_log_clientinfo;
 int bdb_llog_clientinfo_tran(bdb_state_type *bdb_state, tran_type *tran, const char *taskname, const char *host,
                              int pid, int *bdberr);
+
+/* Log the opaque comdb2_trace payload of this txn. Caller gates on gbl_log_trace. */
+extern int gbl_log_trace;
+int bdb_llog_trace_tran(bdb_state_type *bdb_state, tran_type *tran, const void *payload, int len, int *bdberr);
 
 /* Longest taskname/host comdb2_replication keeps; longer is truncated. */
 #define BDB_CLIENTINFO_STRSZ 64

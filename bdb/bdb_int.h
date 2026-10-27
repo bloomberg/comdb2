@@ -1169,6 +1169,9 @@ void bdb_replication_thread_client(void *ci);
 void bdb_replication_thread_fingerprint(const uint8_t *fingerprint);
 void bdb_replication_thread_end(void);
 
+/* Starts the replication side of comdb2_trace from a DB_llog_trace record */
+void *bdb_trace_from_logrec(DB_ENV *dbenv, void *logrec);
+
 int bdb_rowlock_int(DB_ENV *dbenv, DB_TXN *txn, unsigned long long genid,
                     int exclusive);
 

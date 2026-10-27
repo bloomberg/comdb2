@@ -278,3 +278,9 @@ DBT taskname  DBT s
 DBT host      DBT s
 END
 
+/* Informational: the opaque comdb2_trace payload of this txn. Once per txn, and
+ * redoes and undoes to nothing. */
+BEGIN trace 10024
+DBT payload   DBT s
+END
+

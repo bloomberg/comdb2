@@ -83,6 +83,16 @@ static pthread_key_t fingerprint_rtstats_mode_key;
 static pthread_key_t fingerprint_rtstats_client_id_key;
 static int fingerprint_rtstats_inited = 0;
 
+/* Per-request page-in counters, temp tables excluded */
+static __thread uint64_t thread_pagein, thread_pagein_io;
+
+void
+bb_berkdb_thread_pagein_counts(uint64_t *pagein, uint64_t *pagein_io)
+{
+	*pagein = thread_pagein;
+	*pagein_io = thread_pagein_io;
+}
+
 void
 bb_berkdb_fingerprint_rtstats_init(void)
 {
@@ -243,10 +253,16 @@ bb_berkdb_fingerprint_rtstats_current(unsigned char *fingerprint, int *role, uin
  * same fingerprint's stat entry concurrently.
  */
 void
-bb_berkdb_fingerprint_rtstats_bump_pagein(int did_io)
+bb_berkdb_fingerprint_rtstats_bump_pagein(int did_io, int is_tmp_tbl)
 {
 	struct fingerprint_rtstats *t = NULL;
 	int mode = FP_RTSTATS_MODE_NONE;
+
+	if (!is_tmp_tbl) {
+		thread_pagein++;
+		if (did_io)
+			thread_pagein_io++;
+	}
 
 	if (fingerprint_rtstats_inited) {
 		t = pthread_getspecific(fingerprint_rtstats_key);
