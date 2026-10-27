@@ -69,14 +69,16 @@ run_lines() {
 }
 
 # check <case> <output of the transaction> <expected>: the expected rows of
-# the statement after "select 'last'", or "ERR <text>" for an error of the
-# rest of the transaction
+# the statement after "select 'last'", "ERR <text>" for an error of the
+# rest of the transaction, or "OK" for no error in the transaction
 check() {
     local name=$1 out=$2 exp=$3
     local got=$(awk '/^\(last=.last.\)$/ {p = 1; next} p == 1 {p = 2; next} p && /^\[/ {print; exit} p' <<< "$out")
     local status=$(tail -1 <<< "$got")
     local rows=$(sed '$d' <<< "$got")
-    if [[ "$exp" == "ERR "* ]]; then
+    if [[ "$exp" == "OK" ]]; then
+        grep -q "failed with" <<< "$out" || return
+    elif [[ "$exp" == "ERR "* ]]; then
         sed -n '/^(last=.last.)$/,$p' <<< "$out" | grep -q "failed with.*${exp#ERR }" && return
     else
         [[ "$status" == *"] rc 0" && "$rows" == "$exp" ]] && return
@@ -163,24 +165,40 @@ SQLEOF
 }
 
 SEL="select * from T order by a"
+RC="ALLNODES select 1"
+PART="partitioned by manual retention 2 start 1"
 
 live rollout new_partition "INCR 3" "$SEL" "$ROWS"
-live rollout_recache new_partition $'INCR 3\nALLNODES select 1' "$SEL" "$ROWS"
+live rollout_recache new_partition $'INCR 3\n'"$RC" "$SEL" "$ROWS"
+live rollout_twice new_partition $'INCR 3\nINCR 4' "$SEL" "$ROWS"
 live rollout_alias new_alias_partition "INCR 3" "$SEL" "$ROWS"
-live rollout_alias_recache new_alias_partition $'INCR 3\nALLNODES select 1' "$SEL" "$ROWS"
-live partition_table new_table "alter table T partitioned by manual retention 2 start 1" "$SEL" "$ROWS"
+live rollout_alias_recache new_alias_partition $'INCR 3\n'"$RC" "$SEL" "$ROWS"
+live partition_table new_table "alter table T $PART" "$SEL" "$ROWS"
+live partition_table_rollout new_table "alter table T $PART"$'\nINCR 2\ninsert into T values(3)' "$SEL" "$ROWS"
 live merge_partition new_alias_partition "alter table T partitioned by none" "$SEL" "$ROWS"
+live add_column new_partition $'alter table T add b int\ninsert into T values(9,9)' "$SEL" "$ROWS"
 live drop new_partition "drop table T" "$SEL" "$ROWS"
-live new_partition new_partition $'create table T_new(a int) partitioned by manual retention 2 start 1\ninsert into T_new values(7)' \
+live drop_recreate new_partition $'drop table T\ncreate table T(a int) '"$PART"$'\ninsert into T values(9)' "$SEL" "$ROWS"
+live new_partition new_partition $'create table T_new(a int) '"$PART"$'\ninsert into T_new values(7)' \
     "select * from T_new" "ERR no such table"
+# the transaction can write the partition after an insert, but not after a
+# rollout
+live write_after_insert new_partition "insert into T values(6)" "insert into T values(5)" "OK"
+live write_after_rollout new_partition "INCR 3" "insert into T values(5)" "ERR was schema changed"
 
 asof rollout new_partition "INCR 3" "$SEL" "$ROWS"
+asof rollout_recache new_partition $'INCR 3\n'"$RC" "$SEL" "$ROWS"
+asof rollout_twice new_partition $'INCR 3\nINCR 4' "$SEL" "$ROWS"
 asof rollout_alias new_alias_partition "INCR 3" "$SEL" "$ROWS"
-asof partition_table new_table $'alter table T partitioned by manual retention 2 start 1\nINCR 2\ninsert into T values(3)' \
-    "$SEL" "$ROWS"
+asof rollout_alias_recache new_alias_partition $'INCR 3\n'"$RC" "$SEL" "$ROWS"
+asof partition_table new_table "alter table T $PART"$'\nINCR 2\ninsert into T values(3)' "$SEL" "$ROWS"
 asof merge_partition new_alias_partition "alter table T partitioned by none" "$SEL" "$ROWS"
+asof add_column new_partition $'alter table T add b int\ninsert into T values(9,9)' "$SEL" "$ROWS"
 asof drop new_partition "drop table T" "$SEL" "$ROWS"
-asof new_partition new_partition $'create table T_new(a int) partitioned by manual retention 2 start 1\ninsert into T_new values(7)' \
+asof drop_recreate new_partition $'drop table T\ncreate table T(a int) '"$PART"$'\ninsert into T values(9)' "$SEL" "$ROWS"
+asof new_partition new_partition $'create table T_new(a int) '"$PART"$'\ninsert into T_new values(7)' \
     "select * from T_new" "ERR no such table"
+asof write_after_insert new_partition "insert into T values(6)" "insert into T values(5)" "OK"
+asof write_after_rollout new_partition "INCR 3" "insert into T values(5)" "ERR was schema changed"
 
 exit $failed
