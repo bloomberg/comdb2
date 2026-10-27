@@ -183,6 +183,7 @@ typedef enum {
     LLMETA_SCHEMACHANGE_LIST = 57,            /* list of all sc-s in a uuid txh */
     LLMETA_SCHEMACHANGE_STATUS_PROTOBUF = 58, /* Indicate protobuf sc */
     LLMETA_MAX_SEQNO = 59,
+    LLMETA_RENAMED_FILE = 60, /* 60 + OLD VERSION -> NEW TABLENAME + NEW VERSION */
 } llmetakey_t;
 
 struct llmeta_file_type_key {
@@ -4078,6 +4079,64 @@ int bdb_check_and_set_sequence(tran_type *t, const char *tablename, const char *
     return rc;
 }
 
+/* A full rename gives each file of the table a new name and a new version.
+ * The LLMETA_RENAMED_FILE entry of a file maps its old version to the new
+ * table name and the new version, so a snapshot that saw the old version can
+ * find the file.  File versions are unique, table names are not. */
+typedef struct {
+    int file_type;
+    char padding[4];
+    uint64_t version;
+} llmeta_renamed_file_key;
+
+enum { LLMETA_RENAMED_FILE_KEY_LEN = 4 + 4 + 8 };
+BB_COMPILE_TIME_ASSERT(llmeta_renamed_file_key_len, sizeof(llmeta_renamed_file_key) == LLMETA_RENAMED_FILE_KEY_LEN);
+
+typedef struct {
+    char tablename[LLMETA_TBLLEN + 1];
+    char padding[7];
+    uint64_t version;
+} llmeta_renamed_file_data;
+
+enum { LLMETA_RENAMED_FILE_DATA_LEN = 32 + 1 + 7 + 8 };
+BB_COMPILE_TIME_ASSERT(llmeta_renamed_file_data_len, sizeof(llmeta_renamed_file_data) == LLMETA_RENAMED_FILE_DATA_LEN);
+
+static uint8_t *llmeta_renamed_file_key_put(const llmeta_renamed_file_key *p_key, uint8_t *p_buf,
+                                            const uint8_t *p_buf_end)
+{
+    p_buf = buf_put(&(p_key->file_type), sizeof(p_key->file_type), p_buf, p_buf_end);
+    p_buf = buf_no_net_put(&(p_key->padding), sizeof(p_key->padding), p_buf, p_buf_end);
+    p_buf = buf_put(&(p_key->version), sizeof(p_key->version), p_buf, p_buf_end);
+    return p_buf;
+}
+
+static const uint8_t *llmeta_renamed_file_key_get(llmeta_renamed_file_key *p_key, const uint8_t *p_buf,
+                                                  const uint8_t *p_buf_end)
+{
+    p_buf = buf_get(&(p_key->file_type), sizeof(p_key->file_type), p_buf, p_buf_end);
+    p_buf = buf_no_net_get(&(p_key->padding), sizeof(p_key->padding), p_buf, p_buf_end);
+    p_buf = buf_get(&(p_key->version), sizeof(p_key->version), p_buf, p_buf_end);
+    return p_buf;
+}
+
+static uint8_t *llmeta_renamed_file_data_put(const llmeta_renamed_file_data *p_data, uint8_t *p_buf,
+                                             const uint8_t *p_buf_end)
+{
+    p_buf = buf_no_net_put(&(p_data->tablename), sizeof(p_data->tablename), p_buf, p_buf_end);
+    p_buf = buf_no_net_put(&(p_data->padding), sizeof(p_data->padding), p_buf, p_buf_end);
+    p_buf = buf_put(&(p_data->version), sizeof(p_data->version), p_buf, p_buf_end);
+    return p_buf;
+}
+
+static const uint8_t *llmeta_renamed_file_data_get(llmeta_renamed_file_data *p_data, const uint8_t *p_buf,
+                                                   const uint8_t *p_buf_end)
+{
+    p_buf = buf_no_net_get(&(p_data->tablename), sizeof(p_data->tablename), p_buf, p_buf_end);
+    p_buf = buf_no_net_get(&(p_data->padding), sizeof(p_data->padding), p_buf, p_buf_end);
+    p_buf = buf_get(&(p_data->version), sizeof(p_data->version), p_buf, p_buf_end);
+    return p_buf;
+}
+
 typedef struct {
     int file_type;
     char tablename[LLMETA_TBLLEN + 1];
@@ -7626,6 +7685,19 @@ int bdb_llmeta_print_record(bdb_state_type *bdb_state, void *key, int keylen,
     case LLMETA_MAX_SEQNO:
         logmsg(LOGMSG_USER, "LLMETA_MAX_SEQNO: %"PRIu64"\n", flibc_ntohll(*(int64_t *)p_buf_data));
         break;
+    case LLMETA_RENAMED_FILE: {
+        llmeta_renamed_file_key k = {0};
+        llmeta_renamed_file_data d = {{0}};
+        if (keylen < sizeof(k) || datalen < sizeof(d)) {
+            logmsg(LOGMSG_USER, "%s:%d: wrong LLMETA_RENAMED_FILE entry\n", __FILE__, __LINE__);
+            *bdberr = BDBERR_MISC;
+            return -1;
+        }
+        llmeta_renamed_file_key_get(&k, p_buf_key, p_buf_end_key);
+        llmeta_renamed_file_data_get(&d, p_buf_data, p_buf_end_data);
+        logmsg(LOGMSG_USER, "LLMETA_RENAMED_FILE: version=%016" PRIx64 " table=\"%s\" new version=%016" PRIx64 "\n",
+               k.version, d.tablename, d.version);
+    } break;
     default:
          logmsg(LOGMSG_USER, "Todo (type=%d)\n", type);
          break;
@@ -11210,6 +11282,50 @@ int bdb_rename_csc2_version(tran_type *trans, const char *tblname,
         }
         --ver;
     }
+    return 0;
+}
+
+int bdb_set_renamed_file(tran_type *tran, unsigned long long version, const char *newname,
+                         unsigned long long newversion, int *bdberr)
+{
+    llmeta_renamed_file_key k = {0};
+    llmeta_renamed_file_data d = {{0}};
+    uint8_t key[LLMETA_IXLEN] = {0};
+    uint8_t data[LLMETA_RENAMED_FILE_DATA_LEN];
+
+    k.file_type = LLMETA_RENAMED_FILE;
+    k.version = version;
+    strncpy0(d.tablename, newname, sizeof(d.tablename));
+    d.version = newversion;
+    llmeta_renamed_file_key_put(&k, key, key + sizeof(key));
+    llmeta_renamed_file_data_put(&d, data, data + sizeof(data));
+    return kv_put(tran, key, data, sizeof(data), bdberr);
+}
+
+/* Return 0 and the table name and the version that a rename gave the file
+ * with version, 1 if no rename changed the file, -1 on error */
+int bdb_get_renamed_file(tran_type *tran, unsigned long long version, char newname[], size_t len,
+                         unsigned long long *newversion, int *bdberr)
+{
+    llmeta_renamed_file_key k = {0};
+    llmeta_renamed_file_data d = {{0}};
+    uint8_t key[LLMETA_IXLEN] = {0};
+    uint8_t data[LLMETA_RENAMED_FILE_DATA_LEN];
+    int fndlen;
+
+    k.file_type = LLMETA_RENAMED_FILE;
+    k.version = version;
+    llmeta_renamed_file_key_put(&k, key, key + sizeof(key));
+    if (bdb_lite_exact_fetch_tran(llmeta_bdb_state, tran, key, data, sizeof(data), &fndlen, bdberr) ||
+        *bdberr != BDBERR_NOERROR)
+        return *bdberr == BDBERR_FETCH_DTA ? 1 : -1;
+    if (fndlen != sizeof(data)) {
+        *bdberr = BDBERR_DTA_MISMATCH;
+        return -1;
+    }
+    llmeta_renamed_file_data_get(&d, data, data + sizeof(data));
+    strncpy0(newname, d.tablename, len);
+    *newversion = d.version;
     return 0;
 }
 

@@ -526,8 +526,10 @@ void bdb_replace_cached_index_version(bdb_state_type *target, int targetnum, bdb
 
 /* takes information about a file and constructs its filename, returns bytes
  * written not including NUL */
-static int form_file_name_ex(
+static int form_file_name_int(
     bdb_state_type *bdb_state,      /* db to open */
+    const char *filetable,          /* table name in the file name, if not
+                                     * the name of the db */
     int is_data_file,               /* see FILE_VERSIONS_FILE_TYPE_* */
     int file_num,                   /* ixnum or dtanum */
     int add_prefix,                 /* whether to add XXX. or directory to
@@ -544,7 +546,9 @@ static int form_file_name_ex(
     int offset, bdberr;
     /*we want to remove the new.SOMETHING. prefix if it's there*/
     const char *tablename;
-    if (bdb_state->origname) {
+    if (filetable) {
+        tablename = filetable;
+    } else if (bdb_state->origname) {
         tablename = bdb_state->origname;
     } else {
         tablename = bdb_unprepend_new_prefix(bdb_state->name, &bdberr);
@@ -617,6 +621,13 @@ static int form_file_name_ex(
     return orig_buflen - buflen;
 }
 
+static int form_file_name_ex(bdb_state_type *bdb_state, int is_data_file, int file_num, int add_prefix, int isstriped,
+                             int stripenum, unsigned long long version_num, char *outbuf, size_t buflen)
+{
+    return form_file_name_int(bdb_state, NULL, is_data_file, file_num, add_prefix, isstriped, stripenum, version_num,
+                              outbuf, buflen);
+}
+
 int bdb_form_file_name(bdb_state_type *bdb_state, int is_data_file, int filenum,
                        int stripenum, unsigned long long version_num,
                        char *outbuf, size_t buflen)
@@ -647,6 +658,38 @@ static int file_version_lookup_failed(int rc, int bdberr)
 
 /* set by bdb_open_snapshot(): file versions come from llmeta as of its LSN */
 static __thread tran_type *open_snapshot_llmeta_tran;
+
+/* forms the name of a file with a known version; when opening for a
+ * snapshot, a full rename after the snapshot renamed the file: follow the
+ * renames in the current llmeta to the file on disk, but keep the version
+ * the snapshot saw */
+static int form_file_name_ver(bdb_state_type *bdb_state, DB_TXN *tid, int is_data_file, int file_num, int isstriped,
+                              int stripenum, unsigned long long version_num, char *outbuf, size_t buflen)
+{
+    if (!open_snapshot_llmeta_tran || !version_num)
+        return form_file_name_ex(bdb_state, is_data_file, file_num, 1 /*add_prefix*/, isstriped, stripenum,
+                                 version_num, outbuf, buflen);
+
+    tran_type tran = {0};
+    char filetable[MAXTABLELEN + 1];
+    unsigned long long file_version = version_num;
+    int found = 0, rc, bdberr;
+
+    tran.tid = tid;
+    while ((rc = bdb_get_renamed_file(&tran, file_version, filetable, sizeof(filetable), &file_version, &bdberr)) ==
+           0)
+        found = 1;
+    if (rc < 0)
+        logmsg(LOGMSG_ERROR, "%s: table %s: renamed file lookup failed, bdberr %d\n", __func__, bdb_state->name,
+               bdberr);
+    rc = form_file_name_int(bdb_state, found ? filetable : NULL, is_data_file, file_num, 1 /*add_prefix*/, isstriped,
+                            stripenum, found ? file_version : version_num, outbuf, buflen);
+    if (is_data_file)
+        bdb_state->dtavers[file_num] = version_num;
+    else
+        bdb_state->ixvers[file_num] = version_num;
+    return rc;
+}
 
 /*figures out what the version number is (if any) and calls form_file_name_ex*/
 static int form_file_name(bdb_state_type *bdb_state, DB_TXN *tid,
@@ -690,9 +733,8 @@ static int form_file_name(bdb_state_type *bdb_state, DB_TXN *tid,
                     file_num);
     }
 
-    rc = form_file_name_ex(bdb_state, is_data_file, file_num,
-                           1 /*add_prefix*/, isstriped, stripenum,
-                           version_num, outbuf, buflen);
+    rc = form_file_name_ver(bdb_state, tid, is_data_file, file_num, isstriped, stripenum, version_num, outbuf,
+                            buflen);
 
     /* The fallback name is wrong for a versioned table: creating a file
      * under it leaves replicants unable to find the file. */
@@ -711,19 +753,22 @@ static int fetch_file_versions(bdb_state_type *bdb_state, DB_TXN *tid,
                                struct file_versions *v, int *bdberr)
 {
     tran_type tran = {0};
+    tran_type *ptran = &tran;
     int i, rc;
 
     tran.tid = tid;
+    if (open_snapshot_llmeta_tran)
+        ptran = open_snapshot_llmeta_tran;
 
     for (i = 0; i < bdb_state->numdtafiles; i++) {
-        rc = bdb_get_file_version_data(bdb_state, &tran, i, &v->dta[i], bdberr);
+        rc = bdb_get_file_version_data(bdb_state, ptran, i, &v->dta[i], bdberr);
         if (file_version_lookup_failed(rc, *bdberr))
             return -1;
         if (rc || *bdberr != BDBERR_NOERROR)
             v->dta[i] = 0;
     }
     for (i = 0; i < bdb_state->numix; i++) {
-        rc = bdb_get_file_version_index(bdb_state, &tran, i, &v->ix[i], bdberr);
+        rc = bdb_get_file_version_index(bdb_state, ptran, i, &v->ix[i], bdberr);
         if (file_version_lookup_failed(rc, *bdberr))
             return -1;
         if (rc || *bdberr != BDBERR_NOERROR)
@@ -1090,6 +1135,9 @@ retry:
                 goto backout;
         }
 
+        if (version_num && bdb_set_renamed_file(tran, version_num, newtblname, new_version_num, bdberr))
+            goto backout;
+
         /*update the file's version*/
         bdb_state->name = newtblname;
         if (bdb_new_file_version_data(bdb_state, tran, dtanum, new_version_num,
@@ -1134,6 +1182,8 @@ retry:
                     __func__, oldname, newname);
             goto backout;
         }
+        if (version_num && bdb_set_renamed_file(tran, version_num, newtblname, new_version_num, bdberr))
+            goto backout;
 
         /*update version*/
         bdb_state->name = newtblname;
@@ -4432,9 +4482,8 @@ deadlock_again:
                  strnum >= 0; strnum--) {
                 DB *dbp;
 
-                form_file_name_ex(bdb_state, 1 /*is_data_file*/, dtanum, 1 /*add_prefix*/,
-                                  datafile_is_striped(bdb_state, dtanum), strnum, versions.dta[dtanum], tmpname,
-                                  sizeof(tmpname));
+                form_file_name_ver(bdb_state, tid, 1 /*is_data_file*/, dtanum, datafile_is_striped(bdb_state, dtanum),
+                                   strnum, versions.dta[dtanum], tmpname, sizeof(tmpname));
 
                 if (create) {
                     char new[PATH_MAX];
@@ -4770,8 +4819,8 @@ deadlock_again:
     if (bdbtype == BDBTYPE_TABLE) {
         /* set up the .ixN files */
         for (i = 0; i < bdb_state->numix; i++) {
-            form_file_name_ex(bdb_state, 0 /*is_data_file*/, i, 1 /*add_prefix*/, 0 /*isstriped*/,
-                              0 /*stripenum*/, versions.ix[i], tmpname, sizeof(tmpname));
+            form_file_name_ver(bdb_state, tid, 0 /*is_data_file*/, i, 0 /*isstriped*/, 0 /*stripenum*/,
+                               versions.ix[i], tmpname, sizeof(tmpname));
 
             if (create) {
                 char new[PATH_MAX];
