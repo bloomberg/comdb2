@@ -4697,15 +4697,17 @@ static int cdb2_send_query(cdb2_hndl_tp *hndl, cdb2_hndl_tp *event_hndl, COMDB2B
 
     sqlquery.mach_class = cdb2_default_cluster;
 
-    if (hndl && hndl->id_blob) {
-        sqlquery.identity = hndl->id_blob;
+    /* hndl is NULL for the comdb2db lookup: use the identity of the handle being resolved */
+    cdb2_hndl_tp *id_hndl = hndl ? hndl : event_hndl;
+    if (id_hndl && id_hndl->id_blob) {
+        sqlquery.identity = id_hndl->id_blob;
     } else if (iam_identity && identity_cb && (!hndl || requesting_sql_rows(hndl) == 0)) {
         int flags = 0;
         if (cdb2_use_optional_identity)
             flags |= CDB2_USE_OPTIONAL_IDENTITY;
         if (cdb2_non_threaded_identity)
             flags |= CDB2_NON_THREADED_IDENTITY;
-        id_blob = identity_cb->getIdentity(hndl, flags);
+        id_blob = identity_cb->getIdentity(id_hndl, flags);
 #ifdef CDB2API_TEST
         /* Simulate a failed identity creation to exercise the hard-fail
            path below. free(NULL) is a no-op, so this is safe regardless of
