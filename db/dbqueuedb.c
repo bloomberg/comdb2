@@ -153,7 +153,9 @@ int dbqueuedb_get_stats(struct dbtable *db, struct consumer_stat *stats, uint32_
     int bdberr;
     uint32_t savedlid;
     bdb_state_type *bdb_state = db->handle;
-    tran_type *trans = bdb_tran_begin(bdb_state, NULL, &bdberr);
+    /* Read-only under the caller's table locks: taking the recovery lock here
+     * inverts against online recovery, which holds it while getting table locks */
+    tran_type *trans = bdb_tran_begin_flags(bdb_state, NULL, &bdberr, BDB_TRAN_RECOVERY);
     if (!trans) {
         logmsg(LOGMSG_ERROR, "%s bdb_tran_begin:%s bdberr:%d\n", __func__,
                db->tablename, bdberr);
