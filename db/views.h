@@ -584,7 +584,9 @@ int partition_publish(tran_type *tran, struct schema_change_type *sc);
 void partition_unpublish(struct schema_change_type *sc);
 
 
-/* called for a truncate rollout before finalize commits the tran */
+/* called for a truncate rollout: the llmeta write before finalize changes the
+ * table, the callback after finalize, before it commits the tran */
+int partition_truncate_llmeta_write(tran_type *tran, struct schema_change_type *s);
 int partition_truncate_callback(tran_type *tran, struct schema_change_type *s);
 
 /* return the default value for a manual partition */

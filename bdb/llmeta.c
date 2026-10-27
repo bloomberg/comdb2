@@ -37,6 +37,7 @@
 #include "debug_switches.h"
 #include "alias.h"
 #include "comdb2.h"
+#include "comdb2_atomic.h"
 
 extern int gbl_maxretries;
 extern int gbl_disable_access_controls;
@@ -9210,6 +9211,9 @@ rep:
     return rc;
 }
 
+/* Test hook: number of blob writes in a caller's transaction to fail with BDBERR_DEADLOCK */
+int gbl_test_llmeta_blob_deadlock = 0;
+
 /* find & delete old -> add new
  * returns 0: success
  *  -1: error
@@ -9238,6 +9242,13 @@ static int llmeta_del_set_blob(void *parent_tran, llmetakey_t key,
     memcpy(llkey, &key, sizeof(key));
     if (table)
         memcpy((llkey + sizeof(key)), table, strnlen(table, LLMETA_IXLEN - sizeof(key)));
+
+    if (parent_tran && gbl_test_llmeta_blob_deadlock && ATOMIC_ADD32(gbl_test_llmeta_blob_deadlock, -1) >= 0) {
+        logmsg(LOGMSG_USER, "%s: test_llmeta_blob_deadlock: injecting a deadlock for %s\n", __func__,
+               table ? table : "(null)");
+        *bdberr = BDBERR_DEADLOCK;
+        return -1;
+    }
 
 rep:
     *bdberr = BDBERR_NOERROR;

@@ -40,7 +40,7 @@ static int delete_table(struct dbtable *db, tran_type *tran, int *bdberr)
     rem_dbtable_from_thedb_dbs(db);
     MEMORY_SYNC;
     delete_schema(table);
-    return bdb_del_table_csonparameters(tran, table, bdberr);
+    return 0;
 }
 
 int do_drop_table(struct ireq *iq, struct schema_change_type *s,
@@ -96,38 +96,12 @@ int finalize_drop_table(struct ireq *iq, struct schema_change_type *s,
         return rc;
     }
 
-    if ((rc = delete_table(db, tran, &bdberr)) != 0) {
+    /* Write the table parameters and the partition before delete_table()
+     * changes the in-memory table list: a deadlock here must fail before that */
+    if ((rc = bdb_del_table_csonparameters(tran, db->tablename, &bdberr)) != 0) {
         sc_errf(s, "Failed to delete table parameters rc %d bdberr %d\n", rc, bdberr);
         return bdberr == BDBERR_DEADLOCK ? RC_INTERNAL_RETRY : rc;
     }
-    /*Now that we don't have any data, please clear unwanted schemas.*/
-    bdberr = bdb_reset_csc2_version(tran, db->tablename, db->schema_version, 0);
-    if (bdberr != BDBERR_NOERROR) return -1;
-
-    if ((rc = bdb_del_file_versions(db->handle, tran, &bdberr))) {
-        sc_errf(s, "%s: bdb_del_file_versions failed with rc: %d bdberr: "
-                   "%d\n",
-                __func__, rc, bdberr);
-        return rc;
-    }
-
-    if ((rc = table_version_upsert(db, tran, &bdberr)) != 0) {
-        sc_errf(s, "Failed updating table version bdberr %d\n", bdberr);
-        return rc;
-    }
-
-    if ((rc = llmeta_set_tables(tran, thedb)) != 0) {
-        sc_errf(s, "Failed to set table names in low level meta\n");
-        return rc;
-    }
-
-    /* Delete all access permissions related to this table. */
-    if ((rc = bdb_del_all_table_access(db->handle, tran, db->tablename)) != 0)
-    {
-        sc_errf(s, "Failed to delete access permissions\n");
-        return rc;
-    }
-
 
     /* if this is a shard, remove the llmeta partition entry */
     if (s->partition.type == PARTITION_REMOVE && s->publish) {
@@ -170,6 +144,39 @@ int finalize_drop_table(struct ireq *iq, struct schema_change_type *s,
             return rc == RC_INTERNAL_RETRY ? rc : SC_INTERNAL_ERROR;
         }
     }
+
+    if ((rc = delete_table(db, tran, &bdberr)) != 0) {
+        sc_errf(s, "Failed to delete table rc %d bdberr %d\n", rc, bdberr);
+        return bdberr == BDBERR_DEADLOCK ? RC_INTERNAL_RETRY : rc;
+    }
+    /*Now that we don't have any data, please clear unwanted schemas.*/
+    bdberr = bdb_reset_csc2_version(tran, db->tablename, db->schema_version, 0);
+    if (bdberr != BDBERR_NOERROR) return -1;
+
+    if ((rc = bdb_del_file_versions(db->handle, tran, &bdberr))) {
+        sc_errf(s, "%s: bdb_del_file_versions failed with rc: %d bdberr: "
+                   "%d\n",
+                __func__, rc, bdberr);
+        return rc;
+    }
+
+    if ((rc = table_version_upsert(db, tran, &bdberr)) != 0) {
+        sc_errf(s, "Failed updating table version bdberr %d\n", bdberr);
+        return rc;
+    }
+
+    if ((rc = llmeta_set_tables(tran, thedb)) != 0) {
+        sc_errf(s, "Failed to set table names in low level meta\n");
+        return rc;
+    }
+
+    /* Delete all access permissions related to this table. */
+    if ((rc = bdb_del_all_table_access(db->handle, tran, db->tablename)) != 0)
+    {
+        sc_errf(s, "Failed to delete access permissions\n");
+        return rc;
+    }
+
 
     live_sc_off(db);
 

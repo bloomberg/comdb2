@@ -170,10 +170,14 @@ int finalize_fastinit_table(struct ireq *iq, struct schema_change_type *s,
         }
     }
 
+    /* if this is a shard, it is probably a truncation rollout */
+    int rollout = db->timepartition_name && s->newpartition;
+    if (rollout && (rc = partition_truncate_llmeta_write(tran, s)) != 0)
+        return rc;
+
     rc = finalize_alter_table(iq, s, tran);
 
-    /* if this is a shard, it is probably a truncation rollout */
-    if (!rc && db->timepartition_name && s->newpartition) {
+    if (!rc && rollout) {
         rc = partition_truncate_callback(tran, s);
     }
 
