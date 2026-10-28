@@ -557,6 +557,39 @@ void udp_prefault_all(bdb_state_type *bdb_state, const unsigned char *ufid, unsi
     }
 }
 
+/*
+ * Replica write hints (experimental, off by default): at the end of a write
+ * statement, or just before the commit it ends with, a replica sends the master
+ * one UDP packet with the distinct B-tree leaf pages the statement read, as
+ * (UFID, pgno) pairs in the USER_TYPE_UDP_PREFAULT_UFID format, so that the
+ * master can prefetch them before its block processor replays the transaction.
+ * Lossy, never retried.
+ */
+int gbl_rep_write_hints = 0;
+enum { RWH_MAX = 32 }; /* pairs per packet */
+int __memp_rwh_take(uint8_t *buf, int max);
+
+/* Send this thread's recorded pages to the master if send is set, and forget them */
+void bdb_send_write_hints(bdb_state_type *bdb_state, int send)
+{
+    repinfo_type *repinfo = bdb_state->repinfo;
+    const char *master = repinfo->master_host;
+    ack_info *info;
+    int n;
+
+    if (!send || !gbl_rep_write_hints || master == repinfo->myhost || master == db_eid_invalid || master == NULL) {
+        __memp_rwh_take(NULL, 0);
+        return;
+    }
+    new_ack_info(info, RWH_MAX * UDP_PREFAULT_UFID_LEN, repinfo->myhost);
+    n = __memp_rwh_take(ack_info_data(info), RWH_MAX);
+    if (n == 0)
+        return;
+    info->type = USER_TYPE_REP_WRITE_HINTS;
+    info->len = n * UDP_PREFAULT_UFID_LEN;
+    udp_send(bdb_state, info, master);
+}
+
 static void print_ping_rtt(ack_info *info)
 {
     struct timeval now, *sent, diff;
@@ -736,6 +769,21 @@ static void udp_reader(int fd, short what, void *arg)
             ++pf_ufid_recd;
             if (enque_udppfault_ufid(bdb_state, p_buf, pgno) != 0)
                 ++pf_ufid_dropped;
+        }
+        break;
+    }
+
+    case USER_TYPE_REP_WRITE_HINTS: {
+        /* replica write hints: used only by the master, with rep_write_hints on */
+        uint32_t pgno = 0;
+        if (info->len == 0 || info->len % UDP_PREFAULT_UFID_LEN != 0 || info->len / UDP_PREFAULT_UFID_LEN > RWH_MAX ||
+            !gbl_rep_write_hints || bdb_state->repinfo->myhost != bdb_state->repinfo->master_host)
+            break;
+        data = ack_info_data(info);
+        p_buf_end = (uint8_t *)data + info->len;
+        for (p_buf = data; p_buf < p_buf_end; p_buf += UDP_PREFAULT_UFID_LEN) {
+            buf_get(&pgno, sizeof(pgno), p_buf + DB_FILE_ID_LEN, p_buf_end);
+            enque_udppfault_ufid(bdb_state, p_buf, pgno);
         }
         break;
     }

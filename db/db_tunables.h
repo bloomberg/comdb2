@@ -1970,6 +1970,11 @@ REGISTER_TUNABLE("udp_prefault_async_poll_us",
                  "With udp_prefault_async, the sender polls its queue every this many microseconds instead of being "
                  "woken (0: woken). (Default: 0)",
                  TUNABLE_INTEGER, &gbl_udp_prefault_async_poll_us, EXPERIMENTAL, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("rep_write_hints",
+                 "Replicas send the master, in one lossy UDP packet per write statement, up to 32 leaf pages the "
+                 "statement read, so that the master can prefetch them. socksql (default) transactions only; needed "
+                 "on the master too. (Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_rep_write_hints, EXPERIMENTAL, NULL, NULL, NULL, NULL);
 
 REGISTER_TUNABLE("disable_tpsc_tblvers",
                  "Disable table version checks for time partition schema "
