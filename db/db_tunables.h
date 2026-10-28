@@ -2073,6 +2073,9 @@ REGISTER_TUNABLE("udp_prefault_max_age_us",
                  "(Default: 0)",
                  TUNABLE_INTEGER, &gbl_udp_prefault_max_age_us, EXPERIMENTAL, NULL, NULL, NULL, NULL);
 
+REGISTER_TUNABLE("udp_prefault_lifo", "Serve the newest UDP prefault request first. (Default: off)", TUNABLE_BOOLEAN,
+                 &gbl_udp_prefault_lifo, EXPERIMENTAL, NULL, NULL, NULL, NULL);
+
 REGISTER_TUNABLE("rep_write_hints",
                  "When a write statement ends, a replica sends the master, in one lossy UDP packet through the UDP "
                  "prefault sender thread, up to 32 pages to prefetch: the data pages, index leaf pages and blob leaf "
