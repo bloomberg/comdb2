@@ -762,13 +762,19 @@ const struct berkdb_thread_stats *bdb_get_process_stats(void)
 void bdb_print_stats(const struct berkdb_thread_stats *st, const char *prefix,
                      int (*printfn)(const char *, void *), void *context)
 {
-    char s[192];
-    if (st->rep_lock_time_us > 0) {
-        snprintf(s, sizeof(s), "%s%" PRIu64 " rep-locks took %u ms (%" PRIu64 " deadlocks)\n", prefix, st->n_locks,
-                 U2M(st->rep_lock_time_us), st->rep_deadlock_retries);
+    char s[256];
+    if (st->rep_lock_attempts > 0) {
+        /* "took" is the time inside the lock-list attempts, failed ones
+           included; the time from the first attempt until all the locks were
+           held also counts re-collecting the transaction between retries */
+        snprintf(s, sizeof(s),
+                 "%s%" PRIu64 " rep-locks took %u ms in %" PRIu64 " attempts (%" PRIu64
+                 " deadlocks), %u ms from first attempt to all locks held\n",
+                 prefix, st->n_locks, U2M(st->rep_lock_time_us), st->rep_lock_attempts, st->rep_deadlock_retries,
+                 U2M(st->rep_lock_txn_time_us));
         printfn(s, context);
     }
-    if (!st->rep_lock_time_us && st->n_locks > 0) {
+    if (!st->rep_lock_attempts && st->n_locks > 0) {
         snprintf(s, sizeof(s), "%s%" PRIu64 " total locks acquired\n", prefix, st->n_locks);
         printfn(s, context);
     }

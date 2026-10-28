@@ -3907,8 +3907,8 @@ static int cursor_move_postop(BtCursor *pCur)
 
         /* Same policy (and default) as the emit-row release path: bound how
            long the replication thread may stay blocked.  Prefer
-           gbl_rep_lock_time_ms -- when the rep thread is parked in
-           __lock_get_list that is exactly how long it has been waiting -- and
+           gbl_rep_lock_time_ms -- how long the rep thread has been trying to
+           lock the transaction it is applying, deadlock retries included -- and
            fall back to when we first saw a waiter, which also covers
            non-replication waiters. */
         int max_wait = gbl_pagelock_release_max_wait_ms; /* 0 disables the fallback */
