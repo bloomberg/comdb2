@@ -26,12 +26,15 @@
 #include <sys/time.h>
 #include <errno.h>
 #include <ctype.h>
+#include <inttypes.h>
+#include <unistd.h>
 
 #include "bdb_api.h"
 #include "bdb_int.h"
 #include <net.h>
 #include <locks.h>
 #include <sys_wrap.h>
+#include <comdb2_atomic.h>
 
 #include <util.h>
 #include <gettimeofday_ms.h>
@@ -383,33 +386,155 @@ int udppfault_thdpool_init(void)
 /* USER_TYPE_UDP_PREFAULT_UFID payload: the file's UFID, then the page number */
 enum { UDP_PREFAULT_UFID_LEN = DB_FILE_ID_LEN + sizeof(uint32_t) };
 
-static int send_prefault(bdb_state_type *bdb_state, const char *tohost, const unsigned char *ufid, unsigned int pgno)
+struct udppf_hint {
+    uint8_t ufid[DB_FILE_ID_LEN];
+    uint32_t pgno;
+};
+
+/* Send n (UFID, pgno) pairs in one packet; n > 1 only with udp_prefault_async_batch */
+static int send_prefault(bdb_state_type *bdb_state, const char *tohost, const struct udppf_hint *h, int n)
 {
     ack_info *info;
     uint8_t *p_buf;
     uint8_t *p_buf_end;
+    int i;
 
-    new_ack_info(info, UDP_PREFAULT_UFID_LEN, bdb_state->repinfo->myhost);
+    new_ack_info(info, n * UDP_PREFAULT_UFID_LEN, bdb_state->repinfo->myhost);
     p_buf = ack_info_data(info);
-    p_buf_end = p_buf + UDP_PREFAULT_UFID_LEN;
-    p_buf = buf_no_net_put(ufid, DB_FILE_ID_LEN, p_buf, p_buf_end);
-    buf_put(&pgno, sizeof(pgno), p_buf, p_buf_end);
+    p_buf_end = p_buf + n * UDP_PREFAULT_UFID_LEN;
+    for (i = 0; i < n; i++) {
+        p_buf = buf_no_net_put(h[i].ufid, DB_FILE_ID_LEN, p_buf, p_buf_end);
+        p_buf = buf_put(&h[i].pgno, sizeof(h[i].pgno), p_buf, p_buf_end);
+    }
 
     info->from = 0;
     info->to = 0;
     info->type = USER_TYPE_UDP_PREFAULT_UFID;
-    info->len = UDP_PREFAULT_UFID_LEN;
+    info->len = n * UDP_PREFAULT_UFID_LEN;
 
     if (udp_send(bdb_state, info, tohost) > 0)
-        __atomic_add_fetch(&pf_ufid_sent, 1, __ATOMIC_RELAXED);
+        __atomic_add_fetch(&pf_ufid_sent, n, __ATOMIC_RELAXED);
 
     return 0;
+}
+
+/*
+ * Asynchronous UDP prefault hints (experimental, udp_prefault_async, off by
+ * default). The thread that reads a page from disk (block processor, osql
+ * prefault thread) only appends (UFID, pgno) to a small fixed-size queue and
+ * never blocks: a hint is dropped if the queue is full. One sender thread sends
+ * the queued hints to the connected replicas, and drops them if this node is no
+ * longer the master. The sender is woken only when it sleeps on an empty queue,
+ * or, with udp_prefault_async_poll_us, polls the queue and is never woken.
+ * udp_prefault_async_batch > 1 packs that many pages into one packet; replicas
+ * without this change ignore such packets (length check).
+ */
+int gbl_udp_prefault_async = 0;
+int gbl_udp_prefault_async_batch = 1;
+int gbl_udp_prefault_async_poll_us = 0;
+enum { UDPPF_ASYNC_QMAX = 1024, UDPPF_ASYNC_TAKE = 64, UDPPF_BATCH_MAX = 32 };
+static struct {
+    pthread_mutex_t lk;
+    pthread_cond_t cd;
+    unsigned head, n; /* n queued hints from q[head] on, circular */
+    int sleeping, started;
+    bdb_state_type *bdb_state;
+    struct udppf_hint q[UDPPF_ASYNC_QMAX];
+} udppf_async = {.lk = PTHREAD_MUTEX_INITIALIZER, .cd = PTHREAD_COND_INITIALIZER};
+static uint64_t udppf_async_queued, udppf_async_full, udppf_async_notmaster, udppf_async_wakeups, udppf_async_packets;
+
+static void udppf_async_send(bdb_state_type *bdb_state, const struct udppf_hint *h, int n)
+{
+    repinfo_type *repinfo = bdb_state->repinfo;
+    const char *hosts[REPMAX];
+    int i, j, k, nhosts, batch;
+
+    if (!gbl_prefault_udp || repinfo->myhost != repinfo->master_host) {
+        ATOMIC_ADD64(udppf_async_notmaster, n);
+        return;
+    }
+    batch = gbl_udp_prefault_async_batch;
+    if (batch < 1)
+        batch = 1;
+    if (batch > UDPPF_BATCH_MAX)
+        batch = UDPPF_BATCH_MAX;
+    nhosts = net_get_all_nodes_connected(repinfo->netinfo, hosts);
+    for (i = 0; i < n; i += batch) {
+        k = n - i < batch ? n - i : batch;
+        for (j = 0; j < nhosts; j++) {
+            send_prefault(bdb_state, hosts[j], h + i, k);
+            ATOMIC_ADD64(udppf_async_packets, 1);
+        }
+    }
+}
+
+static void *udppf_async_thd(void *arg)
+{
+    struct udppf_hint h[UDPPF_ASYNC_TAKE];
+    bdb_state_type *bdb_state;
+    unsigned i, n;
+
+    comdb2_name_thread("udppf_sender");
+    while (!db_is_exiting()) {
+        Pthread_mutex_lock(&udppf_async.lk);
+        while (udppf_async.n == 0 && gbl_udp_prefault_async_poll_us <= 0) {
+            udppf_async.sleeping = 1;
+            Pthread_cond_wait(&udppf_async.cd, &udppf_async.lk);
+            ATOMIC_ADD64(udppf_async_wakeups, 1);
+        }
+        n = udppf_async.n < UDPPF_ASYNC_TAKE ? udppf_async.n : UDPPF_ASYNC_TAKE;
+        for (i = 0; i < n; i++)
+            h[i] = udppf_async.q[(udppf_async.head + i) % UDPPF_ASYNC_QMAX];
+        udppf_async.head = (udppf_async.head + n) % UDPPF_ASYNC_QMAX;
+        udppf_async.n -= n;
+        bdb_state = udppf_async.bdb_state;
+        Pthread_mutex_unlock(&udppf_async.lk);
+        if (n > 0)
+            udppf_async_send(bdb_state, h, n);
+        else
+            usleep(gbl_udp_prefault_async_poll_us);
+    }
+    return NULL;
+}
+
+static void udppf_async_enqueue(bdb_state_type *bdb_state, const unsigned char *ufid, unsigned int pgno)
+{
+    struct udppf_hint *h;
+    int wake, start;
+
+    Pthread_mutex_lock(&udppf_async.lk);
+    if (udppf_async.n == UDPPF_ASYNC_QMAX) {
+        Pthread_mutex_unlock(&udppf_async.lk);
+        ATOMIC_ADD64(udppf_async_full, 1);
+        return;
+    }
+    h = &udppf_async.q[(udppf_async.head + udppf_async.n) % UDPPF_ASYNC_QMAX];
+    memcpy(h->ufid, ufid, DB_FILE_ID_LEN);
+    h->pgno = pgno;
+    udppf_async.n++;
+    wake = udppf_async.sleeping;
+    udppf_async.sleeping = 0;
+    start = !udppf_async.started;
+    if (start) {
+        udppf_async.started = 1;
+        udppf_async.bdb_state = bdb_state;
+    }
+    Pthread_mutex_unlock(&udppf_async.lk);
+    ATOMIC_ADD64(udppf_async_queued, 1);
+    if (wake)
+        Pthread_cond_signal(&udppf_async.cd);
+    if (start) {
+        pthread_t tid;
+        extern pthread_attr_t gbl_pthread_attr;
+        Pthread_create(&tid, &gbl_pthread_attr, udppf_async_thd, NULL);
+    }
 }
 
 void udp_prefault_all(bdb_state_type *bdb_state, const unsigned char *ufid, unsigned int pgno)
 {
     repinfo_type *repinfo = bdb_state->repinfo;
     const char *hosts[REPMAX];
+    struct udppf_hint h;
     int i;
 
     if (!gbl_prefault_udp)
@@ -418,10 +543,17 @@ void udp_prefault_all(bdb_state_type *bdb_state, const unsigned char *ufid, unsi
     if (repinfo->myhost != repinfo->master_host)
         return;
 
+    if (gbl_udp_prefault_async) {
+        udppf_async_enqueue(bdb_state, ufid, pgno);
+        return;
+    }
+
+    memcpy(h.ufid, ufid, DB_FILE_ID_LEN);
+    h.pgno = pgno;
     i = net_get_all_nodes_connected(repinfo->netinfo, hosts);
 
     while (i--) {
-        send_prefault(bdb_state, hosts[i], ufid, pgno);
+        send_prefault(bdb_state, hosts[i], &h, 1);
     }
 }
 
@@ -592,15 +724,19 @@ static void udp_reader(int fd, short what, void *arg)
         break;
 
     case USER_TYPE_UDP_PREFAULT_UFID: {
-        uint32_t pgno;
-        if (info->len != UDP_PREFAULT_UFID_LEN)
+        /* one (UFID, pgno) pair, or up to UDPPF_BATCH_MAX from udp_prefault_async_batch */
+        uint32_t pgno = 0;
+        if (info->len == 0 || info->len % UDP_PREFAULT_UFID_LEN != 0 ||
+            info->len / UDP_PREFAULT_UFID_LEN > UDPPF_BATCH_MAX)
             break;
         data = ack_info_data(info);
         p_buf_end = (uint8_t *)data + info->len;
-        buf_get(&pgno, sizeof(pgno), (uint8_t *)data + DB_FILE_ID_LEN, p_buf_end);
-        ++pf_ufid_recd;
-        if (enque_udppfault_ufid(bdb_state, data, pgno) != 0)
-            ++pf_ufid_dropped;
+        for (p_buf = data; p_buf < p_buf_end; p_buf += UDP_PREFAULT_UFID_LEN) {
+            buf_get(&pgno, sizeof(pgno), p_buf + DB_FILE_ID_LEN, p_buf_end);
+            ++pf_ufid_recd;
+            if (enque_udppfault_ufid(bdb_state, p_buf, pgno) != 0)
+                ++pf_ufid_dropped;
+        }
         break;
     }
 
@@ -703,6 +839,14 @@ void udp_summary(void)
            "udp prefault ufid hints skipped (file not open): %u\n"
            "udp prefault dbreg hints received: %u\n",
            pf_ufid_sent, pf_ufid_recd, pf_ufid_dropped, udp_pf_ufid_pinned, udp_pf_ufid_skipped, pf_dbreg_recd);
+    if (udppf_async.started)
+        logmsg(LOGMSG_USER,
+               "udp prefault async hints queued: %" PRIu64 "\n"
+               "udp prefault async hints dropped (queue full): %" PRIu64 "\n"
+               "udp prefault async hints dropped (not master): %" PRIu64 "\n"
+               "udp prefault async sender wakeups: %" PRIu64 "\n"
+               "udp prefault async packets sent: %" PRIu64 "\n",
+               udppf_async_queued, udppf_async_full, udppf_async_notmaster, udppf_async_wakeups, udppf_async_packets);
 }
 
 void udp_stats(unsigned int *in_sent_udp, unsigned int *in_fail_udp,

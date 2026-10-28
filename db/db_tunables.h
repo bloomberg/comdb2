@@ -1956,6 +1956,19 @@ REGISTER_TUNABLE("reorder_idx_writes", "reorder_idx_writes",
                  TUNABLE_BOOLEAN, &gbl_reorder_idx_writes, EXPERIMENTAL,
                  NULL, NULL, NULL, NULL);
 
+REGISTER_TUNABLE("udp_prefault_async",
+                 "The master queues UDP prefault hints for a sender thread instead of sending them from the thread "
+                 "that reads the page; hints are dropped when the queue is full. (Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_udp_prefault_async, EXPERIMENTAL, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("udp_prefault_async_batch",
+                 "With udp_prefault_async, pages per UDP prefault packet (1-32); more than 1 needs replicas that "
+                 "accept multi-page packets. (Default: 1)",
+                 TUNABLE_INTEGER, &gbl_udp_prefault_async_batch, EXPERIMENTAL, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("udp_prefault_async_poll_us",
+                 "With udp_prefault_async, the sender polls its queue every this many microseconds instead of being "
+                 "woken (0: woken). (Default: 0)",
+                 TUNABLE_INTEGER, &gbl_udp_prefault_async_poll_us, EXPERIMENTAL, NULL, NULL, NULL, NULL);
+
 REGISTER_TUNABLE("disable_tpsc_tblvers",
                  "Disable table version checks for time partition schema "
                  "changes",
