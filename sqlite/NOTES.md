@@ -393,6 +393,8 @@ I started tracking this when I got to more important files (`where.c`,
   insert into t(a) values(1)
   ```
 
+- **TODO**: Before `sqlite-wip` merges into main, put the default `MAX_TEST_FAILURES` in `tests/runtestcase` back to 10. We raised it to 1000 so RoboRivers runs the whole suite on the upgrade PR, which fails more than 10 tests. On main, the cap stops a broken build from holding a test host for the full run.
+
 ## Post-merge checklist
 
 Loose ends found while merging `sqlite/src`. None of them can be checked
