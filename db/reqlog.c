@@ -1992,7 +1992,11 @@ void reqlog_long_running_clnt(struct sqlclntstate *clnt)
 {
     int have_fingerprint = 0;
     char fp[FINGERPRINTSZ] = {0};
-    if (clnt->done || !clnt->thd || !clnt->sql || !clnt->thd->logger) return;
+    if (clnt->done || !clnt->sql)
+        return;
+    struct sqlthdstate *thd = clnt->thd;
+    if (!thd || !thd->logger)
+        return;
 
     if (can_consume(clnt) == 1) {
         return; /* Do not log consumers */

@@ -1477,6 +1477,7 @@ int dispatch_sql_query_no_wait(struct sqlclntstate *);
 void sqlengine_appsock_done(struct sqlclntstate *);
 int send_run_error(struct sqlclntstate *, const char *err, int rc);
 void signal_clnt_as_done(struct sqlclntstate *clnt);
+void clnt_set_thd(struct sqlclntstate *clnt, struct sqlthdstate *thd);
 
 int handle_sql_begin(struct sqlthdstate *thd, struct sqlclntstate *clnt,
                      enum trans_clntcomm sideeffects);

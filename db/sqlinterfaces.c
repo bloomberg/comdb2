@@ -4631,6 +4631,14 @@ int done_cb_evbuffer(struct sqlclntstate *clnt)
 #   endif
 }
 
+/* reqlog_long_running_clnt() reads clnt->thd under sql_lk, so writes must hold it too */
+void clnt_set_thd(struct sqlclntstate *clnt, struct sqlthdstate *thd)
+{
+    Pthread_mutex_lock(&clnt->sql_lk);
+    clnt->thd = thd;
+    Pthread_mutex_unlock(&clnt->sql_lk);
+}
+
 void signal_clnt_as_done(struct sqlclntstate *clnt)
 {
     struct sql_thread *thd = (clnt->thd && clnt->thd->sqlthd) ? clnt->thd->sqlthd : NULL;
@@ -4684,7 +4692,7 @@ static void sqlengine_work_lua_thread(void *thddata, void *work)
     thr_set_user("appsock", (intptr_t)clnt->appsock_id);
 
     clnt->osql.timings.query_dispatched = osql_log_time();
-    clnt->thd = thd;
+    clnt_set_thd(clnt, thd);
     /* Reset the cancel-statement flag */
     if (clnt->discard_this) {
         thd->sqlthd->stop_this_statement = 1;
@@ -4962,7 +4970,7 @@ void sqlengine_work_appsock(struct sqlthdstate *thd, struct sqlclntstate *clnt)
 
     assert(sqlthd);
     sqlthd->clnt = clnt;
-    clnt->thd = thd;
+    clnt_set_thd(clnt, thd);
     /* Reset the cancel-statement flag */
     if (clnt->discard_this) {
         thd->sqlthd->stop_this_statement = 1;
@@ -5143,15 +5151,16 @@ static int enqueue_sql_query(struct sqlclntstate *clnt, int force_dispatch)
     bzero(&clnt->osql.fdbtimes, sizeof(fdbtimings_t));
     clnt->osql.timings.query_received = osql_log_time();
 
-    Pthread_mutex_lock(&clnt->wait_mutex);
-    clnt->deadlock_recovered = 0;
-
     /* Reset clnt->thd: there's no guarantee that this clnt is going to be
        dispatched to the same sql thread it previously ran under; Also, that
        thread may not even exist any more (eg aged out), causing
        reqlog_long_running_clnt() to segfault when reading clnt->thd, which is
        alloca'd on the stack by the sql thread */
-    clnt->thd = NULL;
+    clnt_set_thd(clnt, NULL);
+
+    Pthread_mutex_lock(&clnt->wait_mutex);
+    clnt->deadlock_recovered = 0;
+
     clnt->done = 0;
     if (clnt->statement_timedout) fail_dispatch = 1;
     clnt->total_sql++;
