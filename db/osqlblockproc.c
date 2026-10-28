@@ -1043,6 +1043,13 @@ static int process_this_session(
     }
 #endif
 
+    /* osql prefault work for this transaction is useless from now on: the
+       block processor reads the pages itself, and a prefault lookup would
+       wait for its page locks until the commit; mark every step as done
+       (half the range: the block processor still adds its own small steps) */
+    if (iq->osql_step_ix)
+        gbl_osqlpf_step[*(iq->osql_step_ix)].step = UINT_MAX / 2;
+
     /* go through each record */
     rc = bdb_temp_table_first(thedb->bdb_env, dbc, bdberr);
     if (rc && rc != IX_EMPTY && rc != IX_NOTFND) {
@@ -1123,9 +1130,6 @@ static int process_this_session(
         rc = get_next_merge_tmps(dbc, dbc_ins, &opkey, &opkey_ins, &drain_adds,
                                  bdberr, add_stripe);
     }
-
-    if (iq->osql_step_ix)
-        gbl_osqlpf_step[*(iq->osql_step_ix)].step = opkey->seq << 7;
 
     /* if for some reason the session has not completed correctly,
        this will free the eventually allocated buffers */
