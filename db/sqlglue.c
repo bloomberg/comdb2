@@ -247,6 +247,36 @@ static int check_snapshot_table(struct sqlclntstate *clnt, struct dbtable *db, i
     return 0;
 }
 
+/* A table as a snapshot saw it before a schema change keeps its writes in
+ * shadows, as any table does, and the commit sends them by name with the old
+ * table version: the master fails the commit if the table version changed, or
+ * applies the writes if it did not.
+ *
+ * The shadows of a table are in the slot of its dbnum, but a schema change
+ * opens the table in a new slot.  An old table keeps the slot that its shadows
+ * have; with no shadows yet, it takes the slot of the live table with the same
+ * name, which no table in the catalog of the snapshot has.  Set *dbnum to the
+ * slot, -1 if the statement needs no shadows, and *live to the live table if
+ * the slot is its slot, so that the caller locks it and the slot stays.
+ * Return nonzero if the statement needs a slot and there is none: the table
+ * was dropped, or another table has shadows in the slot of the live table. */
+static int old_table_shadows(struct sqlclntstate *clnt, struct dbtable *db, sqlite3_stmt *stmt, int *dbnum,
+                             struct dbtable **live)
+{
+    *live = NULL;
+    if ((*dbnum = osql_get_shadow_dbnum(clnt, db->tablename)) != -1 || sqlite3_stmt_readonly(stmt))
+        return 0;
+    struct dbtable *l = get_live_dbtable_by_name(db->tablename);
+    if (l == NULL || l == &thedb->static_table)
+        return -1;
+    const int d = get_dbnum_by_handle(l->handle);
+    if (d == -1 || osql_shadow_dbnum_in_use(clnt, d))
+        return -1;
+    *dbnum = d;
+    *live = l;
+    return 0;
+}
+
 static void initialize_curtran_for_modsnap(cursor_tran_t * const curtran, const struct sqlclntstate * const clnt)
 {
     curtran->modsnap_start_lsn.file = clnt->modsnap_start_lsn_file;
@@ -8693,15 +8723,22 @@ static int sqlite3LockStmtTables_int(sqlite3_stmt *pStmt, int after_recovery)
         }
 
         /* a table as a snapshot saw it before a schema change does not
-         * change, and the snapshot holds it; it cannot be written */
+         * change, and the snapshot holds it */
         if (snap_catalog_is_old_table(db)) {
-            if (!sqlite3_stmt_readonly(pStmt)) {
+            struct dbtable *live = NULL;
+            int dbnum;
+            if (old_table_shadows(clnt, db, pStmt, &dbnum, &live) != 0) {
                 sqlite3_mutex_enter(sqlite3_db_mutex(p->db));
                 sqlite3VdbeError(p, "table \"%s\" was schema changed", db->tablename);
                 sqlite3VdbeTransferError(p);
                 sqlite3MakeSureDbHasErr(p->db, SQLITE_OK);
                 sqlite3_mutex_leave(sqlite3_db_mutex(p->db));
                 return SQLITE_SCHEMA;
+            }
+            if (live && (rc = bdb_lock_table_read_fromlid(
+                             live->handle, bdb_get_lid_from_cursortran(clnt->dbtran.cursor_tran))) != 0) {
+                logmsg(LOGMSG_ERROR, "%s lock table %s returns %d\n", __func__, tab->zName, rc);
+                return rc;
             }
             if (!after_recovery)
                 db->nsql++;
@@ -9096,9 +9133,17 @@ sqlite3BtreeCursor_cursor(Btree *pBt,      /* The btree */
 
     initialize_curtran_for_modsnap(clnt->dbtran.cursor_tran, clnt);
 
-    /* initialize the shadow, if any; this transaction did not write a table
-     * as a snapshot saw it before a schema change */
-    cur->shadtbl = snap_catalog_is_old_table(cur->db) ? NULL : osql_get_shadow_bydb(thd->clnt, cur->db);
+    /* initialize the shadow, if any; a table as a snapshot saw it before a
+     * schema change has shadows only when the statement needs them */
+    int dbnum = -1;
+    struct dbtable *live = NULL;
+    const int old_table = snap_catalog_is_old_table(cur->db);
+    if (old_table && old_table_shadows(clnt, cur->db, (sqlite3_stmt *)cur->vdbe, &dbnum, &live) != 0) {
+        logmsg(LOGMSG_ERROR, "%s: no shadows for table %s\n", __func__, cur->db->tablename);
+        return SQLITE_INTERNAL;
+    }
+    const int no_shadows = old_table && dbnum == -1;
+    cur->shadtbl = no_shadows ? NULL : osql_get_shadow_bydb(thd->clnt, cur->db);
 
     if (cur->ixnum == -1) {
         if (is_stat2(cur->db->tablename) || is_stat4(cur->db->tablename)) {
@@ -9222,8 +9267,7 @@ sqlite3BtreeCursor_cursor(Btree *pBt,      /* The btree */
     }
 
     enum bdb_open_type open_type;
-    if (snap_catalog_is_old_table(cur->db)) {
-        /* not written in this transaction: no shadows */
+    if (no_shadows) {
         shadow_tran = NULL;
         open_type = BDB_OPEN_REAL;
     } else if (shadow_tran && (clnt->dbtran.mode != TRANLEVEL_SOSQL)) {
@@ -9234,13 +9278,13 @@ sqlite3BtreeCursor_cursor(Btree *pBt,      /* The btree */
     assert(clnt->dbtran.mode != TRANLEVEL_SNAPISOL || clnt->modsnap_in_progress);
     cur->bdbcur =
         bdb_cursor_open(cur->db->handle, clnt->dbtran.cursor_tran, shadow_tran, cur->ixnum, open_type,
-                        (clnt->dbtran.mode == TRANLEVEL_SOSQL || snap_catalog_is_old_table(cur->db))
+                        (clnt->dbtran.mode == TRANLEVEL_SOSQL || no_shadows)
                             ? NULL
                             : osql_get_shadtbl_addtbl_newcursor(cur),
                         clnt->pageordertablescan, rowlocks, rowlocks ? &clnt->holding_pagelocks_flag : NULL,
                         rowlocks ? pause_pagelock_cursors : NULL, rowlocks ? (void *)thd : NULL,
                         rowlocks ? count_pagelock_cursors : NULL, rowlocks ? (void *)thd : NULL, clnt->bdb_osql_trak,
-                        &bdberr, (clnt->dbtran.mode == TRANLEVEL_SNAPISOL));
+                        &bdberr, (clnt->dbtran.mode == TRANLEVEL_SNAPISOL), dbnum);
     if (cur->bdbcur == NULL) {
         logmsg(LOGMSG_ERROR, "%s: bdb_cursor_open rc %d\n", __func__, bdberr);
         if (bdberr == BDBERR_DEADLOCK)

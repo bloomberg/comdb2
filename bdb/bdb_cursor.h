@@ -130,6 +130,9 @@ typedef struct bdb_cursor_ifn {
 /**
  * Bdbcursor creator (behold)
  *
+ * dbnum is the slot of the shadows of the table in shadow_tran, -1 for the
+ * slot of bdb_state in the environment; a snapshot handle is in none, so it
+ * opens with BDB_OPEN_REAL or with the dbnum of its shadows
  */
 bdb_cursor_ifn_t *
 bdb_cursor_open(bdb_state_type *bdb_state, cursor_tran_t *curtran,
@@ -138,7 +141,7 @@ bdb_cursor_open(bdb_state_type *bdb_state, cursor_tran_t *curtran,
                 int pageorder, int rowlocks, int *holding_pagelocks_flag,
                 int (*pause_pagelock_cursors)(void *), void *pausearg,
                 int (*count_pagelock_cursors)(void *), void *countarg, int trak,
-                int *bdberr, int snapcur);
+                int *bdberr, int snapcur, int dbnum);
 
 int bdb_cursor_process_skip(bdb_state_type *bdb_state, tran_type *tran,
                             /* upcall */

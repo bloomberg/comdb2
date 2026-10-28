@@ -516,14 +516,13 @@ bdb_cursor_ifn_t *bdb_cursor_open(
     int ixnum, enum bdb_open_type type, void *shadadd, int pageorder,
     int rowlocks, int *holding_pagelocks_flag,
     int (*pause_pagelock_cursors)(void *), void *pausearg,
-    int (*count_cursors)(void *), void *countarg, int trak, int *bdberr, int snapcur)
+    int (*count_cursors)(void *), void *countarg, int trak, int *bdberr, int snapcur, int dbnum)
 {
     bdb_cursor_ifn_t *pcur_ifn = NULL;
     bdb_cursor_impl_t *cur = NULL;
     int maxdta = 0;
     int maxkey = 0;
     int rc = 0;
-    int dbnum = 0;
 
     /* this bdb state has to be a table, not an env */
     if (!bdb_state->parent) {
@@ -541,14 +540,20 @@ bdb_cursor_ifn_t *bdb_cursor_open(
         return NULL;
     }
 
-    /* a snapshot handle has no shadows, so it needs no dbnum */
-    if (bdb_state->snapshot_handle) {
+    if (dbnum < 0 && bdb_state->snapshot_handle) {
         if (type != BDB_OPEN_REAL) {
             *bdberr = BDBERR_BADARGS;
             return NULL;
         }
-        dbnum = -1;
-    } else if ((dbnum = get_dbnum_by_handle(bdb_state)) == -1) {
+    } else if (dbnum < 0 && (dbnum = get_dbnum_by_handle(bdb_state)) == -1) {
+        *bdberr = BDBERR_BADARGS;
+        return NULL;
+    }
+    /* the shadows of the transaction have a slot for each table that was
+     * open when it first wrote */
+    if (dbnum >= 0 && shadow_tran && shadow_tran->tables && dbnum >= shadow_tran->numchildren) {
+        logmsg(LOGMSG_ERROR, "%s: table %s dbnum %d, shadows have %d\n", __func__, bdb_state->name, dbnum,
+               shadow_tran->numchildren);
         *bdberr = BDBERR_BADARGS;
         return NULL;
     }

@@ -1569,6 +1569,34 @@ void *osql_get_shadow_bydb(struct sqlclntstate *clnt, struct dbtable *db)
     return ret;
 }
 
+/* The dbnum of the shadow table of tablename, -1 if there is none */
+int osql_get_shadow_dbnum(struct sqlclntstate *clnt, const char *tablename)
+{
+    shad_tbl_t *tbl = NULL;
+
+    LISTC_FOR_EACH(&clnt->osql.shadtbls, tbl, linkv)
+    {
+        if (strcasecmp(tbl->tablename, tablename) == 0)
+            return tbl->dbnum;
+    }
+
+    return -1;
+}
+
+/* 1 if a shadow table has the dbnum */
+int osql_shadow_dbnum_in_use(struct sqlclntstate *clnt, int dbnum)
+{
+    shad_tbl_t *tbl = NULL;
+
+    LISTC_FOR_EACH(&clnt->osql.shadtbls, tbl, linkv)
+    {
+        if (tbl->dbnum == dbnum)
+            return 1;
+    }
+
+    return 0;
+}
+
 extern int gbl_serialize_reads_like_writes;
 
 /**
@@ -2371,7 +2399,8 @@ static int insert_record_indexes(BtCursor *pCur, struct sql_thread *thd,
         tmpcur =
             bdb_cursor_open(pCur->db->handle, thd->clnt->dbtran.cursor_tran, thd->clnt->dbtran.shadow_tran, ix,
                             BDB_OPEN_SHAD, osql_get_shadtbl_addtbl_newcursor(pCur), 0, 0, NULL, NULL, NULL, NULL, NULL,
-                            thd->clnt->bdb_osql_trak, bdberr, (thd->clnt->dbtran.mode == TRANLEVEL_SNAPISOL));
+                            thd->clnt->bdb_osql_trak, bdberr, (thd->clnt->dbtran.mode == TRANLEVEL_SNAPISOL),
+                            pCur->bdbcur ? pCur->bdbcur->dbnum(pCur->bdbcur) : -1);
         if (tmpcur == NULL) {
             logmsg(LOGMSG_ERROR, "%s: bdb_cursor_open ix %d rc %d\n", __func__, ix, *bdberr);
             return SQLITE_INTERNAL;
@@ -2477,7 +2506,8 @@ static int delete_record_indexes(BtCursor *pCur, char *pdta, int dtasize,
         tmpcur =
             bdb_cursor_open(db->handle, thd->clnt->dbtran.cursor_tran, thd->clnt->dbtran.shadow_tran, ix, BDB_OPEN_SHAD,
                             osql_get_shadtbl_addtbl_newcursor(pCur), 0, 0, NULL, NULL, NULL, NULL, NULL,
-                            thd->clnt->bdb_osql_trak, bdberr, (thd->clnt->dbtran.mode == TRANLEVEL_SNAPISOL));
+                            thd->clnt->bdb_osql_trak, bdberr, (thd->clnt->dbtran.mode == TRANLEVEL_SNAPISOL),
+                            pCur->bdbcur ? pCur->bdbcur->dbnum(pCur->bdbcur) : -1);
         if (tmpcur == NULL) {
             logmsg(LOGMSG_ERROR, "%s:bdb_cursor_open ix %d rc %d\n", __func__, ix, *bdberr);
             return -1;

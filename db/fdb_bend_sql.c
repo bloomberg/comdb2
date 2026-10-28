@@ -613,7 +613,7 @@ _fdb_svc_cursor_start(BtCursor *pCur, sqlclntstate *clnt, char *tblname,
             pCur->db->handle, clnt->dbtran.cursor_tran, clnt->dbtran.shadow_tran, pCur->ixnum,
             (clnt->dbtran.shadow_tran && clnt->dbtran.mode != TRANLEVEL_SOSQL) ? BDB_OPEN_BOTH : BDB_OPEN_REAL,
             NULL /* TODO: I don't think I need this here, please double check */, clnt->pageordertablescan, 0, NULL,
-            NULL, NULL, NULL, NULL, clnt->bdb_osql_trak, &bdberr, (clnt->dbtran.mode == TRANLEVEL_SNAPISOL));
+            NULL, NULL, NULL, NULL, clnt->bdb_osql_trak, &bdberr, (clnt->dbtran.mode == TRANLEVEL_SNAPISOL), -1);
         if (pCur->bdbcur == NULL) {
             logmsg(LOGMSG_ERROR, "%s: bdb_cursor_open rc %d\n", __func__, bdberr);
 

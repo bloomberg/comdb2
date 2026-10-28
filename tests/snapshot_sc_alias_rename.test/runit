@@ -115,14 +115,15 @@ live read_new "" "alter table T rename to T_a" "select * from T_a order by i" "E
 live read_old_recache "" $'alter table T rename to T_a\n'"$RC" "$SEL" "$ROWS"
 live other_and_add_column "create table T_o(i int)" $'alter table T_o rename to T_o2\nalter table T add k int' \
     "$SEL" "$ROWS"
-# the transaction cannot write a table as it was before a schema change
-live write_old "" "alter table T rename to T_a" "insert into T values(9,9)" "ERR was schema changed"
+# an alias rename keeps the table version, so a write to the table under its
+# old name commits
+live write_old "" "alter table T rename to T_a" "insert into T values(9,9)" "OK"
 
 asof read_old "alter table T rename to T_a" "$SEL" "$ROWS"
 asof read_new "alter table T rename to T_a" "select * from T_a order by i" "ERR no such table"
 asof read_old_recache $'alter table T rename to T_a\n'"$RC" "$SEL" "$ROWS"
 asof other_and_add_column $'alter table T_o rename to T_o2\nalter table T add k int' "$SEL" "$ROWS" \
     "create table T_o(i int)"
-asof write_old "alter table T rename to T_a" "insert into T values(9,9)" "ERR was schema changed"
+asof write_old "alter table T rename to T_a" "insert into T values(9,9)" "OK"
 
 exit $failed
