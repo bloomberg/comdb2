@@ -7852,9 +7852,8 @@ int osql_process_schemachange(struct schema_change_type *sc, uuid_t uuid)
     int is_partition = timepart_is_partition(sc->tablename);
 
     if (!is_partition) {
-        if ((sc->partition.type == PARTITION_NONE) ||
-            (sc->partition.type == PARTITION_ADD_GENSHARD) ||
-            (sc->partition.type == PARTITION_REM_GENSHARD)) {
+        if ((sc->partition.type == PARTITION_NONE) || (sc->partition.type == PARTITION_ADD_GENSHARD) ||
+            (sc->partition.type == PARTITION_REM_GENSHARD) || (sc->partition.type == PARTITION_ALTER_GENSHARD)) {
             rc = _process_single_table_sc(iq);
         } else if (sc->partition.type == PARTITION_MERGE) {
             rc = _process_single_table_sc_merge(iq);
@@ -8005,6 +8004,7 @@ int osql_finalize_scs(struct ireq *iq, tran_type *trans)
             wrlock_schema_lk();
             iq->sc_locked = 1;
         }
+        set_sc_finalize_schema_lk();
         if (iq->sc->db)
             iq->usedb = iq->sc->db;
         assert(iq->sc->nothrevent);
@@ -8023,6 +8023,10 @@ int osql_finalize_scs(struct ireq *iq, tran_type *trans)
         }
         if (IS_FASTINIT(iq->sc) && gbl_replicate_local)
             local_replicant_write_clear(iq, trans, iq->sc->db);
+        /* the distributed finalize commits (or aborts) with this */
+        if (iq->sorese && iq->sorese->dist_txnid && clear_dist_sc(iq->sc_tran, iq->sc->tablename)) {
+            return ERR_SC;
+        }
         iq->sc = iq->sc->sc_next;
     }
 

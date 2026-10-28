@@ -141,6 +141,45 @@ static int mark_sc_in_llmeta_tran(struct schema_change_type *s, void *trans)
     return rc;
 }
 
+/* A schema change in a 2pc distributed transaction can only complete through
+ * its distributed finalize, so remember the dist-txn it belongs to.  The
+ * finalize clears this in the same transaction; if it is still set when schema
+ * changes resume, that finalize never committed (the coordinator aborted, or
+ * the node died before deciding) and the schema change is cancelled. */
+#define DIST_SC_PARAM "disttxn"
+
+int osql_delete_sc_list_int(uuid_t uuid, tran_type *trans, const char *f, int l);
+
+static int mark_dist_sc(struct schema_change_type *s)
+{
+    if (s->resume || !s->iq || !s->iq->sorese || !s->iq->sorese->dist_txnid)
+        return 0;
+    return bdb_set_table_parameter(NULL, s->tablename, DIST_SC_PARAM, s->iq->sorese->dist_txnid);
+}
+
+int clear_dist_sc(void *tran, const char *tablename)
+{
+    char *dist_txnid = NULL;
+    if (bdb_get_table_parameter_tran(tablename, DIST_SC_PARAM, &dist_txnid, tran) != 0)
+        return 0;
+    free(dist_txnid);
+    return bdb_clear_table_parameter(tran, tablename, DIST_SC_PARAM);
+}
+
+/* Returns 1 (and clears the mark) if this table's pending schema change belongs
+ * to a distributed transaction that never committed it */
+int cancel_dist_sc(const char *tablename)
+{
+    char *dist_txnid = NULL;
+    if (bdb_get_table_parameter(tablename, DIST_SC_PARAM, &dist_txnid) != 0)
+        return 0;
+    logmsg(LOGMSG_WARN, "%s: schema change of '%s' in dist-txn %s was not committed, cancelling it\n", __func__,
+           tablename, dist_txnid);
+    free(dist_txnid);
+    bdb_clear_table_parameter(NULL, tablename, DIST_SC_PARAM);
+    return 1;
+}
+
 static int mark_sc_in_llmeta(struct schema_change_type *s)
 {
     return mark_sc_in_llmeta_tran(s, NULL);
@@ -486,6 +525,11 @@ static int do_ddl(ddl_t pre, ddl_t post, struct ireq *iq,
         if (rc)
             logmsg(LOGMSG_ERROR,
                    "Cant cleanup comdb2_sc_history and keep last entries\n");
+    }
+    if ((rc = mark_dist_sc(s)) != 0) {
+        sc_errf(s, "could not mark distributed schema change in llmeta, rc %d\n", rc);
+        rc = SC_LLMETA_ERR;
+        goto end;
     }
     if ((rc = mark_sc_in_llmeta_tran(s, NULL))) // non-tran ??
         goto end;
@@ -1272,6 +1316,16 @@ int resume_schema_change(void)
                            rc, bdberr);
                 free_schema_change_type(s);
                 continue; /* unmark all ongoing schema changes */
+            }
+
+            if (cancel_dist_sc(thedb->dbs[i]->tablename)) {
+                rc = bdb_set_in_schema_change(NULL, thedb->dbs[i]->tablename, NULL, 0, &bdberr);
+                if (rc)
+                    logmsg(LOGMSG_ERROR, "Failed to cancel resuming schema change %d %d\n", rc, bdberr);
+                osql_delete_sc_list_int(s->uuid, NULL, __func__, __LINE__);
+                sc_del_unused_files(thedb->dbs[i]);
+                free_schema_change_type(s);
+                continue;
             }
 
             if (s->partition.type == PARTITION_ADD_TIMED_RETRO) {

@@ -13,6 +13,7 @@
 #include <cdb2api.h>
 #include <cdb2api_int.h>
 #include <unistd.h>
+#include <poll.h>
 #include <alloca.h>
 #include <segstr.h>
 #include <sql.h>
@@ -167,6 +168,7 @@ static char allowed_coordinators_str[2048] = {0};
 
 /* Tunables */
 int gbl_2pc = 0;
+int gbl_2pc_ddl = 0;
 int gbl_disttxn_linger_time = 10;
 int gbl_disttxn_handle_linger_time = 60;
 int gbl_disttxn_handle_cache = 1;
@@ -178,6 +180,7 @@ int gbl_coordinator_block_until_durable = 1;
 
 /* Debug tunables */
 int gbl_debug_exit_participant_after_prepare = 0;
+int gbl_debug_fail_ddl_prepare = 0;
 int gbl_debug_exit_coordinator_before_commit = 0;
 int gbl_debug_sleep_coordinator_before_commit = 0;
 int gbl_debug_exit_coordinator_after_commit = 0;
@@ -897,6 +900,57 @@ static void flush_log(void)
     thedb->bdb_env->dbenv->log_flush(thedb->bdb_env->dbenv, NULL);
 }
 
+/* Add the dist-txnid to comdb2_distributed_transactions in trans */
+static int add_distributed_transaction_record(struct ireq *iq, tran_type *trans, const char *dist_txnid)
+{
+    char *tagname = ".ONDISK";
+    uint8_t *p_tagname_buf = (uint8_t *)tagname;
+    uint8_t *p_tagname_buf_end = p_tagname_buf + 7;
+    uint8_t *p_buf_data, *p_buf_data_end;
+    unsigned long long genid = 0LL;
+    int opcodefail = 0, ixfailnum = 0, rrn = 0, rc;
+
+    p_buf_data = alloca(iq->usedb->schema->recsize);
+    p_buf_data_end = p_buf_data + iq->usedb->schema->recsize;
+
+    rc = disttxn_ondisk_record(iq, (char *)dist_txnid, p_buf_data);
+    if (rc) {
+        logmsg(LOGMSG_ERROR, "%s: couldn't create ondisk record for dist-txn table, rc=%d\n", __func__, rc);
+        return rc;
+    }
+
+    int addflags = (RECFLAGS_NO_TRIGGERS | RECFLAGS_NO_BLOBS | RECFLAGS_INLINE_CONSTRAINTS);
+
+    return add_record(iq, trans, p_tagname_buf, p_tagname_buf_end, p_buf_data, p_buf_data_end, NULL, NULL, 0,
+                      &opcodefail, &ixfailnum, &rrn, &genid, -1ULL, BLOCK2_ADDKL, 0, addflags, 0);
+}
+
+/* A coordinator whose local part is a schema change does not prepare it: it
+ * writes the commit decision in the same transaction, so that commit is the
+ * decision */
+int coordinator_ddl_write_decision(tran_type *trans, const char *dist_txnid)
+{
+    struct ireq iq = {0};
+
+    if (gbl_debug_disttxn_trace) {
+        logmsg(LOGMSG_USER, "DISTTXN %s dist_txnid %s\n", __func__, dist_txnid);
+    }
+
+    init_fake_ireq(thedb, &iq);
+    iq.usedb = get_dbtable_by_name(DISTRIBUTED_TRANSACTIONS_TABLE);
+
+    if (!iq.usedb) {
+        logmsg(LOGMSG_ERROR, "%s: couldn't find dist-txn table\n", __func__);
+        return -1;
+    }
+
+    int rc = add_distributed_transaction_record(&iq, trans, dist_txnid);
+    if (rc != 0) {
+        logmsg(LOGMSG_ERROR, "%s error adding dist-txn %s, rc=%d\n", __func__, dist_txnid, rc);
+    }
+    return rc;
+}
+
 /* Commit == write the dist-txnid to comdb2_distributed_transactions */
 static int commit_distributed_transaction(transaction_t *dtran)
 {
@@ -904,13 +958,8 @@ static int commit_distributed_transaction(transaction_t *dtran)
         logmsg(LOGMSG_USER, "DISTTXN %s dist_txnid %s\n", __func__, dtran->dist_txnid);
     }
     struct ireq iq = {0};
-    char *tagname = ".ONDISK";
-    uint8_t *p_tagname_buf = (uint8_t *)tagname;
-    uint8_t *p_tagname_buf_end = p_tagname_buf + 7;
-    uint8_t *p_buf_data, *p_buf_data_end;
-    unsigned long long genid = 0LL;
     tran_type *trans;
-    int opcodefail = 0, ixfailnum = 0, rrn = 0, dlcount = 0, rc;
+    int dlcount = 0, rc;
 
     /* Held by the coordinator transaction */
     assert(bdb_lockref() > 0);
@@ -923,16 +972,7 @@ static int commit_distributed_transaction(transaction_t *dtran)
         return -1;
     }
 
-    p_buf_data = alloca(iq.usedb->schema->recsize);
-    p_buf_data_end = p_buf_data + iq.usedb->schema->recsize;
-
 retry:
-    rc = disttxn_ondisk_record(&iq, dtran->dist_txnid, p_buf_data);
-    if (rc) {
-        logmsg(LOGMSG_ERROR, "%s: couldn't create ondisk record for dist-txn table, rc=%d\n", __func__, rc);
-        return rc;
-    }
-
     rc = trans_start(&iq, NULL, &trans);
     if (rc != 0) {
         logmsg(LOGMSG_INFO, "%s error starting transaction, %d\n", __func__, rc);
@@ -943,10 +983,7 @@ retry:
         bdb_trans_track(thedb->bdb_env, trans);
     }
 
-    int addflags = (RECFLAGS_NO_TRIGGERS | RECFLAGS_NO_BLOBS | RECFLAGS_INLINE_CONSTRAINTS);
-
-    rc = add_record(&iq, trans, p_tagname_buf, p_tagname_buf_end, p_buf_data, p_buf_data_end, NULL, NULL, 0,
-                    &opcodefail, &ixfailnum, &rrn, &genid, -1ULL, BLOCK2_ADDKL, 0, addflags, 0);
+    rc = add_distributed_transaction_record(&iq, trans, dtran->dist_txnid);
 
     if (rc != 0) {
         trans_abort(&iq, trans);
@@ -1289,7 +1326,7 @@ static int coordinator_should_wait_lk(transaction_t *dtran, int can_retry, int *
 
 /* This blocks the coordinator's bp until we know whether this can commit, or until a timeout */
 static int coordinator_wait_int(const char *dist_txnid, int can_retry, int *rcode, int *outrc, char *errmsg,
-                                int errmsglen, int force_failure)
+                                int errmsglen, int force_failure, int ddl)
 {
     int returnzero = 0;
     if (gbl_debug_disttxn_trace) {
@@ -1406,6 +1443,11 @@ static int coordinator_wait_int(const char *dist_txnid, int can_retry, int *rcod
                    dtran->dist_txnid);
             sleep(5);
         }
+        /* The schema change coordinator writes the decision in its own commit */
+        if (ddl) {
+            dtran->coordinator_waiting = 0;
+            return ALL_PREPARED;
+        }
         start_timer = comdb2_time_epochms();
         int rc = commit_distributed_transaction(dtran);
         stop_timer = comdb2_time_epochms();
@@ -1475,12 +1517,72 @@ int coordinator_wait(const char *dist_txnid, int can_retry, int *rcode, int *out
                      int force_failure)
 {
     int startms = comdb2_time_epochms();
-    int rc = coordinator_wait_int(dist_txnid, can_retry, rcode, outrc, errmsg, errmsglen, force_failure);
+    int rc = coordinator_wait_int(dist_txnid, can_retry, rcode, outrc, errmsg, errmsglen, force_failure, 0);
     int endms = comdb2_time_epochms();
     if (gbl_debug_disttxn_trace) {
         logmsg(LOGMSG_USER, "DISTTXN %s txnid %s took %d ms\n", __func__, dist_txnid, endms - startms);
     }
     return rc;
+}
+
+int coordinator_wait_ddl(const char *dist_txnid, int *rcode, int *outrc, char *errmsg, int errmsglen)
+{
+    int startms = comdb2_time_epochms();
+    int rc = coordinator_wait_int(dist_txnid, 0, rcode, outrc, errmsg, errmsglen, 0, 1);
+    int endms = comdb2_time_epochms();
+    if (gbl_debug_disttxn_trace) {
+        logmsg(LOGMSG_USER, "DISTTXN %s txnid %s took %d ms rc %d\n", __func__, dist_txnid, endms - startms, rc);
+    }
+    return rc;
+}
+
+/* The schema change coordinator has committed its local transaction, which
+ * holds the decision (rc 0), or failed to (rc LOCK_DESIRED: written but not
+ * durable, else not written).  Tell the participants. */
+int coordinator_ddl_committed(const char *dist_txnid, int rc)
+{
+    if (gbl_debug_disttxn_trace) {
+        logmsg(LOGMSG_USER, "DISTTXN %s dist_txnid %s rc %d\n", __func__, dist_txnid, rc);
+    }
+    transaction_t *dtran;
+    int state;
+
+    if (rc == 0 && gbl_debug_exit_coordinator_after_commit) {
+        flush_log();
+        logmsg(LOGMSG_FATAL, "%s exiting coordinator after commit on debug tunable\n", __func__);
+        sleep(3);
+        _exit(1);
+    }
+
+    Pthread_mutex_lock(&active_transactions_lk);
+    dtran = hash_find(active_transactions_hash, &dist_txnid);
+    if (dtran)
+        Pthread_mutex_lock(&dtran->lk);
+    Pthread_mutex_unlock(&active_transactions_lk);
+
+    if (!dtran) {
+        logmsg(LOGMSG_ERROR, "%s unable to find disttxn %s\n", __func__, dist_txnid);
+        return (rc == 0) ? HAS_COMMITTED : HAS_ABORTED;
+    }
+
+    if (rc == LOCK_DESIRED) {
+        /* Participants ask again until the decision is durable */
+        dtran->state = DISTTXN_LOCK_DESIRED;
+    } else if (rc) {
+        abort_transaction_lk(dtran, 0);
+        dtran->state = DISTTXN_ABORT_RESOLVED;
+    } else {
+        commit_participants_lk(dtran);
+    }
+    dtran->resolved_time = comdb2_time_epochms();
+    state = dtran->state;
+    Pthread_mutex_unlock(&dtran->lk);
+
+    if (state == DISTTXN_ABORT_RESOLVED) {
+        cleanup_dtran(dist_txnid);
+        return HAS_ABORTED;
+    }
+    return (state == DISTTXN_LOCK_DESIRED) ? LOCK_DESIRED : HAS_COMMITTED;
 }
 
 static int collect_handles_timeout(void *obj, void *arg, int timeout)
@@ -1591,6 +1693,39 @@ static int is_aborted(transaction_t *dtran)
         return 1;
     }
     return 0;
+}
+
+/* A participant master asks for the outcome of a txn it prepared.  This only
+ * reads state.  Returns HAS_COMMITTED or HAS_ABORTED, or anything else to ask
+ * again later. */
+int coordinator_query_outcome(const char *dist_txnid)
+{
+    transaction_t *dtran;
+    int rcode;
+
+    Pthread_mutex_lock(&active_transactions_lk);
+    dtran = hash_find(active_transactions_hash, &dist_txnid);
+    if (dtran)
+        Pthread_mutex_lock(&dtran->lk);
+    Pthread_mutex_unlock(&active_transactions_lk);
+
+    if (dtran) {
+        if (is_committed(dtran)) {
+            rcode = HAS_COMMITTED;
+        } else if (is_aborted(dtran)) {
+            rcode = HAS_ABORTED;
+        } else {
+            rcode = KEEP_RCODE;
+        }
+        Pthread_mutex_unlock(&dtran->lk);
+    } else {
+        rcode = transaction_has_committed(dist_txnid);
+    }
+
+    if (gbl_debug_disttxn_trace) {
+        logmsg(LOGMSG_USER, "DISTTXN %s dist_txnid %s returns %s\n", __func__, dist_txnid, has_committed_rcode(rcode));
+    }
+    return rcode;
 }
 
 static void signal_coordinator_wakeup_lk(transaction_t *dtran)
@@ -1900,7 +2035,7 @@ void participant_has_propagated(const char *dist_txnid, const char *coordinator_
 
 /* Participant block-processor blocks on coordinator */
 static int participant_wait_int(const char *dist_txnid, const char *coordinator_name, const char *coordinator_tier,
-                                const char *coordinator_master)
+                                const char *coordinator_master, int ignore_lock_desired)
 {
     if (gbl_debug_disttxn_trace) {
         logmsg(LOGMSG_USER, "DISTTXN %s WAIT %s tier %s master %s dist_txnid %s\n", __func__, coordinator_name,
@@ -1932,7 +2067,7 @@ static int participant_wait_int(const char *dist_txnid, const char *coordinator_
     Pthread_mutex_lock(&p->lk);
     Pthread_mutex_unlock(&part_lk);
 
-    while (p->state == I_AM_PREPARED && !(lock_desired = bdb_lock_desired(thedb->bdb_env))) {
+    while (p->state == I_AM_PREPARED && !(lock_desired = (!ignore_lock_desired && bdb_lock_desired(thedb->bdb_env)))) {
         if (gbl_debug_disttxn_trace) {
             logmsg(LOGMSG_USER, "DISTTXN %s line %d sending prepared %s first=%d\n", __func__, __LINE__, dist_txnid,
                    first);
@@ -2028,7 +2163,21 @@ int participant_wait(const char *dist_txnid, const char *coordinator_name, const
                      const char *coordinator_master)
 {
     int startms = comdb2_time_epochms();
-    int rc = participant_wait_int(dist_txnid, coordinator_name, coordinator_tier, coordinator_master);
+    int rc = participant_wait_int(dist_txnid, coordinator_name, coordinator_tier, coordinator_master, 0);
+    int endms = comdb2_time_epochms();
+    if (gbl_debug_disttxn_trace) {
+        logmsg(LOGMSG_USER, "DISTTXN %s txnid %s took %d ms\n", __func__, dist_txnid, endms - startms);
+    }
+    return rc;
+}
+
+/* A prepared schema change has already changed this master's in-memory schema,
+ * so it cannot be discarded for a downgrade: wait for the coordinator */
+int participant_wait_ddl(const char *dist_txnid, const char *coordinator_name, const char *coordinator_tier,
+                         const char *coordinator_master)
+{
+    int startms = comdb2_time_epochms();
+    int rc = participant_wait_int(dist_txnid, coordinator_name, coordinator_tier, coordinator_master, 1);
     int endms = comdb2_time_epochms();
     if (gbl_debug_disttxn_trace) {
         logmsg(LOGMSG_USER, "DISTTXN %s txnid %s took %d ms\n", __func__, dist_txnid, endms - startms);
@@ -2385,6 +2534,7 @@ void disttxn_timer(void)
     disttxn_timeout();
     disttxn_purge_handles(0);
     disttxn_recover_prepared();
+    disttxn_start_schema_resolver();
 }
 
 static void process_coordinator_directive(char *line, int lline, int allow)
@@ -2456,4 +2606,283 @@ void disttxn_init(void)
     Pthread_mutex_lock(&allowed_coordinators_lk);
     allowed_coordinators_hash = hash_init_user((hashfunc_t *)coord_hash, (cmpfunc_t *)coord_cmp, 0, 0);
     Pthread_mutex_unlock(&allowed_coordinators_lk);
+}
+
+/* Operator decisions for prepared schema changes whose coordinator cannot
+ * answer: 'disttxn_resolve <dist-txnid> commit|abort' in the lrl, or the
+ * 'disttxn <dist-txnid> commit|abort' message on a running node */
+typedef struct resolve_override {
+    char *dist_txnid;
+    int commit;
+    LINKC_T(struct resolve_override) lnk;
+} resolve_override_t;
+
+static LISTC_T(resolve_override_t) resolve_overrides = {0};
+static pthread_mutex_t resolve_overrides_lk = PTHREAD_MUTEX_INITIALIZER;
+
+void disttxn_add_resolve_override(const char *dist_txnid, int commit)
+{
+    resolve_override_t *o;
+    Pthread_mutex_lock(&resolve_overrides_lk);
+    if (resolve_overrides.count == 0 && resolve_overrides.top == NULL) {
+        listc_init(&resolve_overrides, offsetof(resolve_override_t, lnk));
+    }
+    LISTC_FOR_EACH(&resolve_overrides, o, lnk)
+    {
+        if (!strcmp(o->dist_txnid, dist_txnid)) {
+            o->commit = commit;
+            Pthread_mutex_unlock(&resolve_overrides_lk);
+            return;
+        }
+    }
+    o = calloc(1, sizeof(*o));
+    o->dist_txnid = strdup(dist_txnid);
+    o->commit = commit;
+    listc_abl(&resolve_overrides, o);
+    Pthread_mutex_unlock(&resolve_overrides_lk);
+    logmsg(LOGMSG_USER, "Operator will %s prepared schema change %s\n", commit ? "commit" : "abort", dist_txnid);
+}
+
+static int find_resolve_override(const char *dist_txnid, int *commit)
+{
+    resolve_override_t *o;
+    int found = 0;
+    Pthread_mutex_lock(&resolve_overrides_lk);
+    if (resolve_overrides.top) {
+        LISTC_FOR_EACH(&resolve_overrides, o, lnk)
+        {
+            if (!strcmp(o->dist_txnid, dist_txnid)) {
+                *commit = o->commit;
+                found = 1;
+                break;
+            }
+        }
+    }
+    Pthread_mutex_unlock(&resolve_overrides_lk);
+    return found;
+}
+
+/* lrl: disttxn_resolve <dist-txnid> commit|abort */
+int process_disttxn_resolve(char *line, int lline)
+{
+    char dist_txnid[129] = {0};
+    int st = 0, ltok;
+    char *tok = segtok(line, lline, &st, &ltok);
+    if (ltok <= 0 || ltok >= sizeof(dist_txnid)) {
+        logmsg(LOGMSG_ERROR, "Expected disttxn_resolve <dist-txnid> commit|abort\n");
+        return -1;
+    }
+    tokcpy(tok, ltok, dist_txnid);
+    tok = segtok(line, lline, &st, &ltok);
+    if (tokcmp(tok, ltok, "commit") == 0) {
+        disttxn_add_resolve_override(dist_txnid, 1);
+    } else if (tokcmp(tok, ltok, "abort") == 0) {
+        disttxn_add_resolve_override(dist_txnid, 0);
+    } else {
+        logmsg(LOGMSG_ERROR, "Expected disttxn_resolve <dist-txnid> commit|abort\n");
+        return -1;
+    }
+    return 0;
+}
+
+/* Ask the coordinator master, and wait for, the outcome of a txn this node
+ * prepared */
+static int query_coordinator_outcome(const char *dist_txnid, const char *coordinator_dbname,
+                                     const char *coordinator_tier)
+{
+    cdb2_hndl_tp *hndl = NULL;
+    int rc;
+
+    if ((rc = cdb2_open(&hndl, coordinator_dbname, coordinator_tier, CDB2_MASTER)) != 0) {
+        logmsg(LOGMSG_INFO, "%s dist-txn %s error opening handle to %s:%s, rc=%d\n", __func__, dist_txnid,
+               coordinator_dbname, coordinator_tier, rc);
+        cdb2_close(hndl);
+        return -1;
+    }
+    if (gbl_debug_disttxn_trace) {
+        cdb2_set_debug_trace(hndl);
+    }
+    char *pname = gbl_dbname, *ptier = gbl_machine_class ? gbl_machine_class : gbl_myhostname;
+    rc = cdb2_send_2pc(hndl, (char *)coordinator_dbname, pname, ptier, gbl_myhostname, CDB2_DIST__QUERY_OUTCOME,
+                       (char *)dist_txnid, 0, 0, NULL, 0);
+    cdb2_close(hndl);
+    return rc;
+}
+
+/* Decide the outcome of a prepared schema change: an operator override, else
+ * the coordinator's answer.  Returns 1 and sets commit when decided. */
+static int schema_prepare_outcome(const char *dist_txnid, const char *coordinator_dbname, const char *coordinator_tier,
+                                  int *commit, int *rcode)
+{
+    if (find_resolve_override(dist_txnid, commit)) {
+        logmsg(LOGMSG_WARN, "Operator override: %s prepared schema change %s without asking coordinator %s/%s\n",
+               *commit ? "committing" : "aborting", dist_txnid, coordinator_dbname, coordinator_tier);
+        return 1;
+    }
+    *rcode = query_coordinator_outcome(dist_txnid, coordinator_dbname, coordinator_tier);
+    if (*rcode == HAS_COMMITTED || *rcode == HAS_ABORTED) {
+        *commit = (*rcode == HAS_COMMITTED);
+        return 1;
+    }
+    return 0;
+}
+
+static void free_schema_prepares(char **ids, char **names, char **tiers, int count)
+{
+    for (int i = 0; i < count; i++) {
+        free(ids[i]);
+        free(names[i]);
+        free(tiers[i]);
+    }
+    free(ids);
+    free(names);
+    free(tiers);
+}
+
+int disttxn_schema_prepares_pending(void)
+{
+    if (!thedb->bdb_env)
+        return 0;
+    DB_ENV *dbenv = thedb->bdb_env->dbenv;
+    return dbenv->txn_count_schema_prepared(dbenv);
+}
+
+/* Cold start: commit or abort every prepared schema change before llmeta is
+ * opened, since it holds llmeta page locks that startup would block on.  A
+ * participant never decides on its own, so this blocks until the coordinator
+ * (or an operator override) answers. */
+void disttxn_resolve_schema_prepares(void)
+{
+    DB_ENV *dbenv = thedb->bdb_env->dbenv;
+    char **ids, **names, **tiers;
+    int count, rc;
+
+    char *conf = getenv("CDB2_CONFIG");
+    if (conf) {
+        cdb2_set_comdb2db_config(conf);
+    }
+
+    if ((rc = dbenv->txn_collect_schema_prepared(dbenv, 0, &ids, &names, &tiers, &count)) != 0) {
+        logmsg(LOGMSG_FATAL, "%s error collecting prepared schema changes, rc=%d\n", __func__, rc);
+        abort();
+    }
+
+    for (int i = 0; i < count; i++) {
+        int commit = 0, rcode = 0, waitms = 100;
+        logmsg(LOGMSG_INFO, "Resolving prepared schema change %s, coordinator %s/%s\n", ids[i], names[i], tiers[i]);
+        while (!schema_prepare_outcome(ids[i], names[i], tiers[i], &commit, &rcode)) {
+            logmsg(LOGMSG_WARN,
+                   "Startup blocked: no outcome for prepared schema change %s from coordinator %s/%s (rcode %d). "
+                   "Add 'disttxn_resolve %s commit|abort' to the lrl to decide it by hand.\n",
+                   ids[i], names[i], tiers[i], rcode, ids[i]);
+            if (db_is_exiting()) {
+                free_schema_prepares(ids, names, tiers, count);
+                return;
+            }
+            poll(NULL, 0, waitms);
+            if (waitms < 5000)
+                waitms *= 2;
+        }
+        if ((rc = dbenv->txn_resolve_schema_prepared(dbenv, ids[i], commit)) != 0) {
+            logmsg(LOGMSG_FATAL, "%s error %s prepared schema change %s, rc=%d\n", __func__,
+                   commit ? "committing" : "aborting", ids[i], rc);
+            abort();
+        }
+    }
+    free_schema_prepares(ids, names, tiers, count);
+}
+
+static pthread_mutex_t schema_resolver_lk = PTHREAD_MUTEX_INITIALIZER;
+static int schema_resolver_running = 0;
+
+/* Take the schema write lock to resolve a prepared schema change.  Readers can
+ * hold the read lock while they wait on the prepared txn's locks, so abort
+ * those waiters until the lock is ours.  Fails if this node is downgrading. */
+static int schema_resolver_lock(void)
+{
+    DB_ENV *dbenv = thedb->bdb_env->dbenv;
+    while (trywrlock_schema_lk() != 0) {
+        if (bdb_lock_desired(thedb->bdb_env) || db_is_exiting())
+            return -1;
+        dbenv->txn_abort_prepared_waiters(dbenv);
+        poll(NULL, 0, 10);
+    }
+    return 0;
+}
+
+/* Master swing: the new master resolves the prepared schema changes it
+ * inherited, then resumes schema changes (which read llmeta those prepares
+ * may hold locked). */
+static void *schema_resolver_thd(void *arg)
+{
+    DB_ENV *dbenv = thedb->bdb_env->dbenv;
+    char **ids, **names, **tiers;
+    int count, rc, pending;
+
+    comdb2_name_thread(__func__);
+    bdb_thread_event(thedb->bdb_env, BDBTHR_EVENT_START);
+
+    while (!db_is_exiting() && (pending = disttxn_schema_prepares_pending()) > 0) {
+        if (!bdb_amimaster(thedb->bdb_env))
+            break;
+        if ((rc = dbenv->txn_collect_schema_prepared(dbenv, 1, &ids, &names, &tiers, &count)) != 0) {
+            logmsg(LOGMSG_ERROR, "%s error collecting prepared schema changes, rc=%d\n", __func__, rc);
+            break;
+        }
+        int resolved = 0;
+        for (int i = 0; i < count; i++) {
+            int commit = 0, rcode = 0;
+            if (!schema_prepare_outcome(ids[i], names[i], tiers[i], &commit, &rcode)) {
+                logmsg(LOGMSG_WARN,
+                       "No outcome for prepared schema change %s from coordinator %s/%s (rcode %d); schema change "
+                       "resume is blocked. 'disttxn %s commit|abort' decides it by hand.\n",
+                       ids[i], names[i], tiers[i], rcode, ids[i]);
+                continue;
+            }
+            bdb_state_type *bdb_state = thedb->bdb_env;
+            BDB_READLOCK("schema_resolver");
+            if (!bdb_amimaster(bdb_state) || schema_resolver_lock() != 0) {
+                BDB_RELLOCK();
+                break;
+            }
+            rc = dbenv->txn_resolve_schema_prepared(dbenv, ids[i], commit);
+            unlock_schema_lk();
+            BDB_RELLOCK();
+            if (rc == 0)
+                resolved++;
+            else
+                logmsg(LOGMSG_ERROR, "%s error %s prepared schema change %s, rc=%d\n", __func__,
+                       commit ? "committing" : "aborting", ids[i], rc);
+        }
+        free_schema_prepares(ids, names, tiers, count);
+        if (resolved < pending)
+            sleep(1);
+    }
+
+    if (!db_is_exiting() && bdb_amimaster(thedb->bdb_env) && disttxn_schema_prepares_pending() == 0) {
+        extern int gbl_ready;
+        if (gbl_ready && resume_schema_change()) {
+            logmsg(LOGMSG_ERROR, "%s failed trying to resume schema change\n", __func__);
+        }
+    }
+
+    Pthread_mutex_lock(&schema_resolver_lk);
+    schema_resolver_running = 0;
+    Pthread_mutex_unlock(&schema_resolver_lk);
+
+    bdb_thread_event(thedb->bdb_env, BDBTHR_EVENT_DONE);
+    return NULL;
+}
+
+void disttxn_start_schema_resolver(void)
+{
+    pthread_t tid;
+    if (!bdb_amimaster(thedb->bdb_env) || disttxn_schema_prepares_pending() == 0)
+        return;
+    Pthread_mutex_lock(&schema_resolver_lk);
+    if (!schema_resolver_running) {
+        schema_resolver_running = 1;
+        Pthread_create(&tid, &gbl_pthread_attr_detached, schema_resolver_thd, NULL);
+    }
+    Pthread_mutex_unlock(&schema_resolver_lk);
 }

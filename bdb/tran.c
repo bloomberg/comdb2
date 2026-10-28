@@ -1432,7 +1432,14 @@ int bdb_tran_prepare(bdb_state_type *bdb_state, tran_type *tran, const char *dis
         return -1;
     }
 
-    if (tran->tranclass != TRANCLASS_BERK) {
+    /* A schema change (pagelock mode) runs under a logical transaction with a
+     * single physical transaction.  That physical transaction is top-level in
+     * berkdb, so it can be prepared. */
+    int sc_tran = (tran->tranclass == TRANCLASS_PHYSICAL && tran->logical_tran &&
+                   tran->logical_tran->single_physical_transaction && tran->logical_tran->schema_change_txn &&
+                   tran->logical_tran->sc_parent_tran == NULL);
+
+    if (tran->tranclass != TRANCLASS_BERK && !sc_tran) {
         logmsg(LOGMSG_FATAL, "%s preparing incorrect tranclass: %d\n", __func__, tran->tranclass);
         abort();
     }
@@ -1452,7 +1459,24 @@ int bdb_tran_prepare(bdb_state_type *bdb_state, tran_type *tran, const char *dis
         abort();
     }
 
-    if ((add_snapisol_logging(bdb_state, tran) || tran->force_logical_commit) && !(tran->flags & BDB_TRAN_NOLOG)) {
+    if (sc_tran) {
+        tran_type *ltran = tran->logical_tran;
+        /* Nothing may be logged in a txn after its prepare record: write the
+         * logical commit now, and the logical commit path skips it */
+        if (ltran->wrote_begin_record && bdb_state->repinfo->myhost == bdb_state->repinfo->master_host) {
+            tran->last_logical_lsn = ltran->last_logical_lsn;
+            ltran->is_about_to_commit = 1;
+            int rc = bdb_llog_commit(bdb_state, tran, 0);
+            if (rc != 0) {
+                logmsg(LOGMSG_ERROR, "%s error writing logical commit, %d\n", __func__, rc);
+                return rc;
+            }
+        }
+        /* Replicants take the schema lock to apply the commit */
+        if (ltran->get_schema_lock)
+            flags |= DB_TXN_SCHEMA_LOCK;
+    } else if ((add_snapisol_logging(bdb_state, tran) || tran->force_logical_commit) &&
+               !(tran->flags & BDB_TRAN_NOLOG)) {
         unsigned long long ctx = get_gblcontext(bdb_state);
         int rc, isabort = (tran->committed_child) ? 0 : 1;
         rc = llog_ltran_commit_log_wrap(bdb_state->dbenv, tran->tid, &tran->commit_lsn, 0, tran->logical_tranid,
@@ -1869,8 +1893,9 @@ int bdb_tran_commit_with_seqnum_int(bdb_state_type *bdb_state, tran_type *tran,
             */
         }
 
-        /* log end of transaction */
-        if (physical_tran != NULL && tran->wrote_begin_record &&
+        /* log end of transaction; a prepared schema change wrote it before its
+         * prepare record */
+        if (physical_tran != NULL && tran->wrote_begin_record && !physical_tran->is_prepared &&
             bdb_state->repinfo->myhost == bdb_state->repinfo->master_host) {
             /* set flag telling the send routine to flush this lsn immediately
              */

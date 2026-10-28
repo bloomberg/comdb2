@@ -4289,6 +4289,23 @@ static int init(int argc, char **argv)
 
     disttxn_init_recover_prepared();
 
+    /* Recovered prepares need the osql-cnonce hash */
+    if (!gbl_exit && !gbl_create_mode) {
+        rc = osql_blkseq_init();
+        if (rc) {
+            logmsg(LOGMSG_FATAL, "failed to initialize osql_blkseq hash\n");
+            return -1;
+        }
+    }
+
+    /* A prepared schema change holds locks on llmeta pages, which startup reads
+     * below: commit or abort it with the coordinator's outcome first */
+    if (!gbl_exit && !gbl_create_mode && (thedb->nsiblings == 1 || thedb->master == gbl_myhostname) &&
+        disttxn_schema_prepares_pending() > 0) {
+        bdb_set_seqnum(thedb->bdb_env);
+        disttxn_resolve_schema_prepares();
+    }
+
     if (!gbl_exit) {
         bdb_gbl_asof_modsnap_init(thedb->bdb_env);
     }
@@ -4471,15 +4488,6 @@ static int init(int argc, char **argv)
     load_dbstore_tableversion(thedb, NULL);
 
     gbl_backend_opened = 1;
-
-    /* Recovered prepares need the osql-cnonce hash */
-    if (!gbl_exit && !gbl_create_mode) {
-        rc = osql_blkseq_init();
-        if (rc) {
-            logmsg(LOGMSG_FATAL, "failed to initialize osql_blkseq hash\n");
-            return -1;
-        }
-    }
 
     if (!gbl_exit && !gbl_create_mode && (thedb->nsiblings == 1 || thedb->master == gbl_myhostname)) {
         bdb_set_seqnum(thedb->bdb_env);
@@ -5765,8 +5773,10 @@ static void handle_resume_sc()
      * done every time the master changes, but on startup the low level meta
      * table wasn't open yet so we couldn't check to see if a schema change was
      * in progress */
-    if (bdb_attr_get(thedb->bdb_attr, BDB_ATTR_SC_RESUME_AUTOCOMMIT) &&
-        thedb->master == gbl_myhostname) {
+    /* Prepared schema changes hold llmeta locks: the schema resolver resumes
+     * schema changes once it has resolved them */
+    if (bdb_attr_get(thedb->bdb_attr, BDB_ATTR_SC_RESUME_AUTOCOMMIT) && thedb->master == gbl_myhostname &&
+        disttxn_schema_prepares_pending() == 0) {
         int irc = resume_schema_change();
         if (irc)
             logmsg(LOGMSG_ERROR, 

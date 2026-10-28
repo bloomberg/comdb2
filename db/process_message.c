@@ -3439,10 +3439,14 @@ clipper_usage:
             found = 1;
         }
         tok = segtok(line, lline, &st, &ltok);
+        /* A prepared schema change is left to the schema resolver, which applies
+         * the operator's decision */
         if ((tokcmp(tok, ltok, "commit") == 0) && found) {
-            dbenv->bdb_env->dbenv->txn_commit_recovered(dbenv->bdb_env->dbenv, dist_txnid);
+            if (dbenv->bdb_env->dbenv->txn_commit_recovered(dbenv->bdb_env->dbenv, dist_txnid))
+                disttxn_add_resolve_override(dist_txnid, 1);
         } else if ((tokcmp(tok, ltok, "abort") == 0) && found) {
-            dbenv->bdb_env->dbenv->txn_abort_recovered(dbenv->bdb_env->dbenv, dist_txnid);
+            if (dbenv->bdb_env->dbenv->txn_abort_recovered(dbenv->bdb_env->dbenv, dist_txnid))
+                disttxn_add_resolve_override(dist_txnid, 0);
         } else if ((tokcmp(tok, ltok, "discard") == 0) && found) {
             dbenv->bdb_env->dbenv->txn_discard_recovered(dbenv->bdb_env->dbenv, dist_txnid);
         } else {

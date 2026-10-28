@@ -1345,6 +1345,9 @@ __txn_commit_int(txnp, flags, ltranid, llid, last_commit_lsn, rlocks, inlks,
 						dist_txnid.size = strlen(txnp->dist_txnid);
 						SET_LOG_FLAGS_ROWLOCKS(dbenv, txnp, ltranflags, lflags);
 						ltranflags |= LF_ISSET(DB_TXN_DIST_UPD_SHADOWS);
+						/* A prepared schema change: replicants take the schema lock to
+						 * apply its commit, and recovery resolves it before llmeta opens */
+						ltranflags |= LF_ISSET(DB_TXN_SCHEMA_LOCK);
 
 						TXN_DETAIL *tp = (TXN_DETAIL *)R_ADDR(&txnp->mgrp->reginfo, txnp->off);
 						u_int64_t genid = get_commit_context(NULL, 0);

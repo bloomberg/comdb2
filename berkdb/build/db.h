@@ -1198,7 +1198,8 @@ typedef enum {
 	DB_DIST_INFLIGHT    = 0x00000010,
 	DB_DIST_RECOVERED   = 0x00000020,
 	DB_DIST_UPDSHADOWS  = 0x00000040,
-	DB_DIST_DISCARDED   = 0x00000080
+	DB_DIST_DISCARDED   = 0x00000080,
+	DB_DIST_SCHEMA_PREP = 0x00000100  /* prepared a schema change */
 } db_dist_state;
 
 struct __db_txn_prepared_child {
@@ -1220,6 +1221,7 @@ struct __db_txn_prepared {
 	u_int32_t coordinator_gen;
 	DBT coordinator_name;
 	DBT coordinator_tier;
+	u_int32_t lflags;
 	struct __db_txn *txnp;
 	void *pglogs;
 	u_int32_t keycnt;
@@ -2750,6 +2752,9 @@ struct __db_env {
 	int  (*txn_upgrade_all_prepared) __P((DB_ENV *));
 	int  (*txn_recover_all_prepared) __P((DB_ENV *));
 	int  (*txn_abort_prepared_waiters) __P((DB_ENV *));
+	int  (*txn_collect_schema_prepared) __P((DB_ENV *, int, char ***, char ***, char ***, int *));
+	int  (*txn_resolve_schema_prepared) __P((DB_ENV *, const char *, int));
+	int  (*txn_count_schema_prepared) __P((DB_ENV *));
 	int  (*set_recover_prepared_callback) __P((DB_ENV *, void (*)(const char *, const char *, const char *)));
 	void  (*recover_prepared_callback)(const char *, const char *, const char *);
 	int  (*get_timeout) __P((DB_ENV *, db_timeout_t *, u_int32_t));

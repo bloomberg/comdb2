@@ -1999,6 +1999,12 @@ int bdb_add_rep_blob(bdb_state_type *bdb_state, tran_type *tran, int session,
 
 void bdb_upgrade_all_prepared(bdb_state_type *bdb_state);
 
+/* Locker of a recovered prepared schema change being committed on this thread, or 0 */
+uint32_t bdb_get_scdone_lockid(void);
+void bdb_set_scdone_lockid(uint32_t lockid);
+/* Let an scdone handler's tran read what that prepared txn has locked */
+int bdb_scdone_tran_adopt_locks(bdb_state_type *bdb_state, tran_type *tran);
+
 const char *bdb_get_tmpdir(bdb_state_type *bdb_state);
 
 int bdb_form_file_name(bdb_state_type *bdb_state, int is_data_file, int filenum,

@@ -112,7 +112,10 @@ void free_schema_change_type(struct schema_change_type *s)
     if (!s)
         return;
 
-    if (s->partition.type == PARTITION_ADD_GENSHARD ) {
+    /* the participant side of every genshard DDL allocates these arrays in
+     * osql_schemachange_logic(); the coordinator side leaves them NULL */
+    if (s->partition.type == PARTITION_ADD_GENSHARD || s->partition.type == PARTITION_REM_GENSHARD ||
+        s->partition.type == PARTITION_ALTER_GENSHARD) {
         if (s->partition.u.genshard.dbnames) {
             for (int i = 0; i < s->partition.u.genshard.numdbs; i++) {
                 free(s->partition.u.genshard.dbnames[i]);
@@ -1140,7 +1143,8 @@ void *buf_get_schemachange_v2(struct schema_change_type *s,
         }
         break;
     }
-    case PARTITION_REM_GENSHARD: {
+    case PARTITION_REM_GENSHARD:
+    case PARTITION_ALTER_GENSHARD: {
     }
     }
 

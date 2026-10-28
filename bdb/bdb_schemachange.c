@@ -131,6 +131,29 @@ void bdb_bump_dbopen_gen(scdone_t type, const char *message,
            rc, typestr, funcName, fileName, lineNo, message);
 }
 
+/* Set while a new master commits a recovered prepared schema change: the locker
+ * of that prepared txn, which still holds the llmeta locks scdone handlers read */
+static __thread uint32_t scdone_parent_lockid = 0;
+
+void bdb_set_scdone_lockid(uint32_t lockid)
+{
+    scdone_parent_lockid = lockid;
+}
+
+uint32_t bdb_get_scdone_lockid(void)
+{
+    return scdone_parent_lockid;
+}
+
+/* Let an scdone handler's tran read what the prepared txn has locked.  The tran
+ * keeps its own txnid: a master's scdone handler can write log records. */
+int bdb_scdone_tran_adopt_locks(bdb_state_type *bdb_state, tran_type *tran)
+{
+    if (bdb_state->parent)
+        bdb_state = bdb_state->parent;
+    return bdb_state->dbenv->lock_add_child_locker(bdb_state->dbenv, scdone_parent_lockid, tran->tid->txnid);
+}
+
 static int bdb_scdone_int(bdb_state_type *bdb_state, DB_TXN *txnid,
                           const char *table, const char *strarg,
                           int fastinit)

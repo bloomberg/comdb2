@@ -51,6 +51,7 @@ enum CDB2Dist {
     ABORT                = 6;
     PROPAGATED           = 7;
     HEARTBEAT            = 8;
+    QUERY_OUTCOME        = 9;
 }
 
 message CDB2_SQLQUERY {

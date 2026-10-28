@@ -82,6 +82,9 @@ extern int gbl_force_writesql;
 extern int gbl_logmsg_epochms;
 
 extern int gbl_2pc;
+extern int gbl_2pc_ddl;
+extern int gbl_remsql_schema_lock_wait_ms;
+extern int gbl_debug_fail_ddl_prepare;
 char *gbl_allowed_coordinators;
 extern int gbl_all_waitdie;
 extern int gbl_debug_disable_waitdie_deadlock_detection;

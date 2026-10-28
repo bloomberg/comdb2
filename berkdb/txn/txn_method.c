@@ -152,6 +152,9 @@ __txn_dbenv_create(dbenv)
 		dbenv->txn_upgrade_all_prepared = __txn_upgrade_all_prepared;
 		dbenv->txn_recover_all_prepared = __txn_recover_all_prepared;
 		dbenv->txn_abort_prepared_waiters = __txn_abort_prepared_waiters;
+		dbenv->txn_collect_schema_prepared = __txn_collect_schema_prepared;
+		dbenv->txn_resolve_schema_prepared = __txn_resolve_schema_prepared_pp;
+		dbenv->txn_count_schema_prepared = __txn_count_schema_prepared;
 	}
 
 	/* If we lazily initialize the key in __txn_begin(), Operations outside

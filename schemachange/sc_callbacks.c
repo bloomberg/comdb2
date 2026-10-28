@@ -650,6 +650,19 @@ static tran_type *_tran(uint32_t *lid, int *bdberr, const char *f, int l)
      * which we need to look at in order to set up our data structures
      * correctly.  This replaces the tran's lid with replication's lid so that
      * we can query this information without self-deadlocking. */
+    /* A new master committing a recovered prepared schema change still holds its
+     * locks: read under a child of that locker instead (*lid 0: nothing to swap
+     * back) */
+    if (bdb_get_scdone_lockid()) {
+        *lid = 0;
+        if ((*bdberr = bdb_scdone_tran_adopt_locks(thedb->bdb_env, tran)) != 0) {
+            logmsg(LOGMSG_ERROR, "%s:%d can't adopt prepared txn locks rc %d\n", f, l, *bdberr);
+            bdb_tran_abort(thedb->bdb_env, tran, bdberr);
+            return NULL;
+        }
+        return tran;
+    }
+
     bdb_get_tran_lockerid(tran, lid);
     bdb_set_tran_lockerid(tran, gbl_rep_lockid);
 
@@ -663,7 +676,8 @@ static void _untran(tran_type *tran, uint32_t lid)
 
     /* Replace this lid with the original lid so we don't leak it.  Because
      * we haven't done any work with the original tran, just abort it. */
-    bdb_set_tran_lockerid(tran, lid);
+    if (lid)
+        bdb_set_tran_lockerid(tran, lid);
 
     rc = bdb_tran_abort(thedb->bdb_env, tran, &bdberr);
     if (rc) {
