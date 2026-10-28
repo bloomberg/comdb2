@@ -2068,6 +2068,11 @@ REGISTER_TUNABLE("reorder_idx_writes", "reorder_idx_writes",
                  TUNABLE_BOOLEAN, &gbl_reorder_idx_writes, EXPERIMENTAL,
                  NULL, NULL, NULL, NULL);
 
+REGISTER_TUNABLE("udp_prefault_max_age_us",
+                 "Skip a UDP prefault request that waited in the queue longer than this many microseconds (0: never). "
+                 "(Default: 0)",
+                 TUNABLE_INTEGER, &gbl_udp_prefault_max_age_us, EXPERIMENTAL, NULL, NULL, NULL, NULL);
+
 REGISTER_TUNABLE("rep_write_hints",
                  "When a write statement ends, a replica sends the master, in one lossy UDP packet through the UDP "
                  "prefault sender thread, up to 32 pages to prefetch: the data pages, index leaf pages and blob leaf "
