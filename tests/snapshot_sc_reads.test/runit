@@ -168,6 +168,7 @@ live write_before_change_delete "" "alter table T add k int" "delete from T wher
     "insert into T values(9,9)"
 live write_before_change_commit "" "alter table T add k int" "select 1" "ERR rc 2" "insert into T values(9,9)"
 live write_before_drop_delete "" "drop table T" "delete from T where i = 9" "OK" "insert into T values(9,9)"
+live write_before_drop_commit "" "drop table T" "select 1" "ERR no such table" "insert into T values(9,9)"
 
 asof insert "insert into T values(4,4)" "$SEL" "$ROWS"
 asof add_column "alter table T add k int" "$SEL" "$ROWS"
