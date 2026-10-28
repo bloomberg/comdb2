@@ -1878,6 +1878,16 @@ REGISTER_TUNABLE("pagelock_release_interval_ms",
                  "Minimum interval between page-lock-only releases while a lock waiter persists.  (Default: 100ms)",
                  TUNABLE_INTEGER, &gbl_pagelock_release_interval_ms, 0, NULL, NULL, NULL, NULL);
 
+REGISTER_TUNABLE("rep_yield_retries",
+                 "On a replicant, readers step aside (release their page locks and sleep rep_yield_sleep_ms) once "
+                 "the transaction being replicated has lost this many deadlocks.  0 disables.  (Default: 10)",
+                 TUNABLE_INTEGER, &gbl_rep_yield_retries, 0, NULL, NULL, NULL, NULL);
+
+REGISTER_TUNABLE("rep_yield_sleep_ms",
+                 "How long a reader that yields to replication sleeps without page locks; it wakes up early once "
+                 "the transaction is applied.  (Default: 50ms)",
+                 TUNABLE_INTEGER, &gbl_rep_yield_sleep_ms, 0, NULL, NULL, NULL, NULL);
+
 REGISTER_TUNABLE("pagelock_release_max_wait_ms",
                  "How long a lock waiter may stay parked before we fall back to a full lock release (letting a "
                  "schema change proceed).  0 disables the fallback.  (Default: 60000ms)",

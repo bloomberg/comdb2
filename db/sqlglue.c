@@ -2725,6 +2725,7 @@ void clnt_reset_release_state(struct sqlclntstate *clnt)
     clnt->pagelock_release_first_ms = 0;
     clnt->pagelock_release_last_ms = 0;
     clnt->dbg_pagelock_releases = 0;
+    clnt->rep_yield_last_ms = 0;
     clnt->sync_dta_generation = 0;
 
     clnt->last_release_func = NULL;
@@ -3855,6 +3856,14 @@ static int cursor_move_postop(BtCursor *pCur)
 
     if (gbl_debug_sleep_in_cursor_move)
         poll(NULL, 0, gbl_debug_sleep_in_cursor_move);
+
+    /* Replication keeps losing deadlocks to readers: step aside even if no
+       one waits on our own locks (see rep_yield_to_replication, which does
+       its own mode / sync_dta / lock-desired checks).  This is independent
+       of locks_check_waiters, which only gates the waiter-driven releases
+       below. */
+    if (rep_yield_to_replication(clnt, __func__, __LINE__, &rc))
+        return rc;
 
     if (!gbl_locks_check_waiters)
         return 0;
