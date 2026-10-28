@@ -1524,6 +1524,16 @@ int analyze_new_indexes(struct dbtable *newdb, const char *new_ix)
         goto done;
     }
 
+    /* Same rule as analyze_regular_table(): a table below the sampling
+     * threshold is read in full.  Sampling a small table at the configured
+     * percentage can pick up no rows at all, which silently produces no
+     * statistics.  Use a local copy of the threshold rather than the global
+     * that analyze_regular_table() overwrites. */
+    long long threshold = sampling_threshold;
+    get_sampling_threshold(newdb->tablename, &threshold);
+    if (calc_table_size(newdb, 1) <= threshold)
+        scale = 100;
+
     /* newdb has no sqlite_master record yet unless sql_syntax_check happened
      * to run for it, so build one.  Name its indexes the way they will be
      * named once the schema change commits (no ".NEW." prefix), so the stats
@@ -1576,6 +1586,7 @@ int analyze_new_indexes(struct dbtable *newdb, const char *new_ix)
      * resolve to newdb's storage instead of the live table. */
     clnt.custom_rootpages = ents;
     clnt.custom_rootpage_nentries = nents;
+    clnt.custom_rootpages_id = next_custom_rootpages_id();
     clnt.custom_dbtable = newdb;
 
     td.sb = sb;

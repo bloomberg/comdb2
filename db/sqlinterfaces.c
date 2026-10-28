@@ -4492,8 +4492,23 @@ static int prepare_engine(struct sqlthdstate *thd, struct sqlclntstate *clnt,
      * schema-change inline analyze) must not inherit -- or leave behind -- the
      * wrong view.  Reconcile here, on every query; the common case is two
      * predictable tests. */
-    if (rootpages_need_reload_for_clnt(sqlthd, clnt))
+    if (rootpages_need_reload_for_clnt(sqlthd, clnt)) {
+        /* Swapping the rootpages alone is not enough: sqlite has already
+         * parsed and cached its schema from the old set, and would keep
+         * planning against tables and indexes that are no longer there (a
+         * second schema-change analyze on a warm thread failed with
+         * SQLITE_SCHEMA this way).  Close the engine so the open path below
+         * reloads the right rootpages and re-reads the schema from them.
+         * Swaps only happen around custom-rootpage clients, so this is rare. */
+        if (thd->sqldb) {
+            stmt_cache_reset(thd->stmt_cache);
+            sqlite3_close_serial(&thd->sqldb);
+            /* as in the recreate path below */
+            if (gbl_old_column_names && query_preparer_plugin && query_preparer_plugin->do_cleanup_thd)
+                query_preparer_plugin->do_cleanup_thd(thd);
+        }
         get_copy_rootpages_for_clnt(sqlthd, clnt);
+    }
 
 check_version:
     if (thd->sqldb && (rc = check_thd_gen(thd, clnt, flags)) != SQLITE_OK) {
@@ -4566,7 +4581,15 @@ check_version:
 
         comdb2_reset_authstate(thd);
         get_copy_rootpages_for_clnt(thd->sqlthd, clnt);
-        if (clnt->dbtran.cursor_tran) {
+        if (clnt->custom_rootpages) {
+            /* A client running against custom rootpages (the schema-change
+             * inline analyze) sees only the handful of tables it was given.
+             * Time-partition views reference shards outside that set, so
+             * creating them would fail -- and that failure aborts.  The client
+             * has no use for views; skip them, and leave views_gen stale so the
+             * next ordinary client on this thread rebuilds them. */
+            thd->views_gen = -1;
+        } else if (clnt->dbtran.cursor_tran) {
             if (thedb->timepart_views) {
                 const int latched_clnt_is_readonly = clnt->is_readonly;
                 clnt->is_readonly = 0;

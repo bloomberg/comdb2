@@ -2759,6 +2759,7 @@ int get_copy_rootpages_nolock(struct sql_thread *thd);
 int get_copy_rootpages(struct sql_thread *thd);
 int get_copy_rootpages_for_clnt(struct sql_thread *thd, struct sqlclntstate *clnt);
 int rootpages_need_reload_for_clnt(struct sql_thread *thd, struct sqlclntstate *clnt);
+unsigned next_custom_rootpages_id(void);
 int get_copy_rootpages_selectfire(struct sql_thread *thd, int nnames,
                                   const char **names,
                                   struct master_entry **oldentries,

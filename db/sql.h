@@ -838,6 +838,7 @@ struct sqlclntstate {
      * of the live entries.  Owned by the caller; must outlive the clnt. */
     struct master_entry *custom_rootpages;
     int custom_rootpage_nentries;
+    unsigned custom_rootpages_id; /* unique per custom set, never 0 */
 
     /* Substitute dbtable for custom_rootpages.  Rootpages supply the schema,
      * but get_sqlite_db() resolves storage by name through thedb->db_hash --
@@ -1413,12 +1414,11 @@ struct sql_thread {
     struct master_entry *rootpages;
     int rootpage_nentries;
     int selective_rootpages;
-    /* Set when rootpages were loaded from a clnt's custom_rootpages rather
-     * than the live sqlmaster set.  rootpages_owner records which clnt they
-     * were loaded for, so a thread is not left holding another client's view
-     * and we avoid re-copying for the same clnt. */
-    int rootpages_custom;
-    void *rootpages_owner;
+    /* Which custom rootpage set (custom_rootpages_id) is loaded, or 0 for the
+     * live sqlmaster set.  Lets a thread tell whether it already holds the
+     * view a client needs.  An id rather than a clnt pointer: successive
+     * schema-change analyzes put their clnt at the same stack address. */
+    unsigned rootpages_id;
     unsigned char had_temptables;
     unsigned char had_tablescans;
 

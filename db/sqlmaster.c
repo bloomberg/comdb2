@@ -3,6 +3,7 @@
 #include "sqliteInt.h"
 #include "vdbeInt.h"
 #include <ctrace.h>
+#include "comdb2_atomic.h"
 #include <poll.h>
 #include <phys_rep_lsn.h>
 
@@ -429,9 +430,20 @@ int get_copy_rootpages_custom(struct sql_thread *thd, master_entry_t *ents,
 int get_copy_rootpages_nolock(struct sql_thread *thd)
 {
     int rc = get_copy_rootpages_custom(thd, sqlmaster, sqlmaster_nentries);
-    thd->rootpages_custom = 0;
-    thd->rootpages_owner = NULL;
+    thd->rootpages_id = 0;
     return rc;
+}
+
+/* Ids for custom rootpage sets; 0 means the live set. */
+static uint32_t custom_rootpages_id_seq;
+
+unsigned next_custom_rootpages_id(void)
+{
+    unsigned id;
+    do {
+        id = ATOMIC_ADD32(custom_rootpages_id_seq, 1);
+    } while (id == 0);
+    return id;
 }
 
 /**
@@ -441,10 +453,10 @@ int get_copy_rootpages_nolock(struct sql_thread *thd)
  * (the schema-change inline analyze, which must see the pre-commit newdb)
  * instead gets its own entries.
  *
- * The thread is tagged with the clnt the rootpages were loaded for.  This
- * matters in two directions: a thread that ran a custom-rootpage client must
- * not leave that view behind for the next client, and repeat statements from
- * the same client must not pay for a redundant deep copy.
+ * The thread is tagged with the id of the set it loaded.  This matters in two
+ * directions: a thread that ran a custom-rootpage client must not leave that
+ * view behind for the next client, and repeat statements from the same client
+ * must not pay for a redundant deep copy.
  */
 int get_copy_rootpages_for_clnt(struct sql_thread *thd, struct sqlclntstate *clnt)
 {
@@ -454,14 +466,11 @@ int get_copy_rootpages_for_clnt(struct sql_thread *thd, struct sqlclntstate *cln
         rc = get_copy_rootpages_custom(thd, clnt->custom_rootpages, clnt->custom_rootpage_nentries);
         /* our entries are dense, rootpage == index + RTPAGE_START */
         thd->selective_rootpages = 0;
-        thd->rootpages_custom = 1;
-        thd->rootpages_owner = clnt;
+        thd->rootpages_id = clnt->custom_rootpages_id;
         return rc;
     }
 
-    rc = get_copy_rootpages_nolock(thd);
-    thd->rootpages_owner = clnt;
-    return rc;
+    return get_copy_rootpages_nolock(thd);
 }
 
 /**
@@ -473,9 +482,8 @@ int rootpages_need_reload_for_clnt(struct sql_thread *thd, struct sqlclntstate *
 {
     if (!thd || !clnt)
         return 0;
-    if (!clnt->custom_rootpages && !thd->rootpages_custom)
-        return 0; /* common case: live rootpages, nothing to fix up */
-    return thd->rootpages_owner != clnt;
+    unsigned want = clnt->custom_rootpages ? clnt->custom_rootpages_id : 0;
+    return thd->rootpages_id != want; /* common case: both 0 */
 }
 
 /**
