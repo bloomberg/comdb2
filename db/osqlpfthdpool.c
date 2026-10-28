@@ -287,11 +287,11 @@ static void osqlpfault_do_work(struct thdpool *pool, void *work, void *thddata)
     if (!gbl_osqlpfault_threads)
         goto done;
 
-    if (req->rqid != gbl_osqlpf_step[req->i].rqid) {
+    /* i < 0: issued by the block processor itself (osqlpf_bp_keys), no session checks */
+    if (req->i >= 0 && req->rqid != gbl_osqlpf_step[req->i].rqid) {
         goto done;
     }
-    if (req->rqid == OSQL_RQID_USE_UUID &&
-        comdb2uuidcmp(req->uuid, gbl_osqlpf_step[req->i].uuid))
+    if (req->i >= 0 && req->rqid == OSQL_RQID_USE_UUID && comdb2uuidcmp(req->uuid, gbl_osqlpf_step[req->i].uuid))
         goto done;
 
     step = req->seq << 7;
@@ -332,7 +332,7 @@ static void osqlpfault_do_work(struct thdpool *pool, void *work, void *thddata)
         }
 
         step += ((1 + (unsigned long long)req->index) << 1);
-        if (step <= gbl_osqlpf_step[req->i].step) {
+        if (req->i >= 0 && step <= gbl_osqlpf_step[req->i].step) {
             break;
         }
 
@@ -352,7 +352,7 @@ static void osqlpfault_do_work(struct thdpool *pool, void *work, void *thddata)
         }
 
         step += 1 + ((1 + (unsigned long long)req->index) << 1);
-        if (step <= gbl_osqlpf_step[req->i].step) {
+        if (req->i >= 0 && step <= gbl_osqlpf_step[req->i].step) {
             break;
         }
 
@@ -643,4 +643,33 @@ int osql_page_prefault(char *rpl, int rplen, struct dbtable **last_db,
         return 0;
     }
     return 0;
+}
+
+/* Block processor (tunable osqlpf_bp_keys): before it changes a row's index
+ * entries one after another, look up its old and new keys in the prefault pool
+ * so that their leaf pages are read in parallel.  Index 0 is left out: the
+ * block processor works on it first. */
+int gbl_osqlpf_bp_keys = 0;
+void osqlpf_bp_keys(struct dbtable *db, const void *oldrec, const void *newrec)
+{
+    uuid_t nouuid = {0};
+    char ko[MAXKEYLEN + 1], kn[MAXKEYLEN + 1];
+    int ix, ksz, o, n;
+
+    if (!gbl_osqlpf_bp_keys || !gbl_osqlpfault_thdpool || !db)
+        return;
+    /* only with spare capacity: behind a backlog the lookups would come after the block processor's own reads */
+    if (thdpool_get_queue_depth(gbl_osqlpfault_thdpool) > 0)
+        return;
+    for (ix = 1; ix < db->nix; ix++) {
+        ksz = getkeysize(db, ix);
+        if (ksz <= 0 || ksz > MAXKEYLEN)
+            continue;
+        o = oldrec && stag_ondisk_to_ix(db, ix, (char *)oldrec, ko) != -1;
+        n = newrec && stag_ondisk_to_ix(db, ix, (char *)newrec, kn) != -1;
+        if (o)
+            enque_osqlpfault_oldkey(db, ko, ksz, ix, -1, 0, nouuid, 0);
+        if (n && !(o && memcmp(ko, kn, ksz) == 0))
+            enque_osqlpfault_newkey(db, kn, ksz, ix, -1, 0, nouuid, 0);
+    }
 }
