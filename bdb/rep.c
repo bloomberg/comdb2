@@ -5131,6 +5131,8 @@ extern int gbl_rep_write_hints;
 
 /* Drop UFID prefault requests that waited in the queue longer than this (0: never) */
 int gbl_udp_prefault_max_age_us = 0;
+/* Serve the newest UFID prefault request first */
+int gbl_udp_prefault_lifo = 0;
 
 static uint64_t udppf_now_us(void)
 {
@@ -5308,7 +5310,8 @@ int enque_udppfault_ufid(bdb_state_type *bdb_state, const uint8_t *ufid, unsigne
     qdata->pgno = pgno;
     qdata->enq_us = udppf_now_us();
 
-    rc = thdpool_enqueue(gbl_udppfault_thdpool, udppfault_do_work_pp, qdata, 0, NULL, 0);
+    rc = thdpool_enqueue(gbl_udppfault_thdpool, udppfault_do_work_pp, qdata, 0, NULL,
+                         gbl_udp_prefault_lifo ? THDPOOL_ENQUEUE_FRONT : 0);
     if (rc != 0)
         free(qdata);
     return rc;
