@@ -58,6 +58,7 @@
 #include <disttxn.h>
 
 extern int gbl_reorder_idx_writes;
+extern pthread_mutex_t osqlpf_mutex;
 extern uint32_t gbl_max_time_per_txn_ms;
 
 struct blocksql_tran {
@@ -86,6 +87,7 @@ struct blocksql_tran {
 
     /* prefetch */
     struct dbtable *last_db;
+    int *osql_step_ix; /* osql prefault step slot, returned in osql_bplog_close */
 };
 
 typedef struct oplog_key {
@@ -343,6 +345,8 @@ int osql_bplog_commit(struct ireq *iq, void *iq_trans, int *nops,
     ckgenid_state_t cgstate = {.iq = iq, .trans = iq_trans, .err = err};
     int rc;
 
+    iq->osql_step_ix = tran->osql_step_ix;
+
     /* Pre-process selectv's, getting a writelock on rows that are later updated
      */
     if ((rc = osql_process_selectv(tran, pselectv_callback, &cgstate)) != 0) {
@@ -409,6 +413,15 @@ void osql_bplog_close(blocksql_tran_t **ptran)
     }
 
     Pthread_mutex_destroy(&tran->store_mtx);
+
+    if (tran->osql_step_ix) {
+        gbl_osqlpf_step[*tran->osql_step_ix].rqid = 0;
+        gbl_osqlpf_step[*tran->osql_step_ix].step = 0;
+        Pthread_mutex_lock(&osqlpf_mutex);
+        queue_add(gbl_osqlpf_stepq, tran->osql_step_ix);
+        Pthread_mutex_unlock(&osqlpf_mutex);
+        tran->osql_step_ix = NULL;
+    }
 
     rc = bdb_temp_table_close(thedb->bdb_env, tran->db, &bdberr);
     if (rc != 0) {
@@ -714,9 +727,7 @@ int osql_bplog_saveop(osql_sess_t *sess, blocksql_tran_t *tran, char *rpl,
     } else {
         tran->seq++;
         if (gbl_osqlpfault_threads) {
-            osql_page_prefault(rpl, rplen, &(tran->last_db),
-                               &sess->iq->osql_step_ix, sess->rqid, sess->uuid,
-                               tran->seq);
+            osql_page_prefault(rpl, rplen, &(tran->last_db), &tran->osql_step_ix, sess->rqid, sess->uuid, tran->seq);
         }
     }
 

@@ -566,26 +566,25 @@ int osql_page_prefault(char *rpl, int rplen, struct dbtable **last_db,
                        int **iq_step_ix, unsigned long long rqid, uuid_t uuid,
                        unsigned long long seq)
 {
-    static int last_step_idex = 0;
+    int last_step_idex;
     int *ii;
     osql_rpl_t rpl_op;
     uint8_t *p_buf = (uint8_t *)rpl;
     uint8_t *p_buf_end = p_buf + rplen;
     osqlcomm_rpl_type_get(&rpl_op, p_buf, p_buf_end);
 
-    if (seq == 0) {
+    if (*iq_step_ix == NULL) {
         Pthread_mutex_lock(&osqlpf_mutex);
         ii = queue_next(gbl_osqlpf_stepq);
         Pthread_mutex_unlock(&osqlpf_mutex);
-        if (ii == NULL) {
-            logmsg(LOGMSG_ERROR, "osql io prefault got a BUG!\n");
-            exit(1);
-        }
-        last_step_idex = *ii;
+        if (ii == NULL) /* all slots in use: no prefault for this transaction */
+            return 0;
+        gbl_osqlpf_step[*ii].step = 0;
+        gbl_osqlpf_step[*ii].rqid = rqid;
+        comdb2uuidcpy(gbl_osqlpf_step[*ii].uuid, uuid);
         *iq_step_ix = ii;
-        gbl_osqlpf_step[last_step_idex].rqid = rqid;
-        comdb2uuidcpy(gbl_osqlpf_step[last_step_idex].uuid, uuid);
     }
+    last_step_idex = **iq_step_ix;
 
     /* payload follows the rqid or the (larger) uuid header, as in the block processor */
     uint8_t *p_dt = (uint8_t *)rpl + (rqid == OSQL_RQID_USE_UUID ? sizeof(osql_uuid_rpl_t) : sizeof(osql_rpl_t));
