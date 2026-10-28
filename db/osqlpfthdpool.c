@@ -587,10 +587,13 @@ int osql_page_prefault(char *rpl, int rplen, struct dbtable **last_db,
         comdb2uuidcpy(gbl_osqlpf_step[last_step_idex].uuid, uuid);
     }
 
+    /* payload follows the rqid or the (larger) uuid header, as in the block processor */
+    uint8_t *p_dt = (uint8_t *)rpl + (rqid == OSQL_RQID_USE_UUID ? sizeof(osql_uuid_rpl_t) : sizeof(osql_rpl_t));
+
     switch (rpl_op.type) {
     case OSQL_USEDB: {
         osql_usedb_t dt = {0};
-        p_buf = (uint8_t *)&((osql_usedb_rpl_t *)rpl)->dt;
+        p_buf = p_dt;
         const char *tablename;
         struct dbtable *db;
 
@@ -608,9 +611,11 @@ int osql_page_prefault(char *rpl, int rplen, struct dbtable **last_db,
     case OSQL_DELREC:
     case OSQL_DELETE: {
         osql_del_t dt = {0};
-        p_buf = (uint8_t *)&((osql_del_rpl_t *)rpl)->dt;
+        p_buf = p_dt;
         p_buf = (uint8_t *)osqlcomm_del_type_get(&dt, p_buf, p_buf_end,
                                                  rpl_op.type == OSQL_DELETE);
+        if (p_buf == NULL || *last_db == NULL)
+            break;
         enque_osqlpfault_olddata_oldkeys(*last_db, dt.genid, last_step_idex,
                                          rqid, uuid, seq);
     } break;
@@ -618,19 +623,23 @@ int osql_page_prefault(char *rpl, int rplen, struct dbtable **last_db,
     case OSQL_INSERT: {
         osql_ins_t dt;
         unsigned char *pData = NULL;
-        uint8_t *p_buf = (uint8_t *)&((osql_ins_rpl_t *)rpl)->dt;
+        uint8_t *p_buf = p_dt;
         pData = (uint8_t *)osqlcomm_ins_type_get(&dt, p_buf, p_buf_end,
                                                  rpl_op.type == OSQL_INSREC);
+        if (pData == NULL || *last_db == NULL || dt.nData <= 0 || dt.nData > p_buf_end - pData)
+            break;
         enque_osqlpfault_newdata_newkeys(*last_db, pData, dt.nData,
                                          last_step_idex, rqid, uuid, seq);
     } break;
     case OSQL_UPDREC:
     case OSQL_UPDATE: {
         osql_upd_t dt;
-        uint8_t *p_buf = (uint8_t *)&((osql_upd_rpl_t *)rpl)->dt;
+        uint8_t *p_buf = p_dt;
         unsigned char *pData;
         pData = (uint8_t *)osqlcomm_upd_type_get(&dt, p_buf, p_buf_end,
                                                  rpl_op.type == OSQL_UPDATE);
+        if (pData == NULL || *last_db == NULL || dt.nData <= 0 || dt.nData > p_buf_end - pData)
+            break;
         enque_osqlpfault_olddata_oldkeys_newkeys(*last_db, dt.genid, pData,
                                                  dt.nData, last_step_idex, rqid,
                                                  uuid, seq);
