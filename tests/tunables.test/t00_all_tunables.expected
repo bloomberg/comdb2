@@ -687,6 +687,7 @@
 (name='osql_verbose_history_replay', description='osql_verbose_history_replay', type='BOOLEAN', value='OFF', read_only='N')
 (name='osql_verify_ext_chk', description='For block transaction mode only - after this many verify errors, check if transaction is non-commitable (see default isolation level). (Default: on)', type='INTEGER', value='1', read_only='Y')
 (name='osql_verify_retry_max', description='Retry a transaction on a verify error this many times (see optimistic concurrency control). (Default: 499)', type='INTEGER', value='499', read_only='N')
+(name='osqlpf_bp_keys', description='With osqlprefaultthreads, the block processor looks up the old and new keys of each row it changes in the prefault pool, so that their leaf pages are read in parallel. (Default: off)', type='BOOLEAN', value='OFF', read_only='N')
 (name='osqlpfaultpool.dump_on_full', description='Dump status on full queue.', type='BOOLEAN', value='OFF', read_only='N')
 (name='osqlpfaultpool.exit_on_error', description='Exit on pthread error.', type='BOOLEAN', value='ON', read_only='N')
 (name='osqlpfaultpool.linger', description='Thread linger time (in seconds).', type='INTEGER', value='10', read_only='N')

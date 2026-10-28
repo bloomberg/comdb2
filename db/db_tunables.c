@@ -495,6 +495,7 @@ extern int gbl_udp_prefault_async;
 extern int gbl_udp_prefault_async_batch;
 extern int gbl_udp_prefault_async_poll_us;
 extern int gbl_rep_write_hints;
+extern int gbl_osqlpf_bp_keys;
 extern int gbl_perform_full_clean_exit;
 extern int gbl_clean_exit_on_sigterm;
 extern int gbl_stack_string_refs;

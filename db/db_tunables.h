@@ -990,6 +990,10 @@ REGISTER_TUNABLE("osqlprefaultthreads",
                  "Number of master threads that read the pages of osql ops as they arrive, before the block "
                  "processor applies them; 0 disables. (Default: 16)",
                  TUNABLE_INTEGER, &gbl_osqlpfault_threads, READONLY, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("osqlpf_bp_keys",
+                 "With osqlprefaultthreads, the block processor looks up the old and new keys of each row it changes "
+                 "in the prefault pool, so that their leaf pages are read in parallel. (Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_osqlpf_bp_keys, EXPERIMENTAL, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("osql_verify_ext_chk",
                  "For block transaction mode only - after this many verify "
                  "errors, check if transaction is non-commitable (see default "
