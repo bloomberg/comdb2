@@ -1129,6 +1129,7 @@
 (name='udp_prefault_async', description='The master queues UDP prefault hints for a sender thread instead of sending them from the thread that reads the page; hints are dropped when the queue is full. (Default: off)', type='BOOLEAN', value='OFF', read_only='N')
 (name='udp_prefault_async_batch', description='With udp_prefault_async, pages per UDP prefault packet (1-32); more than 1 needs replicas that accept multi-page packets. (Default: 1)', type='INTEGER', value='1', read_only='N')
 (name='udp_prefault_async_poll_us', description='With udp_prefault_async, the sender polls its queue every this many microseconds instead of being woken (0: woken). (Default: 0)', type='INTEGER', value='0', read_only='N')
+(name='udp_prefault_max_age_us', description='Skip a UDP prefault request that waited in the queue longer than this many microseconds (0: never). (Default: 0)', type='INTEGER', value='0', read_only='N')
 (name='udppfaultpool.dump_on_full', description='Dump status on full queue.', type='BOOLEAN', value='OFF', read_only='N')
 (name='udppfaultpool.exit_on_error', description='Exit on pthread error.', type='BOOLEAN', value='ON', read_only='N')
 (name='udppfaultpool.linger', description='Thread linger time (in seconds).', type='INTEGER', value='10', read_only='N')

@@ -1974,6 +1974,11 @@ REGISTER_TUNABLE("udp_prefault_async_poll_us",
                  "With udp_prefault_async, the sender polls its queue every this many microseconds instead of being "
                  "woken (0: woken). (Default: 0)",
                  TUNABLE_INTEGER, &gbl_udp_prefault_async_poll_us, EXPERIMENTAL, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("udp_prefault_max_age_us",
+                 "Skip a UDP prefault request that waited in the queue longer than this many microseconds (0: never). "
+                 "(Default: 0)",
+                 TUNABLE_INTEGER, &gbl_udp_prefault_max_age_us, EXPERIMENTAL, NULL, NULL, NULL, NULL);
+
 REGISTER_TUNABLE("rep_write_hints",
                  "Replicas send the master, in one lossy UDP packet per write statement, up to 32 leaf pages the "
                  "statement read, so that the master can prefetch them. socksql (default) transactions only; needed "
