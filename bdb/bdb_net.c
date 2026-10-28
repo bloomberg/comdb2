@@ -25,6 +25,8 @@
 #include <poll.h>
 #include <sys/time.h>
 #include <errno.h>
+#include <stdlib.h>
+#include <time.h>
 #include <ctype.h>
 
 #include "bdb_api.h"
@@ -139,7 +141,7 @@ void disable_ack_trace(void)
     gbl_ack_trace = 0;
 }
 
-int do_ack(bdb_state_type *bdb_state, DB_LSN permlsn, uint32_t commit_gen, uint32_t rep_gen)
+static int do_ack_now(bdb_state_type *bdb_state, DB_LSN permlsn, uint32_t commit_gen, uint32_t rep_gen)
 {
     int rc;
     char *master;
@@ -193,6 +195,85 @@ int do_ack(bdb_state_type *bdb_state, DB_LSN permlsn, uint32_t commit_gen, uint3
                       USER_TYPE_BERKDB_NEWSEQ, p_buf, sizeof(seqnum), 1);
     }
     return rc;
+}
+
+/* Test only: send every ack debug_ack_delay_ms late, from a separate thread,
+ * to imitate a slow network without slowing the replicant down. */
+int gbl_debug_ack_delay_ms = 0;
+extern pthread_attr_t gbl_pthread_attr_detached;
+
+struct delayed_ack {
+    bdb_state_type *bdb_state;
+    DB_LSN lsn;
+    uint32_t commit_gen;
+    uint32_t rep_gen;
+    struct timespec due;
+    struct delayed_ack *next;
+};
+static pthread_mutex_t delayed_ack_lk = PTHREAD_MUTEX_INITIALIZER;
+static pthread_cond_t delayed_ack_cd = PTHREAD_COND_INITIALIZER;
+static struct delayed_ack *delayed_ack_head, *delayed_ack_tail;
+static pthread_once_t delayed_ack_once = PTHREAD_ONCE_INIT;
+
+/* Acks are queued in order with the same delay, so the head is always due first */
+static void *delayed_ack_thd(void *arg)
+{
+    Pthread_mutex_lock(&delayed_ack_lk);
+    for (;;) {
+        struct delayed_ack *d = delayed_ack_head;
+        if (d == NULL) {
+            Pthread_cond_wait(&delayed_ack_cd, &delayed_ack_lk);
+            continue;
+        }
+        if (pthread_cond_timedwait(&delayed_ack_cd, &delayed_ack_lk, &d->due) != ETIMEDOUT)
+            continue;
+        delayed_ack_head = d->next;
+        if (delayed_ack_head == NULL)
+            delayed_ack_tail = NULL;
+        Pthread_mutex_unlock(&delayed_ack_lk);
+        do_ack_now(d->bdb_state, d->lsn, d->commit_gen, d->rep_gen);
+        free(d);
+        Pthread_mutex_lock(&delayed_ack_lk);
+    }
+    return NULL;
+}
+
+static void start_delayed_ack_thd(void)
+{
+    pthread_t tid;
+    Pthread_create(&tid, &gbl_pthread_attr_detached, delayed_ack_thd, NULL);
+}
+
+int do_ack(bdb_state_type *bdb_state, DB_LSN permlsn, uint32_t commit_gen, uint32_t rep_gen)
+{
+    int delay_ms = gbl_debug_ack_delay_ms;
+    if (delay_ms <= 0)
+        return do_ack_now(bdb_state, permlsn, commit_gen, rep_gen);
+
+    pthread_once(&delayed_ack_once, start_delayed_ack_thd);
+    struct delayed_ack *d = malloc(sizeof(*d));
+    d->bdb_state = bdb_state;
+    d->lsn = permlsn;
+    d->commit_gen = commit_gen;
+    d->rep_gen = rep_gen;
+    d->next = NULL;
+    clock_gettime(CLOCK_REALTIME, &d->due);
+    d->due.tv_sec += delay_ms / 1000;
+    d->due.tv_nsec += (delay_ms % 1000) * 1000000L;
+    if (d->due.tv_nsec >= 1000000000L) {
+        d->due.tv_sec++;
+        d->due.tv_nsec -= 1000000000L;
+    }
+
+    Pthread_mutex_lock(&delayed_ack_lk);
+    if (delayed_ack_tail)
+        delayed_ack_tail->next = d;
+    else
+        delayed_ack_head = d;
+    delayed_ack_tail = d;
+    Pthread_cond_signal(&delayed_ack_cd);
+    Pthread_mutex_unlock(&delayed_ack_lk);
+    return 0;
 }
 
 void comdb2_early_ack(DB_ENV *dbenv, DB_LSN permlsn, uint32_t commit_gen, uint32_t rep_gen)
