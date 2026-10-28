@@ -157,8 +157,17 @@ live add_column_under_view "$VIEW" $'alter table T add k int\ninsert into T valu
 live rebuild_under_view "$VIEW" $'insert into T values(4,4)\nrebuild T' "$SELV" "$ROWS"
 live drop_table_under_view "$VIEW" "drop table T" "$SELV" "$ROWS"
 live rename_table_under_view "$VIEW" "alter table T rename to T_r" "$SELV" "$ROWS"
-# the transaction cannot write a table as it was before a schema change
-live write_old_table "" "rebuild T" "insert into T values(9,9)" "ERR was schema changed"
+# a write to a table as it was before a schema change goes to shadows, as
+# any write does; the commit fails with a verify error (rc 2) if the table
+# version changed and a write is left, and a rebuild keeps the version
+live write_old_table "" "rebuild T" "insert into T values(9,9)" "OK"
+live write_old_table_new_version "" "alter table T add k int" "insert into T values(9,9)" "ERR rc 2"
+live write_dropped_table "" "drop table T" "insert into T values(9,9)" "ERR was schema changed"
+live write_before_change_read "" "rebuild T" "$SEL" "$ROWS"$'\n(i=9, j=9)' "insert into T values(9,9)"
+live write_before_change_delete "" "alter table T add k int" "delete from T where i = 9" "OK" \
+    "insert into T values(9,9)"
+live write_before_change_commit "" "alter table T add k int" "select 1" "ERR rc 2" "insert into T values(9,9)"
+live write_before_drop_delete "" "drop table T" "delete from T where i = 9" "OK" "insert into T values(9,9)"
 
 asof insert "insert into T values(4,4)" "$SEL" "$ROWS"
 asof add_column "alter table T add k int" "$SEL" "$ROWS"
@@ -196,6 +205,8 @@ asof add_column_under_view $'alter table T add k int\ninsert into T values(9,9,9
 asof rebuild_under_view $'insert into T values(4,4)\nrebuild T' "$SELV" "$ROWS" "$VIEW"
 asof drop_table_under_view "drop table T" "$SELV" "$ROWS" "$VIEW"
 asof rename_table_under_view "alter table T rename to T_r" "$SELV" "$ROWS" "$VIEW"
-asof write_old_table "rebuild T" "insert into T values(9,9)" "ERR was schema changed"
+asof write_old_table "rebuild T" "insert into T values(9,9)" "OK"
+asof write_old_table_new_version "alter table T add k int" "insert into T values(9,9)" "ERR rc 2"
+asof write_old_table_delete "alter table T add k int" $'insert into T values(9,9)\ndelete from T where i = 9' "OK"
 
 exit $failed

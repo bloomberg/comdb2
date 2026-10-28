@@ -27,7 +27,10 @@
  *
  * sqlite sees the catalog through its own sqlite_master entries, and
  * get_dbtable_by_name() returns its tables on the sql thread of the snapshot.
- * The snapshot cannot write an old table.
+ * A write to an old table goes to shadows, as any write does, and the commit
+ * sends it with the old table version: the master fails the commit with a
+ * verify error if the version changed and a write is left in the shadows (see
+ * old_table_shadows() in sqlglue.c).
  *
  * The views and the time partitions of the catalog are read from llmeta as
  * of the start LSN too.  A rollout that truncates a shard gives the shard new files, so

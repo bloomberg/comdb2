@@ -181,10 +181,11 @@ live drop new_partition "drop table T" "$SEL" "$ROWS"
 live drop_recreate new_partition $'drop table T\ncreate table T(a int) '"$PART"$'\ninsert into T values(9)' "$SEL" "$ROWS"
 live new_partition new_partition $'create table T_new(a int) '"$PART"$'\ninsert into T_new values(7)' \
     "select * from T_new" "ERR no such table"
-# the transaction can write the partition after an insert, but not after a
-# rollout
+# the transaction can write the partition after an insert or a rollout: a
+# rollout keeps the table version of the shard that it truncates, so the
+# commit does not fail
 live write_after_insert new_partition "insert into T values(6)" "insert into T values(5)" "OK"
-live write_after_rollout new_partition "INCR 3" "insert into T values(5)" "ERR was schema changed"
+live write_after_rollout new_partition "INCR 3" "insert into T values(5)" "OK"
 
 asof rollout new_partition "INCR 3" "$SEL" "$ROWS"
 asof rollout_recache new_partition $'INCR 3\n'"$RC" "$SEL" "$ROWS"
@@ -199,6 +200,6 @@ asof drop_recreate new_partition $'drop table T\ncreate table T(a int) '"$PART"$
 asof new_partition new_partition $'create table T_new(a int) '"$PART"$'\ninsert into T_new values(7)' \
     "select * from T_new" "ERR no such table"
 asof write_after_insert new_partition "insert into T values(6)" "insert into T values(5)" "OK"
-asof write_after_rollout new_partition "INCR 3" "insert into T values(5)" "ERR was schema changed"
+asof write_after_rollout new_partition "INCR 3" "insert into T values(5)" "OK"
 
 exit $failed
