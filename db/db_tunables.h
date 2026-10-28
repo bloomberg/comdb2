@@ -986,8 +986,10 @@ REGISTER_TUNABLE("osql_bkoff_netsend", NULL, TUNABLE_INTEGER,
                  &gbl_osql_bkoff_netsend, READONLY, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("osql_bkoff_netsend_lmt", NULL, TUNABLE_INTEGER,
                  &gbl_osql_bkoff_netsend_lmt, READONLY, NULL, NULL, NULL, NULL);
-REGISTER_TUNABLE("osqlprefaultthreads", "If set, send prefaulting hints to nodes. (Default: 0)", TUNABLE_INTEGER,
-                 &gbl_osqlpfault_threads, READONLY, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("osqlprefaultthreads",
+                 "Number of master threads that read the pages of osql ops as they arrive, before the block "
+                 "processor applies them; 0 disables. (Default: 16)",
+                 TUNABLE_INTEGER, &gbl_osqlpfault_threads, READONLY, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("osql_verify_ext_chk",
                  "For block transaction mode only - after this many verify "
                  "errors, check if transaction is non-commitable (see default "
