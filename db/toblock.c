@@ -5089,14 +5089,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle, stru
         }
         send_prefault_udp = 0;
 
-        if (iq->osql_step_ix) {
-            gbl_osqlpf_step[*(iq->osql_step_ix)].rqid = 0;
-            gbl_osqlpf_step[*(iq->osql_step_ix)].step = 0;
-            Pthread_mutex_lock(&osqlpf_mutex);
-            queue_add(gbl_osqlpf_stepq, iq->osql_step_ix);
-            Pthread_mutex_unlock(&osqlpf_mutex);
-            iq->osql_step_ix = NULL;
-        }
+        iq->osql_step_ix = NULL; /* slot is returned when the bplog is closed */
 
         delayed = iq->sorese->is_delayed ? 1 : 0;
 
