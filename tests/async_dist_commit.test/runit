@@ -33,10 +33,11 @@ fail() { echo "FAILED: $1" >&2; exit 1; }
 sql "create table t(a int unique, b int not null)" >/dev/null
 
 ################################################################
-# 1. Off by default, and commits go down the inline path.
+# 1. On by default; turned off, commits go down the inline path.
 ################################################################
-[ "$(master_sql "select value from comdb2_tunables where name='async_dist_commit'")" = "OFF" ] \
-    || fail "async_dist_commit should default to OFF"
+[ "$(master_sql "select value from comdb2_tunables where name='async_dist_commit'")" = "ON" ] \
+    || fail "async_dist_commit should default to ON"
+set_tunable async_dist_commit 0
 
 before=$(counter enqueued)
 sql "insert into t values(1, 1)" >/dev/null
