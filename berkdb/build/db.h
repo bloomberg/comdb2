@@ -3445,12 +3445,7 @@ int thdpool_enqueue(struct thdpool *pool, thdpool_work_fn work_fn,
 	uint32_t flags);
 
 
-typedef struct {
-	DB_MPOOLFILE *mpf;
-	db_pgno_t pgno;
-} touch_pg;
-
-int enqueue_touch_page(DB_MPOOLFILE *mpf, db_pgno_t pgno);
+int enqueue_touch_page(DB_ENV *dbenv, int32_t fileid, const u_int8_t *ufid, db_pgno_t pgno);
 void touch_page(DB_MPOOLFILE *mpf, db_pgno_t pgno);
 
 //#############################################
