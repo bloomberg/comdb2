@@ -416,6 +416,49 @@ void udp_prefault_all(bdb_state_type *bdb_state, const unsigned char *ufid, unsi
     }
 }
 
+/*
+ * Replica write hints (experimental, off by default): a replica running a
+ * client's write statement sends the master the B-tree leaf pages the statement
+ * read, as (UFID, pgno) pairs, so that the master can prefetch them before its
+ * block processor replays the transaction.  Lossy: dropped if the connection
+ * is busy, never blocks the write.
+ */
+int gbl_rep_write_hints = 0;
+enum { RWH_PAIR = DB_FILE_ID_LEN + sizeof(uint32_t), RWH_MAXPAIRS = 32 };
+int __memp_rwh_take(uint8_t *buf, int max);
+int enque_udppfault_ufid(bdb_state_type *bdb_state, const uint8_t *ufid, unsigned int pgno);
+
+void bdb_send_write_hints(bdb_state_type *bdb_state)
+{
+    repinfo_type *repinfo = bdb_state->repinfo;
+    uint8_t buf[RWH_MAXPAIRS * RWH_PAIR];
+    int n;
+
+    n = __memp_rwh_take(buf, RWH_MAXPAIRS); /* always: forget this statement's pages */
+    if (!gbl_rep_write_hints || n == 0)
+        return;
+    const char *master = repinfo->master_host;
+    if (master == repinfo->myhost || master == db_eid_invalid || master == NULL)
+        return;
+    net_send(repinfo->netinfo, master, USER_TYPE_REP_WRITE_HINTS, buf, n * RWH_PAIR, 1);
+}
+
+/* master: queue every named page to the prefault pool (resolved by UFID only) */
+void receive_write_hints(void *ack_handle, void *usr_ptr, char *from_host, struct interned_string *from_interned,
+                         int usertype, void *dta, int dtalen, uint8_t is_tcp)
+{
+    bdb_state_type *bdb_state = usr_ptr;
+    const uint8_t *p = dta;
+
+    if (!gbl_rep_write_hints || bdb_state->repinfo->myhost != bdb_state->repinfo->master_host)
+        return;
+    for (; dtalen >= RWH_PAIR; p += RWH_PAIR, dtalen -= RWH_PAIR) {
+        const uint8_t *q = p + DB_FILE_ID_LEN;
+        unsigned int pgno = ((unsigned)q[0] << 24) | ((unsigned)q[1] << 16) | ((unsigned)q[2] << 8) | q[3];
+        enque_udppfault_ufid(bdb_state, p, pgno);
+    }
+}
+
 static void print_ping_rtt(ack_info *info)
 {
     struct timeval now, *sent, diff;

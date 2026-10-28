@@ -1956,6 +1956,11 @@ REGISTER_TUNABLE("reorder_idx_writes", "reorder_idx_writes",
                  TUNABLE_BOOLEAN, &gbl_reorder_idx_writes, EXPERIMENTAL,
                  NULL, NULL, NULL, NULL);
 
+REGISTER_TUNABLE("rep_write_hints",
+                 "Replicas tell the master which leaf pages a write statement read, so that it can prefetch them. "
+                 "(Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_rep_write_hints, EXPERIMENTAL, NULL, NULL, NULL, NULL);
+
 REGISTER_TUNABLE("disable_tpsc_tblvers",
                  "Disable table version checks for time partition schema "
                  "changes",

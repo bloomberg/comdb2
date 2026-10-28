@@ -60,6 +60,8 @@
 extern int gbl_partial_indexes;
 extern int gbl_expressions_indexes;
 extern int gbl_reorder_socksql_no_deadlock;
+void bdb_send_write_hints(bdb_state_type *bdb_state); /* replica write hints, bdb/bdb_net.c */
+int __memp_rwh_take(uint8_t *buf, int max);
 
 int gbl_allow_bplog_restarts = 600;
 int gbl_not_durable_retries = 100;
@@ -459,6 +461,7 @@ static int osql_send_del_logic(struct BtCursor *pCur, struct sql_thread *thd)
             return rc;
         }
     }
+    bdb_send_write_hints(thedb->bdb_env);
     osql->replicant_numops++;
     DEBUG_PRINT_NUMOPS();
 
@@ -592,6 +595,7 @@ static int osql_send_ins_logic(struct BtCursor *pCur, struct sql_thread *thd,
             return rc;
         }
     }
+    bdb_send_write_hints(thedb->bdb_env);
     osql->replicant_numops++;
     DEBUG_PRINT_NUMOPS();
     return SQLITE_OK;
@@ -761,6 +765,7 @@ static int osql_send_upd_logic(struct BtCursor *pCur, struct sql_thread *thd,
         }
     }
 
+    bdb_send_write_hints(thedb->bdb_env);
     osql->replicant_numops++;
     DEBUG_PRINT_NUMOPS();
     return SQLITE_OK;
@@ -1039,6 +1044,7 @@ static inline int sock_restart_retryable_rcode(int restart_rc)
 extern int gbl_is_physical_replicant;
 int osql_sock_commit(struct sqlclntstate *clnt, int type, enum trans_clntcomm sideeffects)
 {
+    __memp_rwh_take(NULL, 0); /* forget pages read but not hinted */
     osqlstate_t *osql = &clnt->osql;
     int rc = 0, rc2;
     int rcout = 0;
@@ -1362,6 +1368,7 @@ done:
  */
 int osql_sock_abort(struct sqlclntstate *clnt, int type)
 {
+    __memp_rwh_take(NULL, 0); /* forget pages read but not hinted */
     int rcout = 0;
     int rc = 0;
     int bdberr = 0;

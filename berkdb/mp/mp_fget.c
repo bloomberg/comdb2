@@ -54,6 +54,60 @@ extern __thread int send_prefault_udp;
 extern __thread DB *prefault_dbp;
 
 extern int db_is_exiting(void);
+
+/*
+ * Replica write hints (experimental, tunable rep_write_hints): while a SQL
+ * thread on a replica runs a write statement, remember the B-tree leaf pages
+ * it reads, so that the osql code can tell the master to prefetch them for
+ * its block processor (bdb/bdb_net.c bdb_send_write_hints).
+ */
+extern int gbl_rep_write_hints;
+int bb_berkdb_fingerprint_rtstats_is_sql(void);
+#define	RWH_MAX	32
+static __thread struct {
+	u_int8_t ufid[DB_FILE_ID_LEN];
+	u_int32_t pgno;
+} rwh_pg[RWH_MAX];
+static __thread int rwh_n;
+
+static void
+rwh_note(DB_MPOOLFILE *dbmfp, db_pgno_t pgno, PAGE *h)
+{
+	static const u_int8_t nofileid[DB_FILE_ID_LEN];
+
+	if (rwh_n >= RWH_MAX || TYPE(h) != P_LBTREE ||
+	    IS_REP_MASTER(dbmfp->dbenv) ||
+	    !bb_berkdb_fingerprint_rtstats_is_sql())
+		return;
+	/* temporary files (e.g. SQL temp tables) have no UFID: the master can't use them */
+	if (memcmp(dbmfp->fileid, nofileid, DB_FILE_ID_LEN) == 0)
+		return;
+	if (rwh_n > 0 && rwh_pg[rwh_n - 1].pgno == pgno &&
+	    memcmp(rwh_pg[rwh_n - 1].ufid, dbmfp->fileid, DB_FILE_ID_LEN) == 0)
+		return;
+	memcpy(rwh_pg[rwh_n].ufid, dbmfp->fileid, DB_FILE_ID_LEN);
+	rwh_pg[rwh_n++].pgno = pgno;
+}
+
+/* Copy this thread's pages as (UFID, pgno in network order) and forget them */
+int
+__memp_rwh_take(u_int8_t *buf, int max)
+{
+	int i, n;
+
+	n = rwh_n < max ? rwh_n : max;
+	for (i = 0; i < n; i++) {
+		memcpy(buf, rwh_pg[i].ufid, DB_FILE_ID_LEN);
+		buf[DB_FILE_ID_LEN] = rwh_pg[i].pgno >> 24;
+		buf[DB_FILE_ID_LEN + 1] = rwh_pg[i].pgno >> 16;
+		buf[DB_FILE_ID_LEN + 2] = rwh_pg[i].pgno >> 8;
+		buf[DB_FILE_ID_LEN + 3] = rwh_pg[i].pgno;
+		buf += DB_FILE_ID_LEN + 4;
+	}
+	rwh_n = 0;
+	return (n);
+}
+
 void udp_prefault_all(bdb_state_type * bdb_state, const unsigned char *ufid,
     unsigned int pgno);
 int send_pg_compact_req(bdb_state_type *bdb_state, int32_t fileid,
@@ -1199,6 +1253,8 @@ __memp_fget(dbmfp, pgnoaddr, flags, addrp)
 	}
 
 	ret = __memp_fget_internal(dbmfp, pgnoaddr, flags, addrp, &did_io);
+	if (gbl_rep_write_hints && ret == 0 && !LF_ISSET(DB_MPOOL_PFGET))
+		rwh_note(dbmfp, *pgnoaddr, *(PAGE **)addrp);
 	if (ret || !did_io || !prefault_dbp || !prefault_dbp->log_filename)
 		goto out;
 

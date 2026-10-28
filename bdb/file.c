@@ -1989,6 +1989,8 @@ void berkdb_receive_rtn(void *ack_handle, void *usr_ptr, char *from_host,
                         struct interned_string *from_interned, int usertype,
                         void *dta, int dtalen, uint8_t is_tcp);
 
+void receive_write_hints(void *ack_handle, void *usr_ptr, char *from_host, struct interned_string *from_interned,
+                         int usertype, void *dta, int dtalen, uint8_t is_tcp);
 void berkdb_receive_test(void *ack_handle, void *usr_ptr, char *from_host,
                          struct interned_string *from_interned, int usertype,
                          void *dta, int dtalen, uint8_t is_tcp);
@@ -2758,6 +2760,9 @@ static DB_ENV *dbenv_open(bdb_state_type *bdb_state)
 
     net_register_handler(bdb_state->repinfo->netinfo, USER_TYPE_COMMITDELAYTIMED, "commitdelaytimed",
                          berkdb_receive_rtn);
+
+    net_register_handler(bdb_state->repinfo->netinfo, USER_TYPE_REP_WRITE_HINTS, "rep_write_hints",
+                         receive_write_hints);
 
     net_register_handler(bdb_state->repinfo->netinfo,
                          USER_TYPE_MASTERCMPCONTEXTLIST, "mastercmpcontextlist",

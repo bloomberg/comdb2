@@ -882,6 +882,7 @@
 (name='rep_verify_peer_hostname', description='Reject an incoming cluster connection unless the hostname the peer claims in its connect message forward-resolves to the connection's source address. Disable only where peer hostnames do not resolve to the addresses they connect from. (Default: off)', type='BOOLEAN', value='OFF', read_only='N')
 (name='rep_verify_peer_hostname_warn', description='Run the rep_verify_peer_hostname check but admit the peer anyway, logging the ones enabling that tunable would turn away. (Default: on)', type='BOOLEAN', value='ON', read_only='N')
 (name='rep_workers', description='Size of worker pool for applying page changes on behalf of transactions. (only has effect when REP_PROCESSORS is set)', type='INTEGER', value='16', read_only='N')
+(name='rep_write_hints', description='Replicas tell the master which leaf pages a write statement read, so that it can prefetch them. (Default: off)', type='BOOLEAN', value='OFF', read_only='N')
 (name='repalwayswait', description='', type='BOOLEAN', value='OFF', read_only='N')
 (name='repchecksum', description='Enable to perform additional checksumming of replication stream. Note: Log records in replication stream already have checksums. (Default: off)', type='BOOLEAN', value='OFF', read_only='Y')
 (name='repdebug', description='Enables replication debug messages.', type='BOOLEAN', value='ON', read_only='Y')

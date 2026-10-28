@@ -5125,6 +5125,9 @@ void berkdb_receive_test(void *ack_handle, void *usr_ptr, char *from_host,
 static void udppfault_do_work_pp(struct thdpool *pool, void *work,
                                  void *thddata, int op);
 
+extern __thread int send_prefault_udp;
+extern __thread DB *prefault_dbp;
+
 /* Prefault a page named by UFID, only if this node has the file open; a file
  * it doesn't know yet, or has closed, is not opened here */
 static void udppfault_ufid_do_work(udppf_rq_t *req)
@@ -5136,7 +5139,18 @@ static void udppfault_ufid_do_work(udppf_rq_t *req)
     if (__ufid_prefault_pin(dbenv, req->ufid, &dbp, &pin) != 0)
         return;
 
+    /* On the master (replica write hints) a prefetch that reads the page from disk
+       hints the replicas, as the block processor would have done */
+    int hint = req->bdb_state->repinfo->myhost == req->bdb_state->repinfo->master_host;
+    if (hint) {
+        send_prefault_udp = 1;
+        prefault_dbp = dbp;
+    }
     touch_page(dbp->mpf, req->pgno);
+    if (hint) {
+        send_prefault_udp = 0;
+        prefault_dbp = NULL;
+    }
     if (gbl_prefault_latency > 0)
         sleep(gbl_prefault_latency);
 

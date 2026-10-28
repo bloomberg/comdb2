@@ -345,3 +345,13 @@ bb_berkdb_fingerprint_rtstats_foreach(bb_berkdb_fingerprint_rtstats_enum_fn fn, 
 	}
 	Pthread_mutex_unlock(&gbl_fingerprint_rtstats_hash_mu);
 }
+
+/* Is this thread running a SQL statement (role 'R')? */
+int
+bb_berkdb_fingerprint_rtstats_is_sql(void)
+{
+	if (!fingerprint_rtstats_inited)
+		return (0);
+	return ((intptr_t)pthread_getspecific(fingerprint_rtstats_mode_key) ==
+	    FP_RTSTATS_MODE_SQL);
+}
