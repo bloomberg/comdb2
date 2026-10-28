@@ -2947,7 +2947,7 @@ REGISTER_TUNABLE("rep_verify_peer_hostname_warn",
 
 REGISTER_TUNABLE("async_dist_commit",
                  "Hand the wait for replicant acks off to a background thread so that block "
-                 "processor threads are not tied up. (Default: off)",
+                 "processor threads are not tied up. (Default: on)",
                  TUNABLE_BOOLEAN, &gbl_async_dist_commit, 0, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("async_dist_commit_max_outstanding_trans",
                  "Maximum number of transactions that may be waiting on asynchronous distributed "
