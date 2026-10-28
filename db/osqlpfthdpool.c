@@ -85,9 +85,8 @@ static void osqlpfault_do_work_pp(struct thdpool *pool, void *work,
                                   void *thddata, int op);
 
 /* given a table, key   : enqueue a fault for the a single ix record */
-int enque_osqlpfault_oldkey(struct dbtable *db, void *key, int keylen,
-                            int ixnum, int i, unsigned long long rqid,
-                            unsigned long long seq)
+int enque_osqlpfault_oldkey(struct dbtable *db, void *key, int keylen, int ixnum, int i, unsigned long long rqid,
+                            uuid_t uuid, unsigned long long seq)
 {
     osqlpf_rq_t *qdata = NULL;
     int rc;
@@ -106,6 +105,7 @@ int enque_osqlpfault_oldkey(struct dbtable *db, void *key, int keylen,
     qdata->i = i;
     qdata->seq = seq;
     qdata->rqid = rqid;
+    comdb2uuidcpy(qdata->uuid, uuid);
 
     if ((keylen > 0) && (keylen < MAXKEYLEN + 1))
         memcpy(qdata->key, key, keylen);
@@ -120,9 +120,8 @@ int enque_osqlpfault_oldkey(struct dbtable *db, void *key, int keylen,
 }
 
 /* given a table, key   : enqueue a fault for the a single ix record */
-int enque_osqlpfault_newkey(struct dbtable *db, void *key, int keylen,
-                            int ixnum, int i, unsigned long long rqid,
-                            unsigned long long seq)
+int enque_osqlpfault_newkey(struct dbtable *db, void *key, int keylen, int ixnum, int i, unsigned long long rqid,
+                            uuid_t uuid, unsigned long long seq)
 {
     osqlpf_rq_t *qdata = NULL;
     int rc;
@@ -141,6 +140,7 @@ int enque_osqlpfault_newkey(struct dbtable *db, void *key, int keylen,
     qdata->i = i;
     qdata->seq = seq;
     qdata->rqid = rqid;
+    comdb2uuidcpy(qdata->uuid, uuid);
 
     if ((keylen > 0) && (keylen < MAXKEYLEN + 1))
         memcpy(qdata->key, key, keylen);
@@ -419,8 +419,7 @@ static void osqlpfault_do_work(struct thdpool *pool, void *work, void *thddata)
                 break;
             }
 
-            rc = enque_osqlpfault_oldkey(iq.usedb, key, keysz, ixnum, req->i,
-                                         req->rqid, req->seq);
+            rc = enque_osqlpfault_oldkey(iq.usedb, key, keysz, ixnum, req->i, req->rqid, req->uuid, req->seq);
         }
         if (fnddta)
             free(fnddta);
@@ -451,8 +450,7 @@ static void osqlpfault_do_work(struct thdpool *pool, void *work, void *thddata)
                 continue;
             }
 
-            rc = enque_osqlpfault_newkey(iq.usedb, key, keysz, ixnum, req->i,
-                                         req->rqid, req->seq);
+            rc = enque_osqlpfault_newkey(iq.usedb, key, keysz, ixnum, req->i, req->rqid, req->uuid, req->seq);
         }
     } break;
     case OSQLPFRQ_OLDDATA_OLDKEYS_NEWKEYS: {
@@ -511,8 +509,7 @@ static void osqlpfault_do_work(struct thdpool *pool, void *work, void *thddata)
                 continue;
             }
 
-            rc = enque_osqlpfault_oldkey(iq.usedb, key, keysz, ixnum, req->i,
-                                         req->rqid, req->seq);
+            rc = enque_osqlpfault_oldkey(iq.usedb, key, keysz, ixnum, req->i, req->rqid, req->uuid, req->seq);
         }
 
         free(fnddta);
@@ -538,8 +535,7 @@ static void osqlpfault_do_work(struct thdpool *pool, void *work, void *thddata)
                 continue;
             }
 
-            rc = enque_osqlpfault_newkey(iq.usedb, key, keysz, ixnum, req->i,
-                                         req->rqid, req->seq);
+            rc = enque_osqlpfault_newkey(iq.usedb, key, keysz, ixnum, req->i, req->rqid, req->uuid, req->seq);
         }
     } break;
     }
