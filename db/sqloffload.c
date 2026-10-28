@@ -615,10 +615,8 @@ int osql_clean_sqlclntstate(struct sqlclntstate *clnt)
         clnt->saved_errstr = NULL;
     }
 
-    if (clnt->dbtran.table_version_cache) {
-        bdb_free_table_version_cache(clnt->dbtran.table_version_cache);
-        clnt->dbtran.table_version_cache = NULL;
-    }
+    clnt->dbtran.schema_gen = 0;
+    clear_snap_state(&clnt->dbtran);
 
     if (clnt->dbtran.shadow_tran) {
         /* for some reason the clnt contains an unfinished

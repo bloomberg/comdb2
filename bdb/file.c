@@ -524,8 +524,10 @@ void bdb_replace_cached_index_version(bdb_state_type *target, int targetnum, bdb
 
 /* takes information about a file and constructs its filename, returns bytes
  * written not including NUL */
-static int form_file_name_ex(
+static int form_file_name_int(
     bdb_state_type *bdb_state,      /* db to open */
+    const char *filetable,          /* table name in the file name, if not
+                                     * the name of the db */
     int is_data_file,               /* see FILE_VERSIONS_FILE_TYPE_* */
     int file_num,                   /* ixnum or dtanum */
     int add_prefix,                 /* whether to add XXX. or directory to
@@ -542,7 +544,9 @@ static int form_file_name_ex(
     int offset, bdberr;
     /*we want to remove the new.SOMETHING. prefix if it's there*/
     const char *tablename;
-    if (bdb_state->origname) {
+    if (filetable) {
+        tablename = filetable;
+    } else if (bdb_state->origname) {
         tablename = bdb_state->origname;
     } else {
         tablename = bdb_unprepend_new_prefix(bdb_state->name, &bdberr);
@@ -615,6 +619,13 @@ static int form_file_name_ex(
     return orig_buflen - buflen;
 }
 
+static int form_file_name_ex(bdb_state_type *bdb_state, int is_data_file, int file_num, int add_prefix, int isstriped,
+                             int stripenum, unsigned long long version_num, char *outbuf, size_t buflen)
+{
+    return form_file_name_int(bdb_state, NULL, is_data_file, file_num, add_prefix, isstriped, stripenum, version_num,
+                              outbuf, buflen);
+}
+
 int bdb_form_file_name(bdb_state_type *bdb_state, int is_data_file, int filenum,
                        int stripenum, unsigned long long version_num,
                        char *outbuf, size_t buflen)
@@ -638,6 +649,9 @@ int bdb_form_file_name(bdb_state_type *bdb_state, int is_data_file, int filenum,
                              stripenum, version_num, outbuf, buflen);
 }
 
+/* set by bdb_open_snapshot(): file versions come from llmeta as of its LSN */
+static __thread tran_type *open_snapshot_llmeta_tran;
+
 /*figures out what the version number is (if any) and calls form_file_name_ex*/
 static int form_file_name(bdb_state_type *bdb_state, DB_TXN *tid,
                           int is_data_file, int file_num, int isstriped,
@@ -646,14 +660,17 @@ static int form_file_name(bdb_state_type *bdb_state, DB_TXN *tid,
     unsigned long long version_num;
     int rc, bdberr;
     tran_type tran = {0};
+    tran_type *ptran = &tran;
 
     tran.tid = tid;
+    if (open_snapshot_llmeta_tran)
+        ptran = open_snapshot_llmeta_tran;
 
     if (is_data_file)
-        rc = bdb_get_file_version_data(bdb_state, &tran, file_num, &version_num,
+        rc = bdb_get_file_version_data(bdb_state, ptran, file_num, &version_num,
                                        &bdberr);
     else
-        rc = bdb_get_file_version_index(bdb_state, &tran, file_num,
+        rc = bdb_get_file_version_index(bdb_state, ptran, file_num,
                                         &version_num, &bdberr);
     if (rc || bdberr != BDBERR_NOERROR) {
         if (bdberr == BDBERR_DBEMPTY) {
@@ -675,9 +692,29 @@ static int form_file_name(bdb_state_type *bdb_state, DB_TXN *tid,
                     file_num);
     }
 
-    return form_file_name_ex(bdb_state, is_data_file, file_num,
-                             1 /*add_prefix*/, isstriped, stripenum,
-                             version_num, outbuf, buflen);
+    if (!open_snapshot_llmeta_tran || !version_num)
+        return form_file_name_ex(bdb_state, is_data_file, file_num, 1 /*add_prefix*/, isstriped, stripenum,
+                                 version_num, outbuf, buflen);
+
+    /* a full rename after the snapshot renamed the file: follow the renames
+     * in the current llmeta to the file on disk, but keep the version the
+     * snapshot saw */
+    char filetable[MAXTABLELEN + 1];
+    unsigned long long file_version = version_num;
+    int found = 0;
+    while ((rc = bdb_get_renamed_file(&tran, file_version, filetable, sizeof(filetable), &file_version, &bdberr)) ==
+           0)
+        found = 1;
+    if (rc < 0)
+        logmsg(LOGMSG_ERROR, "%s: table %s: renamed file lookup failed, bdberr %d\n", __func__, bdb_state->name,
+               bdberr);
+    rc = form_file_name_int(bdb_state, found ? filetable : NULL, is_data_file, file_num, 1 /*add_prefix*/, isstriped,
+                            stripenum, found ? file_version : version_num, outbuf, buflen);
+    if (is_data_file)
+        bdb_state->dtavers[file_num] = version_num;
+    else
+        bdb_state->ixvers[file_num] = version_num;
+    return rc;
 }
 
 /* calls form_file_name for a datafile */
@@ -1038,6 +1075,9 @@ retry:
                 goto backout;
         }
 
+        if (version_num && bdb_set_renamed_file(tran, version_num, newtblname, new_version_num, bdberr))
+            goto backout;
+
         /*update the file's version*/
         bdb_state->name = newtblname;
         if (bdb_new_file_version_data(bdb_state, tran, dtanum, new_version_num,
@@ -1082,6 +1122,8 @@ retry:
                     __func__, oldname, newname);
             goto backout;
         }
+        if (version_num && bdb_set_renamed_file(tran, version_num, newtblname, new_version_num, bdberr))
+            goto backout;
 
         /*update version*/
         bdb_state->name = newtblname;
@@ -4407,7 +4449,8 @@ deadlock_again:
                                                &llpagesize, &tmp_bdberr);
                 if (!rc && !tmp_bdberr && llpagesize) { pagesize = llpagesize; }
 
-                if ((gbl_is_physical_replicant && physrep_ignore_table(bdb_state->name))) {
+                if (gbl_is_physical_replicant && physrep_ignore_table(bdb_state->name) &&
+                    !(flags & BDB_OPEN_SNAPSHOT)) {
                     char new[PATH_MAX];
                     print(bdb_state, "truncating ignored table %s\n", bdb_trans(tmpname, new));
                     rc = truncate(bdb_trans(tmpname, new), pagesize * 2);
@@ -4430,7 +4473,7 @@ deadlock_again:
                 do {
                     if (iter != 0)
                         poll(0, 0, 100);
-                    if (dtanum == 0 /* not blob */
+                    if (dtanum == 0 /* not blob */ && !(flags & BDB_OPEN_SNAPSHOT)
                         && strncasecmp(bdb_state->name, "sqlite_stat", 11) != 0)
                         /* don't compact sqlite_stat tables */
                         db_flags |= DB_OLCOMPACT;
@@ -4473,7 +4516,7 @@ deadlock_again:
             }
 
             /* Don't print this trace during schemachange */
-            if (!get_schema_change_in_progress(__func__, __LINE__)) {
+            if (!(flags & BDB_OPEN_SNAPSHOT) && !get_schema_change_in_progress(__func__, __LINE__)) {
                 int calc_pgsz = calc_pagesize(bdb_state->attr->pagesizedta, bdb_state->lrl);
                 if (calc_pgsz > x) {
                     logmsg(LOGMSG_WARN, "%s: Warning: Table %s has non-optimal page size. "
@@ -4818,7 +4861,7 @@ deadlock_again:
     /* For dtastripe find our highest genid so we can set the cmp context
      * appropriately.  This is a bug fix and an optimisation since it faults
      * in the insertion end of the btree, woohoo! */
-    if (bdbtype == BDBTYPE_TABLE) {
+    if (bdbtype == BDBTYPE_TABLE && !(flags & BDB_OPEN_SNAPSHOT)) {
         unsigned long long maxgenid = 0;
         int stripe;
         unsigned long long master_cmpcontext;
@@ -6455,6 +6498,59 @@ bdb_open_more_tran(const char name[], const char dir[], int lrl, short numix,
     BDB_RELLOCK();
 
     return ret;
+}
+
+bdb_state_type *bdb_open_snapshot(const char name[], const char dir[], int lrl, short numix, const short ixlen[],
+                                  const signed char ixdups[], const signed char ixrecnum[], const signed char ixdta[],
+                                  const int ixdtalen[], const signed char ixcollattr[], const signed char ixnulls[],
+                                  int numdtafiles, bdb_state_type *parent_bdb_handle, tran_type *llmeta_tran,
+                                  int *bdberr)
+{
+    bdb_state_type *bdb_state, *ret;
+
+    *bdberr = BDBERR_NOERROR;
+
+    bdb_state = parent_bdb_handle;
+    BDB_READLOCK("bdb_open_snapshot");
+
+    open_snapshot_llmeta_tran = llmeta_tran;
+    ret = bdb_open_int(0, /* envonly */
+                       name, dir, lrl, numix, ixlen, ixdups, ixrecnum, ixdta, ixdtalen, ixcollattr, ixnulls,
+                       numdtafiles, NULL, /* bdb_attr */
+                       NULL,              /* bdb_callback */
+                       NULL,              /* usr_ptr */
+                       NULL,              /* netinfo */
+                       0,                 /* upgrade */
+                       0,                 /* create */
+                       bdberr, parent_bdb_handle, 0, /* pagesize override */
+                       BDBTYPE_TABLE, NULL, 1 /* temp: not a child */, NULL,
+                       BDB_OPEN_SKIP_SCHEMA_LK | BDB_OPEN_SNAPSHOT);
+    open_snapshot_llmeta_tran = NULL;
+    if (ret)
+        ret->snapshot_handle = 1;
+
+    BDB_RELLOCK();
+
+    if (ret == NULL && *bdberr == BDBERR_NOERROR)
+        *bdberr = BDBERR_MISC;
+    return ret;
+}
+
+void bdb_close_snapshot(bdb_state_type *handle)
+{
+    int bdberr;
+    bdb_state_type *bdb_state = handle->parent;
+
+    BDB_READLOCK("bdb_close_snapshot");
+    close_dbs(handle);
+    BDB_RELLOCK();
+
+    bdb_free(handle, &bdberr);
+}
+
+unsigned long long bdb_get_open_file_version(bdb_state_type *bdb_state, int is_data, int num)
+{
+    return is_data ? bdb_state->dtavers[num] : bdb_state->ixvers[num];
 }
 
 int get_seqnum(bdb_state_type *bdb_state, const char *host)
@@ -8625,173 +8721,6 @@ int bdb_purge_unused_files(bdb_state_type *bdb_state, tran_type *tran,
 
     free(uf_ptr);
     return rc;
-}
-
-void bdb_free_table_version_cache(table_version_cache *cache)
-{
-    if (cache->entries) {
-        free(cache->entries);
-    }
-    free(cache);
-}
-
-int bdb_init_table_version_cache(table_version_cache **cache)
-{
-    *cache = calloc(1, sizeof(table_version_cache));
-    if (!(*cache)) {
-        return ENOMEM;
-    }
-
-    return 0;
-}
-
-/* Refactor to not access berkley while holding children lock */
-int bdb_osql_cache_table_versions(bdb_state_type *bdb_state, table_version_cache *cache,
-                                  int *bdberr)
-{
-    int i = 0;
-    int retry;
-    char **tablenames;
-    int tablecount;
-    int rc;
-
-retry:
-    rc = retry = 0;
-    tablenames = NULL;
-
-    if (bdb_state->parent)
-        bdb_state = bdb_state->parent;
-
-    if (cache->entries) {
-        cache->sz = 0;
-        free(cache->entries);
-        cache->entries = NULL;
-    }
-
-    bdb_lock_children_lock(bdb_state);
-    cache->sz = tablecount = bdb_state->numchildren;
-    tablenames = (char **)calloc(sizeof(char *), tablecount);
-
-    cache->entries =
-        (unsigned long long *)calloc(tablecount, sizeof(unsigned long long));
-    if (!cache->entries) {
-        bdb_unlock_children_lock(bdb_state);
-
-        logmsg(LOGMSG_ERROR, "%s: failed to allocate %zu bytes\n", __func__,
-               sizeof(unsigned long long) * cache->sz);
-        *bdberr = BDBERR_MALLOC;
-        rc = -1;
-        goto done;
-    }
-
-    for (int i = 0; i < tablecount; i++) {
-        if (bdb_state->children[i]) {
-            tablenames[i] = strdup(bdb_state->children[i]->name);
-            cache->entries[i] = bdb_state->children[i]->version_num;
-        }
-    }
-
-    bdb_unlock_children_lock(bdb_state);
-
-    for (i = 0; i < cache->sz; i++) {
-        if (tablenames[i] == NULL)
-            continue;
-        if (cache->entries[i] == 0) {
-            /* read it */
-            rc = bdb_get_file_version_data_by_name(
-                NULL, tablenames[i], 0, &cache->entries[i], bdberr);
-            if (rc) {
-                if (*bdberr == BDBERR_FETCH_DTA) {
-                    rc = 0;
-                    *bdberr = BDBERR_NOERROR;
-                    cache->entries[i] = -1;
-                } else {
-                    logmsg(LOGMSG_ERROR, "%s: failed to read file version number "
-                                    "rc=%d bdberr=%d\n",
-                            __func__, rc, *bdberr);
-                    free(cache->entries);
-                    cache->entries = NULL;
-                    cache->sz = 0;
-                    goto done;
-                }
-            } else {
-                /*printf("Caching %s %llx\n", bdb_state->children[i]->name,
-                 * bdb_state->children[i]->version_num);*/
-            }
-        }
-    }
-
-    /* Recheck and copy back */
-    bdb_lock_children_lock(bdb_state);
-    if (bdb_state->numchildren != tablecount)
-        retry = 1;
-    for (int i = 0; i < tablecount && retry == 0; i++) {
-        if ((tablenames[i] && !bdb_state->children[i]) ||
-            (!tablenames[i] && bdb_state->children[i]) ||
-            (tablenames[i] && bdb_state->children[i] &&
-             strcmp(tablenames[i], bdb_state->children[i]->name))) {
-            retry = 1;
-            /* Update children version number if it hasn't been set (is 0) */
-        } else if (bdb_state->children[i] &&
-                   bdb_state->children[i]->version_num > 0 &&
-                   bdb_state->children[i]->version_num !=
-                       cache->entries[i]) {
-            retry = 1;
-        }
-    }
-    if (!retry) {
-        for (int i = 0; i < tablecount; i++) {
-            if (bdb_state->children[i])
-                bdb_state->children[i]->version_num =
-                    cache->entries[i];
-        }
-    }
-    bdb_unlock_children_lock(bdb_state);
-
-done:
-    if (tablenames) {
-        for (int i = 0; i < tablecount; i++) {
-            if (tablenames[i])
-                free(tablenames[i]);
-        }
-        free(tablenames);
-    }
-    if (retry != 0)
-        goto retry;
-
-    return rc;
-}
-
-int bdb_osql_check_table_version(bdb_state_type *bdb_state, table_version_cache *cache)
-{
-    int i = 0;
-    bdb_state_type *parent;
-
-    parent = bdb_state->parent;
-    assert(parent != 0);
-
-    bdb_lock_children_lock(bdb_state);
-    for (i = 0; i < parent->numchildren; i++) {
-        if (bdb_state == parent->children[i]) {
-            break;
-        }
-    }
-    if (i == parent->numchildren) /* this looks more like a locking bug */
-        i = -1;
-
-    bdb_unlock_children_lock(bdb_state);
-
-    if ((i >= 0) && (i < cache->sz) &&
-        (cache->entries[i] != 0) &&
-        (cache->entries[i] == bdb_state->version_num)) {
-        /*printf("OK %s [%d] %llx vs %llx\n", bdb_state->name, i,
-         * cache->entries[i], bdb_state->version_num);*/
-        return 0;
-    } else {
-        logmsg(LOGMSG_ERROR, "FAILED table \"%s\" changed, index=%d\n", bdb_state->name, i);
-    }
-
-    return -1;
 }
 
 int getpgsize(void *handle_)

@@ -16,6 +16,8 @@
 
 #include "schemachange.h"
 #include "sc_stripes.h"
+#include "sc_callbacks.h"
+#include "snap_catalog.h"
 
 void apply_new_stripe_settings(int newdtastripe, int newblobstripe)
 {
@@ -150,6 +152,10 @@ int do_alter_stripes_int(struct schema_change_type *s)
 
     if (open_all_dbs_tran(phys_tran) != 0)
         exit(1);
+
+    /* replicants do this in scdone_callback */
+    sc_bump_changed_gen(change_stripe, NULL);
+    snap_catalog_schema_changed();
 
     unlock_schema_lk();
 

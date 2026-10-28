@@ -83,6 +83,7 @@
 
 #include "debug_switches.h"
 #include "views.h"
+#include "snap_catalog.h"
 #include "mem.h"
 #include "comdb2_atomic.h"
 #include "logmsg.h"
@@ -1718,29 +1719,6 @@ static void reqlog_setup_begin_commit_rollback(struct sqlthdstate *thd, struct s
     log_queue_time(thd->logger, clnt);
 }
 
-int cache_table_versions(struct sqlclntstate *clnt)
-{
-    if (clnt->dbtran.table_version_cache) {
-        bdb_free_table_version_cache(clnt->dbtran.table_version_cache);
-        clnt->dbtran.table_version_cache = NULL;
-    }
-
-    int rc = bdb_init_table_version_cache(&clnt->dbtran.table_version_cache);
-    if (rc) {
-        logmsg(LOGMSG_ERROR, "%s failed initialize table verison cache rc=%d\n", __func__, rc);
-        return rc;
-    }
-
-    int bdberr;
-    rc = bdb_osql_cache_table_versions(thedb->bdb_env, clnt->dbtran.table_version_cache, &bdberr);
-    if (rc) {
-        logmsg(LOGMSG_ERROR, "%s failed to cache table versions rc=%d bdberr=%d\n", __func__, rc, bdberr);
-        return rc;
-    }
-
-    return 0;
-}
-
 static int populate_modsnap_state(struct sqlclntstate *clnt)
 {
     assert_no_schema_lk();
@@ -1765,14 +1743,6 @@ static int populate_modsnap_state(struct sqlclntstate *clnt)
         goto done;
     }
 
-    // TODO: Refactor cache_table_versions to not take in a clnt and then call it within bdb_get_modsnap_start_state
-    // so that we're holding the schema lock over less code.
-    rc = cache_table_versions(clnt);
-    if (rc) {
-        logmsg(LOGMSG_ERROR, "%s: Failed to cache table versions\n", __func__);
-        goto done;
-    }
-
     rc = bdb_register_modsnap(db->handle, clnt->modsnap_start_lsn_file, clnt->modsnap_start_lsn_offset,
                               clnt->last_checkpoint_lsn_file, clnt->last_checkpoint_lsn_offset,
                               &clnt->modsnap_registration);
@@ -1786,7 +1756,7 @@ static int populate_modsnap_state(struct sqlclntstate *clnt)
 done:
     unlock_schema_lk();
     BDB_RELLOCK();
-    return 0;
+    return rc;
 }
 
 void clear_modsnap_state(struct sqlclntstate *clnt)
@@ -2381,10 +2351,8 @@ static int do_commitrollback(struct sqlthdstate *thd, struct sqlclntstate *clnt,
         }
     }
 
-    if (clnt->dbtran.table_version_cache) {
-        bdb_free_table_version_cache(clnt->dbtran.table_version_cache);
-        clnt->dbtran.table_version_cache = NULL;
-    }
+    clnt->dbtran.schema_gen = 0;
+    clear_snap_state(&clnt->dbtran);
 
     return rc;
 }
@@ -4478,6 +4446,7 @@ static int prepare_engine(struct sqlthdstate *thd, struct sqlclntstate *clnt,
     int rc = 0;
     int got_views_lock = 0;
     int got_curtran = 0;
+    uint64_t snap_catalog_id;
 
     /* Do this here, before setting up Btree structures!
        so we can get back at our "session" information */
@@ -4487,6 +4456,16 @@ static int prepare_engine(struct sqlthdstate *thd, struct sqlclntstate *clnt,
     }
 
 check_version:
+    /* a snapshot that crossed a schema change sees the tables as they were */
+    snap_catalog_prepare(clnt, &snap_catalog_id);
+    if (thd->sqldb && thd->snap_catalog_id != snap_catalog_id) {
+        stmt_cache_reset(thd->stmt_cache);
+        sqlite3_close_serial(&thd->sqldb);
+        if (gbl_old_column_names && query_preparer_plugin && query_preparer_plugin->do_cleanup_thd) {
+            query_preparer_plugin->do_cleanup_thd(thd);
+        }
+    }
+
     if (thd->sqldb && (rc = check_thd_gen(thd, clnt, flags)) != SQLITE_OK) {
         if (rc != SQLITE_SCHEMA_REMOTE) {
             if (!recreate) {
@@ -4533,11 +4512,9 @@ check_version:
 
             views_lock();
             got_views_lock = 1;
-            if (thd->sqldb) {
-                /* we kept engine, but the versions might have changed while
-                 * we released the schema lock */
-                goto check_version;
-            }
+            /* the versions (and the snapshot catalog) might have changed
+             * while we released the schema lock */
+            goto check_version;
         }
 
         if (!thd->sqldb) {
@@ -4556,14 +4533,18 @@ check_version:
         }
 
         comdb2_reset_authstate(thd);
-        get_copy_rootpages_nolock(thd->sqlthd);
+        if (snap_catalog_id)
+            snap_catalog_copy_rootpages(clnt, thd->sqlthd);
+        else
+            get_copy_rootpages_nolock(thd->sqlthd);
+        thd->snap_catalog_id = snap_catalog_id;
         if (clnt->dbtran.cursor_tran) {
-            if (thedb->timepart_views) {
+            timepart_views_t *views = snap_catalog_id ? snap_catalog_views(clnt) : thedb->timepart_views;
+            if (views) {
                 const int latched_clnt_is_readonly = clnt->is_readonly;
                 clnt->is_readonly = 0;
                 /* how about we are gonna add the views ? */
-                rc = views_sqlite_update(thedb->timepart_views, thd->sqldb,
-                                         &xerr, 0);
+                rc = views_sqlite_update(views, thd->sqldb, &xerr, 0);
                 clnt->is_readonly = latched_clnt_is_readonly;
                 if (rc != VIEW_NOERR) {
                     logmsg(LOGMSG_FATAL,

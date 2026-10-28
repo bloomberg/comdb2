@@ -541,6 +541,26 @@ static void timepart_free_views(timepart_views_t *views)
     Pthread_rwlock_unlock(&views_lk);
 }
 
+void timepart_views_free(timepart_views_t *views)
+{
+    if (!views)
+        return;
+    timepart_free_views_unlocked(views);
+    free(views);
+}
+
+const char *timepart_views_sqlalias(timepart_views_t *views,
+                                    const char *tablename)
+{
+    /* see _table_alias_fallback() */
+    timepart_view_t *view = _get_view(views, tablename);
+    if (!view || view->rolltype != TIMEPART_ROLLOUT_TRUNCATE ||
+        view->nshards == 0 ||
+        strcasecmp(view->shards[0].tblname, tablename) == 0)
+        return NULL;
+    return view->shards[0].tblname;
+}
+
 /**
  * Delete the oldest shard
  *
@@ -2169,7 +2189,7 @@ int partition_llmeta_write(void *tran, timepart_view_t *view, int override,
             errstat_set_rcstrf(err, VIEW_ERR_EXIST,
                                "Partition %s already exists", view->name);
         else
-            errstat_set_rcstrf(err, VIEW_ERR_LLMETA,
+            errstat_set_rcstrf(err, rc == VIEW_ERR_DEADLOCK ? rc : VIEW_ERR_LLMETA,
                                "Failed to llmeta save view %s", view->name);
         goto done;
     }
@@ -2188,7 +2208,7 @@ int partition_llmeta_delete(void *tran, const char *name, struct errstat *err)
 {
     int rc = views_write_view(tran, name, NULL, 1 /*unused*/);
     if (rc != VIEW_NOERR) {
-        errstat_set_rcstrf(err, VIEW_ERR_LLMETA,
+        errstat_set_rcstrf(err, rc == VIEW_ERR_DEADLOCK ? rc : VIEW_ERR_LLMETA,
                            "Unable to remove partition %s", name);
     }
     return rc;
@@ -3406,19 +3426,27 @@ static void _extract_info(timepart_view_t *view, char **name_dup, int *period,
     comdb2uuidcpy(*source_id, view->source_id);
 }
 
-/* called for a truncate rollout before finalize commits the tran */
-int partition_truncate_callback(tran_type *tran, struct schema_change_type *s)
+/* called for a truncate rollout before finalize changes the table; a deadlock
+ * here must fail before that */
+int partition_truncate_llmeta_write(tran_type *tran, struct schema_change_type *s)
 {
     struct errstat err = {0};
     int rc;
-    int bdberr = 0;
 
     rc = partition_llmeta_write(tran, s->newpartition, 1, &err);
     if (rc) {
         logmsg(LOGMSG_ERROR, "%s Failed to write partition %s llmeta %d %s\n",
                __func__, s->timepartition_name, err.errval, err.errstr);
-        return rc;
+        return rc == VIEW_ERR_DEADLOCK ? RC_INTERNAL_RETRY : rc;
     }
+    return 0;
+}
+
+/* called for a truncate rollout after finalize, before it commits the tran */
+int partition_truncate_callback(tran_type *tran, struct schema_change_type *s)
+{
+    int rc;
+    int bdberr = 0;
 
     rc = bdb_llog_partition(thedb->bdb_env, tran, s->newpartition->name,
                             &bdberr);

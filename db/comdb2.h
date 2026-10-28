@@ -784,6 +784,12 @@ typedef struct dbtable {
     /* tableversion is an ever increasing counter which is incremented for
      * every schema change (add, alter, drop, etc.) but not for fastinit */
     unsigned long long tableversion;
+    /* gbl_schema_gen value of the last schema change that changed what a
+     * read of this table sees; see sc_bump_changed_gen() */
+    int64_t changed_gen;
+    /* set on a table as a snapshot saw it before a schema change (see
+     * snap_catalog.c); its tags are under this name in the tag hash */
+    char *tag_tablename;
 
     /* map of tag fields for schema version to curr schema */
     unsigned int * versmap[MAXVER + 1];
@@ -1837,6 +1843,7 @@ extern int gbl_default_sc_scanmode;
 extern int gbl_sc_abort;
 extern int gbl_tranmode;
 extern volatile uint32_t gbl_analyze_gen;
+extern int64_t gbl_schema_gen;
 extern volatile int gbl_views_gen;
 extern int gbl_sc_report_freq;
 extern int gbl_thrman_trace;
@@ -2150,10 +2157,15 @@ int getclientdatsize(const struct dbtable *db, char *sname);
 struct dbtable *getdbbynum(int num);
 /*look up managed db's by name*/
 struct dbtable *get_dbtable_by_name(const char *name);
+/* get_dbtable_by_name() without the tables of a snapshot (see snap_catalog.c) */
+struct dbtable *get_live_dbtable_by_name(const char *name);
 /* Lookup view by name */
 struct dbview *get_view_by_name(const char *view_name);
 /* Load all views from llmeta */
 int llmeta_load_views(struct dbenv *, void *);
+/* The views in llmeta through tran; free with free_view_hash() */
+hash_t *llmeta_read_views(void *tran);
+void free_view_hash(hash_t *view_hash);
 /*look up managed queue db's by name*/
 struct dbtable *getqueuebyname(const char *name);
 struct dbtable *getfdbbyrmtnameenv(struct dbenv *dbenv, const char *tblname);
@@ -2744,6 +2756,7 @@ int dbq_consume_goose(struct ireq *iq, void *trans);
 
 /* sql stuff */
 int create_sqlmaster_records(void *tran);
+int create_sqlmaster_record(struct dbtable *tbl, void *tran);
 int create_sqlmaster_records_flags(void *tran, uint32_t flags);
 void form_new_style_name(char *namebuf, int len, struct schema *schema,
                          const char *csctag, const char *dbname);

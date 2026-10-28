@@ -56,7 +56,15 @@ static int get_cursor_lite(bdb_state_type *bdb_state, tran_type *tran, DBC **out
     DBC *dbcp = NULL;
     int rc;
 
-    if (tran && tran->is_curtran) {
+    if (tran && tran->llmeta_snap) {
+        rc = db->cursor(db, tran->is_curtran ? NULL : tran->tid, &dbcp, DB_CUR_SNAPSHOT);
+        if (rc == 0) {
+            if (tran->is_curtran)
+                dbcp->c_replace_lockid(dbcp, tran->tid->txnid);
+            dbcp->modsnap_start_lsn = tran->llmeta_snap_lsn;
+            dbcp->last_checkpoint_lsn = tran->llmeta_snap_ckp_lsn;
+        }
+    } else if (tran && tran->is_curtran) {
         rc = db->cursor(db, NULL, &dbcp, 0);
         dbcp->c_replace_lockid(dbcp, tran->tid->txnid);
     } else {

@@ -124,6 +124,7 @@ void berk_memp_sync_alarm_ms(int);
 #include "config.h"
 
 #include "views.h"
+#include "snap_catalog.h"
 
 #include <autoanalyze.h>
 #include <cdb2_constants.h>
@@ -929,6 +930,17 @@ dbtable *get_dbtable_by_name(const char *p_name)
 {
     dbtable *p_db = NULL;
 
+    /* a snapshot that crossed a schema change sees the tables as they were */
+    if (snap_catalog_find_table(p_name, &p_db))
+        return p_db;
+
+    return get_live_dbtable_by_name(p_name);
+}
+
+dbtable *get_live_dbtable_by_name(const char *p_name)
+{
+    dbtable *p_db = NULL;
+
     Pthread_rwlock_rdlock(&thedb_lock);
     p_db = _db_hash_find(p_name);
     Pthread_rwlock_unlock(&thedb_lock);
@@ -1608,7 +1620,7 @@ static void free_dbtables(struct dbenv *dbenv)
     free(dbenv->dbs);
 }
 
-static void free_view_hash(hash_t *view_hash)
+void free_view_hash(hash_t *view_hash)
 {
     void *ent;
     unsigned int bkt;
@@ -2372,9 +2384,8 @@ static int llmeta_reload_queues(struct dbenv *dbenv)
     return rc;
 }
 
-int llmeta_load_views(struct dbenv *dbenv, void *tran)
+hash_t *llmeta_read_views(void *tran)
 {
-    int rc = 0;
     int bdberr = 0;
     char *view_names[MAX_NUM_VIEWS];
     char *view_def;
@@ -2389,7 +2400,8 @@ int llmeta_load_views(struct dbenv *dbenv, void *tran)
             LOGMSG_ERROR,
             "couldn't load view names from low level meta table (bdberr: %d)\n",
             bdberr);
-        return 1;
+        free_view_hash(view_hash);
+        return NULL;
     }
 
     for (int i = 0; i < view_count; i++) {
@@ -2397,7 +2409,6 @@ int llmeta_load_views(struct dbenv *dbenv, void *tran)
         if (!view) {
             logmsg(LOGMSG_ERROR, "%s:%d system out of memory\n", __func__,
                    __LINE__);
-            rc = 1;
             goto err;
         }
 
@@ -2411,20 +2422,28 @@ int llmeta_load_views(struct dbenv *dbenv, void *tran)
         }
 
         view->view_name = view_names[i];
+        view_names[i] = NULL;
         view->view_def = view_def;
         hash_add(view_hash, view);
     }
-
-    free_view_hash(thedb->view_hash);
-    thedb->view_hash = view_hash;
-    return 0;
+    return view_hash;
 
 err:
     for (int i = 0; i < view_count; i++) {
         free(view_names[i]);
     }
     free_view_hash(view_hash);
-    return rc;
+    return NULL;
+}
+
+int llmeta_load_views(struct dbenv *dbenv, void *tran)
+{
+    hash_t *view_hash = llmeta_read_views(tran);
+    if (view_hash == NULL)
+        return 1;
+    free_view_hash(thedb->view_hash);
+    thedb->view_hash = view_hash;
+    return 0;
 }
 
 static inline int db_get_alias(void *tran, dbtable *tbl)
@@ -6259,6 +6278,11 @@ void re_add_dbtable_to_thedb_dbs(dbtable *table)
 struct dbview *get_view_by_name(const char *view_name)
 {
     struct dbview *view;
+
+    /* a snapshot that crossed a schema change sees the views as they were */
+    if (snap_catalog_find_view(view_name, &view))
+        return view;
+
     Pthread_rwlock_wrlock(&thedb_lock);
     view = hash_find_readonly(thedb->view_hash, &view_name);
     Pthread_rwlock_unlock(&thedb_lock);

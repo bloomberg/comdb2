@@ -63,7 +63,8 @@ const char *cson_extract_str(cson_object *cson_obj, const char *param,
                                      struct errstat *err);
 static timepart_view_t *partition_deserialize_cson_value(cson_value *cson_view,
                                                          struct errstat *err);
-static timepart_views_t *_create_all_views(const char *views_str);
+static timepart_views_t *_create_all_views(const char *views_str,
+                                           int register_shards);
 
 /* this is used in the "ADDDROP" time partitions */
 char *build_createcmd_json(char **out, int *len, const char *name,
@@ -395,7 +396,21 @@ timepart_views_t *views_create_all_views(void)
         return ret;
     }
 
-    return _create_all_views(views_str);
+    return _create_all_views(views_str, 1);
+}
+
+timepart_views_t *views_create_all_views_tran(void *tran)
+{
+    char *views_str;
+    timepart_views_t *ret;
+
+    views_str = views_read_all_views_tran(tran);
+    if (!views_str)
+        return (timepart_views_t *)calloc(1, sizeof(timepart_views_t));
+
+    ret = _create_all_views(views_str, 0);
+    free(views_str);
+    return ret;
 }
 
 /* parse a user-provided json create command and update the in-memory views */
@@ -1640,7 +1655,8 @@ int convert_from_start_string(enum view_partition_period period,
 }
 
 /* convert a views configuration string in a timepart_views_t struct */
-static timepart_views_t *_create_all_views(const char *views_str)
+static timepart_views_t *_create_all_views(const char *views_str,
+                                           int register_shards)
 {
     timepart_views_t *views;
     timepart_view_t *view;
@@ -1673,8 +1689,9 @@ static timepart_views_t *_create_all_views(const char *views_str)
         bdb_attr_get(thedb->bdb_attr, BDB_ATTR_VIEWS_DFT_PREEMPT_ROLL_SECS);
     views->rollout_delete_lag =
         bdb_attr_get(thedb->bdb_attr, BDB_ATTR_VIEWS_DFT_ROLL_DELETE_LAG_SECS);
-    logmsg(LOGMSG_INFO, "Partition rollout preemption=%dsecs lag=%dsecs\n",
-           views->preemptive_rolltime, views->rollout_delete_lag);
+    if (register_shards)
+        logmsg(LOGMSG_INFO, "Partition rollout preemption=%dsecs lag=%dsecs\n",
+               views->preemptive_rolltime, views->rollout_delete_lag);
 
     cson_object_iter_init(obj, &it);
 
@@ -1707,16 +1724,18 @@ static timepart_views_t *_create_all_views(const char *views_str)
             goto done;
         }
 
-        rc = _view_register_shards(views, view, &xerr);
-        if (rc) {
-            logmsg(LOGMSG_ERROR, "Time partition error rc=%d [%s]\n",
-                   xerr.errval, xerr.errstr);
-            timepart_free_view(view);
-            view = NULL;
-            continue;
-        }
-        if (view->rolltype == TIMEPART_ROLLOUT_TRUNCATE) {
-            _view_find_current_shard(view);
+        if (register_shards) {
+            rc = _view_register_shards(views, view, &xerr);
+            if (rc) {
+                logmsg(LOGMSG_ERROR, "Time partition error rc=%d [%s]\n",
+                       xerr.errval, xerr.errstr);
+                timepart_free_view(view);
+                view = NULL;
+                continue;
+            }
+            if (view->rolltype == TIMEPART_ROLLOUT_TRUNCATE) {
+                _view_find_current_shard(view);
+            }
         }
 
         /* make sure view names are the same */
@@ -1736,7 +1755,12 @@ static timepart_views_t *_create_all_views(const char *views_str)
 done:
     if (rc != VIEW_NOERR) {
         if (views) {
-            timepart_free_views(views);
+            /* a set that is not registered is private: views_lk does not
+             * protect it, and the caller might hold it */
+            if (register_shards)
+                timepart_free_views(views);
+            else
+                timepart_free_views_unlocked(views);
 #if 0
             TODO: reinstate this abort() when code is fixed
          free(views);
@@ -1797,7 +1821,7 @@ int timepart_apply_file(const char *filename)
     if (!config)
         return VIEW_ERR_GENERIC;
 
-    views = _create_all_views(config);
+    views = _create_all_views(config, 1);
     if (!views) {
         logmsg(LOGMSG_ERROR, "%s: cannot deserialize json string\n", __func__);
         rc = VIEW_ERR_GENERIC;

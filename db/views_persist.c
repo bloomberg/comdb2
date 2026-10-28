@@ -17,18 +17,18 @@
  */
 int views_write(const char *str)
 {
-    int rc;
+    int rc, bdberr;
 
     if (str) {
         /* this is an upsert */
         rc = bdb_set_table_parameter(NULL, LLMETA_TABLE_NAME, LLMETA_PARAM_NAME,
-                                     str);
+                                     str, &bdberr);
     } else {
         /* this is a delete */
         /* TODO: llmeta reports -1 on a notfound delete...
            fix this to be differentiated from other errors */
         rc = bdb_clear_table_parameter(NULL, LLMETA_TABLE_NAME,
-                                       LLMETA_PARAM_NAME);
+                                       LLMETA_PARAM_NAME, &bdberr);
     }
 
     if (rc)
@@ -69,7 +69,7 @@ int views_read(char **pstr)
 int views_write_view(void *tran, const char *viewname, const char *str,
                      int override)
 {
-    int rc;
+    int rc, bdberr = BDBERR_NOERROR;
 
     if (str) {
         /* check if the table exists, and if it does, return error */
@@ -85,14 +85,15 @@ int views_write_view(void *tran, const char *viewname, const char *str,
             }
         }
         /* this is an upsert */
-        rc = bdb_set_table_parameter(tran, LLMETA_TABLE_NAME, viewname, str);
+        rc = bdb_set_table_parameter(tran, LLMETA_TABLE_NAME, viewname, str, &bdberr);
     } else {
         /* this is a delete */
         /* TODO: llmeta reports -1 on a notfound delete...
            fix this to be differentiated from other errors */
-        rc = bdb_clear_table_parameter(tran, LLMETA_TABLE_NAME, viewname);
+        rc = bdb_clear_table_parameter(tran, LLMETA_TABLE_NAME, viewname, &bdberr);
     }
-    rc = (rc) ? VIEW_ERR_LLMETA : VIEW_NOERR;
+    if (rc)
+        rc = (bdberr == BDBERR_DEADLOCK) ? VIEW_ERR_DEADLOCK : VIEW_ERR_LLMETA;
 
     return rc;
 }
@@ -123,12 +124,21 @@ int views_read_view(void *tran, const char *name, char **pstr)
  */
 char *views_read_all_views(void)
 {
+    return views_read_all_views_tran(NULL);
+}
+
+/**
+ * Read the llmeta cson representation of all the views through tran
+ *
+ */
+char *views_read_all_views_tran(void *tran)
+{
     char *blob = NULL;
     int blob_len = 0;
     int rc;
 
     rc =
-        bdb_get_table_csonparameters(NULL, LLMETA_TABLE_NAME, &blob, &blob_len);
+        bdb_get_table_csonparameters(tran, LLMETA_TABLE_NAME, &blob, &blob_len);
     if (rc) {
         return NULL;
     }

@@ -37,6 +37,7 @@
 #include "debug_switches.h"
 #include "alias.h"
 #include "comdb2.h"
+#include "comdb2_atomic.h"
 
 extern int gbl_maxretries;
 extern int gbl_disable_access_controls;
@@ -182,6 +183,7 @@ typedef enum {
     LLMETA_SCHEMACHANGE_LIST = 57,            /* list of all sc-s in a uuid txh */
     LLMETA_SCHEMACHANGE_STATUS_PROTOBUF = 58, /* Indicate protobuf sc */
     LLMETA_MAX_SEQNO = 59,
+    LLMETA_RENAMED_FILE = 60, /* 60 + OLD VERSION -> NEW TABLENAME + NEW VERSION */
 } llmetakey_t;
 
 struct llmeta_file_type_key {
@@ -4077,6 +4079,64 @@ int bdb_check_and_set_sequence(tran_type *t, const char *tablename, const char *
     return rc;
 }
 
+/* A full rename gives each file of the table a new name and a new version.
+ * The LLMETA_RENAMED_FILE entry of a file maps its old version to the new
+ * table name and the new version, so a snapshot that saw the old version can
+ * find the file.  File versions are unique, table names are not. */
+typedef struct {
+    int file_type;
+    char padding[4];
+    uint64_t version;
+} llmeta_renamed_file_key;
+
+enum { LLMETA_RENAMED_FILE_KEY_LEN = 4 + 4 + 8 };
+BB_COMPILE_TIME_ASSERT(llmeta_renamed_file_key_len, sizeof(llmeta_renamed_file_key) == LLMETA_RENAMED_FILE_KEY_LEN);
+
+typedef struct {
+    char tablename[LLMETA_TBLLEN + 1];
+    char padding[7];
+    uint64_t version;
+} llmeta_renamed_file_data;
+
+enum { LLMETA_RENAMED_FILE_DATA_LEN = 32 + 1 + 7 + 8 };
+BB_COMPILE_TIME_ASSERT(llmeta_renamed_file_data_len, sizeof(llmeta_renamed_file_data) == LLMETA_RENAMED_FILE_DATA_LEN);
+
+static uint8_t *llmeta_renamed_file_key_put(const llmeta_renamed_file_key *p_key, uint8_t *p_buf,
+                                            const uint8_t *p_buf_end)
+{
+    p_buf = buf_put(&(p_key->file_type), sizeof(p_key->file_type), p_buf, p_buf_end);
+    p_buf = buf_no_net_put(&(p_key->padding), sizeof(p_key->padding), p_buf, p_buf_end);
+    p_buf = buf_put(&(p_key->version), sizeof(p_key->version), p_buf, p_buf_end);
+    return p_buf;
+}
+
+static const uint8_t *llmeta_renamed_file_key_get(llmeta_renamed_file_key *p_key, const uint8_t *p_buf,
+                                                  const uint8_t *p_buf_end)
+{
+    p_buf = buf_get(&(p_key->file_type), sizeof(p_key->file_type), p_buf, p_buf_end);
+    p_buf = buf_no_net_get(&(p_key->padding), sizeof(p_key->padding), p_buf, p_buf_end);
+    p_buf = buf_get(&(p_key->version), sizeof(p_key->version), p_buf, p_buf_end);
+    return p_buf;
+}
+
+static uint8_t *llmeta_renamed_file_data_put(const llmeta_renamed_file_data *p_data, uint8_t *p_buf,
+                                             const uint8_t *p_buf_end)
+{
+    p_buf = buf_no_net_put(&(p_data->tablename), sizeof(p_data->tablename), p_buf, p_buf_end);
+    p_buf = buf_no_net_put(&(p_data->padding), sizeof(p_data->padding), p_buf, p_buf_end);
+    p_buf = buf_put(&(p_data->version), sizeof(p_data->version), p_buf, p_buf_end);
+    return p_buf;
+}
+
+static const uint8_t *llmeta_renamed_file_data_get(llmeta_renamed_file_data *p_data, const uint8_t *p_buf,
+                                                   const uint8_t *p_buf_end)
+{
+    p_buf = buf_no_net_get(&(p_data->tablename), sizeof(p_data->tablename), p_buf, p_buf_end);
+    p_buf = buf_no_net_get(&(p_data->padding), sizeof(p_data->padding), p_buf, p_buf_end);
+    p_buf = buf_get(&(p_data->version), sizeof(p_data->version), p_buf, p_buf_end);
+    return p_buf;
+}
+
 typedef struct {
     int file_type;
     char tablename[LLMETA_TBLLEN + 1];
@@ -4678,6 +4738,129 @@ int bdb_llmeta_get_sc_history(tran_type *t, sc_hist_row **hist_out, int *num,
 
     *num = cb_data.cnt;
     *hist_out = cb_data.rows;
+    return 0;
+}
+
+/* Collect the keys of the committed sc_history rows of a table.  With
+ * start_lsn set, read llmeta as of that LSN. */
+static int sc_hist_committed_keys(cursor_tran_t *curtran, const char *tablename, const DB_LSN *start_lsn,
+                                  const DB_LSN *ckp_lsn, struct llmeta_hist_key **keys_out, int *nkeys_out, int *bdberr)
+{
+    DB *db = llmeta_bdb_state->dbp_data[0][0];
+    struct llmeta_hist_key *keys = NULL;
+    int nkeys = 0, rc = 0;
+    union {
+        struct llmeta_hist_key key;
+        uint8_t buf[LLMETA_IXLEN];
+    } u = {{0}};
+    const size_t prefixlen = offsetof(struct llmeta_hist_key, pad);
+
+    *keys_out = NULL;
+    *nkeys_out = 0;
+    *bdberr = BDBERR_NOERROR;
+
+    DBC *dbc = get_cursor_for_cursortran_flags(curtran, db, start_lsn ? DB_CUR_SNAPSHOT : 0, bdberr);
+    if (dbc == NULL)
+        return -1;
+    if (start_lsn) {
+        dbc->modsnap_start_lsn = *start_lsn;
+        dbc->last_checkpoint_lsn = *ckp_lsn;
+    }
+
+    u.key.file_type = htonl(LLMETA_SCHEMACHANGE_HISTORY);
+    strncpy0(u.key.tablename, tablename, sizeof(u.key.tablename));
+
+    uint8_t prefix[sizeof(struct llmeta_hist_key)];
+    memcpy(prefix, u.buf, prefixlen);
+
+    DBT dbt_key = {0}, dbt_data = {0};
+    dbt_key.data = u.buf;
+    dbt_key.size = prefixlen;
+    dbt_key.ulen = sizeof(u.buf);
+    dbt_key.flags = DB_DBT_USERMEM;
+    dbt_data.flags = DB_DBT_REALLOC;
+
+    for (rc = dbc->c_get(dbc, &dbt_key, &dbt_data, DB_SET_RANGE); rc == 0;
+         rc = dbc->c_get(dbc, &dbt_key, &dbt_data, DB_NEXT)) {
+        if (dbt_key.size < sizeof(struct llmeta_hist_key) || memcmp(u.buf, prefix, prefixlen) != 0)
+            break;
+        sc_hist_row row = {0};
+        if (dbt_data.size < sizeof(llmeta_sc_hist_data) ||
+            llmeta_sc_hist_data_get(&row, dbt_data.data, (uint8_t *)dbt_data.data + dbt_data.size) == NULL)
+            continue;
+        if (row.status != BDB_SC_COMMITTED)
+            continue;
+        struct llmeta_hist_key *k = realloc(keys, (nkeys + 1) * sizeof(*keys));
+        if (k == NULL) {
+            rc = ENOMEM;
+            break;
+        }
+        keys = k;
+        memcpy(&keys[nkeys++], u.buf, sizeof(struct llmeta_hist_key));
+    }
+    if (rc == DB_NOTFOUND || rc == 0)
+        rc = 0;
+    else if (rc == DB_LOCK_DEADLOCK)
+        *bdberr = BDBERR_DEADLOCK;
+    else
+        *bdberr = BDBERR_MISC;
+
+    free(dbt_data.data);
+    int crc = dbc->c_close(dbc);
+    if (rc == 0 && crc) {
+        rc = crc;
+        *bdberr = (crc == DB_LOCK_DEADLOCK) ? BDBERR_DEADLOCK : BDBERR_MISC;
+    }
+    if (rc) {
+        free(keys);
+        return -1;
+    }
+    *keys_out = keys;
+    *nkeys_out = nkeys;
+    return 0;
+}
+
+/* Set *changed if a schema change of the table committed after the modsnap
+ * start LSN: a committed sc_history row exists now that was not committed at
+ * the start LSN.  ckp is the checkpoint LSN before the start LSN.  The start
+ * LSN rows are read once and kept in *start_keys / *nstart (-1 if not read
+ * yet); free them with free(). */
+int bdb_llmeta_sc_committed_since_snapshot(cursor_tran_t *curtran, const char *tablename, uint32_t start_file,
+                                           uint32_t start_offset, uint32_t ckp_file, uint32_t ckp_offset,
+                                           void **start_keys, int *nstart, int *changed, int *bdberr)
+{
+    const DB_LSN start_lsn = {.file = start_file, .offset = start_offset};
+    const DB_LSN ckp_lsn = {.file = ckp_file, .offset = ckp_offset};
+    struct llmeta_hist_key *now = NULL;
+    int nnow = 0;
+
+    *changed = 0;
+    if (sc_hist_committed_keys(curtran, tablename, NULL, NULL, &now, &nnow, bdberr))
+        return -1;
+    if (nnow == 0)
+        goto done;
+
+    if (*nstart < 0) {
+        struct llmeta_hist_key *start = NULL;
+        if (sc_hist_committed_keys(curtran, tablename, &start_lsn, &ckp_lsn, &start, nstart, bdberr)) {
+            *nstart = -1;
+            free(now);
+            return -1;
+        }
+        *start_keys = start;
+    }
+
+    const struct llmeta_hist_key *start = *start_keys;
+    for (int i = 0; i < nnow && !*changed; i++) {
+        int found = 0;
+        for (int j = 0; j < *nstart && !found; j++)
+            found = (memcmp(&now[i], &start[j], sizeof(now[i])) == 0);
+        if (!found)
+            *changed = 1;
+    }
+
+done:
+    free(now);
     return 0;
 }
 
@@ -7502,6 +7685,19 @@ int bdb_llmeta_print_record(bdb_state_type *bdb_state, void *key, int keylen,
     case LLMETA_MAX_SEQNO:
         logmsg(LOGMSG_USER, "LLMETA_MAX_SEQNO: %"PRIu64"\n", flibc_ntohll(*(int64_t *)p_buf_data));
         break;
+    case LLMETA_RENAMED_FILE: {
+        llmeta_renamed_file_key k = {0};
+        llmeta_renamed_file_data d = {{0}};
+        if (keylen < sizeof(k) || datalen < sizeof(d)) {
+            logmsg(LOGMSG_USER, "%s:%d: wrong LLMETA_RENAMED_FILE entry\n", __FILE__, __LINE__);
+            *bdberr = BDBERR_MISC;
+            return -1;
+        }
+        llmeta_renamed_file_key_get(&k, p_buf_key, p_buf_end_key);
+        llmeta_renamed_file_data_get(&d, p_buf_data, p_buf_end_data);
+        logmsg(LOGMSG_USER, "LLMETA_RENAMED_FILE: version=%016" PRIx64 " table=\"%s\" new version=%016" PRIx64 "\n",
+               k.version, d.tablename, d.version);
+    } break;
     default:
          logmsg(LOGMSG_USER, "Todo (type=%d)\n", type);
          break;
@@ -8450,7 +8646,8 @@ retry:
         return -1;
     }
 
-    trans = bdb_tran_begin(llmeta_bdb_state, ptran, &bdberr);
+    /* Write in the caller's transaction: a child of it is one more level of nesting */
+    trans = ptran ? ptran : bdb_tran_begin(llmeta_bdb_state, NULL, &bdberr);
     if (!trans) {
         if (bdberr == BDBERR_DEADLOCK) {
             int dp = gbl_llmeta_deadlock_poll;
@@ -8494,7 +8691,9 @@ retry:
         }
     }
 
-    if (!rc) {
+    if (!rc && ptran) {
+        return 0;
+    } else if (!rc) {
         rc = bdb_tran_commit(llmeta_bdb_state, trans, &bdberr);
         if (rc || bdberr != BDBERR_NOERROR) {
             if (bdberr == BDBERR_DEADLOCK && !ptran) {
@@ -8512,6 +8711,8 @@ retry:
 
             return -1;
         }
+    } else if (ptran) {
+        return -1;
     } else {
         rc = bdb_tran_abort(llmeta_bdb_state, trans, &bdberr);
         if (rc || bdberr != BDBERR_NOERROR) {
@@ -9082,50 +9283,68 @@ rep:
     return rc;
 }
 
+/* Test hook: number of blob writes in a caller's transaction to fail with BDBERR_DEADLOCK */
+int gbl_test_llmeta_blob_deadlock = 0;
+
 /* find & delete old -> add new
  * returns 0: success
  *  -1: error
  */
 static int llmeta_del_set_blob(void *parent_tran, llmetakey_t key,
                                const char *table, const char *value, int len,
-                               int deleteonly)
+                               int deleteonly, int *bdberr)
 {
 #ifdef DEBUG_LLMETA
     fprintf(stderr, "%s\n", __func__);
 #endif
-    if (llmeta_bdb_state == NULL)
+    *bdberr = BDBERR_NOERROR;
+    if (llmeta_bdb_state == NULL) {
+        *bdberr = BDBERR_MISC;
         return -1;
-    void *tran = NULL;
-    int rc, bdberr;
+    }
+    /* Write in the caller's transaction: a child of it is one more level of
+     * nesting.  On an error the caller aborts its transaction, and retries from
+     * the top level if *bdberr is BDBERR_DEADLOCK. */
+    void *tran = parent_tran;
+    int rc, abort_bdberr;
     int retry = 0;
 
-rep:
-
-    if ((tran = bdb_tran_begin(llmeta_bdb_state, parent_tran, &bdberr)) ==
-        NULL) {
-        logmsg(LOGMSG_ERROR, "%s: bdb_tran_begin bdberr:%d retries:%d\n", __func__,
-                bdberr, retry);
-        rc = bdberr;
-        goto err;
-    }
     char llkey[LLMETA_IXLEN] = {0};
     key = htonl(key);
     memcpy(llkey, &key, sizeof(key));
     if (table)
         memcpy((llkey + sizeof(key)), table, strnlen(table, LLMETA_IXLEN - sizeof(key)));
 
+    if (parent_tran && gbl_test_llmeta_blob_deadlock && ATOMIC_ADD32(gbl_test_llmeta_blob_deadlock, -1) >= 0) {
+        logmsg(LOGMSG_USER, "%s: test_llmeta_blob_deadlock: injecting a deadlock for %s\n", __func__,
+               table ? table : "(null)");
+        *bdberr = BDBERR_DEADLOCK;
+        return -1;
+    }
+
+rep:
+    *bdberr = BDBERR_NOERROR;
+    if (!parent_tran && (tran = bdb_tran_begin(llmeta_bdb_state, NULL, bdberr)) == NULL) {
+        logmsg(LOGMSG_ERROR, "%s: bdb_tran_begin bdberr:%d retries:%d\n", __func__,
+                *bdberr, retry);
+        rc = -1;
+        goto err;
+    }
+
     int fndlen;
     char *tmpstr = NULL;
     if ((rc = bdb_lite_exact_var_fetch_tran(llmeta_bdb_state, tran, llkey,
                                             (void **)&tmpstr, &fndlen,
-                                            &bdberr)) != 0) {
+                                            bdberr)) != 0) {
 
-        if (bdberr == BDBERR_FETCH_DTA) {
+        if (*bdberr == BDBERR_FETCH_DTA) {
             // not found -- just add
+            rc = 0;
+            *bdberr = BDBERR_NOERROR;
             goto add;
         }
         logmsg(LOGMSG_ERROR, "%s: bdb_lite_exact_fetch_tran rc:%d bdberr:%d\n",
-                __func__, rc, bdberr);
+                __func__, rc, *bdberr);
         goto err;
     }
 
@@ -9134,57 +9353,58 @@ rep:
     fprintf(
         stderr,
         "%s: bdb_lite_exact_fetch_tran found:%s fndlen:%d rc:%d bdberr:%d\n",
-        __func__, tmpstr, fndlen, rc, bdberr);
+        __func__, tmpstr, fndlen, rc, *bdberr);
 #endif
     free(tmpstr);
 
-    if ((rc = bdb_lite_exact_del(llmeta_bdb_state, tran, llkey, &bdberr)) !=
+    if ((rc = bdb_lite_exact_del(llmeta_bdb_state, tran, llkey, bdberr)) !=
         0) {
         logmsg(LOGMSG_ERROR, "%s: bdb_lite_exact_del rc:%d bdberr:%d\n", __func__,
-                rc, bdberr);
+                rc, *bdberr);
         goto err;
     }
 add:
     if (!deleteonly &&
         (rc = bdb_lite_add(llmeta_bdb_state, tran, (void *)value,
                            len, // include \0
-                           llkey, &bdberr)) != 0) {
+                           llkey, bdberr)) != 0) {
         logmsg(LOGMSG_ERROR, "%s: bdb_lite_add failed rc:%d bdberr:%d\n", __func__,
-                rc, bdberr);
+                rc, *bdberr);
         goto err;
     }
-    if ((rc = bdb_tran_commit(llmeta_bdb_state, tran, &bdberr)) != 0) {
+    if (!parent_tran && (rc = bdb_tran_commit(llmeta_bdb_state, tran, bdberr)) != 0) {
         logmsg(LOGMSG_ERROR, "%s bdb_tran_commit rc:%d bdberr:%d\n", __func__, rc,
-                bdberr);
+                *bdberr);
     }
     return rc;
 err:
-    if (tran && (rc = bdb_tran_abort(llmeta_bdb_state, tran, &bdberr)) != 0) {
-        logmsg(LOGMSG_ERROR, "%s bdb_tran_abort rc:%d bdberr:%d\n", __func__, rc,
-                bdberr);
-        goto out;
+    if (parent_tran)
+        return rc;
+    if (tran && bdb_tran_abort(llmeta_bdb_state, tran, &abort_bdberr) != 0) {
+        logmsg(LOGMSG_ERROR, "%s bdb_tran_abort bdberr:%d\n", __func__, abort_bdberr);
+        return rc;
     }
-    if (retry < gbl_maxretries && (bdberr == BDBERR_NOERROR || bdberr == BDBERR_DEADLOCK) && !parent_tran) {
+    if (retry < gbl_maxretries && *bdberr == BDBERR_DEADLOCK) {
         int dp = gbl_llmeta_deadlock_poll;
         if (dp > 1)
             poll(NULL, 0, rand() % dp);
         ++retry;
         goto rep;
     }
-out:
     return rc;
 }
 
 static inline int llmeta_del_blob(void *parent_tran, llmetakey_t key,
-                                  const char *table)
+                                  const char *table, int *bdberr)
 {
-    return llmeta_del_set_blob(parent_tran, key, table, NULL, 0, 1);
+    return llmeta_del_set_blob(parent_tran, key, table, NULL, 0, 1, bdberr);
 }
 
 static inline int llmeta_set_blob(void *parent_tran, llmetakey_t key,
-                                  const char *table, const char *value, int len)
+                                  const char *table, const char *value, int len,
+                                  int *bdberr)
 {
-    return llmeta_del_set_blob(parent_tran, key, table, value, len, 0);
+    return llmeta_del_set_blob(parent_tran, key, table, value, len, 0, bdberr);
 }
 
 /* return parameters for tbl into value
@@ -9197,15 +9417,15 @@ int bdb_get_table_csonparameters(tran_type *tran, const char *table,
 }
 
 int bdb_set_table_csonparameters(void *parent_tran, const char *table,
-                                 const char *value, int len)
+                                 const char *value, int len, int *bdberr)
 {
     return llmeta_set_blob(parent_tran, LLMETA_TABLE_PARAMETERS, table, value,
-                           len);
+                           len, bdberr);
 }
 
-int bdb_del_table_csonparameters(void *parent_tran, const char *table)
+int bdb_del_table_csonparameters(void *parent_tran, const char *table, int *bdberr)
 {
-    return llmeta_del_blob(parent_tran, LLMETA_TABLE_PARAMETERS, table);
+    return llmeta_del_blob(parent_tran, LLMETA_TABLE_PARAMETERS, table, bdberr);
 }
 
 #include <cson.h>
@@ -9225,6 +9445,8 @@ int bdb_get_table_parameter_tran(const char *table, const char *parameter,
     char *blob = NULL;
     int len;
     int rc = bdb_get_table_csonparameters(tran, table, &blob, &len);
+    if (rc < 0)
+        return rc;
     assert(rc == 0 || (rc == 1 && blob == NULL));
 
     if (blob == NULL)
@@ -9303,14 +9525,20 @@ int bdb_get_table_parameter(const char *table, const char *parameter,
 }
 
 int bdb_set_table_parameter(void *parent_tran, const char *table,
-                            const char *parameter, const char *value)
+                            const char *parameter, const char *value, int *bdberr)
 {
 #ifdef DEBUG_LLMETA
     fprintf(stderr, "%s()\n", __func__);
 #endif
     char *blob = NULL;
     int len;
+    *bdberr = BDBERR_NOERROR;
     int rc = bdb_get_table_csonparameters(parent_tran, table, &blob, &len);
+    if (rc < 0) {
+        logmsg(LOGMSG_ERROR, "%s: failed to read parameters of %s rc %d\n", __func__, table, rc);
+        *bdberr = BDBERR_MISC;
+        return rc;
+    }
     assert(rc == 0 || (rc == 1 && blob == NULL));
 
     cson_value *rootV = NULL;
@@ -9403,11 +9631,14 @@ int bdb_set_table_parameter(void *parent_tran, const char *table,
         logmsg(LOGMSG_ERROR, "cson_output_buffer returned rc %d", rc);
     } else if (buf.used > 2) {
         // JSON data is the first (buf.used) bytes of (buf.mem).
-        bdb_set_table_csonparameters(parent_tran, table, (const char *)buf.mem,
-                                     buf.used); // save to llmeta blob
+        rc = bdb_set_table_csonparameters(parent_tran, table, (const char *)buf.mem,
+                                          buf.used, bdberr); // save to llmeta blob
     } else {
-        bdb_del_table_csonparameters(parent_tran, table);
+        rc = bdb_del_table_csonparameters(parent_tran, table, bdberr);
     }
+    if (rc)
+        logmsg(LOGMSG_ERROR, "%s: failed to write parameters of %s rc %d bdberr %d\n", __func__, table, rc,
+               *bdberr);
 
     // Clean up
     cson_value_free(rootV);
@@ -9416,9 +9647,9 @@ int bdb_set_table_parameter(void *parent_tran, const char *table,
 }
 
 int bdb_clear_table_parameter(void *parent_tran, const char *table,
-                              const char *parameter)
+                              const char *parameter, int *bdberr)
 {
-    return bdb_set_table_parameter(parent_tran, table, parameter, NULL);
+    return bdb_set_table_parameter(parent_tran, table, parameter, NULL, bdberr);
 }
 
 /**
@@ -9426,11 +9657,11 @@ int bdb_clear_table_parameter(void *parent_tran, const char *table,
  *
  */
 int bdb_set_table_sqlalias(const char *tablename, tran_type *tran,
-                           char *newname)
+                           char *newname, int *bdberr)
 {
     int rc = 0;
 
-    rc = bdb_set_table_parameter(tran, tablename, "sqlalias", newname);
+    rc = bdb_set_table_parameter(tran, tablename, "sqlalias", newname, bdberr);
 
     return rc;
 }
@@ -9453,9 +9684,9 @@ int bdb_get_table_sqlalias_tran(const char *tablename, tran_type *tran,
  * Delete the sql alias for a table "bdb_state->name"
  *
  */
-int bdb_del_table_sqlalias_tran(const char *tablename, tran_type *tran)
+int bdb_del_table_sqlalias_tran(const char *tablename, tran_type *tran, int *bdberr)
 {
-    return bdb_set_table_parameter(tran, tablename, "sqlalias", NULL);
+    return bdb_set_table_parameter(tran, tablename, "sqlalias", NULL, bdberr);
 }
 
 struct queue_key {
@@ -11054,6 +11285,50 @@ int bdb_rename_csc2_version(tran_type *trans, const char *tblname,
     return 0;
 }
 
+int bdb_set_renamed_file(tran_type *tran, unsigned long long version, const char *newname,
+                         unsigned long long newversion, int *bdberr)
+{
+    llmeta_renamed_file_key k = {0};
+    llmeta_renamed_file_data d = {{0}};
+    uint8_t key[LLMETA_IXLEN] = {0};
+    uint8_t data[LLMETA_RENAMED_FILE_DATA_LEN];
+
+    k.file_type = LLMETA_RENAMED_FILE;
+    k.version = version;
+    strncpy0(d.tablename, newname, sizeof(d.tablename));
+    d.version = newversion;
+    llmeta_renamed_file_key_put(&k, key, key + sizeof(key));
+    llmeta_renamed_file_data_put(&d, data, data + sizeof(data));
+    return kv_put(tran, key, data, sizeof(data), bdberr);
+}
+
+/* Return 0 and the table name and the version that a rename gave the file
+ * with version, 1 if no rename changed the file, -1 on error */
+int bdb_get_renamed_file(tran_type *tran, unsigned long long version, char newname[], size_t len,
+                         unsigned long long *newversion, int *bdberr)
+{
+    llmeta_renamed_file_key k = {0};
+    llmeta_renamed_file_data d = {{0}};
+    uint8_t key[LLMETA_IXLEN] = {0};
+    uint8_t data[LLMETA_RENAMED_FILE_DATA_LEN];
+    int fndlen;
+
+    k.file_type = LLMETA_RENAMED_FILE;
+    k.version = version;
+    llmeta_renamed_file_key_put(&k, key, key + sizeof(key));
+    if (bdb_lite_exact_fetch_tran(llmeta_bdb_state, tran, key, data, sizeof(data), &fndlen, bdberr) ||
+        *bdberr != BDBERR_NOERROR)
+        return *bdberr == BDBERR_FETCH_DTA ? 1 : -1;
+    if (fndlen != sizeof(data)) {
+        *bdberr = BDBERR_DTA_MISMATCH;
+        return -1;
+    }
+    llmeta_renamed_file_data_get(&d, data, data + sizeof(data));
+    strncpy0(newname, d.tablename, len);
+    *newversion = d.version;
+    return 0;
+}
+
 /* rename the file with new version numbers */
 int bdb_rename_files(bdb_state_type *bdb_state, tran_type *tran,
                      const char *newname, int *bdberr)
@@ -11073,23 +11348,26 @@ int bdb_rename_files(bdb_state_type *bdb_state, tran_type *tran,
 
 /* rename csonparameters for table "oldname" */
 int bdb_rename_table_csonparameters(void *tran, const char *oldname,
-                                    const char *newname)
+                                    const char *newname, int *bdberr)
 {
     char *cson = NULL;
     int cson_len = 0;
     int rc;
 
+    *bdberr = BDBERR_NOERROR;
     rc = bdb_get_table_csonparameters(tran, oldname, &cson, &cson_len);
     if (rc) {
         if (rc == 1)
             rc = 0; /* not found */
+        else
+            *bdberr = BDBERR_MISC;
         goto done;
     }
-    rc = bdb_del_table_csonparameters(tran, oldname);
+    rc = bdb_del_table_csonparameters(tran, oldname, bdberr);
     if (rc) {
         goto done;
     }
-    rc = bdb_set_table_csonparameters(tran, newname, cson, cson_len);
+    rc = bdb_set_table_csonparameters(tran, newname, cson, cson_len, bdberr);
     if (rc) {
         goto done;
     }
@@ -11111,7 +11389,7 @@ int bdb_rename_table_metadata(bdb_state_type *bdb_state, tran_type *tran,
         return rc;
 
     /* rename cson parameters */
-    rc = bdb_rename_table_csonparameters(tran, bdb_state->name, newname);
+    rc = bdb_rename_table_csonparameters(tran, bdb_state->name, newname, bdberr);
     if (rc)
         return rc;
 

@@ -40,6 +40,7 @@
 #include "logmsg.h"
 #include "comdb2_atomic.h"
 #include "sc_callbacks.h"
+#include "snap_catalog.h"
 #include "views.h"
 #include "bdb_int.h"
 #include <debug_switches.h>
@@ -331,6 +332,10 @@ int llog_scdone_rename_wrapper(bdb_state_type *bdb_state,
             memcpy(mashup + oldlen, key, newlen);
         }
     }
+    /* replicants do this in scdone_callback */
+    sc_bump_changed_gen(s->done_type, s->db ? s->db : get_dbtable_by_name(s->tablename));
+    snap_catalog_schema_changed();
+
     if (!tran)
         rc = bdb_llog_scdone(bdb_state, s->done_type, mashup, oldlen + newlen,
                              1, bdberr);
@@ -379,6 +384,7 @@ static int do_finalize(ddl_t func, struct ireq *iq,
         return rc;
     }
 
+    /* snapshot transactions find schema changes through this history row */
     if (bdb_set_schema_change_status(tran, s->tablename, iq->sc_seed, sc_nrecs,
                                      NULL, 0, BDB_SC_COMMITTED, NULL,
                                      &bdberr) ||
@@ -386,6 +392,10 @@ static int do_finalize(ddl_t func, struct ireq *iq,
         logmsg(LOGMSG_ERROR,
                "%s: failed to set bdb schema change status, bdberr %d\n",
                __func__, bdberr);
+        rc = -1;
+        if (input_tran == NULL)
+            goto abort;
+        return rc;
     }
 
     if (input_tran == NULL) {

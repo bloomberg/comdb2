@@ -1,0 +1,213 @@
+#!/usr/bin/env bash
+bash -n "$0" || exit 1
+
+# A snapshot reads the tables as of its start, also when a schema change
+# commits after it starts: the table as it was, a dropped table, and no table
+# that was created later.
+
+dbname=$1
+SQL="cdb2sql ${CDB2_OPTIONS} ${dbname} default"
+ROWS=$'(i=1, j=1)\n(i=2, j=2)\n(i=3, j=3)'
+JS=$'(j=1)\n(j=2)\n(j=3)'
+n=0
+failed=0
+
+# run each line of $1; "ALLNODES <sql>" runs <sql> on every node
+run_lines() {
+    while IFS= read -r stmt; do
+        [[ -z "$stmt" ]] && continue
+        if [[ "$stmt" == "ALLNODES "* ]]; then
+            for node in ${CLUSTER:-default}; do
+                local h="--host $node"
+                [[ $node == default ]] && h=default
+                cdb2sql ${CDB2_OPTIONS} ${dbname} $h "${stmt#ALLNODES }" >/dev/null 2>&1
+            done
+            continue
+        fi
+        $SQL "$stmt" >/dev/null 2>&1 || { echo "FAIL: setup statement failed: $stmt"; exit 1; }
+    done <<< "$1"
+}
+
+# check <case> <output of the transaction> <expected>: the expected rows of
+# the statement after "select 'last'", "ERR <text>" for an error of the
+# rest of the transaction, or "OK" for no error in the transaction.  The
+# output has the rows of each statement, then a "[statement] rc 0" line;
+# errors come from stderr, so not in order.
+check() {
+    local name=$1 out=$2 exp=$3
+    local got=$(awk '/^\(last=.last.\)$/ {p = 1; next} p == 1 {p = 2; next} p && /^\[/ {print; exit} p' <<< "$out")
+    local status=$(tail -1 <<< "$got")
+    local rows=$(sed '$d' <<< "$got")
+    if [[ "$exp" == "OK" ]]; then
+        grep -q "failed with" <<< "$out" || return
+    elif [[ "$exp" == "ERR "* ]]; then
+        sed -n '/^(last=.last.)$/,$p' <<< "$out" | grep -q "failed with.*${exp#ERR }" && return
+    else
+        [[ "$status" == *"] rc 0" && "$rows" == "$exp" ]] && return
+    fi
+    echo "FAIL: $name: expected:"
+    echo "$exp"
+    echo "got:"
+    echo "$out"
+    failed=1
+}
+
+new_table() {
+    n=$((n + 1))
+    T=t$n
+    run_lines "create table $T(i int, j int)
+insert into $T values(1,1),(2,2),(3,3)"
+}
+
+# live <case> <setup> <change> <query> <expected> [<first>]: a snapshot
+# reads the table (or runs <first>), the change commits, and the snapshot
+# runs <query>; T in the arguments is the table of the case
+live() {
+    local name=$1
+    new_table
+    local setup=${2//T/$T} change=${3//T/$T} q=${4//T/$T} first=${6//T/$T}
+    run_lines "$setup"
+    local fifo=$(mktemp -u)
+    mkfifo $fifo
+    $SQL - < $fifo > out.$name 2>&1 &
+    local pid=$!
+    exec 3> $fifo
+    echo "begin" >&3
+    echo "${first:-select count(*) from $T}" >&3
+    sleep 2
+    run_lines "$change"
+    echo "select 'last' as last" >&3
+    echo "$q" >&3
+    echo "commit" >&3
+    exec 3>&-
+    wait $pid
+    rm -f $fifo
+    check live_$name "$(cat out.$name)" "$5"
+}
+
+# asof <case> <change> <query> <expected> [<setup>]: the change commits
+# after a timestamp, and a snapshot as of that timestamp runs <query>
+asof() {
+    local name=$1
+    new_table
+    local change=${2//T/$T} q=${3//T/$T} setup=${5//T/$T}
+    run_lines "$setup"
+    sleep 2
+    local ts=$($SQL --tabs "select cast(now() as text)")
+    sleep 2
+    run_lines "$change"
+    local out=$($SQL - 2>&1 <<SQLEOF
+begin transaction as of datetime $ts
+select 'last' as last
+$q
+commit
+SQLEOF
+)
+    echo "$out" > out.asof_$name
+    check asof_$name "$out" "$4"
+}
+
+SEL="select * from T order by i"
+SELJ="select j from T where j > 0 order by j"
+SELV="select * from T_v order by i"
+# every node caches the new table version before the snapshot reads again
+RC="ALLNODES select 1"
+VIEW="create view T_v as select * from T"
+
+live insert "" "insert into T values(4,4)" "$SEL" "$ROWS"
+live add_column "" "alter table T add k int" "$SEL" "$ROWS"
+live add_column_insert "" $'alter table T add k int\ninsert into T values(5,5,5)' "$SEL" "$ROWS"
+live alter_rebuild "" "alter table T { schema { int i null=yes longlong j null=yes } }" "$SEL" "$ROWS"
+live rebuild "" $'insert into T values(4,4)\nrebuild T' "$SEL" "$ROWS"
+live truncate "" $'truncate table T\ninsert into T values(9,9)' "$SEL" "$ROWS"
+live drop "" "drop table T" "$SEL" "$ROWS"
+live drop_recreate "" $'drop table T\ncreate table T(i int, j int)\ninsert into T values(100,100)' "$SEL" "$ROWS"
+live add_index "" $'insert into T values(4,4)\ncreate index T_j on T(j)' "$SELJ" "$JS"
+live drop_index "create index T_j on T(j)" $'insert into T values(4,4)\ndrop index T_j on T' "$SELJ" "$JS"
+live drop_add_index "" $'create index T_j on T(j)\ninsert into T values(9,9)\ndrop index T_j on T\ncreate index T_j2 on T(j)' \
+    "$SELJ" "$JS"
+live add_index_point "" $'update T set j = 20 where i = 2\ncreate index T_j on T(j)\n'"$RC" \
+    "select i, j from T where j = 2" "(i=2, j=2)"
+live truncate_twice $'truncate table T\ninsert into T values(1,1),(2,2),(3,3)' \
+    $'truncate table T\ninsert into T values(9,9)\n'"$RC" "$SEL" "$ROWS"
+live add_column_recache "" $'alter table T add k int\n'"$RC" "$SEL" "$ROWS"
+live rebuild_recache "" $'rebuild T\n'"$RC" "$SEL" "$ROWS"
+live truncate_recache "" $'truncate table T\n'"$RC" "$SEL" "$ROWS"
+live add_index_recache "" $'insert into T values(4,4)\ncreate index T_j on T(j)\n'"$RC" "$SELJ" "$JS"
+live drop_index_recache "create index T_j on T(j)" $'insert into T values(4,4)\ndrop index T_j on T\n'"$RC" \
+    "$SELJ" "$JS"
+# the change commits before the first read of the table
+live rebuild_before_first_read "" $'insert into T values(4,4)\nrebuild T' "$SEL" "$ROWS" "select 1"
+live unrelated_change "" "create table T_other(i int)" "$SEL" "$ROWS"
+live drop_unrelated "create table T_other(i int)" "drop table T_other" "$SEL" "$ROWS"
+live new_table "" $'create table T_new(i int)\ninsert into T_new values(7)' "select * from T_new" \
+    "ERR no such table"
+# full rename
+live rename_read_old "" "alter table T rename to T_r" "$SEL" "$ROWS"
+live rename_read_new "" "alter table T rename to T_r" "select * from T_r order by i" "ERR no such table"
+live rename_swap "" $'alter table T rename to T_r\ncreate table T(i int, j int)\ninsert into T values(50,50)' \
+    "$SEL" "$ROWS"
+live rename_other_add_column "create table T_o(i int)" $'alter table T_o rename to T_o2\nalter table T add k int' \
+    "$SEL" "$ROWS"
+# views
+live new_view "" "$VIEW" "select * from T_v" "ERR no such table"
+live drop_view "$VIEW" "drop view T_v" "$SELV" "$ROWS"
+live replace_view "$VIEW" $'drop view T_v\ncreate view T_v as select i from T' "$SELV" "$ROWS"
+live add_column_under_view "$VIEW" $'alter table T add k int\ninsert into T values(9,9,9)' "$SELV" "$ROWS"
+live rebuild_under_view "$VIEW" $'insert into T values(4,4)\nrebuild T' "$SELV" "$ROWS"
+live drop_table_under_view "$VIEW" "drop table T" "$SELV" "$ROWS"
+live rename_table_under_view "$VIEW" "alter table T rename to T_r" "$SELV" "$ROWS"
+# a write to a table as it was before a schema change goes to shadows, as
+# any write does; the commit fails with a verify error (rc 2) if the table
+# version changed and a write is left, and a rebuild keeps the version
+live write_old_table "" "rebuild T" "insert into T values(9,9)" "OK"
+live write_old_table_new_version "" "alter table T add k int" "insert into T values(9,9)" "ERR rc 2"
+live write_dropped_table "" "drop table T" "insert into T values(9,9)" "ERR was schema changed"
+live write_before_change_read "" "rebuild T" "$SEL" "$ROWS"$'\n(i=9, j=9)' "insert into T values(9,9)"
+live write_before_change_delete "" "alter table T add k int" "delete from T where i = 9" "OK" \
+    "insert into T values(9,9)"
+live write_before_change_commit "" "alter table T add k int" "select 1" "ERR rc 2" "insert into T values(9,9)"
+live write_before_drop_delete "" "drop table T" "delete from T where i = 9" "OK" "insert into T values(9,9)"
+live write_before_drop_commit "" "drop table T" "select 1" "ERR no such table" "insert into T values(9,9)"
+
+asof insert "insert into T values(4,4)" "$SEL" "$ROWS"
+asof add_column "alter table T add k int" "$SEL" "$ROWS"
+asof add_column_insert $'alter table T add k int\ninsert into T values(9,9,9)' "$SEL" "$ROWS"
+asof alter_rebuild "alter table T { schema { int i null=yes longlong j null=yes } }" "$SEL" "$ROWS"
+asof rebuild $'rebuild T\ninsert into T values(9,9)' "$SEL" "$ROWS"
+asof truncate $'truncate table T\ninsert into T values(9,9)' "$SEL" "$ROWS"
+asof drop "drop table T" "$SEL" "$ROWS"
+asof drop_recreate $'drop table T\ncreate table T(i int, j int)\ninsert into T values(100,100)' "$SEL" "$ROWS"
+asof add_index $'insert into T values(9,9)\ncreate index T_j on T(j)' "$SELJ" "$JS"
+asof drop_index $'insert into T values(4,4)\ndrop index T_j on T' "$SELJ" "$JS" "create index T_j on T(j)"
+asof drop_add_index $'create index T_j on T(j)\ninsert into T values(9,9)\ndrop index T_j on T\ncreate index T_j2 on T(j)' \
+    "$SELJ" "$JS"
+asof add_index_point $'update T set j = 20 where i = 2\ncreate index T_j on T(j)\n'"$RC" \
+    "select i, j from T where j = 2" "(i=2, j=2)"
+asof add_column_recache $'alter table T add k int\n'"$RC" "$SEL" "$ROWS"
+asof rebuild_recache $'rebuild T\n'"$RC" "$SEL" "$ROWS"
+asof truncate_recache $'truncate table T\n'"$RC" "$SEL" "$ROWS"
+asof add_index_recache $'insert into T values(4,4)\ncreate index T_j on T(j)\n'"$RC" "$SELJ" "$JS"
+asof drop_index_recache $'insert into T values(4,4)\ndrop index T_j on T\n'"$RC" "$SELJ" "$JS" \
+    "create index T_j on T(j)"
+asof unrelated_change "create table T_other(i int)" "$SEL" "$ROWS"
+asof drop_unrelated "drop table T_other" "$SEL" "$ROWS" "create table T_other(i int)"
+asof new_table "create table T_new(i int)" "select * from T_new" "ERR no such table"
+asof rename_read_old "alter table T rename to T_r" "$SEL" "$ROWS"
+asof rename_read_new "alter table T rename to T_r" "select * from T_r order by i" "ERR no such table"
+asof rename_swap $'alter table T rename to T_r\ncreate table T(i int, j int)\ninsert into T values(50,50)' \
+    "$SEL" "$ROWS"
+asof rename_other_add_column $'alter table T_o rename to T_o2\nalter table T add k int' "$SEL" "$ROWS" \
+    "create table T_o(i int)"
+asof new_view "$VIEW" "select * from T_v" "ERR no such table"
+asof drop_view "drop view T_v" "$SELV" "$ROWS" "$VIEW"
+asof replace_view $'drop view T_v\ncreate view T_v as select i from T' "$SELV" "$ROWS" "$VIEW"
+asof add_column_under_view $'alter table T add k int\ninsert into T values(9,9,9)' "$SELV" "$ROWS" "$VIEW"
+asof rebuild_under_view $'insert into T values(4,4)\nrebuild T' "$SELV" "$ROWS" "$VIEW"
+asof drop_table_under_view "drop table T" "$SELV" "$ROWS" "$VIEW"
+asof rename_table_under_view "alter table T rename to T_r" "$SELV" "$ROWS" "$VIEW"
+asof write_old_table "rebuild T" "insert into T values(9,9)" "OK"
+asof write_old_table_new_version "alter table T add k int" "insert into T values(9,9)" "ERR rc 2"
+asof write_old_table_delete "alter table T add k int" $'insert into T values(9,9)\ndelete from T where i = 9' "OK"
+
+exit $failed

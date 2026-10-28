@@ -1,0 +1,169 @@
+#!/usr/bin/env bash
+bash -n "$0" || exit 1
+
+# An llmeta parameter write in the caller's transaction that deadlocks must
+# pass the deadlock up.  test_llmeta_blob_deadlock fails the next N such writes
+# on the master with BDBERR_DEADLOCK.
+#
+# A bpfunc retries from the top of the block and succeeds.  A schema change
+# fails, and must leave every node as it was: no new shard, no dropped table or
+# data, no partition or alias change.  A rerun of the schema change succeeds.
+
+dbname=$1
+SQL="cdb2sql ${CDB2_OPTIONS} ${dbname} default"
+TABS="cdb2sql --tabs ${CDB2_OPTIONS} ${dbname} default"
+failed=0
+
+master=$($TABS 'exec procedure sys.cmd.send("bdb cluster")' | grep MASTER | cut -f1 -d":" | tr -d '[:space:]')
+MSQL="cdb2sql --tabs ${CDB2_OPTIONS} ${dbname} --host ${master}"
+[[ -z "${CLUSTER}" ]] && MSQL="$TABS"
+
+hook() {
+    $MSQL "exec procedure sys.cmd.send('test_llmeta_blob_deadlock $1')" >/dev/null
+}
+
+hook_left() {
+    $MSQL "select value from comdb2_tunables where name='test_llmeta_blob_deadlock'"
+}
+
+fail() {
+    echo "FAIL: $*"
+    failed=1
+}
+
+# the schema state and the data of one node
+node_state() {
+    local q="cdb2sql --tabs ${CDB2_OPTIONS} ${dbname}"
+    if [[ -n "${CLUSTER}" ]]; then
+        q="$q --host $1"
+    else
+        q="$q default"
+    fi
+    local tables t
+    tables=$($q "select tablename from comdb2_tables where tablename not like 'sqlite_stat%' order by 1")
+    echo "tables: $(tr '\n' ' ' <<< "$tables")"
+    echo "partitions: $($q "select name, retention from comdb2_timepartitions order by 1" | tr '\n' ' ')"
+    echo "shards: $($q "select name, shardname from comdb2_timepartshards order by 1, 2" | tr '\n' ' ')"
+    for t in $tables; do
+        echo "$t: $($q "select * from \"$t\" order by 1" | tr '\n' ' ')"
+    done
+    echo "t3a: $($q "select a from t3a" 2>/dev/null | tr '\n' ' ')"
+    $q "exec procedure sys.cmd.send('tableparams')" | sort
+}
+
+nodes=${CLUSTER:-local}
+
+all_state() {
+    local n
+    for n in $nodes; do
+        echo "== $n"
+        node_state "$n"
+    done
+}
+
+# case_ok <name> <statement> <check query> <expected output of the check query>:
+# inject one deadlock, run the statement, and check that it succeeded, that the
+# deadlock was injected, and the result
+case_ok() {
+    local name=$1 stmt=$2 q=$3 exp=$4 out got left
+    hook 1
+    out=$($SQL "$stmt" 2>&1)
+    if [[ $? -ne 0 ]]; then
+        fail "$name: \"$stmt\" failed: $out"
+        hook 0
+        return
+    fi
+    left=$(hook_left)
+    if [[ "$left" != "0" ]]; then
+        fail "$name: the deadlock was not injected, test_llmeta_blob_deadlock is '$left'"
+    fi
+    hook 0
+    got=$($TABS "$q" 2>&1)
+    if [[ "$got" != "$exp" ]]; then
+        fail "$name: \"$q\": expected '$exp', got '$got'"
+    fi
+    echo "$name: ok"
+}
+
+# case_sc <name> <statement> <check query> <expected output of the check query>:
+# inject one deadlock, run the statement, and check that it failed, that the
+# deadlock was injected, and that no node changed; then run the statement again
+# and check that it succeeded, and the result
+case_sc() {
+    local name=$1 stmt=$2 q=$3 exp=$4 out got left before after
+    before=$(all_state)
+    if [[ $(grep -c "^tables: .*t3 " <<< "$before") -ne $(wc -w <<< "$nodes") ]]; then
+        fail "$name: cannot read the state of every node: $before"
+        return
+    fi
+    hook 1
+    out=$($SQL "$stmt" 2>&1)
+    if [[ $? -eq 0 ]]; then
+        fail "$name: \"$stmt\" succeeded with a deadlock injected"
+        hook 0
+        return
+    fi
+    echo "$name: failed with the deadlock: $out"
+    left=$(hook_left)
+    hook 0
+    if [[ "$left" != "0" ]]; then
+        fail "$name: the deadlock was not injected, test_llmeta_blob_deadlock is '$left'"
+        return
+    fi
+    after=$(all_state)
+    if [[ "$before" != "$after" ]]; then
+        fail "$name: the failed statement changed the database: $out"
+        diff <(echo "$before") <(echo "$after")
+        return
+    fi
+    out=$($SQL "$stmt" 2>&1)
+    if [[ $? -ne 0 ]]; then
+        fail "$name: \"$stmt\" failed on the rerun: $out"
+        return
+    fi
+    got=$($TABS "$q" 2>&1)
+    if [[ "$got" != "$exp" ]]; then
+        fail "$name: \"$q\": expected '$exp', got '$got'"
+    fi
+    echo "$name: ok"
+}
+
+$SQL "create table t1(a int, b int, index ab(a, b))" >/dev/null || exit 1
+$SQL "insert into t1 values(1, 1),(2, 2)" >/dev/null || exit 1
+$SQL "create table t2(a int)" >/dev/null || exit 1
+$SQL "insert into t2 values(1),(2)" >/dev/null || exit 1
+$SQL "create table t3(a int)" >/dev/null || exit 1
+$SQL "insert into t3 values(3)" >/dev/null || exit 1
+
+# bpfunc in a block processor transaction
+all_state
+
+case_ok skipscan "put skipscan disable t1" \
+    "select count(*) from comdb2_tables where tablename='t1'" "1"
+out=$($MSQL "exec procedure sys.cmd.send('tableparams')" 2>&1)
+grep -q "disableskipscan" <<< "$out" || fail "skipscan: the parameter was not written: $out"
+
+# schema change finalize, views layer
+case_sc create_partition "create table tp1(a int) partitioned by manual retention 2 start 1" \
+    "select count(*) from comdb2_timepartitions where name='tp1'" "1"
+$SQL "insert into tp1 values(1)" >/dev/null || fail "cannot insert into tp1"
+case_sc partition_table "alter table t2 partitioned by manual retention 2 start 1" \
+    "select count(*) from comdb2_timepartitions where name='t2'" "1"
+case_sc merge_partition "alter table t2 partitioned by none" \
+    "select count(*) from comdb2_timepartitions where name='t2'" "0"
+case_sc drop_partition "drop table tp1" \
+    "select count(*) from comdb2_timepartitions where name='tp1'" "0"
+
+# schema change finalize, table parameters of a dropped table
+case_sc drop_table "drop table t1" \
+    "select count(*) from comdb2_tables where tablename='t1'" "0"
+
+# schema change finalize, sql alias of an alias rename
+case_sc alias_rename "alter table t3 rename to t3a" \
+    "select a from t3a" "3"
+
+# the data of the merged table is still there
+got=$($TABS "select a from t2 order by a" | tr '\n' ' ')
+[[ "$got" == "1 2 " ]] || fail "t2: expected '1 2 ', got '$got'"
+
+exit $failed

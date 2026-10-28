@@ -62,9 +62,6 @@ typedef struct bdb_callback_tag bdb_callback_type;
 struct tran_tag;
 typedef struct tran_tag tran_type;
 
-struct table_version_cache;
-typedef struct table_version_cache table_version_cache;
-
 struct bdb_attr_tag;
 typedef struct bdb_attr_tag bdb_attr_type;
 
@@ -293,6 +290,7 @@ enum OPENFLAGS { /* NOTE: For "uint32_t flags" arg to "bdb_open_*()". */
     BDB_OPEN_ADD_QDB_FILE = 0x01,
     BDB_OPEN_DEL_QDB_FILE = 0x02,
     BDB_OPEN_SKIP_SCHEMA_LK = 0x04,
+    BDB_OPEN_SNAPSHOT = 0x08, /* read-only handle on old file versions */
 };
 
 int bdb_compr2algo(const char *a);
@@ -493,6 +491,23 @@ bdb_open_more_tran(const char name[], const char dir[], int lrl, short numix,
                    const signed char ixcollattr[], const signed char ixnulls[],
                    int numdtafiles, bdb_state_type *parent_bdb_handle,
                    tran_type *tran, uint32_t flags, int *bdberr);
+
+/* Open a read-only handle on the files of table "name" that llmeta names as
+ * of the LSN of llmeta_tran (see bdb_tran_set_llmeta_snap()).  The handle is
+ * not a child of parent_bdb_handle: close it with bdb_close_snapshot(). */
+bdb_state_type *bdb_open_snapshot(const char name[], const char dir[], int lrl, short numix, const short ixlen[],
+                                  const signed char ixdups[], const signed char ixrecnum[], const signed char ixdta[],
+                                  const int ixdtalen[], const signed char ixcollattr[], const signed char ixnulls[],
+                                  int numdtafiles, bdb_state_type *parent_bdb_handle, tran_type *llmeta_tran,
+                                  int *bdberr);
+void bdb_close_snapshot(bdb_state_type *bdb_state);
+/* llmeta version of a data/blob (is_data) or index file of an open table */
+unsigned long long bdb_get_open_file_version(bdb_state_type *bdb_state, int is_data, int num);
+
+/* Make llmeta reads through tran see llmeta as of the LSN; ckp is the
+ * checkpoint LSN before it */
+void bdb_tran_set_llmeta_snap(tran_type *tran, uint32_t lsn_file, uint32_t lsn_offset, uint32_t ckp_file,
+                              uint32_t ckp_offset);
 
 /* open an existing lite table */
 bdb_state_type *bdb_open_more_lite(const char name[], const char dir[], int lrl,
@@ -1624,6 +1639,10 @@ int bdb_get_file_version_index_by_name(tran_type *tran, const char *name,
 
 int bdb_del_file_versions(bdb_state_type *bdb_state, tran_type *input_trans,
                           int *bdberr);
+int bdb_set_renamed_file(tran_type *tran, unsigned long long version, const char *newname,
+                         unsigned long long newversion, int *bdberr);
+int bdb_get_renamed_file(tran_type *tran, unsigned long long version, char newname[], size_t len,
+                         unsigned long long *newversion, int *bdberr);
 int bdb_chg_file_versions(bdb_state_type *bdb_state, tran_type *input_trans,
                           const char *new_tbl_name, int *bdberr);
 
@@ -2122,11 +2141,6 @@ int bdb_llmeta_list_records(bdb_state_type *bdb_state, int *bdberr);
 int bdb_have_ipu(bdb_state_type *bdb_state);
 
 bdb_state_type *bdb_get_table_by_name(bdb_state_type *bdb_state, char *table);
-int bdb_osql_check_table_version(bdb_state_type *bdb_state, table_version_cache *cache);
-
-int bdb_init_table_version_cache(table_version_cache **cache);
-void bdb_free_table_version_cache(table_version_cache *cache);
-
 int bdb_get_myseqnum(bdb_state_type *bdb_state, seqnum_type *seqnum);
 
 void bdb_replace_handle(bdb_state_type *parent, int ix, bdb_state_type *handle);
@@ -2220,16 +2234,16 @@ int bdb_set_genid_format(uint64_t genid_format, int *bdberr);
 int bdb_get_table_csonparameters(tran_type *tran, const char *table,
                                  char **value, int *len);
 int bdb_set_table_csonparameters(void *parent_tran, const char *table,
-                                 const char *value, int len);
-int bdb_del_table_csonparameters(void *parent_tran, const char *table);
+                                 const char *value, int len, int *bdberr);
+int bdb_del_table_csonparameters(void *parent_tran, const char *table, int *bdberr);
 int bdb_clear_table_parameter(void *parent_tran, const char *table,
-                              const char *parameter);
+                              const char *parameter, int *bdberr);
 int bdb_get_table_parameter(const char *table, const char *parameter,
                             char **value);
 int bdb_get_table_parameter_tran(const char *table, const char *parameter,
                                  char **value, tran_type *tran);
 int bdb_set_table_parameter(void *parent_tran, const char *table,
-                            const char *parameter, const char *value);
+                            const char *parameter, const char *value, int *bdberr);
 
 int bdb_disable_page_scan_for_table(bdb_state_type *bdb_state);
 int bdb_enable_page_scan_for_table(bdb_state_type *bdb_state);
@@ -2297,7 +2311,7 @@ int bdb_table_version_upsert(bdb_state_type *bdb_state, tran_type *tran,
  *
  */
 int bdb_set_table_sqlalias(const char *tablename, tran_type *tran,
-                           char *newname);
+                           char *newname, int *bdberr);
 
 /**
  * Get the sql alias for a table "bdb_state->name"" in newname (malloced)
@@ -2310,7 +2324,7 @@ int bdb_get_table_sqlalias_tran(const char *tablename, tran_type *tran,
  * Delete the sql alias for a table "bdb_state->name
  *
  */
-int bdb_del_table_sqlalias_tran(const char *tablename, tran_type *tran);
+int bdb_del_table_sqlalias_tran(const char *tablename, tran_type *tran, int *bdberr);
 
 /**
  * Set the TABLE VERSION ENTRY for table "bdb_state->name" to "val"

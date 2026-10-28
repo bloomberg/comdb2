@@ -72,12 +72,13 @@ void reset_aa_counter(char *tblname)
     if (save_freq > 0 && thedb->master == gbl_myhostname) {
         // save updated counter
         const char *str = "0";
-        bdb_set_table_parameter(NULL, tblname, aa_counter_str, str);
+        int bdberr;
+        bdb_set_table_parameter(NULL, tblname, aa_counter_str, str, &bdberr);
 
         char epoch[30] = {0};
         sprintf(epoch, "%lld", (long long)tbl->aa_lastepoch);
-        bdb_set_table_parameter(NULL, tblname, aa_lastepoch_str, epoch);
-        bdb_set_table_parameter(NULL, tblname, aa_needs_analyze_time_str, str);
+        bdb_set_table_parameter(NULL, tblname, aa_lastepoch_str, epoch, &bdberr);
+        bdb_set_table_parameter(NULL, tblname, aa_needs_analyze_time_str, str, &bdberr);
     }
 
     BDB_RELLOCK();
@@ -455,7 +456,9 @@ void *auto_analyze_main(void *unused)
                     if (save_freq > 0) {
                         char needs_analyze_time_str[30] = {0};
                         sprintf(needs_analyze_time_str, "%"PRId64"", needs_analyze_time);
-                        bdb_set_table_parameter(NULL, tbl->tablename, aa_needs_analyze_time_str, needs_analyze_time_str);
+                        int bdberr;
+                        bdb_set_table_parameter(NULL, tbl->tablename, aa_needs_analyze_time_str, needs_analyze_time_str,
+                                                &bdberr);
                     }
                 } else {
                     time_t t1 = tbl->aa_lastepoch;
@@ -485,7 +488,8 @@ void *auto_analyze_main(void *unused)
                         tbl->tablename, newautoanalyze_counter, ctime_r_nnl((time_t *)&lastepoch, my_buf), ctime_r_nnl((time_t *)&needs_analyze_time, my_buf2));
                 char str[12] = {0};
                 sprintf(str, "%"PRId64"", newautoanalyze_counter);
-                bdb_set_table_parameter(NULL, tbl->tablename, aa_counter_str, str);
+                int bdberr;
+                bdb_set_table_parameter(NULL, tbl->tablename, aa_counter_str, str, &bdberr);
             }
         }
     }
