@@ -398,7 +398,7 @@ static void srs_tran_redispatch_cb(int fd, short what, void *arg)
         return;
     /* No worker owns the clnt any more, so finish it here as one would. The
        worker it last ran on has moved on; don't let signal_clnt_as_done touch it. */
-    clnt->thd = NULL;
+    clnt_set_thd(clnt, NULL);
     srs_tran_replay_end(clnt, 0, rc);
     sqlengine_appsock_done(clnt);
 }
@@ -417,7 +417,13 @@ static int srs_tran_redispatch(struct sqlclntstate *clnt)
     int ms = rand() % (max_ms + 1);
     struct timeval tv = {.tv_sec = ms / 1000, .tv_usec = (ms % 1000) * 1000};
     clnt_change_state(clnt, CONNECTION_RETRY_WAIT);
-    return event_base_once(get_dispatch_event_base(), -1, EV_TIMEOUT, srs_tran_redispatch_cb, clnt, &tv);
+    /* the worker may age out while we wait; don't leave clnt pointing at its stack */
+    struct sqlthdstate *thd = clnt->thd;
+    clnt_set_thd(clnt, NULL);
+    int rc = event_base_once(get_dispatch_event_base(), -1, EV_TIMEOUT, srs_tran_redispatch_cb, clnt, &tv);
+    if (rc)
+        clnt_set_thd(clnt, thd); /* not parked: this worker still finishes it */
+    return rc;
 }
 
 int srs_tran_replay(struct sqlclntstate *clnt)
