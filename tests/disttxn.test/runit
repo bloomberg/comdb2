@@ -3498,6 +3498,51 @@ function test_replay_push_write_failure
     push_write_start_failure
 }
 
+# Local txns after a 2pc txn on the same connection are no coordinators: after a (forced) master swing they
+# must resend their commit, so each restarted session waits on the master again
+function local_txn_after_disttxn
+{
+    typeset node=$(echo $CLUSTER | awk '{print $1}')
+    typeset log=$LOGDIR/${DBNAME}.${node}.db
+    typeset start=$(( $(wc -l < $log) + 1 ))
+    typeset txns=500
+    typeset stmts=""
+    typeset out=""
+    typeset x=""
+    typeset u=""
+    typeset j=1
+    while [[ $j -le $txns ]]; do
+        stmts="${stmts}begin
+insert into t1(a) values($j)
+commit
+"
+        let j=j+1
+    done
+    out=$( { echo "begin
+insert into t1(a) values(0)
+insert into $SECONDARY_DBNAME.t1(a) values(0)
+commit"
+        sleep 5
+        $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME --host $node "exec procedure sys.cmd.send('on cause_random_blkseq_replays')" >/dev/null 2>&1
+        echo "$stmts"
+    } | $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME --host $node - 2>&1)
+    typeset r=$?
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME --host $node "exec procedure sys.cmd.send('off cause_random_blkseq_replays')" >/dev/null 2>&1
+    [[ "$r" == "0" ]] || fail_exit "local_txn_after_disttxn: failed: $out"
+    typeset restarts=$(tail -n +$start $log | grep -o "osql_sock_restart [^ ]* restarting uuid=[0-9a-f-]*" | sed 's/.*uuid=//')
+    [[ -n "$restarts" ]] || fail_exit "local_txn_after_disttxn: no master swing was forced"
+    for u in $restarts; do
+        x=$(tail -n +$start $log | grep -c "osql_wait .*uuid=$u")
+        [[ "$x" -ge 2 ]] || fail_exit "local_txn_after_disttxn: $u restarted but did not resend its commit"
+    done
+    x=$($CDB2SQL_EXE -tabs $CDB2_OPTIONS $DBNAME default "select count(*) from t1")
+    [[ "$x" == "$(( txns + 1 ))" ]] || fail_exit "local_txn_after_disttxn: t1 has $x rows"
+    x=$($CDB2SQL_EXE -tabs $CDB2_OPTIONS $DBNAME default "select a from $SECONDARY_DBNAME.t1")
+    [[ "$x" == "0" ]] || fail_exit "local_txn_after_disttxn: remote has \"$x\""
+    echo "local_txn_after_disttxn: $(echo $restarts | wc -w) master swings"
+    delete_records
+}
+
 function test_verify_participant_constraint_violation
 {
     typeset cnt=0
@@ -3872,6 +3917,11 @@ function run_test
     testcase="test_replay_push_write_failure"
     testcase_preamble $testcase
     test_replay_push_write_failure
+    testcase_finish $testcase
+
+    testcase="local_txn_after_disttxn"
+    testcase_preamble $testcase
+    local_txn_after_disttxn
     testcase_finish $testcase
 
     testcase="test_verify_participant_constraint_violation"
