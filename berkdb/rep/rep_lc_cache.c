@@ -645,6 +645,15 @@ __lc_cache_get(DB_ENV *dbenv, DB_LSN *lsnp, LSN_COLLECTION * lcout,
 				    PARM_LSNP(lsnp), e->txnid);
 
 			hash_del(dbenv->lc_cache.txnid_hash, e);
+			/* The caller allocated a child list before asking; the copy below would lose it */
+			if (lcout->child_utxnids != NULL) {
+				UTXNID *elt, *tmp;
+
+				LISTC_FOR_EACH_SAFE(lcout->child_utxnids, elt, tmp, lnk) {
+					__os_free(dbenv, elt);
+				}
+				__os_free(dbenv, lcout->child_utxnids);
+			}
 			*lcout = e->lc;
 
 			/* lcout now has a copy of lc which must be freed by the caller. */
