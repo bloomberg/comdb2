@@ -4586,9 +4586,15 @@ check_version:
              * inline analyze) sees only the handful of tables it was given.
              * Time-partition views reference shards outside that set, so
              * creating them would fail -- and that failure aborts.  The client
-             * has no use for views; skip them, and leave views_gen stale so the
-             * next ordinary client on this thread rebuilds them. */
-            thd->views_gen = -1;
+             * has no use for views; skip them.
+             *
+             * Record the current views generation anyway.  Leaving it stale
+             * makes check_thd_gen() return SQLITE_SCHEMA_REMOTE on every
+             * statement, and handle_sqlite_requests() retries that forever.
+             * An ordinary client that later lands on this thread does not
+             * inherit the missing views: the rootpage swap above closes the
+             * engine, and the reopen builds them. */
+            thd->views_gen = gbl_views_gen;
         } else if (clnt->dbtran.cursor_tran) {
             if (thedb->timepart_views) {
                 const int latched_clnt_is_readonly = clnt->is_readonly;

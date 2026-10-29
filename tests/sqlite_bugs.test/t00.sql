@@ -10,8 +10,8 @@ CREATE INDEX t1x ON t1(a,b,c);
 
 ANALYZE t1;
 
-UPDATE sqlite_stat1 SET stat = '84000 3 2 1' WHERE idx LIKE '$T1X%';
-UPDATE sqlite_stat1 set stat = '84000 1' WHERE idx LIKE '$COMDB2_PK_%';
+UPDATE sqlite_stat1 SET stat = '84000 3 2 1' WHERE tbl = 't1' AND idx LIKE '$T1X%';
+UPDATE sqlite_stat1 set stat = '84000 1' WHERE tbl = 't1' AND idx LIKE '$COMDB2_PK_%';
 
 # the following DDL forces new sql engines so that new stats get picked up
 CREATE TABLE dummy(i INT)$$
