@@ -230,8 +230,12 @@ __checkpoint_save(DB_ENV *dbenv, DB_LSN *lsn, int in_recovery)
 void set_stop_mempsync_thread()
 {
 	mempsync_thread_should_stop = 1;
-	if (mempsync_thread_running)
+	if (mempsync_thread_running) {
+		/* Signal under the lock so it can't land between the flag check and the wait */
+		Pthread_mutex_lock(&mempsync_lk);
 		Pthread_cond_signal(&mempsync_wait);
+		Pthread_mutex_unlock(&mempsync_lk);
+	}
 }
 
 void *mempsync_thd(void *p)
@@ -253,7 +257,8 @@ void *mempsync_thd(void *p)
 	mempsync_thread_running = 1;
 	while (!mempsync_thread_should_stop) {
 		Pthread_mutex_lock(&mempsync_lk);
-		Pthread_cond_wait(&mempsync_wait, &mempsync_lk);
+		if (!mempsync_thread_should_stop)
+			Pthread_cond_wait(&mempsync_wait, &mempsync_lk);
 		if (mempsync_thread_should_stop) {
 			Pthread_mutex_unlock(&mempsync_lk);
 			break;
