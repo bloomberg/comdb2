@@ -910,8 +910,8 @@ static bool portmux_client_side_validation(int fd, const char *app,
                     memcpy(&features, buf, sizeof(features));
                     features = ntohl(features);
 
-                    const char *app_s = buf + sizeof(uint32_t);
-                    const char *service_s = NULL;
+                    char *app_s = buf + sizeof(uint32_t);
+                    char *service_s = NULL;
                     const char *instance_s = NULL;
 
                     char *pos = strchr(app_s, '/');

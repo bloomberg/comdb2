@@ -340,7 +340,7 @@ static int has_sql_hint_table(char *sql_hint)
 
 int has_sqlcache_hint(const char *sql, const char **pstart, const char **pend)
 {
-    char *start, *end;
+    const char *start, *end;
     start = strstr(sql, SQLCACHEHINT);
     if (pstart)
         *pstart = start;

@@ -1856,7 +1856,7 @@ sqlite3expert *sqlite3_expert_new(sqlite3 *db, char **pzErrmsg){
       // to 
       // create index "$I1_792AC8AF" on "t1" ("i", "b" , "c") INCLUDE ALL;
       // note that there is enough space because 'INCLUDE ALL' is less characters than 'collate DATACOPY'
-      if ((coll = strstr(zSql, " collate DATACOPY"))) {
+      if ((coll = (char *)strstr(zSql, " collate DATACOPY"))) {
         char *end = coll + sizeof(" collate DATACOPY") - 1;
         while(*end != ';') {
             *coll = *end;

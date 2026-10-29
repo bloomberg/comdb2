@@ -267,12 +267,12 @@ int recognize_data_file(const char *filename, uint8_t *is_data_file,
                         uint8_t *is_queue_file, uint8_t *is_queuedb_file,
                         char **out_table_name)
 {
-    char *dot_pos = strchr(filename, '.');
+    const char *dot_pos = strchr(filename, '.');
     if (dot_pos == NULL) {
         return 0;
     }
 
-    char *ext = dot_pos + 1;
+    const char *ext = dot_pos + 1;
     size_t len = dot_pos - filename;
 
     // queues are the same whether we are llmeta or not

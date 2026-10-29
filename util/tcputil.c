@@ -181,7 +181,8 @@ int tcpresolve(const char *host, struct in_addr *in, int *port)
     in_addr_t inaddr;
 
     int len;
-    char tok[128], *cc;
+    char tok[128];
+    const char *cc;
     cc = strchr(host, (int)':');
     if (cc == 0) {
         len = strlen(host);
