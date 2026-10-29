@@ -1,0 +1,73 @@
+#!/usr/bin/env bash
+bash -n "$0" || exit 1
+
+# A replicant allocates a child list for every transaction it applies.  When the
+# LC cache (cache_lc, forced on in lrl.options) handed over the transaction's
+# records, the list was overwritten and never freed.  Apply many small
+# transactions and check that no replicant's berkdb pool grows with them.
+
+[ -z "${CLUSTER}" ] && { echo "Test requires a cluster"; exit 0; }
+
+dbnm=$1
+
+set -e
+
+master=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select host from comdb2_cluster where is_master='Y'"`
+replicants=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select host from comdb2_cluster where is_master='N'"`
+
+cdb2sql ${CDB2_OPTIONS} $dbnm --host $master "create table t (i int)"
+
+# One transaction per row
+function insert_txns {
+    local first=$1 count=$2
+    seq $first $((first + count - 1)) | sed 's/.*/insert into t values(&)/' |
+        cdb2sql ${CDB2_OPTIONS} $dbnm --host $master - > /dev/null
+}
+
+function wait_replicants {
+    local rows=$1 r n i
+    for r in $replicants; do
+        for i in `seq 1 300`; do
+            n=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm --host $r "select count(*) from t"`
+            [ "$n" = "$rows" ] && break
+            sleep 1
+        done
+        [ "$n" = "$rows" ] || { echo "$r has $n rows, expected $rows" >&2; exit 1; }
+    done
+}
+
+# The apply path allocates from the main scope; per-thread scopes (recovery
+# processors and workers) step up when the replicant starts another thread
+function berkdb_used {
+    cdb2sql --tabs ${CDB2_OPTIONS} $dbnm --host $1 "select sum(used) from comdb2_memstats where name='berkdb' and scope='main'"
+}
+
+# Warm up, so that thread pools and caches are at their steady size
+warmup=5000
+insert_txns 1 $warmup
+wait_replicants $warmup
+
+declare -A before
+for r in $replicants; do
+    before[$r]=`berkdb_used $r`
+done
+
+ntxns=20000
+insert_txns $((warmup + 1)) $ntxns
+wait_replicants $((warmup + ntxns))
+
+# The leak was 32 bytes plus allocator overhead per transaction, about 1 MB here
+rc=0
+for r in $replicants; do
+    after=`berkdb_used $r`
+    grew=$((after - ${before[$r]}))
+    echo "$r: berkdb used ${before[$r]} -> $after, grew $grew bytes over $ntxns transactions"
+    if [ $grew -gt $((16 * ntxns)) ]; then
+        echo "$r: berkdb pool grew by more than 16 bytes per transaction" >&2
+        cdb2sql ${CDB2_OPTIONS} $dbnm --host $r "exec procedure sys.cmd.send('memstat berkdb')" >&2
+        rc=1
+    fi
+done
+
+[ $rc -eq 0 ] && echo "Success!"
+exit $rc
