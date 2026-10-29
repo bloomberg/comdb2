@@ -1960,8 +1960,10 @@ load_fileids(struct thdpool *thdpool, void *work, void *thddata, int thd_op)
 	MUTEX_THREAD_LOCK(dbenv, dbmp->mutexp);
 	for (dbmfp = TAILQ_FIRST(&dbmp->dbmfq); dbmfp != NULL;
 			dbmfp = TAILQ_NEXT(dbmfp, q)) {
-		if (memcmp(dbmfp->fileid, pagelist->fileid, DB_FILE_ID_LEN) == 0)
+		if (memcmp(dbmfp->fileid, pagelist->fileid, DB_FILE_ID_LEN) == 0) {
+			++dbmfp->ref;
 			break;
+		}
 	}
 	MUTEX_THREAD_UNLOCK(dbenv, dbmp->mutexp);
 
@@ -1976,6 +1978,7 @@ load_fileids(struct thdpool *thdpool, void *work, void *thddata, int thd_op)
 		for(int pages = 0 ; pages < pagelist->cnt; pages++) {
 			touch_page(dbmfp, pagelist->pages[pages]);
 		}
+		(void)__memp_fclose(dbmfp, 0);
 	}
 	unlock_schema_lk();
 
