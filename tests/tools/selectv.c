@@ -297,7 +297,7 @@ retry_add:
             snprintf(sql, sizeof(sql), "commit");
             ret = cdb2_run_statement(sqlh, sql);
             fprintf(f, "sql: %s, ret = %d.\n", sql, ret);
-            if (ret == 210 /*NOT_DURABLE*/ || ret == -1 ||
+            if (ret == CDB2ERR_NOTDURABLE || ret == -1 ||
                     ret == -109 || ret == -5) {
                 fprintf(f, "FAILED TO INSERT: RET %d, ERR %s\n", ret,
                         cdb2_errstr(sqlh));
@@ -312,7 +312,7 @@ retry_add:
             fprintf(f, "LOST TO ANOTHER THREAD\n");
         } else if (c->occ) {
             fprintf(f, "LOST TO ANOTHER THREAD, rc %d\n", ret);
-        } else if (ret == 210 /*NOT_DURABLE*/ || ret == -1 ||
+        } else if (ret == CDB2ERR_NOTDURABLE || ret == -1 ||
                 ret == CDB2ERR_VERIFY_ERROR || ret == -109 /* MASTER LOST TXN */) {
             fprintf(f, "FAILED TO UPDATE: RET %d, ERR %s\n", ret,
                     cdb2_errstr(sqlh));
