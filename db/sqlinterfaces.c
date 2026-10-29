@@ -2591,6 +2591,8 @@ int handle_sql_commitrollback(struct sqlthdstate *thd,
             strncpy(clnt->osql.xerr.errstr, "transaction too big",
                     sizeof(clnt->osql.xerr.errstr));
             rc = CDB2__ERROR_CODE__TRAN_TOO_BIG;
+        } else if (rc == SQLITE_CLIENT_CHANGENODE) {
+            rc = CDB2ERR_NOTDURABLE;
         }
 
         Pthread_mutex_lock(&clnt->wait_mutex);
