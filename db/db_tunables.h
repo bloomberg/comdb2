@@ -1985,7 +1985,7 @@ REGISTER_TUNABLE("udp_prefault_lifo", "Serve the newest UDP prefault request fir
 REGISTER_TUNABLE("rep_write_hints",
                  "Replicas send the master, in one lossy UDP packet per write statement, up to 32 leaf pages the "
                  "statement read, so that the master can prefetch them. socksql (default) transactions only; needed "
-                 "on the master too. (Default: off)",
+                 "on the master too. With udp_prefault_async, a sender thread sends them. (Default: off)",
                  TUNABLE_BOOLEAN, &gbl_rep_write_hints, EXPERIMENTAL, NULL, NULL, NULL, NULL);
 
 REGISTER_TUNABLE("disable_tpsc_tblvers",

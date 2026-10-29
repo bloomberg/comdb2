@@ -428,20 +428,32 @@ static int send_prefault(bdb_state_type *bdb_state, const char *tohost, const st
  * or, with udp_prefault_async_poll_us, polls the queue and is never woken.
  * udp_prefault_async_batch > 1 packs that many pages into one packet; replicas
  * without this change ignore such packets (length check).
+ * With rep_write_hints, a replica's write-hint packets (bdb_send_write_hints)
+ * go through the same sender: the SQL thread only copies the packet into a
+ * second small queue, and the sender sends it to the master of the moment.
  */
 int gbl_udp_prefault_async = 0;
 int gbl_udp_prefault_async_batch = 1;
 int gbl_udp_prefault_async_poll_us = 0;
 enum { UDPPF_ASYNC_QMAX = 1024, UDPPF_ASYNC_TAKE = 64, UDPPF_BATCH_MAX = 32 };
+enum { RWH_MAX = 32, UDPPF_RWH_QMAX = 64, UDPPF_RWH_TAKE = 8 }; /* replica write hints: pairs per packet, packets */
+struct udppf_rwh {
+    int n;                                        /* (UFID, pgno) pairs */
+    uint8_t buf[RWH_MAX * UDP_PREFAULT_UFID_LEN]; /* in wire format */
+};
 static struct {
     pthread_mutex_t lk;
     pthread_cond_t cd;
-    unsigned head, n; /* n queued hints from q[head] on, circular */
+    unsigned head, n;   /* n queued hints from q[head] on, circular */
+    unsigned rhead, rn; /* rn queued write-hint packets from rq[rhead] on, circular */
     int sleeping, started;
     bdb_state_type *bdb_state;
     struct udppf_hint q[UDPPF_ASYNC_QMAX];
+    struct udppf_rwh rq[UDPPF_RWH_QMAX];
 } udppf_async = {.lk = PTHREAD_MUTEX_INITIALIZER, .cd = PTHREAD_COND_INITIALIZER};
 static uint64_t udppf_async_queued, udppf_async_full, udppf_async_notmaster, udppf_async_wakeups, udppf_async_packets;
+static uint64_t udppf_async_rwh_queued, udppf_async_rwh_full, udppf_async_rwh_nomaster;
+static int send_write_hints(bdb_state_type *bdb_state, const uint8_t *buf, int n);
 
 static void udppf_async_send(bdb_state_type *bdb_state, const struct udppf_hint *h, int n)
 {
@@ -471,13 +483,14 @@ static void udppf_async_send(bdb_state_type *bdb_state, const struct udppf_hint 
 static void *udppf_async_thd(void *arg)
 {
     struct udppf_hint h[UDPPF_ASYNC_TAKE];
+    struct udppf_rwh r[UDPPF_RWH_TAKE];
     bdb_state_type *bdb_state;
-    unsigned i, n;
+    unsigned i, n, rn;
 
     comdb2_name_thread("udppf_sender");
     while (!db_is_exiting()) {
         Pthread_mutex_lock(&udppf_async.lk);
-        while (udppf_async.n == 0 && gbl_udp_prefault_async_poll_us <= 0) {
+        while (udppf_async.n == 0 && udppf_async.rn == 0 && gbl_udp_prefault_async_poll_us <= 0) {
             udppf_async.sleeping = 1;
             Pthread_cond_wait(&udppf_async.cd, &udppf_async.lk);
             ATOMIC_ADD64(udppf_async_wakeups, 1);
@@ -487,20 +500,50 @@ static void *udppf_async_thd(void *arg)
             h[i] = udppf_async.q[(udppf_async.head + i) % UDPPF_ASYNC_QMAX];
         udppf_async.head = (udppf_async.head + n) % UDPPF_ASYNC_QMAX;
         udppf_async.n -= n;
+        rn = udppf_async.rn < UDPPF_RWH_TAKE ? udppf_async.rn : UDPPF_RWH_TAKE;
+        for (i = 0; i < rn; i++)
+            r[i] = udppf_async.rq[(udppf_async.rhead + i) % UDPPF_RWH_QMAX];
+        udppf_async.rhead = (udppf_async.rhead + rn) % UDPPF_RWH_QMAX;
+        udppf_async.rn -= rn;
         bdb_state = udppf_async.bdb_state;
         Pthread_mutex_unlock(&udppf_async.lk);
+        for (i = 0; i < rn; i++) {
+            if (send_write_hints(bdb_state, r[i].buf, r[i].n) != 0)
+                ATOMIC_ADD64(udppf_async_rwh_nomaster, 1);
+        }
         if (n > 0)
             udppf_async_send(bdb_state, h, n);
-        else
+        else if (rn == 0)
             usleep(gbl_udp_prefault_async_poll_us);
     }
     return NULL;
 }
 
+/* Called with udppf_async.lk held, after queueing: unlock, then wake the sender if it sleeps, or start it */
+static void udppf_async_kick(bdb_state_type *bdb_state)
+{
+    int wake, start;
+
+    wake = udppf_async.sleeping;
+    udppf_async.sleeping = 0;
+    start = !udppf_async.started;
+    if (start) {
+        udppf_async.started = 1;
+        udppf_async.bdb_state = bdb_state;
+    }
+    Pthread_mutex_unlock(&udppf_async.lk);
+    if (wake)
+        Pthread_cond_signal(&udppf_async.cd);
+    if (start) {
+        pthread_t tid;
+        extern pthread_attr_t gbl_pthread_attr;
+        Pthread_create(&tid, &gbl_pthread_attr, udppf_async_thd, NULL);
+    }
+}
+
 static void udppf_async_enqueue(bdb_state_type *bdb_state, const unsigned char *ufid, unsigned int pgno)
 {
     struct udppf_hint *h;
-    int wake, start;
 
     Pthread_mutex_lock(&udppf_async.lk);
     if (udppf_async.n == UDPPF_ASYNC_QMAX) {
@@ -512,22 +555,27 @@ static void udppf_async_enqueue(bdb_state_type *bdb_state, const unsigned char *
     memcpy(h->ufid, ufid, DB_FILE_ID_LEN);
     h->pgno = pgno;
     udppf_async.n++;
-    wake = udppf_async.sleeping;
-    udppf_async.sleeping = 0;
-    start = !udppf_async.started;
-    if (start) {
-        udppf_async.started = 1;
-        udppf_async.bdb_state = bdb_state;
-    }
-    Pthread_mutex_unlock(&udppf_async.lk);
     ATOMIC_ADD64(udppf_async_queued, 1);
-    if (wake)
-        Pthread_cond_signal(&udppf_async.cd);
-    if (start) {
-        pthread_t tid;
-        extern pthread_attr_t gbl_pthread_attr;
-        Pthread_create(&tid, &gbl_pthread_attr, udppf_async_thd, NULL);
+    udppf_async_kick(bdb_state);
+}
+
+/* Queue one replica write-hint packet of n pairs (wire format) for the sender */
+static void udppf_async_enqueue_rwh(bdb_state_type *bdb_state, const uint8_t *buf, int n)
+{
+    struct udppf_rwh *r;
+
+    Pthread_mutex_lock(&udppf_async.lk);
+    if (udppf_async.rn == UDPPF_RWH_QMAX) {
+        Pthread_mutex_unlock(&udppf_async.lk);
+        ATOMIC_ADD64(udppf_async_rwh_full, 1);
+        return;
     }
+    r = &udppf_async.rq[(udppf_async.rhead + udppf_async.rn) % UDPPF_RWH_QMAX];
+    memcpy(r->buf, buf, n * UDP_PREFAULT_UFID_LEN);
+    r->n = n;
+    udppf_async.rn++;
+    ATOMIC_ADD64(udppf_async_rwh_queued, 1);
+    udppf_async_kick(bdb_state);
 }
 
 void udp_prefault_all(bdb_state_type *bdb_state, const unsigned char *ufid, unsigned int pgno)
@@ -566,28 +614,44 @@ void udp_prefault_all(bdb_state_type *bdb_state, const unsigned char *ufid, unsi
  * Lossy, never retried.
  */
 int gbl_rep_write_hints = 0;
-enum { RWH_MAX = 32 }; /* pairs per packet */
 int __memp_rwh_take(uint8_t *buf, int max);
 
-/* Send this thread's recorded pages to the master if send is set, and forget them */
-void bdb_send_write_hints(bdb_state_type *bdb_state, int send)
+/* Send n (UFID, pgno) pairs (wire format) to the current master in one packet; -1 if there is none to send to */
+static int send_write_hints(bdb_state_type *bdb_state, const uint8_t *buf, int n)
 {
     repinfo_type *repinfo = bdb_state->repinfo;
     const char *master = repinfo->master_host;
     ack_info *info;
+
+    if (!gbl_rep_write_hints || master == repinfo->myhost || master == db_eid_invalid || master == NULL)
+        return -1;
+    new_ack_info(info, n * UDP_PREFAULT_UFID_LEN, repinfo->myhost);
+    memcpy(ack_info_data(info), buf, n * UDP_PREFAULT_UFID_LEN);
+    info->type = USER_TYPE_REP_WRITE_HINTS;
+    udp_send(bdb_state, info, master);
+    return 0;
+}
+
+/* Send this thread's recorded pages to the master if send is set (through the sender thread with
+ * udp_prefault_async), and forget them */
+void bdb_send_write_hints(bdb_state_type *bdb_state, int send)
+{
+    repinfo_type *repinfo = bdb_state->repinfo;
+    const char *master = repinfo->master_host;
+    uint8_t buf[RWH_MAX * UDP_PREFAULT_UFID_LEN];
     int n;
 
     if (!send || !gbl_rep_write_hints || master == repinfo->myhost || master == db_eid_invalid || master == NULL) {
         __memp_rwh_take(NULL, 0);
         return;
     }
-    new_ack_info(info, RWH_MAX * UDP_PREFAULT_UFID_LEN, repinfo->myhost);
-    n = __memp_rwh_take(ack_info_data(info), RWH_MAX);
+    n = __memp_rwh_take(buf, RWH_MAX);
     if (n == 0)
         return;
-    info->type = USER_TYPE_REP_WRITE_HINTS;
-    info->len = n * UDP_PREFAULT_UFID_LEN;
-    udp_send(bdb_state, info, master);
+    if (gbl_udp_prefault_async)
+        udppf_async_enqueue_rwh(bdb_state, buf, n);
+    else
+        send_write_hints(bdb_state, buf, n);
 }
 
 static void print_ping_rtt(ack_info *info)
@@ -893,8 +957,12 @@ void udp_summary(void)
                "udp prefault async hints dropped (queue full): %" PRIu64 "\n"
                "udp prefault async hints dropped (not master): %" PRIu64 "\n"
                "udp prefault async sender wakeups: %" PRIu64 "\n"
-               "udp prefault async packets sent: %" PRIu64 "\n",
-               udppf_async_queued, udppf_async_full, udppf_async_notmaster, udppf_async_wakeups, udppf_async_packets);
+               "udp prefault async packets sent: %" PRIu64 "\n"
+               "udp prefault async write-hint packets queued: %" PRIu64 "\n"
+               "udp prefault async write-hint packets dropped (queue full): %" PRIu64 "\n"
+               "udp prefault async write-hint packets dropped (no master): %" PRIu64 "\n",
+               udppf_async_queued, udppf_async_full, udppf_async_notmaster, udppf_async_wakeups, udppf_async_packets,
+               udppf_async_rwh_queued, udppf_async_rwh_full, udppf_async_rwh_nomaster);
 }
 
 void udp_stats(unsigned int *in_sent_udp, unsigned int *in_fail_udp,
