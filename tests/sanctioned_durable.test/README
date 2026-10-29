@@ -1,0 +1,2 @@
+Verify durability and master leases count only sanctioned nodes, that nothing is durable with an
+empty sanctioned list, and that an unsanctioned node rejoins its master after it resets it

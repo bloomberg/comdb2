@@ -1,0 +1,109 @@
+#!/usr/bin/env bash
+bash -n "$0" || exit 1
+
+# Freeze 2 of 4 nodes, leaving the master with half: it keeps mastership and
+# writes, and with leases on its lease holds and its side keeps serving reads
+
+. ${TESTSROOTDIR}/tools/runit_common.sh
+. ${TESTSROOTDIR}/tools/cluster_utils.sh
+
+set -x
+nodes=($CLUSTER)
+if [[ ${#nodes[@]} -ne 4 ]]; then
+    echo "This test requires exactly 4 nodes"
+    exit 0
+fi
+export LOGDIR=$TESTDIR/logs
+leases=$(grep -c '^setattr enable_seqnum_generations 1' $DBDIR/${DBNAME}.lrl)
+
+function sql
+{
+    typeset host=$1; shift
+    timeout 30 $CDB2SQL_EXE $CDB2_OPTIONS --tabs $DBNAME --host $host "$@"
+}
+
+function master_of
+{
+    sql $1 "select host from comdb2_cluster where is_master='Y'" 2>/dev/null
+}
+
+function send_all
+{
+    for node in ${nodes[@]}; do
+        sql $node "exec procedure sys.cmd.send('$1')" >/dev/null 2>&1
+    done
+}
+
+function freeze
+{
+    typeset sig=$1 node
+    for node in ${side2[@]}; do
+        ssh $node "kill -$sig \$(cat ${TMPDIR}/${DBNAME}.pid)" </dev/null
+    done
+}
+
+function count
+{
+    grep -c "$1" $LOGDIR/${DBNAME}.$2.db
+}
+
+sql ${nodes[0]} "create table t1(a int)" || failexit "create table"
+master=$(get_master_and_fail_if_not_found) || failexit "no master"
+side1=($master) side2=()
+for node in ${nodes[@]}; do
+    [[ $node == $master ]] && continue
+    if [[ ${#side1[@]} -lt 2 ]]; then side1+=($node); else side2+=($node); fi
+done
+buddy=${side1[1]}
+sql $master "insert into t1 values(1)" || failexit "insert 1"
+
+trap "freeze CONT" EXIT
+down=$(count "cluster is unelectable" $master)
+freeze STOP
+sleep 20
+
+[[ $(count "cluster is unelectable" $master) == $down ]] || failexit "master $master downgraded with half the cluster"
+[[ $(master_of $master) == $master ]] || failexit "master $master lost mastership"
+sql $master "insert into t1 values(2)" || failexit "write on master with half the cluster failed"
+grep "Last txn was" $LOGDIR/${DBNAME}.${master}.db | tail -1 | grep -q "durable-nodes=4 durable-acked=2" || failexit "write 2 not durable on 2 of 4"
+if [[ $leases == 1 ]]; then
+    grep -q "verify_master_leases SUCCEEDED: we have 2 current leases from 4 nodes" $LOGDIR/${DBNAME}.${master}.db || failexit "no lease success with 2 of 4"
+    [[ $(sql $master "select coherent_state from comdb2_cluster where host='$buddy'") == "coherent" ]] || failexit "$buddy not coherent"
+    [[ $(sql $buddy "select count(*) from t1 where a in (1, 2)") == 2 ]] || failexit "$buddy did not serve rows 1 and 2"
+fi
+
+freeze CONT
+sleep 20
+wait_for_cluster
+for node in ${nodes[@]}; do
+    [[ $(master_of $node) == $master ]] || failexit "$node does not see master $master after thawing"
+done
+(( $(count "cluster is unelectable" $master) == down )) || failexit "master $master downgraded after thawing"
+
+if [[ $leases == 1 ]]; then
+    # Strict majority: the master gives up with half frozen, and its lease check fails meanwhile
+    send_all "bdb setattr ELECT_DISABLE_NETSPLIT_PATCH 1"
+    freeze STOP
+    downgraded=0
+    for ((i = 0; i < 60; i++)); do
+        (( $(count "cluster is unelectable" $master) > down )) && downgraded=1 && break
+        sleep 1
+    done
+    [[ $downgraded == 1 ]] || failexit "master $master kept mastership under the strict rule"
+    grep -q "verify_master_leases failed: we have 2 current leases from 4 nodes" $LOGDIR/${DBNAME}.${master}.db || failexit "lease check did not fail with 2 of 4"
+    sql $master "insert into t1 values(99)" && failexit "write succeeded under the strict rule"
+    # Don't check for write 99 after thawing: a server-side retry may still land it
+    freeze CONT
+    send_all "bdb setattr ELECT_DISABLE_NETSPLIT_PATCH 0"
+    sleep 20
+    wait_for_cluster
+    master=$(get_master_and_fail_if_not_found) || failexit "no master after thawing"
+    sql $master "insert into t1 values(3)" || failexit "insert 3"
+fi
+trap - EXIT
+
+for node in ${nodes[@]}; do
+    c=$(sql $node "select count(*) from t1 where a in (1, 2)")
+    [[ "$c" != "2" ]] && failexit "$node has $c of rows 1 and 2"
+done
+echo "Success"

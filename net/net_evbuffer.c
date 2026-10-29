@@ -1969,6 +1969,38 @@ static ssize_t readv_ciphertext(struct event_info *e)
     return eof ? -1 : rc;
 }
 
+/* Test hook: cut this node off from these hosts for debug_net_drop_secs: close
+ * connections with them on their next read and refuse new ones */
+char *gbl_debug_net_drop_from;
+int gbl_debug_net_drop_secs = 20;
+static struct interned_string *net_drop_from[32];
+static int net_drop_from_cnt;
+static time_t net_drop_until;
+
+int debug_net_drop_from_update(void *context, void *value)
+{
+    char *hosts = strdup(value), *last = NULL, *tok;
+    int cnt = 0;
+    for (tok = strtok_r(hosts, ",", &last); tok && cnt < 32; tok = strtok_r(NULL, ",", &last))
+        net_drop_from[cnt++] = intern_ptr(tok);
+    net_drop_from_cnt = cnt;
+    net_drop_until = time(NULL) + gbl_debug_net_drop_secs;
+    free(gbl_debug_net_drop_from);
+    gbl_debug_net_drop_from = strdup(value);
+    free(hosts);
+    return 0;
+}
+
+static int net_dropping(struct event_info *e)
+{
+    if (time(NULL) >= net_drop_until)
+        return 0;
+    for (int i = 0; i < net_drop_from_cnt; i++)
+        if (net_drop_from[i] == e->host_interned)
+            return 1;
+    return 0;
+}
+
 static void readcb(int fd, short what, void *data)
 {
     struct event_info *e = data;
@@ -1983,7 +2015,7 @@ static void readcb(int fd, short what, void *data)
     ** Writing my own readv wrapper; Observed max read of 4K with:
     ** ssize_t n = evbuffer_read(e->readv_buf, e->fd, -1);
     */
-    ssize_t n = e->readv(e); // -> readv_plaintext()
+    ssize_t n = net_dropping(e) ? -1 : e->readv(e); // -> readv_plaintext()
     if (n > 0) {
         check_rd_full(e);
         e->recv_at = time(NULL);
@@ -2138,6 +2170,14 @@ static void do_open(int dummyfd, short what, void *data)
 static void host_connected(struct event_info *e, int fd, int connect_msg, struct ssl_data *ssl_data)
 {
     check_base_thd();
+    if (net_dropping(e)) {
+        hprintf("DROPPING CONNECTION fd:%d\n", fd);
+        shutdown_close(fd);
+        if (ssl_data)
+            ssl_data_free(ssl_data);
+        evtimer_once(base, reconnect, e);
+        return;
+    }
     struct host_connected_info *i = host_connected_info_new(e, fd, connect_msg, ssl_data);
     struct host_connected_info *pending = e->host_connected_pending;
     if (pending) {

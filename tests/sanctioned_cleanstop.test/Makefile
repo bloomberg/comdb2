@@ -1,0 +1,11 @@
+override NUMNODESTOUSE := 4
+export NUMNODESTOUSE
+export CHECK_DB_AT_FINISH=0
+ifeq ($(TESTSROOTDIR),)
+  include ../testcase.mk
+else
+  include $(TESTSROOTDIR)/testcase.mk
+endif
+ifeq ($(TEST_TIMEOUT),)
+	export TEST_TIMEOUT=8m
+endif

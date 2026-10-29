@@ -1,0 +1,93 @@
+#!/usr/bin/env bash
+bash -n "$0" || exit 1
+
+# A cleanly stopped replicant must still count toward durability: otherwise the
+# master alone is "durable", and a failover without it loses an acked write
+
+. ${TESTSROOTDIR}/tools/runit_common.sh
+. ${TESTSROOTDIR}/tools/cluster_utils.sh
+
+export debug=1
+set -x
+
+nodes=($CLUSTER)
+if [[ ${#nodes[@]} -lt 3 ]]; then
+    echo "This test requires at least 3 nodes"
+    exit 0
+fi
+
+function sql
+{
+    typeset host=$1; shift
+    if [[ $host == default ]]; then
+        timeout 60 $CDB2SQL_EXE $CDB2_OPTIONS --tabs $DBNAME default "$@"
+    else
+        timeout 60 $CDB2SQL_EXE $CDB2_OPTIONS --tabs $DBNAME --host $host "$@"
+    fi
+}
+
+function start_node
+{
+    typeset node=$1
+    CMD="source ${TESTDIR}/replicant_vars ; ${COMDB2_EXE} $DBNAME --no-global-lrl --lrl $DBDIR/${DBNAME}.lrl -pidfile ${TMPDIR}/${DBNAME}.pid"
+    ssh -o StrictHostKeyChecking=no -tt $node ${CMD} 2>&1 </dev/null > >(gawk '{ print strftime("%H:%M:%S>"), $0; fflush(); }' >> $TESTDIR/logs/${DBNAME}.${node}.db) &
+    echo $! > ${TMPDIR}/${DBNAME}.${node}.pid
+}
+
+sql default "create table t1(a int)" || failexit "create table"
+master=$(get_master_and_fail_if_not_found) || failexit "no master"
+others=()
+for node in ${nodes[@]}; do [[ $node != $master ]] && others+=($node); done
+stopped=${others[0]} frozen=(${others[@]:1})
+sql $master "insert into t1 values(1)" || failexit "insert 1"
+sleep 2
+
+# Cleanly stop one replicant and wait for it to exit
+sql $stopped "exec procedure sys.cmd.send('exit')"
+for i in $(seq 1 60); do
+    ssh $stopped "kill -0 \$(cat ${TMPDIR}/${DBNAME}.pid)" </dev/null 2>/dev/null || break
+    sleep 1
+done
+kill -9 $(cat ${TMPDIR}/${DBNAME}.${stopped}.pid) 2>/dev/null
+sleep 2
+
+# Freeze the other replicants so only the master has the next write
+for node in ${frozen[@]}; do
+    ssh $node "kill -STOP \$(cat ${TMPDIR}/${DBNAME}.pid)" </dev/null
+done
+sql $master "insert into t1 values(2)"
+insrc=$?
+grep "Last txn was" $TESTDIR/logs/${DBNAME}.${master}.db | tail -1
+
+# Lose the master; the stopped and frozen replicants elect without it
+ssh $master "kill -9 \$(cat ${TMPDIR}/${DBNAME}.pid)" </dev/null
+kill -9 $(cat ${TMPDIR}/${DBNAME}.${master}.pid) 2>/dev/null
+(start_node $stopped) >>$TESTDIR/logs/start_node.log 2>&1
+for node in ${frozen[@]}; do
+    ssh $node "kill -CONT \$(cat ${TMPDIR}/${DBNAME}.pid)" </dev/null
+done
+
+newmaster=""
+for i in $(seq 1 120); do
+    for node in ${others[@]}; do
+        m=$(sql $node "select host from comdb2_cluster where is_master='Y'" 2>/dev/null)
+        [[ -n "$m" && "$m" != "$master" ]] && newmaster=$m
+    done
+    [[ -n "$newmaster" ]] && sql $newmaster "select 1" >/dev/null 2>&1 && break
+    newmaster=""
+    sleep 1
+done
+[[ -z "$newmaster" ]] && failexit "no new master elected"
+sleep 5
+count=$(sql $newmaster "select count(*) from t1 where a = 2")
+(start_node $master) >>$TESTDIR/logs/start_node.log 2>&1
+
+echo "insert 2 rc=$insrc, row 2 count on new master $newmaster: $count"
+if [[ $insrc -eq 0 && "$count" != "1" ]]; then
+    failexit "acknowledged write lost after failover"
+fi
+# A frozen node's socket buffer can save the row, so any ack is a failure
+[[ $insrc -eq 0 ]] && failexit "write acked with only the master holding it"
+echo "insert 2 was rejected as not durable"
+wait_for_cluster
+echo "Success"

@@ -1,0 +1,2 @@
+durable_lsns on
+wait_for_seqnum_trace 1
