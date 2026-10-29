@@ -1298,6 +1298,15 @@ elect_again:
         !bdb_state->dbenv->rep_can_vote(bdb_state->dbenv, bdb_state->repinfo->myhost)) {
         logmsg(LOGMSG_USER, "election will not be held, %s is not allowed to vote\n", bdb_state->repinfo->myhost);
 
+        /* The cluster is electable again: rejoin the master replication follows */
+        char *master = db_eid_invalid;
+        bdb_get_rep_master(bdb_state, &master, NULL, NULL);
+        if (bdb_state->repinfo->master_host == db_eid_invalid && master != db_eid_invalid &&
+            master != bdb_state->repinfo->myhost) {
+            logmsg(LOGMSG_USER, "%s rejoining master %s\n", bdb_state->repinfo->myhost, master);
+            bdb_setmaster(bdb_state, master);
+        }
+
         Pthread_mutex_lock(&(bdb_state->repinfo->elect_mutex));
         bdb_state->repinfo->in_election = 0;
         Pthread_mutex_unlock(&(bdb_state->repinfo->elect_mutex));
