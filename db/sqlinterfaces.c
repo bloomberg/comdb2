@@ -127,6 +127,7 @@ extern int g_osql_max_trans;
 extern int gbl_fdb_track;
 extern int gbl_stable_rootpages_test;
 extern int gbl_verbose_normalized_queries;
+extern int gbl_query_plans;
 extern int gbl_group_concat_mem_limit;
 extern int gbl_expressions_indexes;
 extern int gbl_old_column_names;
@@ -181,6 +182,7 @@ int gbl_thdpool_queue_only = 0;
 int gbl_random_sql_work_delayed = 0;
 int gbl_random_sql_work_rejected = 0;
 int gbl_sleep_5s_after_caching_table_versions = 0;
+int gbl_debug_sleep_before_fingerprint = 0; /* ms, testing only */
 
 int gbl_eventlog_fullhintsql = 1;
 
@@ -1285,6 +1287,9 @@ static void sql_statement_done(struct sql_thread *thd, struct reqlogger *logger,
         record_query_cost(thd, clnt);
         reqlog_set_path(logger, clnt->query_stats);
     }
+
+    if (gbl_debug_sleep_before_fingerprint)
+        poll(NULL, 0, gbl_debug_sleep_before_fingerprint);
 
     if (gbl_fingerprint_queries) {
         if (h->sql_ref) {
@@ -3494,9 +3499,12 @@ int get_prepared_stmt(struct sqlthdstate *thd, struct sqlclntstate *clnt,
     if (gbl_sleep_5s_after_caching_table_versions) {
         sleep(5);
     }
+    put_ref(&clnt->work.query_plan_ref);
     rdlock_schema_lk();
     int rc = get_prepared_stmt_int(thd, clnt, rec, err,
                                    flags | PREPARE_RECREATE);
+    if (rc == 0 && gbl_fingerprint_queries && gbl_query_plans)
+        clnt->work.query_plan_ref = form_query_plan(clnt, rec->stmt);
     unlock_schema_lk();
     if (gbl_stable_rootpages_test) {
         static int skip = 0;
@@ -5519,6 +5527,7 @@ void cleanup_clnt(struct sqlclntstate *clnt)
     free_client_info(clnt);
     free_normalized_sql(clnt);
     free_original_normalized_sql(clnt);
+    put_ref(&clnt->work.query_plan_ref);
     memset(&clnt->work.rec, 0, sizeof(struct sql_state));
     memset(clnt->work.aFingerprint, 0, FINGERPRINTSZ);
 
@@ -5731,6 +5740,7 @@ void reset_clnt(struct sqlclntstate *clnt, int initial)
     free_client_info(clnt);
     free_normalized_sql(clnt);
     free_original_normalized_sql(clnt);
+    put_ref(&clnt->work.query_plan_ref);
     memset(&clnt->work.rec, 0, sizeof(struct sql_state));
     memset(clnt->work.aFingerprint, 0, FINGERPRINTSZ);
 
