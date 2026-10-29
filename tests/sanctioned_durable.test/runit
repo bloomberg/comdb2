@@ -1,0 +1,218 @@
+#!/usr/bin/env bash
+bash -n "$0" || exit 1
+
+# Durability counts sanctioned nodes; a commissioned node that isn't sanctioned
+# still gets replicated to, but its ack doesn't make a commit durable
+
+. ${TESTSROOTDIR}/tools/runit_common.sh
+. ${TESTSROOTDIR}/tools/cluster_utils.sh
+
+export debug=1
+[[ $debug == "1" ]] && set -x
+
+if [[ -z "$CLUSTER" ]]; then
+    echo "This test requires a cluster"
+    exit 0
+fi
+
+nodes=($CLUSTER)
+if [[ ${#nodes[@]} -lt 3 ]]; then
+    echo "This test requires at least 3 nodes"
+    exit 0
+fi
+
+cluster_size=${#nodes[@]}
+export LOGDIR=$TESTDIR/logs
+
+function send_all
+{
+    for node in ${nodes[@]}; do
+        $CDB2SQL_EXE $CDB2_OPTIONS --tabs $DBNAME --host $node "exec procedure sys.cmd.send('$1')" >/dev/null 2>&1
+    done
+}
+
+# Freeze every replicant except $unsanctioned and print the master's lease verdict
+function lease_check
+{
+    typeset before node i
+    for node in ${nodes[@]}; do
+        [[ "$node" != "$master" && "$node" != "$unsanctioned" ]] && ssh $node "kill -STOP \$(cat ${TMPDIR}/${DBNAME}.pid)" </dev/null
+    done
+    # The verdict is logged once a second: the second one after the freeze is
+    # past the 500ms leases, and well short of the 5s heartbeat check
+    before=$(grep -c "verify_master_leases" $masterlog)
+    for ((i = 0; i < 30; i++)); do
+        (( $(grep -c "verify_master_leases" $masterlog) >= before + 2 )) && break
+        sleep 0.1
+    done
+    grep "verify_master_leases" $masterlog | tail -n +$(( before + 2 )) | head -1
+    for node in ${nodes[@]}; do
+        [[ "$node" != "$master" && "$node" != "$unsanctioned" ]] && ssh $node "kill -CONT \$(cat ${TMPDIR}/${DBNAME}.pid)" </dev/null
+    done
+    sleep 3
+}
+
+# Insert a row and print the master's durability trace for it
+function insert_and_trace
+{
+    typeset before=$(grep -c "Last txn was" $masterlog)
+    $CDB2SQL_EXE $CDB2_OPTIONS --tabs $DBNAME --host $master "insert into t1 values($1)" >/dev/null || failexit "insert $1 failed"
+    sleep 1
+    grep "Last txn was" $masterlog | tail -n +$(( before + 1 )) | tail -1
+}
+
+$CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "create table t1(a int)" || failexit "create table"
+master=$(get_master_and_fail_if_not_found) || failexit "no master"
+masterlog=$LOGDIR/${DBNAME}.${master}.db
+unsanctioned=""
+for node in ${nodes[@]}; do
+    [[ "$node" != "$master" ]] && unsanctioned=$node && break
+done
+
+function cleanup
+{
+    for node in ${nodes[@]}; do
+        ssh $node "kill -CONT \$(cat ${TMPDIR}/${DBNAME}.pid)" </dev/null
+    done
+    send_all "bdb setattr elect_disable_netsplit_patch 0"
+    send_all "bdb setattr durable_lsns 0"
+    for node in $unsanctioned ${extra[@]}; do
+        send_all "bdb add $node"
+    done
+}
+trap cleanup EXIT
+
+line=$(insert_and_trace 1)
+echo "$line" | grep -q "durable-nodes=$cluster_size durable-acked=$cluster_size" || failexit "unexpected trace with every node sanctioned: $line"
+
+# Keeping leases needs half the counted nodes, or a majority with elect_disable_netsplit_patch set
+function lease_verdict
+{
+    typeset leases=$1 total=$2 strict=$3
+    if (( strict ? leases * 2 > total : leases * 2 >= total )); then echo SUCCEEDED; else echo failed; fi
+}
+
+# With every node sanctioned, the master and $unsanctioned hold 2 leases
+line=$(lease_check)
+verdict=$(lease_verdict 2 $cluster_size 0)
+echo "$line" | grep -q "$verdict: we have 2 current leases from $cluster_size nodes" || failexit "expected $verdict with 2 of $cluster_size leases: $line"
+
+# An exact half keeps leases only while elect_disable_netsplit_patch is off
+if (( cluster_size % 2 == 0 )); then
+    $CDB2SQL_EXE $CDB2_OPTIONS --tabs $DBNAME --host $master "exec procedure sys.cmd.send('bdb setattr elect_disable_netsplit_patch 1')"
+    line=$(lease_check)
+    $CDB2SQL_EXE $CDB2_OPTIONS --tabs $DBNAME --host $master "exec procedure sys.cmd.send('bdb setattr elect_disable_netsplit_patch 0')"
+    verdict=$(lease_verdict 2 $cluster_size 1)
+    echo "$line" | grep -q "$verdict: we have 2 current leases from $cluster_size nodes" || failexit "expected $verdict with 2 of $cluster_size leases and elect_disable_netsplit_patch set: $line"
+fi
+
+send_all "bdb del $unsanctioned"
+sleep 2
+line=$(insert_and_trace 2)
+echo "$line" | grep -q "tot_acked=$(( cluster_size - 1 ))," || failexit "$unsanctioned stopped acking: $line"
+echo "$line" | grep -q "durable-nodes=$(( cluster_size - 1 )) durable-acked=$(( cluster_size - 1 ))" || failexit "ack from $unsanctioned counted toward durability: $line"
+
+# Only sanctioned leases count, so the master holds 1 of $(( cluster_size - 1 ))
+line=$(lease_check)
+verdict=$(lease_verdict 1 $(( cluster_size - 1 )) 0)
+echo "$line" | grep -q "$verdict: we have 1 current leases from $(( cluster_size - 1 )) nodes" || failexit "lease from $unsanctioned counted: $line"
+
+# Cut $unsanctioned off from every sanctioned node but the master: it sees the
+# cluster as unelectable and resets its master, and since it can't vote it must
+# rejoin the master without an election once reconnected
+if (( cluster_size >= 4 )); then
+    ulog=$LOGDIR/${DBNAME}.${unsanctioned}.db
+    resets=$(grep -c "reseting the master" $ulog)
+    cut=""
+    for node in ${nodes[@]}; do
+        [[ "$node" != "$master" && "$node" != "$unsanctioned" ]] && cut="$cut${cut:+,}$node"
+    done
+    # The cut ends by itself after debug_net_drop_secs (20s)
+    $CDB2SQL_EXE $CDB2_OPTIONS --tabs $DBNAME --host $unsanctioned "put tunable debug_net_drop_from '$cut'" >/dev/null
+    for ((i = 0; i < 20; i++)); do
+        (( $(grep -c "reseting the master" $ulog) > resets )) && break
+        sleep 1
+    done
+    (( $(grep -c "reseting the master" $ulog) > resets )) || failexit "$unsanctioned did not reset its master"
+    for ((i = 0; i < 60; i++)); do
+        grep -q "rejoining master $master" $ulog && break
+        sleep 1
+    done
+    grep -q "rejoining master $master" $ulog || failexit "$unsanctioned did not log rejoining $master"
+    timeout 15 $CDB2SQL_EXE $CDB2_OPTIONS --tabs $DBNAME --host $unsanctioned "select 1" >/dev/null || failexit "$unsanctioned did not rejoin $master"
+fi
+
+# With 2 sanctioned nodes the master alone is exactly half: enough for a durable
+# commit and for leases, but not for leases under elect_disable_netsplit_patch
+frozen="" extra=()
+for node in ${nodes[@]}; do
+    [[ "$node" == "$master" || "$node" == "$unsanctioned" ]] && continue
+    if [[ -z "$frozen" ]]; then frozen=$node; else extra+=($node); fi
+done
+# Unsanction the rest so only the master and $frozen are left
+for node in ${extra[@]}; do
+    send_all "bdb del $node"
+done
+sleep 2
+$CDB2SQL_EXE $CDB2_OPTIONS --tabs $DBNAME --host $master "exec procedure sys.cmd.send('bdb setattr durable_lsns 1')"
+ssh $frozen "kill -STOP \$(cat ${TMPDIR}/${DBNAME}.pid)" </dev/null
+line=$(insert_and_trace 7)
+ssh $frozen "kill -CONT \$(cat ${TMPDIR}/${DBNAME}.pid)" </dev/null
+$CDB2SQL_EXE $CDB2_OPTIONS --tabs $DBNAME --host $master "exec procedure sys.cmd.send('bdb setattr durable_lsns 0')"
+echo "$line" | grep -q "Last txn was durable,.* durable-nodes=2 durable-acked=1 " || failexit "commit on half of 2 sanctioned nodes was not durable: $line"
+
+# The commit above timed out on $frozen, so the master marked it incoherent
+for ((i = 0; i < 60; i++)); do
+    [[ $(get_num_incoherent $master) == 0 ]] && break
+    sleep 1
+done
+[[ $(get_num_incoherent $master) == 0 ]] || failexit "$frozen did not become coherent again"
+
+$CDB2SQL_EXE $CDB2_OPTIONS --tabs $DBNAME --host $master "exec procedure sys.cmd.send('bdb setattr elect_disable_netsplit_patch 1')"
+line=$(lease_check)
+$CDB2SQL_EXE $CDB2_OPTIONS --tabs $DBNAME --host $master "exec procedure sys.cmd.send('bdb setattr elect_disable_netsplit_patch 0')"
+echo "$line" | grep -q "failed: we have 1 current leases from 2 nodes" || failexit "kept leases with half of 2 sanctioned nodes under elect_disable_netsplit_patch: $line"
+for node in ${extra[@]}; do
+    send_all "bdb add $node"
+done
+
+send_all "bdb add $unsanctioned"
+trap - EXIT
+sleep 2
+line=$(insert_and_trace 3)
+echo "$line" | grep -q "durable-nodes=$cluster_size durable-acked=$cluster_size" || failexit "unexpected trace after re-adding $unsanctioned: $line"
+
+# With no sanctioned nodes nothing counts: no commit is durable and no lease quorum is held
+function readd_all
+{
+    for node in ${nodes[@]}; do
+        send_all "bdb add $node"
+    done
+}
+trap readd_all EXIT
+for node in ${nodes[@]}; do
+    send_all "bdb del $node"
+done
+for ((i = 0; i < 30; i++)); do
+    $CDB2SQL_EXE $CDB2_OPTIONS --tabs $DBNAME --host $master "exec procedure sys.cmd.send('bdb sanc')" | grep -q "^node " || break
+    sleep 1
+done
+line=$(insert_and_trace 4)
+echo "$line" | grep -q "durable-nodes=0 durable-acked=0" || failexit "commit was durable with no sanctioned nodes: $line"
+line=$(lease_check)
+echo "$line" | grep -q "failed: we have 0 current leases from 0 nodes" || failexit "master kept a lease quorum with no sanctioned nodes: $line"
+readd_all
+trap - EXIT
+sleep 2
+line=$(insert_and_trace 5)
+echo "$line" | grep -q "durable-nodes=$cluster_size durable-acked=$cluster_size" || failexit "unexpected trace after restoring the sanctioned list: $line"
+
+# A clean exit decommissions the node on its peers, but it stays sanctioned and
+# still counts: counting commissioned nodes would let the master alone be durable
+(bounce_node $unsanctioned 10) >>$LOGDIR/bounce_node.log 2>&1
+line=$(insert_and_trace 6)
+echo "$line" | grep -q "durable-nodes=$cluster_size durable-acked=$(( cluster_size - 1 ))" || failexit "stopped node $unsanctioned stopped counting toward durability: $line"
+wait_for_cluster
+
+echo "Success"
+exit 0

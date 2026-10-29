@@ -1765,10 +1765,14 @@ REGISTER_TUNABLE("debug_unsanctioned_elect",
                  "Let this node hold elections even if it is not sanctioned, so tests can check that its votes are "
                  "dropped.  (Default: off)",
                  TUNABLE_BOOLEAN, &gbl_debug_unsanctioned_elect, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
-REGISTER_TUNABLE("random_election_timeout",
-                 "Use a random timeout in election.  (Default: on)",
-                 TUNABLE_BOOLEAN, &gbl_rand_elect_timeout,
-                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("debug_net_drop_from",
+                 "Cut this node off from these comma-separated hosts for debug_net_drop_secs.  (Default: none)",
+                 TUNABLE_STRING, &gbl_debug_net_drop_from, EXPERIMENTAL | INTERNAL, NULL, NULL,
+                 debug_net_drop_from_update, NULL);
+REGISTER_TUNABLE("debug_net_drop_secs", "How long debug_net_drop_from cuts this node off.  (Default: 20)",
+                 TUNABLE_INTEGER, &gbl_debug_net_drop_secs, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("random_election_timeout", "Use a random timeout in election.  (Default: on)", TUNABLE_BOOLEAN,
+                 &gbl_rand_elect_timeout, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("random_elect_min_ms",
                  "Minimum election timeout.  (Default: 1000)", TUNABLE_INTEGER,
                  &gbl_rand_elect_min_ms, EXPERIMENTAL | INTERNAL, NULL, NULL,
