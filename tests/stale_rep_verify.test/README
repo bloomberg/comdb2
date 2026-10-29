@@ -1,0 +1,8 @@
+During recovery, a replicant sends `REP_VERIFY_REQ` to its master, asking for a
+log record at a specific position. The master replies with `REP_VERIFY`; the
+replicant compares that record with its own log to find a common point.
+
+If an election happens before the reply arrives, it may reach a node that has
+since become master. That old-generation reply must be ignored; otherwise the
+node can enter recovery and wait for the BDB write lock, stalling the master.
+The test delays replies and triggers another election to check this race.

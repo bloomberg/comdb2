@@ -1,0 +1,119 @@
+#!/usr/bin/env bash
+bash -n "$0" || exit 1
+
+source ${TESTSROOTDIR}/tools/runit_common.sh
+source ${TESTSROOTDIR}/tools/cluster_utils.sh
+
+[[ -z "$CLUSTER" ]] && failexit "This test requires a CLUSTER"
+
+ITERATIONS=${ITERATIONS:-10}
+FAKE_DR_SECS=${FAKE_DR_SECS:-20}
+CLUSTER_HEALTH_TIMEOUT_SECS=${CLUSTER_HEALTH_TIMEOUT_SECS:-90}
+
+# /bb/bin/timeout shadows coreutils on bb boxes
+TIMEOUT=/usr/bin/timeout
+
+sqlt() { $TIMEOUT 10 $CDB2SQL_EXE $CDB2_OPTIONS --tabs $DBNAME "$@" 2>/dev/null; }
+
+send_node() {
+    $TIMEOUT 10 $CDB2SQL_EXE --admin $CDB2_OPTIONS --host $1 $DBNAME "exec procedure sys.cmd.send(\"$2\")" >/dev/null 2>&1
+}
+
+send_all() {
+    for n in $CLUSTER; do send_node $n "$1"; done
+}
+
+node_log() { echo ${TESTDIR}/logs/${DBNAME}.$1.db; }
+
+# Per-node log offsets, so an iteration only looks at its own lines
+declare -A LOGOFF
+mark_logs() {
+    for n in $CLUSTER; do LOGOFF[$n]=$(stat -c %s $(node_log $n) 2>/dev/null || echo 0); done
+}
+
+iter_log() { tail -c +$(( ${LOGOFF[$1]} + 1 )) $(node_log $1) 2>/dev/null; }
+
+get_master_host() { sqlt default "select host from comdb2_cluster where is_master='Y'"; }
+
+cluster_healthy() {
+    local m=$(get_master_host) n
+    [[ -z "$m" ]] && return 1
+    for n in $CLUSTER; do
+        [[ "$(sqlt --host $n default 'select 1')" == "1" ]] || return 1
+    done
+    [[ "$(sqlt --host $m default "select count(*) from comdb2_cluster where coherent_state != 'coherent'")" == "0" ]]
+}
+
+wait_healthy() {
+    local end=$(( $(date +%s) + $1 ))
+    while [[ $(date +%s) -lt $end ]]; do
+        cluster_healthy && return 0
+        sleep 1
+    done
+    return 1
+}
+
+writer() {
+    while true; do
+        sqlt default "insert into t1 select value from generate_series(1, 50)" >/dev/null
+    done
+}
+
+# The new master delays its REP_VERIFY replies (rep_verify_req_delay), so the
+# replicants stay in verify state. Elect one of them meanwhile: the old master's
+# delayed REP_VERIFY then reaches a newer master.
+second_election() {
+    local old=$1 new="" end=$(( $(date +%s) + 30 )) n pids=()
+    # SQL stalls while replicants verify, so watch the node logs instead
+    while [[ -z "$new" && $(date +%s) -lt $end ]]; do
+        for n in $CLUSTER; do
+            [[ $n != $old ]] && iter_log $n | grep -q "I AM NEW MASTER NODE $n" && new=$n && break
+        done
+        sleep 0.1
+    done
+    [[ -z "$new" ]] && return
+    sleep 0.3
+    # The rtcpu'd old master can't win but its vote makes the majority
+    for n in $CLUSTER; do
+        [[ $n != $new ]] && { send_node $n "forceelect" & pids+=($!); }
+    done
+    wait "${pids[@]}"
+}
+
+# A REP_VERIFY reaching a master comes from an older master. Count the times a
+# master still went down the path that waits on the bdb writelock for it.
+stale_verify_writelocks() {
+    local n c total=0
+    for n in $CLUSTER; do
+        c=$(awk -v me=$n '
+            /new_master_callback_int: +master:/ { split($0, a, "master:"); split(a[2], b, "->"); split(b[2], d, " "); cur = d[1] }
+            /thedb_set_master:/ { cur = $NF }
+            /will_recover is returning 1/ && cur == me { c++ }
+            END { print c + 0 }' $(node_log $n))
+        [[ $c -gt 0 ]] && echo "$n took the verify writelock path $c times while master" >&2
+        total=$(( total + c ))
+    done
+    echo $total
+}
+
+$CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "create table t1(a int)" || failexit "create table"
+writer &
+WRITER=$!
+trap "kill $WRITER 2>/dev/null" EXIT
+send_all "on rep_verify_req_delay"
+
+for i in $(seq 1 $ITERATIONS); do
+    wait_healthy $CLUSTER_HEALTH_TIMEOUT_SECS || failexit "cluster not healthy before iteration $i"
+    master=$(get_master_host)
+    mark_logs
+    echo "iteration $i: fakedr master $master"
+    send_all "fakedr add $master"
+    second_election $master
+    sleep $FAKE_DR_SECS
+    send_all "fakedr del $master"
+    wait_healthy $CLUSTER_HEALTH_TIMEOUT_SECS || failexit "iteration $i: cluster did not recover within ${CLUSTER_HEALTH_TIMEOUT_SECS}s"
+    echo "iteration $i: stale REP_VERIFYs ignored: $(for n in $CLUSTER; do iter_log $n | grep -c 'ignoring REP_VERIFY from older gen'; done | paste -sd+ | bc)"
+done
+
+[[ $(stale_verify_writelocks) -eq 0 ]] || failexit "a master waited on the bdb writelock for a stale REP_VERIFY"
+echo "Success"
