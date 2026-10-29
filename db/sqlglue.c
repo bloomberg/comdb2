@@ -12378,6 +12378,16 @@ void disconnect_remote_db(const char *protocol, const char *dbname, const char *
 
     fd = cdb2buf_fileno(sb);
 
+    /* The remote never writes on an idle connection: if it is readable, the
+       remote closed it (e.g. after rejecting a transactional cursor open) or it
+       is dirty. A pooled dead socket silently swallows the next request. */
+    struct pollfd pfd = {.fd = fd, .events = POLLIN};
+    if (poll(&pfd, 1, 0) != 0) {
+        cdb2buf_close(sb);
+        *psb = NULL;
+        return;
+    }
+
     _sockpool_socket_type(protocol, dbname, service, host, socket_type,
                           sizeof(socket_type));
 

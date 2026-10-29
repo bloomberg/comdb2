@@ -368,6 +368,8 @@ int fdb_svc_trans_begin(char *tid, enum transaction_level lvl, int flags, int se
     return rc;
 }
 
+static int fdb_svc_trans_abort(sqlclntstate *clnt, const char *us);
+
 /**
  * Commit a transaction
  *
@@ -386,7 +388,21 @@ int fdb_svc_trans_commit(char *tid, enum transaction_level lvl,
     /* we need to wait for not yet arrived cursors, before we wait for them
        to finish!!!
      */
-    fdb_sequence_request(clnt, clnt->dbtran.dtran->fdb_trans.top, seq);
+    if (fdb_sequence_request(clnt, clnt->dbtran.dtran->fdb_trans.top, seq)) {
+        /* an earlier request never arrived: the transaction is incomplete,
+           so roll it back; a late cursor will see rollbacked and fail.
+           A 2pc participant sends no rc; its coordinator stops getting
+           heartbeats and times the distributed transaction out */
+        int missing = clnt->dbtran.dtran->fdb_trans.top->seq;
+        clnt->dbtran.rollbacked = 1;
+        /* sosql abort frees dtran */
+        fdb_svc_trans_abort(clnt, us);
+        errstat_set_rcstrf(&clnt->osql.xerr, ERR_INTERNAL, "gave up waiting for remote transaction request %d",
+                           missing);
+        clnt->writeTransaction = 0;
+        clnt->dbtran.shadow_tran = NULL;
+        return -1;
+    }
 
     while (clnt->dbtran.dtran->fdb_trans.top->cursors.top != NULL) {
         Pthread_mutex_unlock(&clnt->dtran_mtx);
@@ -475,7 +491,6 @@ int fdb_svc_trans_commit(char *tid, enum transaction_level lvl,
 int fdb_svc_trans_rollback(char *tid, enum transaction_level lvl,
                            sqlclntstate *clnt, int seq)
 {
-    int rc;
     uuidstr_t us;
 
     comdb2uuidstr((unsigned char*)tid, us);
@@ -494,7 +509,17 @@ int fdb_svc_trans_rollback(char *tid, enum transaction_level lvl,
        so that new cursors can detect and fail gracefully
      */
     clnt->dbtran.rollbacked = 1;
-    fdb_sequence_request(clnt, clnt->dbtran.dtran->fdb_trans.top, seq);
+    /* if an earlier request never arrives, roll back without it */
+    (void)fdb_sequence_request(clnt, clnt->dbtran.dtran->fdb_trans.top, seq);
+
+    return fdb_svc_trans_abort(clnt, us);
+}
+
+/* Wait for the transaction's cursors to go away and abort it.
+   Called with dtran_mtx locked, returns it unlocked */
+static int fdb_svc_trans_abort(sqlclntstate *clnt, const char *us)
+{
+    int rc;
 
     while (clnt->dbtran.dtran->fdb_trans.top->cursors.top != NULL) {
         Pthread_mutex_unlock(&clnt->dtran_mtx);
@@ -537,6 +562,21 @@ int fdb_svc_trans_rollback(char *tid, enum transaction_level lvl,
 
     return rc;
 }
+
+/* Wait for this write's turn before taking a curtran: the curtran holds the
+   bdb readlock, which must not be pinned while an earlier request is late */
+static int fdb_svc_wait_turn(sqlclntstate *clnt, int seq)
+{
+    int rc;
+
+    Pthread_mutex_lock(&clnt->dtran_mtx);
+    rc = fdb_sequence_wait(clnt, clnt->dbtran.dtran->fdb_trans.top, seq);
+    Pthread_mutex_unlock(&clnt->dtran_mtx);
+
+    return rc;
+}
+
+static int _fdb_svc_cursor_end(BtCursor *pCur, sqlclntstate *clnt, int standalone);
 
 static struct sql_thread *
 _fdb_svc_cursor_start(BtCursor *pCur, sqlclntstate *clnt, char *tblname,
@@ -595,14 +635,14 @@ _fdb_svc_cursor_start(BtCursor *pCur, sqlclntstate *clnt, char *tblname,
         pCur->db = get_dbtable_by_name(tblname);
         if (pCur->db == NULL) {
             logmsg(LOGMSG_ERROR, "%s: invalid table %s?\n", __func__, tblname);
-            return NULL;
+            goto err;
         }
         pCur->ixnum = -1;
     } else {
         pCur->db = get_sqlite_db(thd, rootpage, &pCur->ixnum);
         if (pCur->db == NULL) {
             logmsg(LOGMSG_ERROR, "%s failed\n", __func__);
-            return NULL;
+            goto err;
         }
     }
     pCur->numblobs = get_schema_blob_count(pCur->db, ".ONDISK");
@@ -631,6 +671,11 @@ _fdb_svc_cursor_start(BtCursor *pCur, sqlclntstate *clnt, char *tblname,
     }
 
     return thd;
+
+err:
+    /* don't leave the curtran, and with it the bdb readlock, behind */
+    _fdb_svc_cursor_end(pCur, clnt, *standalone);
+    return NULL;
 }
 
 static int _fdb_svc_cursor_end(BtCursor *pCur, sqlclntstate *clnt,
@@ -743,6 +788,9 @@ int fdb_svc_cursor_insert(sqlclntstate *clnt, char *tblname,
     int rc2 = 0;
     int standalone = 0;
 
+    if (fdb_svc_wait_turn(clnt, seq))
+        return -1;
+
     thd = _fdb_svc_cursor_start(&bCur, clnt, tblname, rootpage, genid, 0,
                                 &standalone);
     if (!thd) {
@@ -756,7 +804,8 @@ int fdb_svc_cursor_insert(sqlclntstate *clnt, char *tblname,
 
     if (!row) {
         logmsg(LOGMSG_ERROR, "%s malloc %d\n", __func__, rowlen);
-        return -1;
+        rc = -1;
+        goto done;
     }
 
     rc = _fdb_svc_indexes_to_ondisk(clnt->idxInsert, db, &clnt->fail_reason,
@@ -765,7 +814,7 @@ int fdb_svc_cursor_insert(sqlclntstate *clnt, char *tblname,
         logmsg(LOGMSG_ERROR, "%s:%d failed to convert sqlite indexes\n", __func__,
                 __LINE__);
         free(row);
-        return -1;
+        goto done;
     }
 
     /* convert sqlite row to comdb2 row for bplog */
@@ -788,7 +837,8 @@ int fdb_svc_cursor_insert(sqlclntstate *clnt, char *tblname,
 
     Pthread_mutex_lock(&clnt->dtran_mtx);
 
-    fdb_sequence_request(clnt, clnt->dbtran.dtran->fdb_trans.top, seq);
+    /* fdb_svc_wait_turn saw our turn; nothing else bumps it until we do */
+    clnt->dbtran.dtran->fdb_trans.top->seq++;
 
     rc = osql_insrec(&bCur, thd, row, rowlen, rowblobs, MAXBLOBS, 0);
 
@@ -821,6 +871,9 @@ int fdb_svc_cursor_delete(sqlclntstate *clnt, char *tblname,
     int rc2 = 0;
     int standalone = 0;
 
+    if (fdb_svc_wait_turn(clnt, seq))
+        return -1;
+
     thd = _fdb_svc_cursor_start(&bCur, clnt, tblname, rootpage, genid, 1,
                                 &standalone);
     if (!thd) {
@@ -832,12 +885,13 @@ int fdb_svc_cursor_delete(sqlclntstate *clnt, char *tblname,
     if (rc) {
         logmsg(LOGMSG_ERROR, "%s:%d failed to convert sqlite indexes\n", __func__,
                 __LINE__);
-        return -1;
+        goto done;
     }
 
     Pthread_mutex_lock(&clnt->dtran_mtx);
 
-    fdb_sequence_request(clnt, clnt->dbtran.dtran->fdb_trans.top, seq);
+    /* fdb_svc_wait_turn saw our turn; nothing else bumps it until we do */
+    clnt->dbtran.dtran->fdb_trans.top->seq++;
 
     rc = osql_delrec(&bCur, thd);
 
@@ -846,6 +900,7 @@ int fdb_svc_cursor_delete(sqlclntstate *clnt, char *tblname,
     clnt->effects.num_deleted++;
     clnt->nrows++;
 
+done:
     rc2 = _fdb_svc_cursor_end(&bCur, clnt, standalone);
     if (!rc) {
         rc = rc2;
@@ -873,6 +928,9 @@ int fdb_svc_cursor_update(sqlclntstate *clnt, char *tblname,
     int rc2 = 0;
     int standalone = 0;
 
+    if (fdb_svc_wait_turn(clnt, seq))
+        return -1;
+
     thd = _fdb_svc_cursor_start(&bCur, clnt, tblname, rootpage, oldgenid, 1,
                                 &standalone);
     if (!thd) {
@@ -886,7 +944,8 @@ int fdb_svc_cursor_update(sqlclntstate *clnt, char *tblname,
 
     if (!row) {
         logmsg(LOGMSG_ERROR, "%s malloc %d\n", __func__, rowlen);
-        return -1;
+        rc = -1;
+        goto done;
     }
 
     rc = _fdb_svc_indexes_to_ondisk(clnt->idxDelete, db, &clnt->fail_reason,
@@ -895,7 +954,7 @@ int fdb_svc_cursor_update(sqlclntstate *clnt, char *tblname,
         logmsg(LOGMSG_ERROR, "%s:%d failed to convert sqlite indexes\n", __func__,
                 __LINE__);
         free(row);
-        return -1;
+        goto done;
     }
     rc = _fdb_svc_indexes_to_ondisk(clnt->idxInsert, db, &clnt->fail_reason,
                                     &bCur);
@@ -903,7 +962,7 @@ int fdb_svc_cursor_update(sqlclntstate *clnt, char *tblname,
         logmsg(LOGMSG_ERROR, "%s:%d failed to convert sqlite indexes\n", __func__,
                 __LINE__);
         free(row);
-        return -1;
+        goto done;
     }
 
     /* convert sqlite row to comdb2 row for bplog */
@@ -926,7 +985,8 @@ int fdb_svc_cursor_update(sqlclntstate *clnt, char *tblname,
 
     Pthread_mutex_lock(&clnt->dtran_mtx);
 
-    fdb_sequence_request(clnt, clnt->dbtran.dtran->fdb_trans.top, seq);
+    /* fdb_svc_wait_turn saw our turn; nothing else bumps it until we do */
+    clnt->dbtran.dtran->fdb_trans.top->seq++;
 
     rc = osql_updrec(&bCur, thd, row, rowlen, NULL /*TODO : review updCols*/,
                      rowblobs, MAXBLOBS, 0);

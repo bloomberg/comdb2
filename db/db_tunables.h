@@ -2756,6 +2756,13 @@ REGISTER_TUNABLE("fdb_incoherence_percentage", "Generate random incoherent error
                  &gbl_fdb_incoherence_percentage, INTERNAL, NULL, percent_verify, NULL, NULL);
 REGISTER_TUNABLE("fdb_socket_timeout_ms", "Timeout ms for fdb communications.  (Default: 10000)", TUNABLE_INTEGER,
                  &gbl_fdb_socket_timeout_ms, 0, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("fdb_sequence_timeout_ms",
+                 "Fail a remote transaction request that waits longer than this for an earlier request of the same "
+                 "transaction; 0 waits forever.  (Default: 60000)",
+                 TUNABLE_INTEGER, &gbl_fdb_sequence_timeout_ms, 0, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("fdb_test_drop_cursor_open",
+                 "Testing setting: drop this many incoming transactional fdb cursor opens before they are sequenced",
+                 TUNABLE_INTEGER, &gbl_fdb_test_drop_cursor_open, INTERNAL, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("fdb_io_error_retries", "Number of retries for io error remsql", TUNABLE_INTEGER,
                  &gbl_fdb_io_error_retries, 0, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("fdb_io_error_retries_phase_1", "Number of immediate retries; capped by fdb_io_error_retries",
