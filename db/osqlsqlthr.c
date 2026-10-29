@@ -60,6 +60,17 @@
 extern int gbl_partial_indexes;
 extern int gbl_expressions_indexes;
 extern int gbl_reorder_socksql_no_deadlock;
+void bdb_send_write_hints(bdb_state_type *bdb_state, int send);
+
+/* Replica write hints (rep_write_hints): did the current statement ship an osql write? */
+static __thread int rwh_wrote;
+
+/* Called at statement start and end, and before a commit */
+void osql_send_write_hints(void)
+{
+    bdb_send_write_hints(thedb->bdb_env, rwh_wrote);
+    rwh_wrote = 0;
+}
 
 int gbl_allow_bplog_restarts = 600;
 int gbl_not_durable_retries = 100;
@@ -467,6 +478,7 @@ static int osql_send_del_logic(struct BtCursor *pCur, struct sql_thread *thd)
             return rc;
         }
     }
+    rwh_wrote = 1;
     osql->replicant_numops++;
     DEBUG_PRINT_NUMOPS();
 
@@ -600,6 +612,7 @@ static int osql_send_ins_logic(struct BtCursor *pCur, struct sql_thread *thd,
             return rc;
         }
     }
+    rwh_wrote = 1;
     osql->replicant_numops++;
     DEBUG_PRINT_NUMOPS();
     return SQLITE_OK;
@@ -769,6 +782,7 @@ static int osql_send_upd_logic(struct BtCursor *pCur, struct sql_thread *thd,
         }
     }
 
+    rwh_wrote = 1;
     osql->replicant_numops++;
     DEBUG_PRINT_NUMOPS();
     return SQLITE_OK;
@@ -1047,6 +1061,7 @@ static inline int sock_restart_retryable_rcode(int restart_rc)
 extern int gbl_is_physical_replicant;
 int osql_sock_commit(struct sqlclntstate *clnt, int type, enum trans_clntcomm sideeffects)
 {
+    osql_send_write_hints(); /* before the commit ships */
     osqlstate_t *osql = &clnt->osql;
     int rc = 0, rc2;
     int rcout = 0;
@@ -1385,6 +1400,7 @@ done:
  */
 int osql_sock_abort(struct sqlclntstate *clnt, int type)
 {
+    rwh_wrote = 0; /* nothing to hint for an aborted transaction */
     int rcout = 0;
     int rc = 0;
     int bdberr = 0;

@@ -5182,6 +5182,60 @@ void berkdb_receive_test(void *ack_handle, void *usr_ptr, char *from_host,
 static void udppfault_do_work_pp(struct thdpool *pool, void *work,
                                  void *thddata, int op);
 
+extern __thread int send_prefault_udp;
+extern __thread DB *prefault_dbp;
+extern int gbl_rep_write_hints;
+
+/* Drop UFID prefault requests that waited in the queue longer than this (0: never) */
+int gbl_udp_prefault_max_age_us = 0;
+/* Serve the newest UFID prefault request first */
+int gbl_udp_prefault_lifo = 0;
+
+static uint64_t udppf_now_us(void)
+{
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return (uint64_t)ts.tv_sec * 1000000 + ts.tv_nsec / 1000;
+}
+
+/* Prefault a page named by UFID, only if this node has the file open; a file
+ * it doesn't know yet, or has closed, is not opened here */
+extern unsigned int udp_pf_ufid_pinned, udp_pf_ufid_skipped;
+
+static void udppfault_ufid_do_work(udppf_rq_t *req)
+{
+    DB_ENV *dbenv = req->bdb_state->dbenv;
+    DB *dbp;
+    void *pin;
+
+    /* a hint that waited this long is likely too late to help: skip it */
+    if (gbl_udp_prefault_max_age_us > 0 && udppf_now_us() - req->enq_us > (uint64_t)gbl_udp_prefault_max_age_us)
+        return;
+
+    if (__ufid_prefault_pin(dbenv, req->ufid, &dbp, &pin) != 0) {
+        __atomic_add_fetch(&udp_pf_ufid_skipped, 1, __ATOMIC_RELAXED);
+        return;
+    }
+    __atomic_add_fetch(&udp_pf_ufid_pinned, 1, __ATOMIC_RELAXED);
+
+    /* On the master (replica write hints) a prefetch that reads the page from disk
+       hints the replicas, as the block processor would have done */
+    int hint = gbl_rep_write_hints && req->bdb_state->repinfo->myhost == req->bdb_state->repinfo->master_host;
+    if (hint) {
+        send_prefault_udp = 1;
+        prefault_dbp = dbp;
+    }
+    touch_page(dbp->mpf, req->pgno);
+    if (hint) {
+        send_prefault_udp = 0;
+        prefault_dbp = NULL;
+    }
+    if (gbl_prefault_latency > 0)
+        sleep(gbl_prefault_latency);
+
+    __ufid_prefault_unpin(dbenv, pin);
+}
+
 static void udppfault_do_work(struct thdpool *pool, void *work, void *thddata)
 {
     bdb_state_type *bdb_state;
@@ -5192,6 +5246,10 @@ static void udppfault_do_work(struct thdpool *pool, void *work, void *thddata)
     int ret;
 
     udppf_rq_t *req = (udppf_rq_t *)work;
+    if (req->by_ufid) {
+        udppfault_ufid_do_work(req);
+        return;
+    }
     bdb_state = req->bdb_state;
     fileid = req->fileid;
     pgno = req->pgno;
@@ -5289,6 +5347,30 @@ int enque_udppfault_filepage(bdb_state_type *bdb_state, unsigned int fileid,
     if (rc != 0) {
         free(qdata);
     }
+    return rc;
+}
+
+int enque_udppfault_ufid(bdb_state_type *bdb_state, const uint8_t *ufid, unsigned int pgno)
+{
+    udppf_rq_t *qdata;
+    int rc;
+
+    qdata = calloc(1, sizeof(udppf_rq_t));
+    if (qdata == NULL) {
+        logmsg(LOGMSG_FATAL, "failed to malloc udp prefault request\n");
+        exit(1);
+    }
+
+    qdata->bdb_state = bdb_state;
+    qdata->by_ufid = 1;
+    memcpy(qdata->ufid, ufid, DB_FILE_ID_LEN);
+    qdata->pgno = pgno;
+    qdata->enq_us = udppf_now_us();
+
+    rc = thdpool_enqueue(gbl_udppfault_thdpool, udppfault_do_work_pp, qdata, 0, NULL,
+                         gbl_udp_prefault_lifo ? THDPOOL_ENQUEUE_FRONT : 0);
+    if (rc != 0)
+        free(qdata);
     return rc;
 }
 

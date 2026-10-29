@@ -520,7 +520,7 @@ REGISTER_TUNABLE("enable_page_compact_backward_scan", NULL, TUNABLE_INTEGER, &gb
                  INVERSE_VALUE | READONLY | NOARG, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("enable_partial_indexes", "If set, allows partial index definitions in table schema. (Default: off)",
                  TUNABLE_BOOLEAN, &gbl_partial_indexes, READONLY | NOARG, NULL, NULL, NULL, NULL);
-REGISTER_TUNABLE("enable_prefault_udp", "Send lossy prefault requests to replicants. (Default: off)", TUNABLE_BOOLEAN,
+REGISTER_TUNABLE("enable_prefault_udp", "Send lossy prefault requests to replicants. (Default: on)", TUNABLE_BOOLEAN,
                  &gbl_prefault_udp, NOARG, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("enable_selectv_range_check",
                  "If set, SELECTV will send ranges for verification, not every "
@@ -994,8 +994,14 @@ REGISTER_TUNABLE("osql_bkoff_netsend", NULL, TUNABLE_INTEGER,
                  &gbl_osql_bkoff_netsend, READONLY, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("osql_bkoff_netsend_lmt", NULL, TUNABLE_INTEGER,
                  &gbl_osql_bkoff_netsend_lmt, READONLY, NULL, NULL, NULL, NULL);
-REGISTER_TUNABLE("osqlprefaultthreads", "If set, send prefaulting hints to nodes. (Default: 0)", TUNABLE_INTEGER,
-                 &gbl_osqlpfault_threads, READONLY, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("osqlprefaultthreads",
+                 "Number of master threads that read the pages of osql ops as they arrive, before the block "
+                 "processor applies them; 0 disables. (Default: 16)",
+                 TUNABLE_INTEGER, &gbl_osqlpfault_threads, READONLY, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("osqlpf_bp_keys",
+                 "With osqlprefaultthreads, the block processor looks up the old and new keys of each row it changes "
+                 "in the prefault pool, so that their leaf pages are read in parallel. (Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_osqlpf_bp_keys, EXPERIMENTAL, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("osql_verify_ext_chk",
                  "For block transaction mode only - after this many verify "
                  "errors, check if transaction is non-commitable (see default "
@@ -2015,6 +2021,32 @@ REGISTER_TUNABLE("reorder_socksql_no_deadlock", "Reorder sock sql to have no dea
 REGISTER_TUNABLE("reorder_idx_writes", "reorder_idx_writes",
                  TUNABLE_BOOLEAN, &gbl_reorder_idx_writes, EXPERIMENTAL,
                  NULL, NULL, NULL, NULL);
+
+REGISTER_TUNABLE("udp_prefault_async",
+                 "The master queues UDP prefault hints for a sender thread instead of sending them from the thread "
+                 "that reads the page; hints are dropped when the queue is full. (Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_udp_prefault_async, EXPERIMENTAL, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("udp_prefault_async_batch",
+                 "With udp_prefault_async, pages per UDP prefault packet (1-32); more than 1 needs replicas that "
+                 "accept multi-page packets. (Default: 1)",
+                 TUNABLE_INTEGER, &gbl_udp_prefault_async_batch, EXPERIMENTAL, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("udp_prefault_async_poll_us",
+                 "With udp_prefault_async, the sender polls its queue every this many microseconds instead of being "
+                 "woken (0: woken). (Default: 0)",
+                 TUNABLE_INTEGER, &gbl_udp_prefault_async_poll_us, EXPERIMENTAL, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("udp_prefault_max_age_us",
+                 "Skip a UDP prefault request that waited in the queue longer than this many microseconds (0: never). "
+                 "(Default: 0)",
+                 TUNABLE_INTEGER, &gbl_udp_prefault_max_age_us, EXPERIMENTAL, NULL, NULL, NULL, NULL);
+
+REGISTER_TUNABLE("udp_prefault_lifo", "Serve the newest UDP prefault request first. (Default: off)", TUNABLE_BOOLEAN,
+                 &gbl_udp_prefault_lifo, EXPERIMENTAL, NULL, NULL, NULL, NULL);
+
+REGISTER_TUNABLE("rep_write_hints",
+                 "Replicas send the master, in one lossy UDP packet per write statement, up to 32 leaf pages the "
+                 "statement read, so that the master can prefetch them. socksql (default) transactions only; needed "
+                 "on the master too. With udp_prefault_async, a sender thread sends them. (Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_rep_write_hints, EXPERIMENTAL, NULL, NULL, NULL, NULL);
 
 REGISTER_TUNABLE("disable_tpsc_tblvers",
                  "Disable table version checks for time partition schema "
