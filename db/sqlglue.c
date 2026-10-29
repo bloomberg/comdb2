@@ -2480,6 +2480,9 @@ void clear_participants(struct sqlclntstate *clnt)
         p = listc_rtl(&clnt->participants);
         free(freep);
     }
+    /* each txn decides again whether it coordinates; a stale flag stops a
+     * later local txn resending on a master swing */
+    clnt->is_coordinator = 0;
 }
 
 static int move_is_nop(BtCursor *pCur, int *pRes)
