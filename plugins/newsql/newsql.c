@@ -37,6 +37,7 @@
 void free_original_normalized_sql(struct sqlclntstate *);
 
 extern int gbl_allow_incoherent_sql;
+extern int gbl_hasql_require_snapshot;
 extern int gbl_disable_skip_rows;
 extern int gbl_return_long_column_names;
 extern int gbl_typessql;
@@ -2303,6 +2304,17 @@ int process_set_commands(struct sqlclntstate *clnt, CDB2SQLQUERY *sql_query)
                              sqlstr);
                 newsql_write_response(clnt, RESPONSE_ERROR_PREPARE, err, 0);
             }
+        }
+    }
+    /* hasql needs a snapshot to retry, so it only works at snapshot or serializable */
+    if (!rc && num_commands && clnt->hasql_on && clnt->dbtran.mode != TRANLEVEL_SNAPISOL &&
+        clnt->dbtran.mode != TRANLEVEL_SERIAL) {
+        if (gbl_hasql_require_snapshot) {
+            newsql_write_response(clnt, RESPONSE_ERROR_PREPARE, "hasql requires snapshot or serializable isolation", 0);
+            rc = num_commands;
+        } else {
+            logmsg(LOGMSG_WARN, "hasql below snapshot isolation from %s pid %d origin %s\n",
+                   clnt->argv0 ? clnt->argv0 : "?", clnt->conninfo.pid, clnt->origin ? clnt->origin : "?");
         }
     }
     if (!rc) {

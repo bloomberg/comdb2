@@ -2606,6 +2606,10 @@ REGISTER_TUNABLE("not_durable_retries",
                  "Have a node retry a non-durable transaction this many times before giving up.  (Default: 100)",
                  TUNABLE_INTEGER, &gbl_not_durable_retries, 0, NULL, NULL, NULL, NULL);
 
+REGISTER_TUNABLE("hasql_require_snapshot",
+                 "Reject hasql below snapshot or serializable isolation; off only logs a warning.  (Default: on)",
+                 TUNABLE_BOOLEAN, &gbl_hasql_require_snapshot, 0, NULL, NULL, NULL, NULL);
+
 REGISTER_TUNABLE("hide_non_durable_rcode", "Hide non-durable rcode from clients.  (Default: on)", TUNABLE_BOOLEAN,
                  &gbl_ignore_final_non_durable_retry, 0, NULL, NULL, NULL, NULL);
 

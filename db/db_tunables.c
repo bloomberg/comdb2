@@ -705,6 +705,7 @@ extern int gbl_clear_ufid_on_db_close;
 extern int gbl_get_peer_fqdn;
 extern int gbl_rep_verify_peer_hostname;
 extern int gbl_rep_verify_peer_hostname_warn;
+extern int gbl_hasql_require_snapshot;
 
 int parse_int64(const char *value, int64_t *num);
 

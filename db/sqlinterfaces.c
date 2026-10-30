@@ -178,6 +178,7 @@ uint64_t gbl_clnt_seq_no = 0;
 
 int gbl_dump_history_on_too_many_verify_errors = 0;
 int gbl_thdpool_queue_only = 0;
+int gbl_hasql_require_snapshot = 1;
 int gbl_random_sql_work_delayed = 0;
 int gbl_random_sql_work_rejected = 0;
 int gbl_sleep_5s_after_caching_table_versions = 0;
