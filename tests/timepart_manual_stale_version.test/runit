@@ -1,0 +1,151 @@
+#!/usr/bin/env bash
+bash -n "$0" || exit 1
+
+set -x
+
+dbnm=$1
+output=run.log
+
+if [ "x$dbnm" == "x" ] ; then
+    echo "need a DB name"
+    exit 1
+fi
+
+failed=0
+
+function fail
+{
+    echo "FAILURE: $1"
+    echo "FAILURE: $1" >> $output
+    failed=1
+}
+
+# run on a specific node (or the default tier if node is empty)
+function gorun_node
+{
+    local node=$1
+    shift
+    if [[ -n "$node" ]]; then
+        cdb2sql ${CDB2_OPTIONS} --host $node $dbnm default "$@"
+    else
+        cdb2sql ${CDB2_OPTIONS} $dbnm default "$@"
+    fi
+}
+
+function gorun
+{
+    echo cdb2sql ${CDB2_OPTIONS} $dbnm default "$1" >> $output
+    cdb2sql ${CDB2_OPTIONS} $dbnm default "$1" >> $output 2>&1
+}
+
+function gorun_tabs
+{
+    cdb2sql -tabs ${CDB2_OPTIONS} $dbnm default "$1"
+}
+
+nodes=${CLUSTER:-""}
+if [[ -z "$nodes" ]]; then
+    nodes="__default__"
+fi
+
+echo "Setup" > $output
+gorun "create table comdb2_logical_cron (name cstring(128) primary key, value int)"
+
+# phase 2 copies the version of the previous newest shard onto the new one;
+# make sure it is not 0, otherwise there is no mismatch to detect
+gorun "alter table t1 add column b int null"
+t1ver=$(gorun_tabs "select table_version('t1')")
+echo "t1 version $t1ver" >> $output
+if [[ -z "$t1ver" || "$t1ver" -eq 0 ]]; then
+    fail "t1 table version is '$t1ver', need it non zero"
+    exit 1
+fi
+
+gorun "create partition on t1 as tp period 'manual' retention 3 start '1'"
+gorun "insert into tp(a) values (1)"
+
+# roll out: phase 1 creates the next shard, phase 2 adds it to the partition;
+# retention 3 keeps us in the filling stage, so there is no phase 3 drop;
+# the first increment creates the counter at 0, the second one rolls out
+gorun "put counter tp increment"
+gorun "put counter tp increment"
+
+newshard=""
+for i in $(seq 1 60); do
+    newshard=$(gorun_tabs "select shardname from comdb2_timepartshards where name='tp' and shardname like '\$%'")
+    [[ -n "$newshard" ]] && break
+    sleep 1
+done
+if [[ -z "$newshard" ]]; then
+    fail "rollout did not happen"
+    exit 1
+fi
+echo "new shard $newshard" >> $output
+
+# phase 1 must create the shard with the inherited version, never 0
+dblog=${TESTDIR}/logs/${dbnm}.db
+if [[ -f "$dblog" ]] && grep -qF "Saved tableversion 0 for table $newshard" $dblog; then
+    fail "$newshard was created with table version 0"
+fi
+
+# make sure every node has seen the rollout
+for node in $nodes; do
+    [[ "$node" == "__default__" ]] && node=""
+    for i in $(seq 1 60); do
+        cnt=$(gorun_node "$node" -tabs "select count(*) from comdb2_timepartshards where name='tp'")
+        [[ "$cnt" == "2" ]] && break
+        sleep 1
+    done
+    if [[ "$cnt" != "2" ]]; then
+        fail "node '$node' did not see the rollout, $cnt shards"
+    fi
+done
+
+key=100
+for node in $nodes; do
+    [[ "$node" == "__default__" ]] && node=""
+    echo "Checking node '$node'" >> $output
+
+    # phase 2 ran: the new shard has the version of t1
+    shardver=$(gorun_node "$node" -tabs "select table_version('$newshard')")
+    echo "node '$node' $newshard version $shardver" >> $output
+    if [[ "$shardver" != "$t1ver" ]]; then
+        fail "node '$node' $newshard version '$shardver' != t1 version '$t1ver'"
+    fi
+
+    # a plain insert
+    key=$((key+1))
+    out=$( (set +x; gorun_node "$node" "insert into tp(a) values ($key)") 2>&1)
+    rc=$?
+    echo "node '$node' plain insert rc $rc: $out" >> $output
+    if [[ $rc -ne 0 ]]; then
+        fail "node '$node' plain insert failed: $out"
+    fi
+
+    # a chunked insert
+    key=$((key+1))
+    out=$( (set +x; gorun_node "$node" -) 2>&1 <<EOF
+set transaction chunk 10
+begin
+insert into tp(a) values ($key)
+commit
+EOF
+)
+    rc=$?
+    echo "node '$node' chunked insert rc $rc: $out" >> $output
+    if [[ $rc -ne 0 || "$out" == *"failed with rc"* ]]; then
+        fail "node '$node' chunked insert failed: $out"
+    fi
+done
+
+gorun "select a from tp order by a"
+gorun "exec procedure sys.cmd.send('llmeta list')"
+
+if [[ $failed -ne 0 ]]; then
+    echo "Testcase failed."
+    cat $output
+    exit 1
+fi
+
+echo "Testcase passed." >> $output
+echo "Testcase passed."

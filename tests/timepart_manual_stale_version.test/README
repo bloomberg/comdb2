@@ -1,0 +1,8 @@
+A legacy partition rollout pre-creates the next shard (phase 1) with table
+version 0, and phase 2 later sets it to the version of the previous newest
+shard without bumping dbopen_gen.  Sqlite engines built in between keep the
+shard at version 0, and chunked transactions on the partition fail their
+table version check with -3 until something reloads the engines.
+
+Use a manual partition so the rollout is driven by the logical counter, and
+stay in the filling stage (no phase 3 drop) so nothing bumps dbopen_gen.
