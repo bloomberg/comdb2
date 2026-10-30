@@ -3,6 +3,7 @@
 #include "sqliteInt.h"
 #include "vdbeInt.h"
 #include <ctrace.h>
+#include "comdb2_atomic.h"
 #include <poll.h>
 #include <phys_rep_lsn.h>
 
@@ -362,6 +363,15 @@ struct dbtable *get_sqlite_db(struct sql_thread *thd, int iTable, int *ixnum)
     }
 
     tbl = get_dbtable_by_name(tblname);
+
+    /* A client analyzing a pre-commit schema-change table needs that table's
+     * storage, not the live one.  newdb is not in thedb->db_hash until
+     * finalize, so the lookup above would hand back the old table while the
+     * rootpages describe the new schema -- including index numbers the old
+     * table does not have. */
+    if (thd->clnt && thd->clnt->custom_dbtable && strcasecmp(tblname, thd->clnt->custom_dbtable->tablename) == 0)
+        tbl = thd->clnt->custom_dbtable;
+
     if (!tbl)
         return NULL;
 
@@ -419,7 +429,61 @@ int get_copy_rootpages_custom(struct sql_thread *thd, master_entry_t *ents,
 /* deep copy of sqlite master */
 int get_copy_rootpages_nolock(struct sql_thread *thd)
 {
-    return get_copy_rootpages_custom(thd, sqlmaster, sqlmaster_nentries);
+    int rc = get_copy_rootpages_custom(thd, sqlmaster, sqlmaster_nentries);
+    thd->rootpages_id = 0;
+    return rc;
+}
+
+/* Ids for custom rootpage sets; 0 means the live set. */
+static uint32_t custom_rootpages_id_seq;
+
+unsigned next_custom_rootpages_id(void)
+{
+    unsigned id;
+    do {
+        id = ATOMIC_ADD32(custom_rootpages_id_seq, 1);
+    } while (id == 0);
+    return id;
+}
+
+/**
+ * Load the rootpages this client should see.
+ *
+ * Normally that is the live sqlmaster set.  A client with custom_rootpages set
+ * (the schema-change inline analyze, which must see the pre-commit newdb)
+ * instead gets its own entries.
+ *
+ * The thread is tagged with the id of the set it loaded.  This matters in two
+ * directions: a thread that ran a custom-rootpage client must not leave that
+ * view behind for the next client, and repeat statements from the same client
+ * must not pay for a redundant deep copy.
+ */
+int get_copy_rootpages_for_clnt(struct sql_thread *thd, struct sqlclntstate *clnt)
+{
+    int rc;
+
+    if (clnt && clnt->custom_rootpages) {
+        rc = get_copy_rootpages_custom(thd, clnt->custom_rootpages, clnt->custom_rootpage_nentries);
+        /* our entries are dense, rootpage == index + RTPAGE_START */
+        thd->selective_rootpages = 0;
+        thd->rootpages_id = clnt->custom_rootpages_id;
+        return rc;
+    }
+
+    return get_copy_rootpages_nolock(thd);
+}
+
+/**
+ * True if this thread's rootpages do not match what clnt should be running
+ * against -- either clnt needs its own set, or a previous client left a custom
+ * set behind.  Cheap enough to call on every query.
+ */
+int rootpages_need_reload_for_clnt(struct sql_thread *thd, struct sqlclntstate *clnt)
+{
+    if (!thd || !clnt)
+        return 0;
+    unsigned want = clnt->custom_rootpages ? clnt->custom_rootpages_id : 0;
+    return thd->rootpages_id != want; /* common case: both 0 */
 }
 
 /**

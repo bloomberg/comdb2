@@ -4516,6 +4516,30 @@ static int prepare_engine(struct sqlthdstate *thd, struct sqlclntstate *clnt,
         sqlthd->clnt = clnt;
     }
 
+    /* The reload below only runs when the engine is opened or refreshed, so a
+     * thread with a warm engine keeps whatever rootpages it last loaded.  That
+     * is fine for the live set, but a client carrying custom rootpages (the
+     * schema-change inline analyze) must not inherit -- or leave behind -- the
+     * wrong view.  Reconcile here, on every query; the common case is two
+     * predictable tests. */
+    if (rootpages_need_reload_for_clnt(sqlthd, clnt)) {
+        /* Swapping the rootpages alone is not enough: sqlite has already
+         * parsed and cached its schema from the old set, and would keep
+         * planning against tables and indexes that are no longer there (a
+         * second schema-change analyze on a warm thread failed with
+         * SQLITE_SCHEMA this way).  Close the engine so the open path below
+         * reloads the right rootpages and re-reads the schema from them.
+         * Swaps only happen around custom-rootpage clients, so this is rare. */
+        if (thd->sqldb) {
+            stmt_cache_reset(thd->stmt_cache);
+            sqlite3_close_serial(&thd->sqldb);
+            /* as in the recreate path below */
+            if (gbl_old_column_names && query_preparer_plugin && query_preparer_plugin->do_cleanup_thd)
+                query_preparer_plugin->do_cleanup_thd(thd);
+        }
+        get_copy_rootpages_for_clnt(sqlthd, clnt);
+    }
+
 check_version:
     if (thd->sqldb && (rc = check_thd_gen(thd, clnt, flags)) != SQLITE_OK) {
         if (rc != SQLITE_SCHEMA_REMOTE) {
@@ -4586,8 +4610,22 @@ check_version:
         }
 
         comdb2_reset_authstate(thd);
-        get_copy_rootpages_nolock(thd->sqlthd);
-        if (clnt->dbtran.cursor_tran) {
+        get_copy_rootpages_for_clnt(thd->sqlthd, clnt);
+        if (clnt->custom_rootpages) {
+            /* A client running against custom rootpages (the schema-change
+             * inline analyze) sees only the handful of tables it was given.
+             * Time-partition views reference shards outside that set, so
+             * creating them would fail -- and that failure aborts.  The client
+             * has no use for views; skip them.
+             *
+             * Record the current views generation anyway.  Leaving it stale
+             * makes check_thd_gen() return SQLITE_SCHEMA_REMOTE on every
+             * statement, and handle_sqlite_requests() retries that forever.
+             * An ordinary client that later lands on this thread does not
+             * inherit the missing views: the rootpage swap above closes the
+             * engine, and the reopen builds them. */
+            thd->views_gen = gbl_views_gen;
+        } else if (clnt->dbtran.cursor_tran) {
             if (thedb->timepart_views) {
                 const int latched_clnt_is_readonly = clnt->is_readonly;
                 clnt->is_readonly = 0;
