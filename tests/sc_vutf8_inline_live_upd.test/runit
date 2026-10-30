@@ -1,0 +1,73 @@
+#!/usr/bin/env bash
+bash -n "$0" || exit 1
+
+# Update rows behind the schema change cursor without touching a vutf8
+# column whose inline size is changing.  The update only sends a placeholder
+# for the unchanged vutf8 value, so the schema change has to fetch it to
+# store it in the new record.  Values must survive and the schema change must
+# complete.
+
+dbnm=$1
+S="cdb2sql ${CDB2_OPTIONS} -s --tabs $dbnm default"
+
+LONG=$(printf 'x%.0s' $(seq 1 100))
+
+# expected tags value for the row whose v is in column $1
+expected() {
+    echo "case $1 % 4 when 0 then null when 1 then 'Model,BAM12' when 2 then '' else '$LONG' end"
+}
+
+run_case() {
+    local name=$1 old=$2 new=$3 extra_keys=$4 cons=$5
+
+    $S "drop table if exists t" >/dev/null
+    $S "create table t { schema { int v cstring s[8] byte deleted dbstore=0 vutf8 tags$old null=yes } keys { \"V\" = v $extra_keys } $cons }" || return 1
+    $S "insert into t(v, s, tags) select value, 's' || (value % 10), $(expected value) from generate_series(0, 1999)" >/dev/null || return 1
+
+    $S "exec procedure sys.cmd.send('scdelay 5')" >/dev/null
+    $S "alter table t { schema { int v cstring s[8] byte deleted dbstore=0 vutf8 tags$new null=yes } keys { \"V\" = v $extra_keys } $cons }" > alter.out 2>&1 &
+    local pid=$!
+
+    # let the schema change cursor move past the first rows, then update them
+    sleep 3
+    for v in $(seq 0 39); do
+        $S "update t set deleted = x'01' where v = $v" >/dev/null || return 1
+    done
+    printf "set transaction read committed\nbegin\nupdate t set deleted = x'00' where v < 8\nupdate t set s = 'z' where v < 8\ncommit\n" | $S - >/dev/null || return 1
+
+    wait $pid
+    local rc=$?
+    $S "exec procedure sys.cmd.send('scdelay 0')" >/dev/null
+    if [[ $rc -ne 0 ]]; then
+        echo "$name: alter failed: $(cat alter.out)"
+        return 1
+    fi
+
+    local bad=$($S "select count(*) from t where tags is not ($(expected v))")
+    if [[ "$bad" != "0" ]]; then
+        echo "$name: $bad rows have wrong tags"
+        $S "select v, hex(cast(tags as blob)) from t where tags is not ($(expected v)) limit 5"
+        return 1
+    fi
+
+    $S "exec procedure sys.cmd.verify('t')" > verify.out 2>&1
+    if ! grep -q "Verify succeeded" verify.out; then
+        echo "$name: verify failed: $(cat verify.out)"
+        return 1
+    fi
+    echo "$name: ok"
+}
+
+$S "create table p { schema { cstring s[8] } keys { \"S\" = s } }" >/dev/null || exit 1
+$S "insert into p select 's' || value from generate_series(0, 9)" >/dev/null || exit 1
+$S "insert into p values('z')" >/dev/null || exit 1
+
+CONS='constraints { "S" -> <"p":"S"> }'
+DC="datacopy(tags) \"S\" = s + v \"P\" = s + v {WHERE deleted=x'00'}"
+
+run_case offline_to_inline "" "[64]" "" "" || exit 1
+run_case offline_to_inline_datacopy_fk "" "[64]" "$DC" "$CONS" || exit 1
+run_case inline_to_offline "[64]" "" "" "" || exit 1
+run_case inline_grow "[16]" "[64]" "" "" || exit 1
+
+echo "Success"
