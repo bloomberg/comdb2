@@ -2347,6 +2347,19 @@ int sql_syntax_check(struct ireq *iq, struct dbtable *db)
         if ((resolve_rc = resolve_sfuncs_for_table(hndl, db) != 0)) {
             logmsg(LOGMSG_ERROR, "%s: resolve_sfuncs_for_table failed with rc=%d\n", __func__, resolve_rc);
         }
+        db->ix_partial_tzless = 0;
+        for (int ix = 0; gbl_partial_indexes && db->ix_partial && ix < db->nix; ix++) {
+            int tzless = 0;
+            if (db->ixschema[ix]->where == NULL)
+                continue;
+            if ((rc = sqlite3_partial_index_tzless(hndl, db->tablename, db->ixschema[ix]->sqlitetag, &tzless)) != 0) {
+                logmsg(LOGMSG_ERROR, "%s: sqlite3_partial_index_tzless failed for %s rc=%d\n", __func__,
+                       db->ixschema[ix]->sqlitetag, rc);
+                break;
+            }
+            if (tzless)
+                db->ix_partial_tzless |= (1ULL << ix);
+        }
     }
 
 done:

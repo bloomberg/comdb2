@@ -798,6 +798,9 @@ typedef struct dbtable {
     unsigned ix_expr : 1;         /* set to 1 if we have indexes on expressions */
     unsigned ix_blob : 1;         /* set to 1 if blobs are involved in indexes */
     unsigned ix_func : 1;         /* set to 1 if sfuncs are involved in indexes */
+    /* partial indexes comparing a datetime with a literal without timezone,
+     * set by sql_syntax_check() */
+    unsigned long long ix_partial_tzless;
 
     char ** lua_sfuncs;           /* The lua scalar functions used by indexes in this table*/
     int num_lua_sfuncs;           /* The number of lua scalar functions used by indexes in this table*/
