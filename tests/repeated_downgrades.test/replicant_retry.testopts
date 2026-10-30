@@ -1,0 +1,4 @@
+sql_tranlevel_default blocksock
+durable_lsns off
+replicant_retry_on_not_durable on
+hide_non_durable_rcode off
