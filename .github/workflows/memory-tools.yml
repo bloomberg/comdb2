@@ -39,6 +39,9 @@ jobs:
       - name: Variant configuration tests
         run: bash tests/memory_tools/test_config.sh
 
+      - name: Database-test lifecycle tests
+        run: bash tests/memory_tools/test_lifecycle.sh
+
       - name: Report parser tests
         run: python3 -m unittest tests/memory_tools/test_check_report.py
 

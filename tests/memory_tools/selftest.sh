@@ -169,37 +169,18 @@ binaries=("${build_dir}/db/comdb2")
 for probe in "${MEMORY_TOOL_EXPECTED_PROBES[@]}"; do
     binaries+=("$(memory_tool_probe_binary "$build_dir" "$probe")")
 done
-# Runtime library -> symbol that only instrumented code references.
-declare -A runtime_symbol=([libasan]=__asan_init [libubsan]=__ubsan_handle_ [libtsan]=__tsan_init)
 linkage_errors=()
 for bin in "${binaries[@]}"; do
-    if [[ ! -x $bin ]]; then
-        linkage_errors+=("missing binary $bin")
-        continue
-    fi
-    libs=$(ldd "$bin" 2>&1)
-    syms=$(readelf -sW "$bin" 2>/dev/null)
     {
         echo "## $bin"
-        echo "$libs"
+        ldd "$bin" 2>&1
         echo
     } >> "${artifact_dir}/linkage.txt"
-    for lib in libasan libubsan libtsan; do
-        expected=0
-        for want in "${MEMORY_TOOL_EXPECTED_RUNTIME[@]}"; do
-            [[ $want == "$lib" ]] && expected=1
-        done
-        linked=0 instrumented=0
-        command grep -qE "^[[:space:]]*${lib}\.so" <<< "$libs" && linked=1
-        command grep -qF "${runtime_symbol[$lib]}" <<< "$syms" && instrumented=1
-        if [[ $expected -eq 1 && $linked -ne 1 ]]; then
-            linkage_errors+=("$bin is not linked against $lib")
-        elif [[ $expected -eq 1 && $instrumented -ne 1 ]]; then
-            linkage_errors+=("$bin links $lib but has no ${runtime_symbol[$lib]} references")
-        elif [[ $expected -ne 1 && ( $linked -eq 1 || $instrumented -eq 1 ) ]]; then
-            linkage_errors+=("$bin unexpectedly uses $lib")
-        fi
-    done
+    check=()
+    [[ $bin == "${build_dir}/db/comdb2" ]] && check=(server)
+    while IFS= read -r problem; do
+        linkage_errors+=("$problem")
+    done < <(memory_tool_check_binary "$bin" "${check[@]}")
 done
 if [[ ${#linkage_errors[@]} -ne 0 ]]; then
     printf '%s\n' "${linkage_errors[@]}" | tee -a "${artifact_dir}/linkage.txt" >&2

@@ -198,6 +198,52 @@ memory_tool_configure()
     return 0
 }
 
+# memory_tool_check_binary <binary> [server]
+# Prints one line per problem and fails unless <binary> links and references
+# exactly the configured variant's sanitizer runtimes; with "server" it must
+# also be Comdb2 built with the variant's allocator. Call after
+# memory_tool_configure.
+memory_tool_check_binary()
+{
+    local bin=$1 server=${2-} libs syms lib want expected linked instrumented native rc=0
+    # runtime library -> symbol only instrumented code references
+    local -A runtime_symbol=([libasan]=__asan_init [libubsan]=__ubsan_handle_ [libtsan]=__tsan_init)
+
+    if [[ ! -x $bin ]]; then
+        echo "missing binary $bin"
+        return 1
+    fi
+    libs=$(ldd "$bin" 2>&1)
+    syms=$(readelf -sW "$bin" 2>/dev/null)
+    for lib in libasan libubsan libtsan; do
+        expected=0
+        for want in "${MEMORY_TOOL_EXPECTED_RUNTIME[@]}"; do
+            [[ $want == "$lib" ]] && expected=1
+        done
+        linked=0 instrumented=0
+        command grep -qE "^[[:space:]]*${lib}\.so" <<< "$libs" && linked=1
+        command grep -qF "${runtime_symbol[$lib]}" <<< "$syms" && instrumented=1
+        if [[ $expected -eq 1 && $linked -ne 1 ]]; then
+            echo "$bin is not linked against $lib"; rc=1
+        elif [[ $expected -eq 1 && $instrumented -ne 1 ]]; then
+            echo "$bin links $lib but has no ${runtime_symbol[$lib]} references"; rc=1
+        elif [[ $expected -ne 1 && ( $linked -eq 1 || $instrumented -eq 1 ) ]]; then
+            echo "$bin unexpectedly uses $lib"; rc=1
+        fi
+    done
+    if [[ $server == server ]]; then
+        # mem/mem.c defines thread_type_key only with PER_THREAD_MALLOC
+        native=0
+        command grep -qw thread_type_key <<< "$syms" && native=1
+        if [[ $MEMORY_TOOL_PER_THREAD_MALLOC == ON && $native -ne 1 ]]; then
+            echo "$bin uses the system allocator; ${MEMORY_TOOL_VARIANT} needs COMDB2_PER_THREAD_MALLOC=ON"; rc=1
+        elif [[ $MEMORY_TOOL_PER_THREAD_MALLOC == OFF && $native -eq 1 ]]; then
+            echo "$bin uses Comdb2's allocator; ${MEMORY_TOOL_VARIANT} needs COMDB2_PER_THREAD_MALLOC=OFF"; rc=1
+        fi
+    fi
+    return $rc
+}
+
 # Fails, listing what is missing, if a tool the configured variant needs is
 # not on PATH. Call after memory_tool_configure.
 memory_tool_check_tools()

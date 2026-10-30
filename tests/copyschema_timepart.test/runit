@@ -147,6 +147,8 @@ sed -i "s~\$TESTDIR~$TESTDIR~g" clonedb.sh.actual
 sed -i "s~\$DBDIR~$DBDIR~g" clonedb.sh.actual
 sed -i "s~\$TMPDIR~$TMPDIR~g" clonedb.sh.actual
 sed -i "s~\$COMDB2_EXE~$COMDB2_EXE~g" clonedb.sh.actual
+# memory-tool runs only (tests/memory_tools); empty otherwise
+sed -i "s~\$MEMORY_PREFIX~${MEMORY_TOOL_VARIANT:+$DEBUG_PREFIX}~g" clonedb.sh.actual
 sed -i "s~\$COMDB2AR_EXE~$COMDB2AR_EXE~g" clonedb.sh.actual
 
 newdb=srcdb$dbname
@@ -160,7 +162,7 @@ if [ -z "$CLUSTER" ]; then
 
     # bring the db up
     echo $COMDB2_EXE $newdb --lrl $newlrl --pidfile $TMPDIR/$newdb.pid
-    $COMDB2_EXE $newdb --lrl $newlrl --pidfile $TMPDIR/$newdb.pid &
+    ${DEBUG_PREFIX} $COMDB2_EXE $newdb --lrl $newlrl --pidfile $TMPDIR/$newdb.pid &
     if (( $? != 0 )) ; then
         echo "FAILURE"
         exit 1
@@ -185,7 +187,7 @@ else
 
     # bring the db up
     echo nohup $COMDB2_EXE $newdb --lrl $newlrl --pidfile $TMPDIR/$newdb.pid
-    ssh $node nohup $COMDB2_EXE $newdb --lrl $newlrl --pidfile $TMPDIR/$newdb.pid &
+    ssh $node nohup ${DEBUG_PREFIX} $COMDB2_EXE $newdb --lrl $newlrl --pidfile $TMPDIR/$newdb.pid &
     if (( $? != 0 )) ; then
         echo "FAILURE"
         exit 1

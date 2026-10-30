@@ -17,7 +17,7 @@ sed -i "/^ssl_client_mode /s/REQUIRE/ALLOW/g" $newlrl
 
 # recreate the db
 echo $COMDB2_EXE $newdb --create --lrl $newlrl
-$COMDB2_EXE $newdb --create --lrl $newlrl
+$MEMORY_PREFIX $COMDB2_EXE $newdb --create --lrl $newlrl
 if (( $? != 0 )) ; then
    echo "FAILURE"
    exit 1

@@ -10,8 +10,9 @@
 # the test's environment, so the settings are read from runtime.env.
 #
 # For Comdb2 it records <artifact-root>/nodes/<host>/invocations/<pid>/
-#   launch.json   pid, node, variant, testcase, argv
+#   launch.json   pid, node, variant, run id, testcase, argv
 #   stderr.log    copy of stderr (UBSan writes findings there)
+#   stderr-complete  written once the copy has everything
 #   detector/     sanitizer and Valgrind logs
 # and the server itself adds clean-exit / leakcheck markers there.
 # Any other program (some tests prefix cdb2sql) is executed unchanged.
@@ -23,8 +24,8 @@ if [[ $# -eq 0 ]]; then
     exit 2
 fi
 
-# MEMORY_TOOL_VARIANT, MEMORY_TOOL_ARTIFACT_ROOT, MEMORY_TOOL_TESTCASE,
-# MEMORY_TOOL_COMDB2_EXE
+# MEMORY_TOOL_VARIANT, MEMORY_TOOL_ARTIFACT_ROOT, MEMORY_TOOL_RUN_ID,
+# MEMORY_TOOL_TESTCASE, MEMORY_TOOL_COMDB2_EXE
 # shellcheck source=/dev/null
 if ! source "${here}/runtime.env"; then
     echo "memory-tools exec.sh: cannot read ${here}/runtime.env" >&2
@@ -64,9 +65,9 @@ fi
 memory_tool_configure "$MEMORY_TOOL_VARIANT" "${dir}/detector" server || exit 2
 
 {
-    printf '{\n  "pid": %d,\n  "node": %s,\n  "variant": %s,\n  "testcase": %s,\n' \
+    printf '{\n  "pid": %d,\n  "node": %s,\n  "variant": %s,\n  "run_id": %s,\n  "testcase": %s,\n' \
         $$ "$(json_string "$node")" "$(json_string "$MEMORY_TOOL_VARIANT")" \
-        "$(json_string "$MEMORY_TOOL_TESTCASE")"
+        "$(json_string "$MEMORY_TOOL_RUN_ID")" "$(json_string "$MEMORY_TOOL_TESTCASE")"
     printf '  "start": %s,\n  "argv": [' "$(json_string "$(date -u +%Y-%m-%dT%H:%M:%SZ)")"
     sep=
     for arg in "$@"; do
@@ -75,6 +76,8 @@ memory_tool_configure "$MEMORY_TOOL_VARIANT" "${dir}/detector" server || exit 2
     done
     printf ']\n}\n'
 } > "${dir}/launch.json"
+# exact argv, to recognise this process later (pids get reused)
+printf '%s\0' "$@" > "${dir}/cmdline"
 
 export COMDB2_MEMORY_INVOCATION_DIR=$dir
 
@@ -85,7 +88,9 @@ if [[ -n $MEMORY_TOOL_MAX_OPEN_FILES ]]; then
     fi
 fi
 
-# stderr still reaches the caller's log; tee keeps a copy for the scan.
+# stderr still reaches the caller's log; tee keeps a copy for the scan and
+# marks it complete once every writer has closed it. A separate exec, so no
+# extra pipe descriptor leaks into the server and the processes it forks.
+exec 2> >(tee -a "${dir}/stderr.log" >&2; : > "${dir}/stderr-complete")
 exec env -u ASAN_OPTIONS -u LSAN_OPTIONS -u UBSAN_OPTIONS -u TSAN_OPTIONS \
-    "${MEMORY_TOOL_ENV[@]}" "${MEMORY_TOOL_COMMAND_PREFIX[@]}" "$@" \
-    2> >(tee -a "${dir}/stderr.log" >&2)
+    "${MEMORY_TOOL_ENV[@]}" "${MEMORY_TOOL_COMMAND_PREFIX[@]}" "$@"

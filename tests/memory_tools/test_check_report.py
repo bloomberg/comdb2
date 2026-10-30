@@ -95,6 +95,8 @@ VG_STILL_REACHABLE = VG_HEADER + """==4246== LEAK SUMMARY:
 """
 
 VG_POSSIBLY_LOST = VG_STILL_REACHABLE.replace(
+    "==4246== LEAK SUMMARY:",
+    "==4246== 288 bytes in 1 blocks are possibly lost in loss record 1 of 1\n==4246== LEAK SUMMARY:").replace(
     "possibly lost: 0 bytes in 0 blocks", "possibly lost: 288 bytes in 1 blocks").replace(
     "ERROR SUMMARY: 0 errors from 0", "ERROR SUMMARY: 1 errors from 1")
 
@@ -337,11 +339,12 @@ class ScanTest(unittest.TestCase):
     def tearDown(self):
         shutil.rmtree(self.root)
 
-    def proc(self, node="nodeA", pid=100, detector=None, stderr="", clean=True, leakcheck=None):
+    def proc(self, node="nodeA", pid=100, detector=None, stderr="", clean=True, leakcheck=None,
+             run_id="run1", stderr_complete=True):
         d = os.path.join(self.root, "nodes", node, "invocations", str(pid))
         os.makedirs(os.path.join(d, "detector"))
         with open(os.path.join(d, "launch.json"), "w") as f:
-            json.dump({"pid": pid, "node": node, "argv": ["comdb2", "db"]}, f)
+            json.dump({"pid": pid, "node": node, "run_id": run_id, "argv": ["comdb2", "db"]}, f)
         with open(os.path.join(d, "stderr.log"), "w") as f:
             f.write(stderr)
         for name, text in (detector or {}).items():
@@ -349,14 +352,18 @@ class ScanTest(unittest.TestCase):
                 f.write(text)
         if clean:
             open(os.path.join(d, "clean-exit"), "w").close()
+        if stderr_complete:
+            open(os.path.join(d, "stderr-complete"), "w").close()
         if leakcheck is not None:
             with open(os.path.join(d, "leakcheck"), "w") as f:
                 f.write(leakcheck)
         return d
 
-    def scan(self, kind="sanitizer", leak="authoritative", functional="pass", nodes=("nodeA",)):
+    def scan(self, kind="sanitizer", leak="authoritative", functional="pass", nodes=("nodeA",),
+             expect_server="yes"):
         argv = ["scan", "--root", self.root, "--variant", "v", "--testcase", "t", "--kind", kind,
-                "--leak-checking", leak, "--functional-status", functional]
+                "--leak-checking", leak, "--functional-status", functional, "--run-id", "run1",
+                "--expect-server", expect_server]
         for n in nodes:
             argv += ["--expected-node", n]
         with open(os.devnull, "w") as devnull:
@@ -407,6 +414,18 @@ class ScanTest(unittest.TestCase):
         s = self.scan()
         self.assertEqual((s["memory_status"], s["findings"]), ("fail", ["unknown-error"]))
 
+    def test_tsan_lock_order_inversion_and_thread_leak(self):
+        log = ("WARNING: ThreadSanitizer: lock-order-inversion (potential deadlock) (pid=1)\n"
+               "WARNING: ThreadSanitizer: thread leak (pid=1)\n")
+        self.proc(detector={"tsan.100": log})
+        self.assertEqual(self.scan(leak="disabled")["findings"], ["lock-order-inversion", "thread-leak"])
+
+    def test_valgrind_syscall_unaddressable_is_invalid_read(self):
+        log = VG_INVALID_READ.replace("Invalid read of size 4",
+                                      "Syscall param write(buf) points to unaddressable byte(s)")
+        self.proc(detector={"valgrind.100.log": log})
+        self.assertEqual(self.scan(kind="valgrind")["findings"], ["invalid-read"])
+
     def test_tsan_runtime_fatal(self):
         self.proc(stderr=TSAN_FATAL, clean=False)
         self.assertEqual(self.scan(leak="disabled")["findings"], ["unknown-error"])
@@ -426,12 +445,40 @@ class ScanTest(unittest.TestCase):
         self.proc()
         self.assertEqual(self.scan(kind="valgrind")["memory_status"], "incomplete")
 
-    def test_valgrind_killed_with_checkpoint_is_complete_with_note(self):
+    def test_valgrind_killed_with_checkpoint_is_incomplete(self):
+        # valgrind-system is authoritative for leaks; a killed process has no leak summary
         self.proc(detector={"valgrind.100.log": VG_HEADER}, clean=False, leakcheck="unavailable\n")
         s = self.scan(kind="valgrind")
-        self.assertEqual(s["memory_status"], "pass", s)
+        self.assertEqual(s["memory_status"], "incomplete", s)
         self.assertTrue(s["processes"][0]["intentional_kill_checkpoint"])
-        self.assertTrue(s["processes"][0]["notes"])
+        self.assertTrue(any("leak summary" in r for r in s["incomplete_reasons"]))
+
+    def test_valgrind_unrecognised_context_beside_known_one(self):
+        log = VG_DEFINITELY_LOST.replace(
+            "==4246== LEAK SUMMARY:",
+            "==4246== Source and destination overlap in memcpy(0x1, 0x2, 8)\n==4246== LEAK SUMMARY:").replace(
+            "ERROR SUMMARY: 1 errors from 1 contexts", "ERROR SUMMARY: 2 errors from 2 contexts")
+        self.proc(detector={"valgrind.100.log": log})
+        self.assertEqual(self.scan(kind="valgrind")["findings"], ["leak", "unknown-error"])
+
+    def test_leakcheck_with_leaks_but_no_report_is_a_leak(self):
+        self.proc(clean=False, leakcheck="leaks 1\n")
+        s = self.scan()
+        self.assertEqual((s["memory_status"], s["findings"]), ("fail", ["leak"]))
+
+    def test_malformed_leakcheck_is_incomplete(self):
+        self.proc(clean=False, leakcheck="leaks\n")
+        self.assertEqual(self.scan()["memory_status"], "incomplete")
+
+    def test_missing_stderr_completion_is_incomplete(self):
+        self.proc(stderr_complete=False)
+        self.assertEqual(self.scan()["memory_status"], "incomplete")
+
+    def test_record_from_another_run_is_incomplete(self):
+        self.proc(run_id="older-run")
+        s = self.scan()
+        self.assertEqual(s["memory_status"], "incomplete")
+        self.assertTrue(any("another run" in r for r in s["incomplete_reasons"]))
 
     def test_killed_asan_with_checkpoint_is_complete(self):
         self.proc(clean=False, leakcheck="leaks 0\n")
@@ -475,6 +522,14 @@ class ScanTest(unittest.TestCase):
         self.proc(node="nodeA.example.com")
         self.assertEqual(self.scan(nodes=("nodeA",))["memory_status"], "pass")
 
+    def test_normal_exit_without_clean_exit_is_covered(self):
+        # e.g. a server a negative test expects to fail at startup
+        d = self.proc(clean=False)
+        open(os.path.join(d, "exited"), "w").close()
+        s = self.scan()
+        self.assertEqual(s["memory_status"], "pass", s)
+        self.assertEqual((s["processes"][0]["clean_exit"], s["processes"][0]["normal_exit"]), (False, True))
+
     def test_unreadable_launch_record_is_incomplete(self):
         d = self.proc()
         with open(os.path.join(d, "launch.json"), "w") as f:
@@ -490,9 +545,14 @@ class ScanTest(unittest.TestCase):
         self.assertEqual(s["memory_status"], "incomplete")
         self.assertTrue(any("without the memory launcher" in r for r in s["incomplete_reasons"]))
 
-    def test_no_server_process_is_not_run(self):
-        s = self.scan(functional="fail")
-        self.assertEqual((s["memory_status"], s["overall_status"]), ("not-run", "fail"))
+    def test_no_server_process_when_one_was_expected_is_incomplete(self):
+        # e.g. the launcher was never used: must not pass
+        s = self.scan(functional="pass")
+        self.assertEqual((s["memory_status"], s["overall_status"]), ("incomplete", "fail"))
+
+    def test_no_server_process_in_unit_test_is_not_run(self):
+        s = self.scan(functional="pass", expect_server="no")
+        self.assertEqual((s["memory_status"], s["overall_status"]), ("not-run", "pass"))
 
 
 if __name__ == "__main__":

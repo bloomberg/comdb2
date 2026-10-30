@@ -29,7 +29,7 @@ function sql
 function start_node
 {
     typeset node=$1
-    CMD="source ${TESTDIR}/replicant_vars ; ${COMDB2_EXE} $DBNAME --no-global-lrl --lrl $DBDIR/${DBNAME}.lrl -pidfile ${TMPDIR}/${DBNAME}.pid"
+    CMD="source ${TESTDIR}/replicant_vars ; ${DEBUG_PREFIX} ${COMDB2_EXE} $DBNAME --no-global-lrl --lrl $DBDIR/${DBNAME}.lrl -pidfile ${TMPDIR}/${DBNAME}.pid"
     ssh -o StrictHostKeyChecking=no -tt $node ${CMD} 2>&1 </dev/null > >(gawk '{ print strftime("%H:%M:%S>"), $0; fflush(); }' >> $TESTDIR/logs/${DBNAME}.${node}.db) &
     echo $! > ${TMPDIR}/${DBNAME}.${node}.pid
 }

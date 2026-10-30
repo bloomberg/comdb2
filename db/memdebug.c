@@ -701,9 +701,16 @@ static void memory_tool_append(const char *name, const char *line)
     }
 }
 
-/* A server started inside a memory-tool test without exec.sh (a direct
- * $COMDB2_EXE in a test) is not instrumented-and-recorded; leave a note so the
- * test reports incomplete coverage instead of passing. */
+static void memory_tool_note_exit(void)
+{
+    memory_tool_append("exited", "exited\n");
+}
+
+/* Memory-tool test runs: a process started by exec.sh records any normal exit
+ * (exit() or return from main, which also runs the exit-time leak check, e.g.
+ * a server that is meant to fail at startup). One started without exec.sh (a
+ * direct $COMDB2_EXE in a test) is not instrumented-and-recorded; leave a note
+ * so the test reports incomplete coverage instead of passing. */
 void memdebug_note_start(int argc, char **argv)
 {
     const char *root = getenv("MEMORY_TOOL_ARTIFACT_ROOT");
@@ -711,7 +718,11 @@ void memdebug_note_start(int argc, char **argv)
     FILE *f;
     int i;
 
-    if (!root || !root[0] || memory_tool_invocation_dir())
+    if (memory_tool_invocation_dir()) {
+        atexit(memory_tool_note_exit);
+        return;
+    }
+    if (!root || !root[0])
         return;
     gethostname(host, sizeof(host) - 1);
     snprintf(path, sizeof(path), "%s/uncovered", root);

@@ -24,7 +24,9 @@ cat > "$work/bin/comdb2" <<'EOF'
 echo "pid=$$ invdir=${COMDB2_MEMORY_INVOCATION_DIR-} asan=${ASAN_OPTIONS-}"
 echo "fake comdb2 stderr line" >&2
 [[ ${1-} == --exit-now ]] && exit 0
-exec sleep 60
+# keep this command line (the real server does not re-exec)
+sleep 30 < /dev/null > /dev/null 2>&1 &
+wait
 EOF
 chmod +x "$work/bin/comdb2"
 # hostname with characters that must not reach a path
@@ -34,11 +36,13 @@ chmod +x "$work/shim/hostname"
 # Runs in a subshell so each case starts from a clean environment.
 init_case()
 {
-    unset DEBUGGER MEMORY_TOOL_ARTIFACT_ROOT MEMORY_TOOL_INJECT_LEAK
+    unset DEBUGGER MEMORY_TOOL_ARTIFACT_ROOT MEMORY_TOOL_RUN_ID MEMORY_TOOL_INJECT_LEAK COMDB2_UNITTEST
     export TESTDIR="$work/testdir" TESTCASE=$1 TESTID=1 HOSTNAME="we!rd:host" CLUSTER=
     export COMDB2_EXE="$work/bin/comdb2" DEBUG_PREFIX=
     # shellcheck source=lifecycle.sh
     source "${here}/lifecycle.sh"
+    # the fake comdb2 is a script; case 6 runs the real check
+    memory_tool_check_binary() { return 0; }
 }
 
 # 1. no-op without MEMORY_TOOL_VARIANT
@@ -75,7 +79,9 @@ init_case()
     export MEMORY_TOOL_VARIANT=asan-system PATH="$work/shim:$PATH"
     memory_tool_lifecycle_init || { fail "init"; exit 1; }
     root=$MEMORY_TOOL_ARTIFACT_ROOT
-    [[ $root == "$TESTDIR/.memory-tools/pidcase" ]] || fail "artifact root $root"
+    [[ $root == "$TESTDIR/.memory-tools/pidcase/$MEMORY_TOOL_RUN_ID" && -n $MEMORY_TOOL_RUN_ID ]] ||
+        fail "artifact root $root"
+    [[ $(readlink "$TESTDIR/.memory-tools/pidcase/latest") == "$MEMORY_TOOL_RUN_ID" ]] || fail "latest link"
     [[ $DEBUG_PREFIX == "$root/runtime/exec.sh" && -x $DEBUG_PREFIX ]] || fail "DEBUG_PREFIX $DEBUG_PREFIX"
     for f in exec.sh config.sh runtime.env; do
         [[ -f $root/runtime/$f ]] || fail "runtime file $f missing"
@@ -93,13 +99,18 @@ init_case()
     inv="$root/nodes/we_rd_host/invocations/$launched"
     [[ -d $inv/detector ]] || fail "invocation dir $inv (node name not sanitized?)"
     python3 -c 'import json,sys; d=json.load(open(sys.argv[1]));
-assert d["pid"] == int(sys.argv[2]) and d["argv"][-1] == "a b.lrl" and d["variant"] == "asan-system", d' \
-        "$inv/launch.json" "$launched" || fail "launch.json"
+assert d["pid"] == int(sys.argv[2]) and d["argv"][-1] == "a b.lrl" and d["variant"] == "asan-system", d
+assert d["run_id"] == sys.argv[3], d' \
+        "$inv/launch.json" "$launched" "$MEMORY_TOOL_RUN_ID" || fail "launch.json"
+    memory_tool_lifecycle_is_recorded_process "$launched" "$inv/cmdline" || fail "recorded process not recognised"
+    memory_tool_lifecycle_is_recorded_process $$ "$inv/cmdline" && fail "unrelated process recognised"
     kill -9 "$launched"
     wait "$launched" 2>/dev/null
     kill -0 "$launched" 2>/dev/null && fail "kill -9 \$! did not kill the target"
     [[ $(cat err.log) == "fake comdb2 stderr line" ]] || fail "stderr not forwarded: $(cat err.log)"
     [[ $(cat "$inv/stderr.log") == "fake comdb2 stderr line" ]] || fail "stderr not copied"
+    for _ in 1 2 3 4 5 6 7 8 9 10; do [[ -e $inv/stderr-complete ]] && break; sleep 0.2; done
+    [[ -e $inv/stderr-complete ]] || fail "stderr copy not marked complete"
 
     # anything other than comdb2 runs unchanged and unrecorded
     [[ $(${DEBUG_PREFIX} /bin/echo passthrough) == passthrough ]] || fail "passthrough"
@@ -161,6 +172,64 @@ assert d["pid"] == int(sys.argv[2]) and d["argv"][-1] == "a b.lrl" and d["varian
     [[ ! -e $MEMORY_TOOL_ARTIFACT_ROOT/incomplete.txt ]] || fail "tsan intent marker recorded as incomplete"
     exit $((failures > 0))
 ) && pass "before_db_kill outcomes" || fail "before_db_kill outcomes"
+
+# 6. COMDB2_EXE must match the variant (real check); no server: not-run only
+#    for unit tests
+(
+    failures=0
+    init_case binarycheck
+    unset -f memory_tool_check_binary
+    source "${here}/config.sh"
+    export MEMORY_TOOL_VARIANT=asan-system
+    err=$(memory_tool_lifecycle_init 2>&1) && fail "uninstrumented COMDB2_EXE accepted"
+    [[ $err == *"does not match asan-system"*"not linked against libasan"* ]] || fail "binary check message: $err"
+
+    init_case noserver
+    export MEMORY_TOOL_VARIANT=asan-system
+    memory_tool_lifecycle_init || exit 1
+    out=$(memory_tool_lifecycle_finalize pass) && fail "test without any server process passed: $out"
+    [[ $out == *"memory incomplete"* ]] || fail "no-process summary: $out"
+
+    init_case unittest
+    export MEMORY_TOOL_VARIANT=asan-system COMDB2_UNITTEST=1
+    memory_tool_lifecycle_init || exit 1
+    out=$(memory_tool_lifecycle_finalize pass) || fail "unit test without server failed: $out"
+    [[ $out == *"memory not-run"* ]] || fail "unit test summary: $out"
+    exit $((failures > 0))
+) && pass "binary check; no server is incomplete except for unit tests" ||
+    fail "binary check; no server is incomplete except for unit tests"
+
+# 7. cluster: runtime install, remote wait and collection over ssh (mocked:
+#    "nodeB" shares this TESTDIR), every node must be accounted for
+(
+    failures=0
+    init_case cluster
+    mkdir -p "$work/sshshim"
+    cat > "$work/sshshim/ssh" <<'EOF'
+#!/bin/sh
+# ssh [-n] [-o opt]... host command: run the command here
+while [ $# -gt 0 ]; do
+    case "$1" in -n|-q|-tt) shift ;; -o) shift 2 ;; *) break ;; esac
+done
+shift
+exec sh -c "$*"
+EOF
+    printf '#!/bin/sh
+echo "scp must not run: TESTDIR is shared" >&2
+exit 1
+' > "$work/sshshim/scp"
+    chmod +x "$work/sshshim/ssh" "$work/sshshim/scp"
+    export MEMORY_TOOL_VARIANT=asan-system PATH="$work/sshshim:$work/shim:$PATH" CLUSTER="we!rd:host nodeB"
+    memory_tool_lifecycle_init || exit 1
+    memory_tool_lifecycle_prepare_cluster || fail "runtime install on a node sharing TESTDIR"
+    cd "$work" || exit 1
+    ${DEBUG_PREFIX} "$COMDB2_EXE" --exit-now > /dev/null 2>&1
+    touch "$(ls -d "$MEMORY_TOOL_ARTIFACT_ROOT"/nodes/*/invocations/*)/clean-exit"
+    out=$(memory_tool_lifecycle_finalize pass) && fail "node without a server accepted: $out"
+    command grep -q "node nodeB" "$MEMORY_TOOL_ARTIFACT_ROOT/summary.json" || fail "nodeB not reported missing"
+    command grep -q "cannot" "$MEMORY_TOOL_ARTIFACT_ROOT/summary.json" && fail "ssh/collection failed: $out"
+    exit $((failures > 0))
+) && pass "cluster runtime, remote wait, node accounting" || fail "cluster runtime, remote wait, node accounting"
 
 if [[ $failures -ne 0 ]]; then
     echo "$failures failure(s)"

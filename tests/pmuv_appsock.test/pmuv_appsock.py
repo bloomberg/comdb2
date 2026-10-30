@@ -4,6 +4,7 @@ import argparse
 import array
 import os
 import selectors
+import shlex
 import socket
 import struct
 import subprocess
@@ -169,6 +170,10 @@ class Database:
         self.service_port = free_port()
         self.proc = None
         self.log = None
+        # tests/runtestcase launch prefix (memory-tool runs); --create only
+        # takes it in memory-tool runs, as in tests/setup
+        self.prefix = shlex.split(os.environ.get("DEBUG_PREFIX", ""))
+        self.create_prefix = self.prefix if os.environ.get("MEMORY_TOOL_VARIANT") else []
 
     def write_lrl(self):
         os.makedirs(self.dbdir, exist_ok=True)
@@ -183,7 +188,7 @@ class Database:
     def create(self):
         with open(self.initlog, "w") as log:
             rc = subprocess.call(
-                [self.exe, "--create", self.dbname, "--no-global-lrl", "--lrl", self.lrl],
+                self.create_prefix + [self.exe, "--create", self.dbname, "--no-global-lrl", "--lrl", self.lrl],
                 stdout=log, stderr=subprocess.STDOUT, cwd=self.dbdir)
         if rc != 0:
             sys.stderr.write(read_tail(self.initlog))
@@ -192,7 +197,7 @@ class Database:
     def start(self):
         self.log = open(self.logpath, "w")
         self.proc = subprocess.Popen(
-            [self.exe, self.dbname, "--no-global-lrl", "--lrl", self.lrl],
+            self.prefix + [self.exe, self.dbname, "--no-global-lrl", "--lrl", self.lrl],
             stdout=self.log, stderr=subprocess.STDOUT, cwd=self.dbdir)
 
     def wait_ready(self):

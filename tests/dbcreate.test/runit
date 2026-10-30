@@ -15,36 +15,36 @@ TSTDBDIR=$DBDIR
 SAVEDIR=$TSTDBDIR/savs
 
 echo "Check 1"
-${COMDB2_EXE} --no-global-lrl --create $DB --lrl $TSTDBDIR/${DB}.lrl &> out
+${MEMORY_TOOL_VARIANT:+$DEBUG_PREFIX} ${COMDB2_EXE} --no-global-lrl --create $DB --lrl $TSTDBDIR/${DB}.lrl &> out
 grep "lrl : No such file or directory" out || failexit "expected 'No such file or directory'"
 
 echo "Check 2"
 mkdir -p $TSTDBDIR
 echo "logmsg level debug" > $TSTDBDIR/${DB}.lrl
 #should not crash
-${COMDB2_EXE} --no-global-lrl --create $DB --lrl $TSTDBDIR/${DB}.lrl &> out
+${MEMORY_TOOL_VARIANT:+$DEBUG_PREFIX} ${COMDB2_EXE} --no-global-lrl --create $DB --lrl $TSTDBDIR/${DB}.lrl &> out
 grep "\[FATAL\] failed to open bdb_env for \| \[FATAL\] DB directory" out || failexit "expected '[FATAL] failed to open bdb_env for ' or '\[FATAL\] DB directory'"
 
 echo "Check 3"
-${COMDB2_EXE} --no-global-lrl $DB --lrl $TSTDBDIR/${DB}.lrl &> out
+${DEBUG_PREFIX} ${COMDB2_EXE} --no-global-lrl $DB --lrl $TSTDBDIR/${DB}.lrl &> out
 grep "\[FATAL\] DB directory" out | grep "does not exist" || failexit "expected '[FATAL] DB directory does not exist'"
 
 echo "Check 4"
 echo "name    $DB" >> $TSTDBDIR/${DB}.lrl
-${COMDB2_EXE} --no-global-lrl $DB --lrl $TSTDBDIR/${DB}.lrl &> out
+${DEBUG_PREFIX} ${COMDB2_EXE} --no-global-lrl $DB --lrl $TSTDBDIR/${DB}.lrl &> out
 grep "\[FATAL\] DB directory" out | grep "does not exist" || failexit "expected '[FATAL] DB directory does not exist'"
 
 echo "Check 5"
 echo "name    $DB
 logmsg level debug
 dir     ${TSTDBDIR}_nonexistent " > $TSTDBDIR/${DB}.lrl
-${COMDB2_EXE} --no-global-lrl $DB --lrl $TSTDBDIR/${DB}.lrl &> out
+${DEBUG_PREFIX} ${COMDB2_EXE} --no-global-lrl $DB --lrl $TSTDBDIR/${DB}.lrl &> out
 grep "\[FATAL\] DB directory '${TSTDBDIR}_nonexistent' does not exist" out || failexit "expected '[FATAL] DB directory does not exist'"
 
 echo "Check 6"
 echo "name    $DB
 dir     ${TSTDBDIR}" > $TSTDBDIR/${DB}.lrl
-${COMDB2_EXE} --no-global-lrl $DB --lrl $TSTDBDIR/${DB}.lrl &> out
+${DEBUG_PREFIX} ${COMDB2_EXE} --no-global-lrl $DB --lrl $TSTDBDIR/${DB}.lrl &> out
 grep "No such file or directory" out | grep "logs:" || failexit "expected 'No such file or directory'"
 
 echo "Check 7"
@@ -57,20 +57,20 @@ echo "Check 7"
 echo "table t t.csc2" > $TSTDBDIR/${DB}.lrl # this has to come before setting nullsort
 echo "nullsort high" >> $TSTDBDIR/${DB}.lrl
 echo "schema { datetime dt dbstore=\"CURRENT_TIMESTAMP\" }" > $TSTDBDIR/t.csc2
-${COMDB2_EXE} ${DB} --create --dir $TSTDBDIR --lrl $TSTDBDIR/${DB}.lrl &> out
+${MEMORY_TOOL_VARIANT:+$DEBUG_PREFIX} ${COMDB2_EXE} ${DB} --create --dir $TSTDBDIR --lrl $TSTDBDIR/${DB}.lrl &> out
 grep "Created database" out || failexit "expected 'Created database'"
 
 echo "Check 7.5"
 echo "table t t.csc2" > $TSTDBDIR/${DB}.lrl # this has to come before setting nullsort
 echo "nullsort low" >> $TSTDBDIR/${DB}.lrl # depending on machine this might fail instead of above
 echo "schema { datetime dt dbstore=\"CURRENT_TIMESTAMP\" }" > $TSTDBDIR/t.csc2
-${COMDB2_EXE} ${DB} --create --dir $TSTDBDIR --lrl $TSTDBDIR/${DB}.lrl &> out
+${MEMORY_TOOL_VARIANT:+$DEBUG_PREFIX} ${COMDB2_EXE} ${DB} --create --dir $TSTDBDIR --lrl $TSTDBDIR/${DB}.lrl &> out
 grep "Created database" out || failexit "expected 'Created database'"
 
 echo "Check 8"
 touch $TSTDBDIR/${DB}.lrl
 df $TSTDBDIR | awk '{print $1 }' | grep "tmpfs\|nfs" && echo "setattr directio 0" > $TSTDBDIR/${DB}.lrl 
-${COMDB2_EXE} --no-global-lrl ${DB} --create --dir $TSTDBDIR --lrl $TSTDBDIR/${DB}.lrl &> out
+${MEMORY_TOOL_VARIANT:+$DEBUG_PREFIX} ${COMDB2_EXE} --no-global-lrl ${DB} --create --dir $TSTDBDIR --lrl $TSTDBDIR/${DB}.lrl &> out
 grep "Created database" out || failexit "expected 'Created database'"
 
 echo "name    $DB" >> $TSTDBDIR/${DB}.lrl
@@ -94,7 +94,7 @@ echo "name    $DB" >> $TSTDBDIR/${DB}.lrl
 echo "dir     $TSTDBDIR" >> $TSTDBDIR/${DB}.lrl
 echo "table q q.csc2" >> $TSTDBDIR/${DB}.lrl
 
-${COMDB2_EXE} ${DB} --create --dir $TSTDBDIR --lrl $TSTDBDIR/${DB}.lrl &> out
+${MEMORY_TOOL_VARIANT:+$DEBUG_PREFIX} ${COMDB2_EXE} ${DB} --create --dir $TSTDBDIR --lrl $TSTDBDIR/${DB}.lrl &> out
 
 cd $SAVEDIR
 t_rc=$?
@@ -147,7 +147,7 @@ else
     assertres $? 255   # comdb2makecluster should fail
 
     echo "comdb2_config:default_type=local" >> $CDB2_CONFIG
-    ${COMDB2_EXE} $DBNAME --no-global-lrl --lrl $TSTDBDIR/${DB}.lrl --pidfile ${TMPDIR}/${DBNAME}.pid &> $TESTDIR/logs/${DBNAME}.db &
+    ${DEBUG_PREFIX} ${COMDB2_EXE} $DBNAME --no-global-lrl --lrl $TSTDBDIR/${DB}.lrl --pidfile ${TMPDIR}/${DBNAME}.pid &> $TESTDIR/logs/${DBNAME}.db &
     sleep 2
     res=`cdb2sql --tabs ${CDB2_OPTIONS} $DB default "select comdb2_host()"`
     if [[ $res != $HOSTNAME ]] && [[ $res != `hostname --long` ]] ; then

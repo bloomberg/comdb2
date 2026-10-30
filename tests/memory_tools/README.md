@@ -72,24 +72,29 @@ With `MEMORY_TOOL_VARIANT` unset nothing changes. When it is set,
    starts. `exec.sh` replaces itself with the server (same pid, so `$!` and
    pidfiles are unchanged), applies the variant's settings from `config.sh`,
    and records each process under
-   `$TESTDIR/.memory-tools/$TESTCASE/nodes/<host>/invocations/<pid>/`
-   (`launch.json`, a copy of stderr, detector logs);
+   `$TESTDIR/.memory-tools/$TESTCASE/<run-id>/nodes/<host>/invocations/<pid>/`
+   (`launch.json`, a copy of stderr, detector logs). Every run gets a new
+   `<run-id>` directory, and `$TESTDIR/.memory-tools/$TESTCASE/latest` points
+   to it. `COMDB2_EXE` must be built for the variant (sanitizer runtime and
+   allocator are checked), otherwise the test fails at once;
 2. runs `--create` through the same prefix, copies the runtime files to every
    cluster node, scales the test timeouts and gives servers longer to exit
    (`exitalarmsec`, unsetup's wait), always asking them to exit cleanly;
-3. after unsetup, waits for any recorded server still exiting, collects remote
-   records, and scans every process with `check_report.py scan`, writing
-   `summary.json` and `summary.txt` next to the records.
+3. after unsetup, waits for every recorded server still running and for its
+   stderr copy, collects remote records, and scans every process with
+   `check_report.py scan`, writing `summary.json` and `summary.txt` next to the
+   records. Exit requests in memory runs time out after
+   `MEMORY_TOOL_EXIT_REQUEST_TIMEOUT` (60 s).
 
 A test passes only if both the test and the memory check pass. The memory
 status is:
 
 | Status | Meaning |
 |---|---|
-| `pass` | every recorded server exited cleanly (or was checkpointed before an intended kill) with no finding |
+| `pass` | every recorded server exited normally (or was checkpointed before an intended kill) with no finding |
 | `fail` | any finding (leak, use-after-free, race, UB, Valgrind error, sanitizer crash) |
-| `incomplete` | coverage cannot be proven: no clean exit and no checkpoint, missing node or artifacts, a server started without the launcher, a failed checkpoint |
-| `not-run` | no server ran (e.g. `COMDB2_UNITTEST` tests, or setup failed first) |
+| `incomplete` | coverage cannot be proven: no normal exit and no checkpoint, no server process at all, missing node or artifacts, a server started without the launcher, a failed checkpoint or exit request, an unfinished stderr copy, a killed Valgrind process (no leak summary) |
+| `not-run` | a `COMDB2_UNITTEST` test, which starts no server |
 
 `fail` and `incomplete` make the test fail (`!<test>: failed memory check`
 in `test.log`, nonzero exit), even if the test itself passed.
@@ -97,7 +102,8 @@ in `test.log`, nonzero exit), even if the test itself passed.
 Server side (`db/memdebug.c`), active only in these runs:
 
 - a server reaching the end of a clean exit writes `clean-exit` into its
-  invocation directory; a clean sanitizer run writes no report otherwise;
+  invocation directory, and any normal process exit (`exit()`, return from
+  `main`) writes `exited`; a clean sanitizer run writes no report otherwise;
 - `exec procedure sys.cmd.send("memdebug leakcheck")` runs LeakSanitizer's
   recoverable check (reports leaks, keeps running) and records a checkpoint;
 - a server started in such a run without `exec.sh` (a direct `$COMDB2_EXE` in a

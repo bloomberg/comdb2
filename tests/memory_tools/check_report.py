@@ -22,6 +22,8 @@ CATEGORIES = (
     "leak",
     "undefined-behavior",
     "data-race",
+    "lock-order-inversion",
+    "thread-leak",
     "invalid-read",
     "invalid-write",
     "uninitialized-read",
@@ -39,8 +41,10 @@ SIGNATURES = (
     # UBSan's own format; server logs are scanned too, so bare text is not enough.
     ("undefined-behavior", re.compile(r"\S+:\d+(:\d+)?: runtime error: .*")),
     ("data-race", re.compile(r"WARNING: ThreadSanitizer: data race")),
+    ("lock-order-inversion", re.compile(r"WARNING: ThreadSanitizer: lock-order-inversion")),
+    ("thread-leak", re.compile(r"WARNING: ThreadSanitizer: thread leak")),
     ("unknown-error", re.compile(r"(WARNING|ERROR|FATAL): ThreadSanitizer\b.*")),
-    ("invalid-read", re.compile(r"Invalid read of size \d+")),
+    ("invalid-read", re.compile(r"Invalid read of size \d+|Syscall param .* points to unaddressable byte")),
     ("invalid-write", re.compile(r"Invalid write of size \d+")),
     ("uninitialized-read", re.compile(r"Use of uninitialised value\b.*")),
     ("uninitialized-read",
@@ -51,6 +55,13 @@ SIGNATURES = (
 
 VALGRIND_LOST = re.compile(r"(definitely|indirectly|possibly) lost: ([\d,]+) bytes")
 VALGRIND_ERRORS = re.compile(r"ERROR SUMMARY: ([\d,]+) errors?")
+VALGRIND_CONTEXTS = re.compile(r"ERROR SUMMARY: [\d,]+ errors? from ([\d,]+) contexts?")
+# One line per error context Valgrind prints: an error kind we know, or a
+# leak loss record of a kind that counts as an error.
+VALGRIND_KNOWN_CONTEXT = re.compile(
+    r"==\d+== (Invalid (read|write) of size|Invalid free\(\)|Mismatched free\(\)"
+    r"|Conditional jump or move depends|Use of uninitialised value|Syscall param .* (uninitialised|unaddressable)"
+    r"|.*are (definitely|indirectly|possibly) lost in loss record)")
 VALGRIND_HEADER = re.compile(r"Memcheck, a memory error detector")
 # Lines that show a sanitizer runtime produced the file even without findings.
 SANITIZER_HEADER = re.compile(r"(Sanitizer|SUMMARY: \w+Sanitizer)")
@@ -66,6 +77,7 @@ def scan_text(text, kind):
     signatures = []
     recognized = False
     valgrind_errors = None
+    contexts = known_contexts = 0
 
     for line in text.splitlines():
         for category, regex in SIGNATURES:
@@ -87,6 +99,11 @@ def scan_text(text, kind):
                 sig = m.group(1) + " lost:"
                 if sig not in signatures:
                     signatures.append(sig)
+            if VALGRIND_KNOWN_CONTEXT.search(line):
+                known_contexts += 1
+            m = VALGRIND_CONTEXTS.search(line)
+            if m:
+                contexts += _num(m.group(1))
             m = VALGRIND_ERRORS.search(line)
             if m:
                 recognized = True
@@ -99,6 +116,11 @@ def scan_text(text, kind):
         # Valgrind counted errors we have no signature for.
         categories.add("unknown-error")
         signatures.append("ERROR SUMMARY: %d errors" % valgrind_errors)
+    elif kind == "valgrind" and contexts > known_contexts:
+        # more error contexts than the ones we recognised: report the rest too
+        categories.add("unknown-error")
+        signatures.append("%d Valgrind error contexts without a known signature"
+                          % (contexts - known_contexts))
 
     return categories, signatures, recognized, valgrind_errors
 
@@ -258,7 +280,10 @@ def _read(path):
         return None
 
 
-def scan_process(inv_dir, kind, leak_checking):
+LEAKCHECK_LINE = re.compile(r"^(?:leaks (\d+)|unavailable)$")
+
+
+def scan_process(inv_dir, kind, leak_checking, run_id=None):
     """Evaluate one recorded server process (an exec.sh invocation dir)."""
     proc = {"dir": inv_dir, "findings": [], "signatures": [], "notes": []}
     gaps = []
@@ -271,6 +296,8 @@ def scan_process(inv_dir, kind, leak_checking):
         gaps.append("unreadable launch.json")
         meta = {}
     proc.update({k: meta.get(k) for k in ("pid", "node", "argv")})
+    if run_id is not None and meta and meta.get("run_id") != run_id:
+        gaps.append("record from another run (run_id %s)" % meta.get("run_id"))
 
     categories = set()
     det_dir = os.path.join(inv_dir, "detector")
@@ -291,30 +318,52 @@ def scan_process(inv_dir, kind, leak_checking):
         categories |= cats
         proc["signatures"] += [x for x in sigs if x not in proc["signatures"]]
     stderr = _read(os.path.join(inv_dir, "stderr.log")) or ""
+    if not os.path.exists(os.path.join(inv_dir, "stderr-complete")):
+        gaps.append("stderr copy incomplete")
     cats, sigs, _, _ = scan_text(stderr, "sanitizer")
     categories |= cats
     proc["signatures"] += [x for x in sigs if x not in proc["signatures"]]
+
+    # pre-kill checkpoints written by the server: "leaks <n>" or "unavailable"
+    checkpoints = []
+    for line in (_read(os.path.join(inv_dir, "leakcheck")) or "").splitlines():
+        m = LEAKCHECK_LINE.match(line.strip())
+        if not m:
+            gaps.append("malformed leakcheck record %r" % line)
+            continue
+        checkpoints.append(line.strip())
+        if m.group(1) and int(m.group(1)) > 0:
+            # a leak even if its report did not reach the detector log
+            categories.add("leak")
+            sig = "pre-kill LeakSanitizer check: %s" % line.strip()
+            if sig not in proc["signatures"]:
+                proc["signatures"].append(sig)
+    checked = any(c.startswith("leaks ") for c in checkpoints)
     proc["findings"] = sorted(categories)
 
-    clean_exit = os.path.exists(os.path.join(inv_dir, "clean-exit"))
-    checkpoints = (_read(os.path.join(inv_dir, "leakcheck")) or "").split()
-    proc["clean_exit"] = clean_exit
+    # clean-exit: end of Comdb2's clean exit; exited: any exit()/return from
+    # main (also runs the exit-time leak check), e.g. a server meant to fail
+    proc["clean_exit"] = os.path.exists(os.path.join(inv_dir, "clean-exit"))
+    proc["normal_exit"] = proc["clean_exit"] or os.path.exists(os.path.join(inv_dir, "exited"))
+    clean_exit = proc["normal_exit"]
     proc["intentional_kill_checkpoint"] = bool(checkpoints) and not clean_exit
 
     if kind == "valgrind" and not any(n.startswith("valgrind.") for n in logs):
         gaps.append("no Valgrind log")
     if clean_exit:
         if kind == "valgrind" and not valgrind_summary:
-            gaps.append("clean exit but no Valgrind ERROR SUMMARY")
+            gaps.append("exited but no Valgrind ERROR SUMMARY")
     elif checkpoints:
         # Intentionally killed after a pre-kill checkpoint. Only asan-system
         # owes leak coverage, which the recoverable LSan check provides.
-        if kind == "sanitizer" and leak_checking == "authoritative" and "leaks" not in checkpoints:
+        if kind == "sanitizer" and leak_checking == "authoritative" and not checked:
             gaps.append("pre-kill checkpoint ran without LeakSanitizer")
         if kind == "valgrind":
-            proc["notes"].append("killed: no final Valgrind leak summary")
+            # Valgrind is authoritative for leaks, but a killed process never
+            # reaches its leak summary; errors before the kill still count.
+            gaps.append("killed before Valgrind's leak summary: leak coverage incomplete")
     else:
-        gaps.append("no clean exit and no pre-kill checkpoint")
+        gaps.append("no normal exit and no pre-kill checkpoint")
     proc["coverage_complete"] = not gaps
     proc["coverage_gaps"] = gaps
     return proc
@@ -339,7 +388,7 @@ def cmd_scan(args):
             continue
         for pid in sorted(os.listdir(inv_root), key=lambda p: (len(p), p)):
             processes.append(scan_process(os.path.join(inv_root, pid), args.kind,
-                                          args.leak_checking))
+                                          args.leak_checking, args.run_id))
 
     incomplete = [line.strip() for line in
                   (_read(os.path.join(root, "incomplete.txt")) or "").splitlines()
@@ -349,7 +398,10 @@ def cmd_scan(args):
     for name in sorted(os.listdir(uncovered)) if os.path.isdir(uncovered) else []:
         incomplete.append("server %s started without the memory launcher: %s"
                           % (name, (_read(os.path.join(uncovered, name)) or "").strip()))
-    if processes:
+    expect_server = args.expect_server == "yes"
+    if expect_server and not processes:
+        incomplete.append("no memory-tool server process recorded")
+    if expect_server:
         seen = {p.get("node") or "" for p in processes}
         for node in args.expected_node:
             if not any(_node_matches(node, s) for s in seen):
@@ -439,6 +491,9 @@ def main(argv=None):
     sc.add_argument("--leak-checking", required=True)
     sc.add_argument("--functional-status", required=True, choices=("pass", "fail", "not-run"))
     sc.add_argument("--expected-node", action="append", default=[])
+    sc.add_argument("--run-id", default=None, help="records of other runs are rejected")
+    sc.add_argument("--expect-server", choices=("yes", "no"), default="yes",
+                    help="no only for tests that start no server (COMDB2_UNITTEST)")
     sc.set_defaults(func=cmd_scan)
 
     args = parser.parse_args(argv)

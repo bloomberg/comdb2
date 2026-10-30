@@ -120,6 +120,21 @@ memory_tool_configure asan-system /tmp/memory-tools-test probe
 memory_tool_configure asan-system /tmp/memory-tools-test wat 2>/dev/null && fail "unknown flavour accepted"
 pass "server and probe runtime flavours"
 
+# memory_tool_check_binary: an uninstrumented program fails every sanitizer
+# variant and passes valgrind-system (system allocator, no runtime).
+fake=$(mktemp)
+printf '#!/bin/sh\nexit 0\n' > "$fake"; chmod +x "$fake"
+memory_tool_configure asan-system /tmp/memory-tools-test
+err=$(memory_tool_check_binary "$fake" server) && fail "uninstrumented binary accepted for asan-system"
+[[ $err == *"not linked against libasan"* ]] || fail "check_binary message: $err"
+memory_tool_configure tsan-system /tmp/memory-tools-test
+memory_tool_check_binary "$fake" server > /dev/null && fail "uninstrumented binary accepted for tsan-system"
+memory_tool_configure valgrind-system /tmp/memory-tools-test
+memory_tool_check_binary "$fake" server > /dev/null || fail "plain system-allocator binary rejected for valgrind-system"
+memory_tool_check_binary /nonexistent/comdb2 server > /dev/null && fail "missing binary accepted"
+rm -f "$fake"
+pass "binary/variant check"
+
 # Unknown variant and bad arguments fail with a clear message.
 errfile=$(mktemp)
 # Not in $(...): the stale-state check needs the variables of this shell.
