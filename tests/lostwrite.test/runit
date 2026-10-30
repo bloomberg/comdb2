@@ -73,11 +73,11 @@ function bouncemaster
     echo "bouncemaster node:$node"
     REP_ENV_VARS="${DBDIR}/replicant_env_vars"
     PARAMS="$DBNAME --no-global-lrl --lrl $DBDIR/${DBNAME}.lrl --pidfile ${pidfile}"
-    CMD="source ${REP_ENV_VARS} ; ${COMDB2_EXE} ${PARAMS} "
+    CMD="source ${REP_ENV_VARS} ; ${DEBUG_PREFIX} ${COMDB2_EXE} ${PARAMS} "
     $ssh $node kill -9 '$(<'${pidfile}')'
     sleep 5
     echo -e "\nrestarting\n" >> $TESTDIR/logs/${DBNAME}.${node}.db
-    $ssh $node ${DEBUG_PREFIX} ${CMD} >> $TESTDIR/logs/${DBNAME}.${node}.db 2>&1 &
+    $ssh $node ${CMD} >> $TESTDIR/logs/${DBNAME}.${node}.db 2>&1 &
 }
 
 function unsettunables

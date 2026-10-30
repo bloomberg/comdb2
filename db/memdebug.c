@@ -16,6 +16,9 @@
 
 #include <stdlib.h>
 #include <stdio.h>
+#include <limits.h>
+#include <unistd.h>
+#include <sys/stat.h>
 #include <errno.h>
 #include <string.h>
 #include <stddef.h>
@@ -673,4 +676,112 @@ void memdebug_dump_callers(FILE *f, int skip_balanced) {}
 void memdebug_dump_blocks(FILE *f) {}
 void memdebug_stats() {}
 
+#endif
+
+/* Memory-tool test runs (tests/memory_tools/exec.sh) export the directory that
+ * records one server process. Without it these do nothing. */
+static const char *memory_tool_invocation_dir(void)
+{
+    const char *dir = getenv("COMDB2_MEMORY_INVOCATION_DIR");
+    return (dir && dir[0]) ? dir : NULL;
+}
+
+static void memory_tool_append(const char *name, const char *line)
+{
+    const char *dir = memory_tool_invocation_dir();
+    char path[PATH_MAX];
+    FILE *f;
+
+    if (!dir)
+        return;
+    snprintf(path, sizeof(path), "%s/%s", dir, name);
+    if ((f = fopen(path, "a")) != NULL) {
+        fputs(line, f);
+        fclose(f);
+    }
+}
+
+static void memory_tool_note_exit(void)
+{
+    memory_tool_append("exited", "exited\n");
+}
+
+/* Memory-tool test runs: a process started by exec.sh records any normal exit
+ * (exit() or return from main, which also runs the exit-time leak check, e.g.
+ * a server that is meant to fail at startup). One started without exec.sh (a
+ * direct $COMDB2_EXE in a test) is not instrumented-and-recorded; leave a note
+ * so the test reports incomplete coverage instead of passing. */
+void memdebug_note_start(int argc, char **argv)
+{
+    const char *root = getenv("MEMORY_TOOL_ARTIFACT_ROOT");
+    char path[PATH_MAX], host[256] = "unknown";
+    FILE *f;
+    int i;
+
+    if (memory_tool_invocation_dir()) {
+        atexit(memory_tool_note_exit);
+        return;
+    }
+    if (!root || !root[0])
+        return;
+    gethostname(host, sizeof(host) - 1);
+    snprintf(path, sizeof(path), "%s/uncovered", root);
+    mkdir(path, 0777);
+    snprintf(path, sizeof(path), "%s/uncovered/%s.%d", root, host, (int)getpid());
+    if ((f = fopen(path, "w")) != NULL) {
+        for (i = 0; i < argc; i++)
+            fprintf(f, "%s%s", i ? " " : "", argv[i]);
+        fputc('\n', f);
+        fclose(f);
+    }
+}
+
+/* A clean sanitizer run writes no report, so record that the process reached
+ * the end of a clean exit. */
+void memdebug_note_clean_exit(void)
+{
+    memory_tool_append("clean-exit", "clean exit\n");
+}
+
+/* Defined only by the ASan/LSan runtime. Reports leaks to the sanitizer log
+ * and returns, so it can run before a test deliberately SIGKILLs the server. */
+extern int __lsan_do_recoverable_leak_check(void) __attribute__((weak));
+
+void memdebug_leakcheck(void)
+{
+    char line[32];
+    int leaks;
+
+    if (!memory_tool_invocation_dir()) {
+        logmsg(LOGMSG_USER, "memdebug leakcheck: unavailable (not a memory-tool run)\n");
+        return;
+    }
+    if (!__lsan_do_recoverable_leak_check) {
+        /* still record the checkpoint: the kill that follows is intended */
+        memory_tool_append("leakcheck", "unavailable\n");
+        logmsg(LOGMSG_USER, "memdebug leakcheck: unavailable (no LeakSanitizer)\n");
+        return;
+    }
+    leaks = __lsan_do_recoverable_leak_check();
+    snprintf(line, sizeof(line), "leaks %d\n", leaks);
+    memory_tool_append("leakcheck", line);
+    logmsg(LOGMSG_USER, "memdebug leakcheck: %s\n", leaks ? "leaks found" : "ok");
+}
+
+#ifdef COMDB2_TEST
+/* Tests of the memory-tool harness: lose one block on purpose. */
+void memdebug_testleak(void)
+{
+    char *volatile p;
+
+    if (!memory_tool_invocation_dir()) {
+        logmsg(LOGMSG_USER, "memdebug testleak: unavailable (not a memory-tool run)\n");
+        return;
+    }
+    p = malloc(64);
+    if (p)
+        memset(p, 'L', 64);
+    p = NULL;
+    logmsg(LOGMSG_USER, "memdebug testleak: leaked 64 bytes\n");
+}
 #endif

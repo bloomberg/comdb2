@@ -297,7 +297,10 @@ static const char *HELP_ANALYZE[] = {
 static const char *HELP_MEMDEBUG[] = {
     "Commands for every Nth friday when we discover terrible memory leaks:",
     "callers            - dump all stacks with outstanding blocks",
-    "blocks             - dump all outstanding blocks", NULL};
+    "blocks             - dump all outstanding blocks",
+    "leakcheck          - recoverable LeakSanitizer check (memory-tool test runs)",
+    NULL,
+};
 
 static const char *HELP_MEMSTAT[] = {
     "Commands for memory status display:-",
@@ -3289,6 +3292,12 @@ clipper_usage:
             memdebug_dump_callers(stderr, 1);
         } else if (tokcmp(tok, ltok, "blocks") == 0) {
             memdebug_dump_blocks(stderr);
+        } else if (tokcmp(tok, ltok, "leakcheck") == 0) {
+            memdebug_leakcheck();
+#ifdef COMDB2_TEST
+        } else if (tokcmp(tok, ltok, "testleak") == 0) {
+            memdebug_testleak();
+#endif
         } else
             print_help_page(HELP_MEMDEBUG);
         return 0;

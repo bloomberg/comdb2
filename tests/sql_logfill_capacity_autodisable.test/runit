@@ -108,9 +108,9 @@ function start_node {
     pushd "$DBDIR" >/dev/null
     mv --backup=numbered "$LOGDIR/${DBNAME}.${node}.db" "$LOGDIR/${DBNAME}.${node}.db.1" 2>/dev/null
     if [[ "$node" == "$(hostname)" ]]; then
-        $COMDB2_EXE ${DBNAME} ${PARAMS} &> "$LOGDIR/${DBNAME}.${node}.db" &
+        ${DEBUG_PREFIX} $COMDB2_EXE ${DBNAME} ${PARAMS} &> "$LOGDIR/${DBNAME}.${node}.db" &
     else
-        local CMD="cd ${DBDIR}; source ${REP_ENV_VARS} ; $COMDB2_EXE ${DBNAME} ${PARAMS}"
+        local CMD="cd ${DBDIR}; source ${REP_ENV_VARS} ; ${DEBUG_PREFIX} $COMDB2_EXE ${DBNAME} ${PARAMS}"
         ssh -n -o StrictHostKeyChecking=no -tt "$node" ${CMD} &> "$LOGDIR/${DBNAME}.${node}.db" &
         echo $! > "${TMPDIR}/${DBNAME}.${node}.pid"
     fi

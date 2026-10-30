@@ -142,7 +142,7 @@ for i in $(seq 1 $MAXDBS); do
     DBLRL=${PWD}/${NM}/${NM}.lrl
     [ -f lrl ] && cp lrl ${DBLRL}
     echo -e "name    ${DBNAME}\ndir     ${TSTDBDIR}\n" >> ${DBLRL}
-    ${COMDB2_EXE} ${NM} --create --lrl ${DBLRL} &
+    ${MEMORY_TOOL_VARIANT:+$DEBUG_PREFIX} ${COMDB2_EXE} ${NM} --create --lrl ${DBLRL} &
     createpids[$i]=$!
 done
 
@@ -155,7 +155,7 @@ for i in $(seq 1 $MAXDBS); do
     DBLRL=${PWD}/${NM}/${NM}.lrl
     echo "portmux_port ${COMDB2_PMUX_PORT=}" >> $DBLRL
     echo "portmux_bind_path ${TMPDIR}/pmux.${COMDB2_PMUX_PORT} " >> $DBLRL
-	${COMDB2_EXE} ${NM} --lrl $DBLRL &
+	${DEBUG_PREFIX} ${COMDB2_EXE} ${NM} --lrl $DBLRL &
     dbpids[$i]=$!
 done
 

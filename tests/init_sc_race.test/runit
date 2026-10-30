@@ -27,10 +27,10 @@ function start_node
     write_prompt $func "Running $func"
     ts=$(date +%s)
     if [ $node != $(hostname) ] ; then
-        ssh -o StrictHostKeyChecking=no -tt $node COMDB2_ROOT=$COMDB2_ROOT $COMDB2_EXE ${DBNAME} -lrl $DBDIR/${DBNAME}.lrl >$TESTDIR/logs/${DBNAME}.${node}.db.$ts 2>&1 </dev/null &
+        ssh -o StrictHostKeyChecking=no -tt $node COMDB2_ROOT=$COMDB2_ROOT ${DEBUG_PREFIX} $COMDB2_EXE ${DBNAME} -lrl $DBDIR/${DBNAME}.lrl >$TESTDIR/logs/${DBNAME}.${node}.db.$ts 2>&1 </dev/null &
         echo $! > ${TMPDIR}/${DBNAME}.${node}.pid
     else
-        $COMDB2_EXE ${DBNAME} -lrl $DBDIR/${DBNAME}.lrl &> $TESTDIR/logs/${DBNAME}.${node}.db.$ts -pidfile ${TMPDIR}/${DBNAME}.${node}.pid &
+        ${DEBUG_PREFIX} $COMDB2_EXE ${DBNAME} -lrl $DBDIR/${DBNAME}.lrl &> $TESTDIR/logs/${DBNAME}.${node}.db.$ts -pidfile ${TMPDIR}/${DBNAME}.${node}.pid &
     fi
 }
 

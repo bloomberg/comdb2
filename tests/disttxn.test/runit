@@ -2241,7 +2241,7 @@ function kill_restart_cluster
     for node in $CLUSTER ; do
         if [[ "$node" != "$skipmach" ]]; then
             PARAMS="$dbname --no-global-lrl"
-            CMD="source ${REP_ENV_VARS} ; ${COMDB2_EXE} ${PARAMS} --lrl $dbdir/${dbname}.lrl --pidfile ${TMPDIR}/${dbname}.pid"
+            CMD="source ${REP_ENV_VARS} ; ${DEBUG_PREFIX} ${COMDB2_EXE} ${PARAMS} --lrl $dbdir/${dbname}.lrl --pidfile ${TMPDIR}/${dbname}.pid"
             if [ $node == $(hostname) ] ; then
 
             (
@@ -2254,7 +2254,7 @@ function kill_restart_cluster
 
                 #kill -9 $(cat ${TMPDIR}/${dbname}.${node}.pid)
                 mv --backup=numbered $LOGDIR/${dbname}.${node}.db $LOGDIR/${dbname}.${node}.db.1
-                ssh -o StrictHostKeyChecking=no -tt $node ${DEBUG_PREFIX} ${CMD} 2>&1 </dev/null > >(gawk '{ print strftime("%H:%M:%S>"), $0; fflush(); }' >> $TESTDIR/logs/${dbname}.${node}.db) &
+                ssh -o StrictHostKeyChecking=no -tt $node ${CMD} 2>&1 </dev/null > >(gawk '{ print strftime("%H:%M:%S>"), $0; fflush(); }' >> $TESTDIR/logs/${dbname}.${node}.db) &
                 echo $! > ${TMPDIR}/${dbname}.${node}.pid
 
             fi
@@ -2409,10 +2409,10 @@ commit
     export LOGDIR=$TESTDIR/logs
     if [ $master == `hostname` ] ; then
         PARAMS="--no-global-lrl --lrl $SECONDARY_DBDIR/${SECONDARY_DBNAME}.lrl --pidfile ${TMPDIR}/${SECONDARY_DBNAME}.${master}.pid"
-        $COMDB2_EXE ${SECONDARY_DBNAME} ${PARAMS} &> $LOGDIR/${SECONDARY_DBNAME}.${master}.db.1 &
+        ${DEBUG_PREFIX} $COMDB2_EXE ${SECONDARY_DBNAME} ${PARAMS} &> $LOGDIR/${SECONDARY_DBNAME}.${master}.db.1 &
     else
         PARAMS="--no-global-lrl --lrl $SECONDARY_DBDIR/${SECONDARY_DBNAME}.lrl --pidfile ${TMPDIR}/${SECONDARY_DBNAME}.${master}.pid"
-        CMD="cd ${SECONDARY_DBDIR}; source ${REP_ENV_VARS} ; $COMDB2_EXE ${SECONDARY_DBNAME} ${PARAMS} 2>&1 | tee $TESTDIR/${SECONDARY_DBNAME}.${master}.db.1"
+        CMD="cd ${SECONDARY_DBDIR}; source ${REP_ENV_VARS} ; ${DEBUG_PREFIX} $COMDB2_EXE ${SECONDARY_DBNAME} ${PARAMS} 2>&1 | tee $TESTDIR/${SECONDARY_DBNAME}.${master}.db.1"
         ssh -n -o StrictHostKeyChecking=no -tt $master ${CMD} &> $LOGDIR/${SECONDARY_DBNAME}.${master}.db.1 &
         echo $! > ${TMPDIR}/${SECONDARY_DBNAME}.${master}.pid
     fi
@@ -2823,10 +2823,10 @@ commit
     REP_ENV_VARS="${DBDIR}/replicant_env_vars"
     if [ $master == `hostname` ] ; then
         PARAMS="--no-global-lrl --lrl $DBDIR/${DBNAME}.lrl --pidfile ${TMPDIR}/${DBNAME}.${master}.pid"
-        $COMDB2_EXE ${DBNAME} ${PARAMS} &> $LOGDIR/${DBNAME}.${master}.db.1 &
+        ${DEBUG_PREFIX} $COMDB2_EXE ${DBNAME} ${PARAMS} &> $LOGDIR/${DBNAME}.${master}.db.1 &
     else
         PARAMS="--no-global-lrl --lrl $DBDIR/${DBNAME}.lrl --pidfile ${TMPDIR}/${DBNAME}.${master}.pid"
-        CMD="cd ${DBDIR}; source ${REP_ENV_VARS} ; $COMDB2_EXE ${DBNAME} ${PARAMS} 2>&1 | tee $TESTDIR/${DBNAME}.${master}.db.1"
+        CMD="cd ${DBDIR}; source ${REP_ENV_VARS} ; ${DEBUG_PREFIX} $COMDB2_EXE ${DBNAME} ${PARAMS} 2>&1 | tee $TESTDIR/${DBNAME}.${master}.db.1"
         ssh -n -o StrictHostKeyChecking=no -tt $master ${CMD} &> $LOGDIR/${DBNAME}.${master}.db.1 &
         echo $! > ${TMPDIR}/${DBNAME}.${master}.pid
     fi
@@ -2894,10 +2894,10 @@ commit
     REP_ENV_VARS="${DBDIR}/replicant_env_vars"
     if [ $master == `hostname` ] ; then
         PARAMS="--no-global-lrl --lrl $DBDIR/${DBNAME}.lrl --pidfile ${TMPDIR}/${DBNAME}.${master}.pid"
-        $COMDB2_EXE ${DBNAME} ${PARAMS} &> $LOGDIR/${DBNAME}.${master}.db.1 &
+        ${DEBUG_PREFIX} $COMDB2_EXE ${DBNAME} ${PARAMS} &> $LOGDIR/${DBNAME}.${master}.db.1 &
     else
         PARAMS="--no-global-lrl --lrl $DBDIR/${DBNAME}.lrl --pidfile ${TMPDIR}/${DBNAME}.${master}.pid"
-        CMD="cd ${DBDIR}; source ${REP_ENV_VARS} ; $COMDB2_EXE ${DBNAME} ${PARAMS} 2>&1 | tee $TESTDIR/${DBNAME}.${master}.db.1"
+        CMD="cd ${DBDIR}; source ${REP_ENV_VARS} ; ${DEBUG_PREFIX} $COMDB2_EXE ${DBNAME} ${PARAMS} 2>&1 | tee $TESTDIR/${DBNAME}.${master}.db.1"
         ssh -n -o StrictHostKeyChecking=no -tt $master ${CMD} &> $LOGDIR/${DBNAME}.${master}.db.1 &
         echo $! > ${TMPDIR}/${DBNAME}.${master}.pid
     fi

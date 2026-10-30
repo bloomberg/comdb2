@@ -108,9 +108,9 @@ END
 
     if [[ -n "$repalive" ]]; then
         # cd to dbdir so we get potential core where we expect it
-        (cd $DBDIR; $COMDB2_EXE $destdb --lrl $DEST_DBDIR/${destdb}.lrl --pidfile $DEST_DBDIR/${destdb}.pid >$replog 2>&1) &
+        (cd $DBDIR; ${DEBUG_PREFIX} $COMDB2_EXE $destdb --lrl $DEST_DBDIR/${destdb}.lrl --pidfile $DEST_DBDIR/${destdb}.pid >$replog 2>&1) &
     else
-        (cd $DBDIR; timeout --kill-after=5s $TEST_TIMEOUT $COMDB2_EXE $destdb --lrl $DEST_DBDIR/${destdb}.lrl --pidfile $DEST_DBDIR/${destdb}.pid >$replog 2>&1) &
+        (cd $DBDIR; timeout --kill-after=5s $TEST_TIMEOUT ${DEBUG_PREFIX} $COMDB2_EXE $destdb --lrl $DEST_DBDIR/${destdb}.lrl --pidfile $DEST_DBDIR/${destdb}.pid >$replog 2>&1) &
     fi
 
     out=

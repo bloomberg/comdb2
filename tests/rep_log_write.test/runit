@@ -77,7 +77,7 @@ function exit_restart_cluster
         #incoherent_slow.test/runit
 
         PARAMS="$DBNAME --no-global-lrl"
-        CMD="source ${REP_ENV_VARS} ; ${COMDB2_EXE} ${PARAMS} --lrl $DBDIR/${DBNAME}.lrl --pidfile ${TMPDIR}/${DBNAME}.pid"
+        CMD="source ${REP_ENV_VARS} ; ${DEBUG_PREFIX} ${COMDB2_EXE} ${PARAMS} --lrl $DBDIR/${DBNAME}.lrl --pidfile ${TMPDIR}/${DBNAME}.pid"
         LOGDIR=$TESTDIR/logs
 
         if [ $node == $(hostname) ] ; then
@@ -91,7 +91,7 @@ function exit_restart_cluster
         else
             #kill -9 $(cat ${TMPDIR}/${DBNAME}.${node}.pid)
             mv --backup=numbered $LOGDIR/${DBNAME}.${node}.db $LOGDIR/${DBNAME}.${node}.db.1
-            ssh -o StrictHostKeyChecking=no -tt $node ${DEBUG_PREFIX} ${CMD} 2>&1 </dev/null > >(gawk '{ print strftime("%H:%M:%S>"), $0; fflush(); }' >> $TESTDIR/logs/${DBNAME}.${node}.db) &
+            ssh -o StrictHostKeyChecking=no -tt $node ${CMD} 2>&1 </dev/null > >(gawk '{ print strftime("%H:%M:%S>"), $0; fflush(); }' >> $TESTDIR/logs/${DBNAME}.${node}.db) &
             echo $! > ${TMPDIR}/${DBNAME}.${node}.pid
 
         fi
