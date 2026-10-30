@@ -315,5 +315,185 @@ class SummarizeTest(unittest.TestCase):
         self.assertFalse(self.summarize([])["passed"])
 
 
+ASAN_DEADLYSIGNAL = """AddressSanitizer:DEADLYSIGNAL
+=================================================================
+==4250==ERROR: AddressSanitizer: SEGV on unknown address 0x000000000000
+"""
+
+TSAN_FATAL = """FATAL: ThreadSanitizer: unexpected memory mapping 0x7f0000000000-0x7f0000001000
+"""
+
+SERVER_STDERR_NOISE = """2026/10/30 18:00:00 [INFO] lua: runtime error: attempt to call a nil value
+I AM READY.
+"""
+
+
+class ScanTest(unittest.TestCase):
+    """check_report.py scan over exec.sh invocation directories."""
+
+    def setUp(self):
+        self.root = tempfile.mkdtemp(prefix="check_report_scan.")
+
+    def tearDown(self):
+        shutil.rmtree(self.root)
+
+    def proc(self, node="nodeA", pid=100, detector=None, stderr="", clean=True, leakcheck=None):
+        d = os.path.join(self.root, "nodes", node, "invocations", str(pid))
+        os.makedirs(os.path.join(d, "detector"))
+        with open(os.path.join(d, "launch.json"), "w") as f:
+            json.dump({"pid": pid, "node": node, "argv": ["comdb2", "db"]}, f)
+        with open(os.path.join(d, "stderr.log"), "w") as f:
+            f.write(stderr)
+        for name, text in (detector or {}).items():
+            with open(os.path.join(d, "detector", name), "w") as f:
+                f.write(text)
+        if clean:
+            open(os.path.join(d, "clean-exit"), "w").close()
+        if leakcheck is not None:
+            with open(os.path.join(d, "leakcheck"), "w") as f:
+                f.write(leakcheck)
+        return d
+
+    def scan(self, kind="sanitizer", leak="authoritative", functional="pass", nodes=("nodeA",)):
+        argv = ["scan", "--root", self.root, "--variant", "v", "--testcase", "t", "--kind", kind,
+                "--leak-checking", leak, "--functional-status", functional]
+        for n in nodes:
+            argv += ["--expected-node", n]
+        with open(os.devnull, "w") as devnull:
+            saved, sys.stdout = sys.stdout, devnull
+            try:
+                rc = check_report.main(argv)
+            finally:
+                sys.stdout = saved
+        with open(os.path.join(self.root, "summary.json")) as f:
+            summary = json.load(f)
+        self.assertTrue(os.path.exists(os.path.join(self.root, "summary.txt")))
+        self.assertEqual(rc == 0, summary["memory_status"] in ("pass", "not-run"))
+        return summary
+
+    def test_clean_sanitizer_server_without_detector_file(self):
+        self.proc(stderr=SERVER_STDERR_NOISE)
+        s = self.scan()
+        self.assertEqual((s["memory_status"], s["overall_status"]), ("pass", "pass"), s)
+
+    def test_asan_uaf(self):
+        self.proc(detector={"asan.100": ASAN_UAF}, clean=False)
+        s = self.scan()
+        self.assertEqual(s["memory_status"], "fail")
+        self.assertIn("heap-use-after-free", s["findings"])
+
+    def test_lsan_leak_overrides_functional_pass(self):
+        self.proc(detector={"asan.100": LSAN_LEAK})
+        s = self.scan(functional="pass")
+        self.assertEqual((s["functional_status"], s["memory_status"], s["overall_status"]),
+                         ("pass", "fail", "fail"))
+        self.assertEqual(s["findings"], ["leak"])
+
+    def test_functional_failure_keeps_memory_findings(self):
+        self.proc(detector={"asan.100": LSAN_LEAK})
+        s = self.scan(functional="fail")
+        self.assertEqual((s["memory_status"], s["overall_status"]), ("fail", "fail"))
+
+    def test_ubsan_from_stderr(self):
+        self.proc(stderr=SERVER_STDERR_NOISE + UBSAN_STDERR)
+        self.assertEqual(self.scan()["findings"], ["undefined-behavior"])
+
+    def test_tsan_race(self):
+        self.proc(detector={"tsan.100": TSAN_RACE})
+        self.assertEqual(self.scan(leak="disabled")["findings"], ["data-race"])
+
+    def test_asan_deadlysignal(self):
+        self.proc(detector={"asan.100": ASAN_DEADLYSIGNAL}, clean=False)
+        s = self.scan()
+        self.assertEqual((s["memory_status"], s["findings"]), ("fail", ["unknown-error"]))
+
+    def test_tsan_runtime_fatal(self):
+        self.proc(stderr=TSAN_FATAL, clean=False)
+        self.assertEqual(self.scan(leak="disabled")["findings"], ["unknown-error"])
+
+    def test_valgrind_clean(self):
+        self.proc(detector={"valgrind.100.log": VG_HEADER + VG_CLEAN_HEAP})
+        self.assertEqual(self.scan(kind="valgrind")["memory_status"], "pass")
+
+    def test_valgrind_findings(self):
+        for pid, log, cat in ((1, VG_INVALID_READ, "invalid-read"), (2, VG_UNINIT, "uninitialized-read"),
+                              (3, VG_DEFINITELY_LOST, "leak")):
+            self.proc(pid=pid, detector={"valgrind.%d.log" % pid: log})
+        s = self.scan(kind="valgrind")
+        self.assertEqual(s["findings"], ["invalid-read", "leak", "uninitialized-read"])
+
+    def test_valgrind_missing_log_is_incomplete(self):
+        self.proc()
+        self.assertEqual(self.scan(kind="valgrind")["memory_status"], "incomplete")
+
+    def test_valgrind_killed_with_checkpoint_is_complete_with_note(self):
+        self.proc(detector={"valgrind.100.log": VG_HEADER}, clean=False, leakcheck="unavailable\n")
+        s = self.scan(kind="valgrind")
+        self.assertEqual(s["memory_status"], "pass", s)
+        self.assertTrue(s["processes"][0]["intentional_kill_checkpoint"])
+        self.assertTrue(s["processes"][0]["notes"])
+
+    def test_killed_asan_with_checkpoint_is_complete(self):
+        self.proc(clean=False, leakcheck="leaks 0\n")
+        s = self.scan()
+        self.assertEqual(s["memory_status"], "pass", s)
+        self.assertTrue(s["processes"][0]["intentional_kill_checkpoint"])
+
+    def test_killed_asan_with_checkpoint_leak_fails(self):
+        self.proc(detector={"asan.100": LSAN_LEAK}, clean=False, leakcheck="leaks 1\n")
+        self.assertEqual(self.scan()["memory_status"], "fail")
+
+    def test_killed_asan_without_lsan_checkpoint_is_incomplete(self):
+        self.proc(clean=False, leakcheck="unavailable\n")
+        self.assertEqual(self.scan()["memory_status"], "incomplete")
+
+    def test_no_clean_exit_and_no_checkpoint_is_incomplete(self):
+        self.proc(clean=False)
+        s = self.scan()
+        self.assertEqual((s["memory_status"], s["overall_status"]), ("incomplete", "fail"))
+        self.assertFalse(s["coverage_complete"])
+
+    def test_missing_remote_node_is_incomplete(self):
+        self.proc(node="nodeA")
+        s = self.scan(nodes=("nodeA", "nodeB"))
+        self.assertEqual(s["memory_status"], "incomplete")
+        self.assertTrue(any("nodeB" in r for r in s["incomplete_reasons"]))
+
+    def test_recorded_incomplete_reason(self):
+        self.proc()
+        with open(os.path.join(self.root, "incomplete.txt"), "w") as f:
+            f.write("cannot collect memory artifacts from nodeB\n")
+        self.assertEqual(self.scan()["memory_status"], "incomplete")
+
+    def test_one_finding_node_fails_whole_test(self):
+        self.proc(node="nodeA")
+        self.proc(node="nodeB", pid=200, detector={"asan.200": ASAN_UAF}, clean=False)
+        s = self.scan(nodes=("nodeA", "nodeB"))
+        self.assertEqual((s["memory_status"], s["overall_status"]), ("fail", "fail"))
+
+    def test_fqdn_node_matches_short_name(self):
+        self.proc(node="nodeA.example.com")
+        self.assertEqual(self.scan(nodes=("nodeA",))["memory_status"], "pass")
+
+    def test_unreadable_launch_record_is_incomplete(self):
+        d = self.proc()
+        with open(os.path.join(d, "launch.json"), "w") as f:
+            f.write("{not json")
+        self.assertEqual(self.scan()["memory_status"], "incomplete")
+
+    def test_server_started_without_launcher_is_incomplete(self):
+        self.proc()
+        os.makedirs(os.path.join(self.root, "uncovered"))
+        with open(os.path.join(self.root, "uncovered", "nodeA.4242"), "w") as f:
+            f.write("/b/comdb2 db --lrl db.lrl\n")
+        s = self.scan()
+        self.assertEqual(s["memory_status"], "incomplete")
+        self.assertTrue(any("without the memory launcher" in r for r in s["incomplete_reasons"]))
+
+    def test_no_server_process_is_not_run(self):
+        s = self.scan(functional="fail")
+        self.assertEqual((s["memory_status"], s["overall_status"]), ("not-run", "fail"))
+
+
 if __name__ == "__main__":
     unittest.main()

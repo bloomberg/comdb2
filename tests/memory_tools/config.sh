@@ -6,8 +6,17 @@
 #
 #   source tests/memory_tools/config.sh
 #   memory_tool_configure asan-system /path/to/detector-logs || exit 1
+#   memory_tool_configure asan-system /path/to/detector-logs server
 #   cmake -S . -B build "${MEMORY_TOOL_CMAKE_ARGS[@]}"
 #   env "${MEMORY_TOOL_ENV[@]}" "${MEMORY_TOOL_COMMAND_PREFIX[@]}" ./program
+#
+# The optional third argument selects the runtime flavour:
+#   probe   (default) a finding stops the program and sets a detector exit
+#           code; selftest.sh judges probes by exit code and report
+#   server  database servers (exec.sh): findings are reported and judged from
+#           the logs by check_report.py scan; they do not stop the server or
+#           change its exit status, except ASan memory errors, which still stop
+#           it (memory is corrupt from there on)
 #
 # After a successful call these are set:
 #   MEMORY_TOOL_VARIANT           variant name
@@ -24,6 +33,9 @@
 #   MEMORY_TOOL_REQUIRED_TOOLS    array of commands that must be on PATH
 #   MEMORY_TOOL_MAX_OPEN_FILES    if set, lower the soft open-files limit to this
 #                                 before running a program (Valgrind)
+#   MEMORY_TOOL_SLOWDOWN          factor for database-test timeouts
+#   MEMORY_TOOL_DEFAULT_CLEAN_EXIT_TIMEOUT
+#                                 seconds a test waits for a server's clean exit
 
 MEMORY_TOOL_VARIANTS=(asan-system asan-native tsan-system valgrind-system)
 
@@ -52,7 +64,7 @@ memory_tool_probe_binary()
 
 memory_tool_configure()
 {
-    local variant=${1-} logdir=${2-}
+    local variant=${1-} logdir=${2-} flavour=${3:-probe}
 
     MEMORY_TOOL_VARIANT=
     MEMORY_TOOL_SANITIZER=
@@ -67,9 +79,12 @@ memory_tool_configure()
     MEMORY_TOOL_LEAK_CHECKING=
     MEMORY_TOOL_REQUIRED_TOOLS=(gcc cmake python3 readelf ldd timeout)
     MEMORY_TOOL_MAX_OPEN_FILES=
+    MEMORY_TOOL_SLOWDOWN=3
+    MEMORY_TOOL_DEFAULT_CLEAN_EXIT_TIMEOUT=120
 
-    if [[ $# -ne 2 || -z $variant || -z $logdir ]]; then
-        echo "usage: memory_tool_configure <variant> <detector-log-dir>" >&2
+    if [[ $# -lt 2 || $# -gt 3 || -z $variant || -z $logdir ||
+          ( $flavour != probe && $flavour != server ) ]]; then
+        echo "usage: memory_tool_configure <variant> <detector-log-dir> [probe|server]" >&2
         return 2
     fi
     # Sanitizer option strings are split on whitespace and ':'.
@@ -79,14 +94,21 @@ memory_tool_configure()
         return 2
     fi
 
-    # Shared strict settings. ASan aborts on the first error; UBSan is built
-    # recoverable, and halt_on_error=1 below makes its first finding fatal.
+    local ubsan_halt=1 lsan_exitcode=23 tsan_halt="halt_on_error=1:exitcode=66"
+    local valgrind_exitcode=(--error-exitcode=97)
+    if [[ $flavour == server ]]; then
+        ubsan_halt=0 lsan_exitcode=0 tsan_halt="halt_on_error=0:exitcode=0"
+        valgrind_exitcode=()
+    fi
+
+    # Shared strict settings. ASan aborts on the first error. UBSan is built
+    # recoverable; for probes halt_on_error=1 makes its first finding fatal.
     local asan_common="halt_on_error=1:abort_on_error=1:detect_stack_use_after_return=1"
     asan_common+=":strict_string_checks=1:fast_unwind_on_malloc=0:malloc_context_size=50"
     asan_common+=":symbolize=1:log_path=${logdir}/asan"
     # With GCC's combined ASan+UBSan runtime UBSan ignores log_path and writes to
     # stderr, so callers must also scan the program's stderr.
-    local ubsan="UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1:log_path=${logdir}/ubsan"
+    local ubsan="UBSAN_OPTIONS=halt_on_error=${ubsan_halt}:print_stacktrace=1:log_path=${logdir}/ubsan"
 
     case "$variant" in
     asan-system)
@@ -94,7 +116,7 @@ memory_tool_configure()
         MEMORY_TOOL_PER_THREAD_MALLOC=OFF
         MEMORY_TOOL_ENV=(
             "ASAN_OPTIONS=detect_leaks=1:${asan_common}"
-            "LSAN_OPTIONS=exitcode=23:report_objects=1"
+            "LSAN_OPTIONS=exitcode=${lsan_exitcode}:report_objects=1"
             "$ubsan"
         )
         MEMORY_TOOL_EXPECTED_PROBES=(heap-use-after-free leak comdb2-allocator-leak signed-overflow clean)
@@ -124,12 +146,13 @@ memory_tool_configure()
         MEMORY_TOOL_SANITIZER=thread
         MEMORY_TOOL_PER_THREAD_MALLOC=OFF
         MEMORY_TOOL_ENV=(
-            "TSAN_OPTIONS=halt_on_error=1:exitcode=66:second_deadlock_stack=1:history_size=7:log_path=${logdir}/tsan"
+            "TSAN_OPTIONS=${tsan_halt}:second_deadlock_stack=1:history_size=7:log_path=${logdir}/tsan"
         )
         MEMORY_TOOL_EXPECTED_PROBES=(data-race clean)
         MEMORY_TOOL_EXPECTED_RUNTIME=(libtsan)
         MEMORY_TOOL_REPORT_KIND=sanitizer
         MEMORY_TOOL_FAILURE_EXIT_CODES=(66)
+        MEMORY_TOOL_SLOWDOWN=5
         MEMORY_TOOL_LEAK_CHECKING=disabled
         ;;
     valgrind-system)
@@ -143,7 +166,7 @@ memory_tool_configure()
             --errors-for-leak-kinds=definite,indirect,possible
             --track-origins=yes
             --num-callers=50
-            --error-exitcode=97
+            "${valgrind_exitcode[@]}"
             "--log-file=${logdir}/valgrind.%p.log"
         )
         MEMORY_TOOL_EXPECTED_PROBES=(invalid-read uninitialized-read leak comdb2-allocator-leak clean)
@@ -154,6 +177,8 @@ memory_tool_configure()
         # Valgrind refuses to start ("Private file creation failed") when the
         # open-files limit is huge, as in some containers.
         MEMORY_TOOL_MAX_OPEN_FILES=1048576
+        MEMORY_TOOL_SLOWDOWN=10
+        MEMORY_TOOL_DEFAULT_CLEAN_EXIT_TIMEOUT=300
         ;;
     *)
         echo "memory_tool_configure: unknown variant '$variant'." \
@@ -162,6 +187,7 @@ memory_tool_configure()
         ;;
     esac
 
+    [[ $flavour == server ]] && MEMORY_TOOL_FAILURE_EXIT_CODES=()
     MEMORY_TOOL_VARIANT=$variant
     MEMORY_TOOL_CMAKE_ARGS=(
         "-DCOMDB2_SANITIZER=${MEMORY_TOOL_SANITIZER}"

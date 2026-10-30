@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
-"""Classify memory-tool output and decide whether a probe met its expectation.
+"""Classify memory-tool output and decide whether it is acceptable.
 
 check:      one probe run -> report.json, exit 0 only if the expectation holds
 summarize:  per-probe report.json files -> summary.json + summary.txt
+scan:       every server process of one database test (tests/memory_tools/
+            lifecycle.sh) -> summary.json + summary.txt
 
 Fails closed: a missing, empty or unrecognised detector log, an unexpected
 category, or an exit status the detector does not use is a failure.
@@ -32,7 +34,10 @@ SIGNATURES = (
     ("unknown-error", re.compile(r"ERROR: AddressSanitizer\b.*")),
     ("leak", re.compile(r"ERROR: LeakSanitizer: detected memory leaks")),
     ("unknown-error", re.compile(r"ERROR: LeakSanitizer\b.*")),
-    ("undefined-behavior", re.compile(r"runtime error: .*")),
+    ("unknown-error", re.compile(r"LeakSanitizer has encountered a fatal error")),
+    ("unknown-error", re.compile(r"AddressSanitizer:DEADLYSIGNAL")),
+    # UBSan's own format; server logs are scanned too, so bare text is not enough.
+    ("undefined-behavior", re.compile(r"\S+:\d+(:\d+)?: runtime error: .*")),
     ("data-race", re.compile(r"WARNING: ThreadSanitizer: data race")),
     ("unknown-error", re.compile(r"(WARNING|ERROR|FATAL): ThreadSanitizer\b.*")),
     ("invalid-read", re.compile(r"Invalid read of size \d+")),
@@ -245,6 +250,160 @@ def cmd_summarize(args):
     return 0 if summary["passed"] else 1
 
 
+def _read(path):
+    try:
+        with open(path, errors="replace") as f:
+            return f.read()
+    except OSError:
+        return None
+
+
+def scan_process(inv_dir, kind, leak_checking):
+    """Evaluate one recorded server process (an exec.sh invocation dir)."""
+    proc = {"dir": inv_dir, "findings": [], "signatures": [], "notes": []}
+    gaps = []
+    launch = _read(os.path.join(inv_dir, "launch.json"))
+    try:
+        meta = json.loads(launch) if launch is not None else None
+    except ValueError:
+        meta = None
+    if meta is None:
+        gaps.append("unreadable launch.json")
+        meta = {}
+    proc.update({k: meta.get(k) for k in ("pid", "node", "argv")})
+
+    categories = set()
+    det_dir = os.path.join(inv_dir, "detector")
+    logs = sorted(os.listdir(det_dir)) if os.path.isdir(det_dir) else []
+    valgrind_summary = False
+    for name in logs:
+        text = _read(os.path.join(det_dir, name))
+        if not text or not text.strip():
+            gaps.append("empty or unreadable detector log %s" % name)
+            categories.add("unknown-error")
+            continue
+        cats, sigs, recognized, verrs = scan_text(text, kind)
+        if not recognized:
+            gaps.append("unrecognised detector log %s" % name)
+            cats.add("unknown-error")
+        if verrs is not None:
+            valgrind_summary = True
+        categories |= cats
+        proc["signatures"] += [x for x in sigs if x not in proc["signatures"]]
+    stderr = _read(os.path.join(inv_dir, "stderr.log")) or ""
+    cats, sigs, _, _ = scan_text(stderr, "sanitizer")
+    categories |= cats
+    proc["signatures"] += [x for x in sigs if x not in proc["signatures"]]
+    proc["findings"] = sorted(categories)
+
+    clean_exit = os.path.exists(os.path.join(inv_dir, "clean-exit"))
+    checkpoints = (_read(os.path.join(inv_dir, "leakcheck")) or "").split()
+    proc["clean_exit"] = clean_exit
+    proc["intentional_kill_checkpoint"] = bool(checkpoints) and not clean_exit
+
+    if kind == "valgrind" and not any(n.startswith("valgrind.") for n in logs):
+        gaps.append("no Valgrind log")
+    if clean_exit:
+        if kind == "valgrind" and not valgrind_summary:
+            gaps.append("clean exit but no Valgrind ERROR SUMMARY")
+    elif checkpoints:
+        # Intentionally killed after a pre-kill checkpoint. Only asan-system
+        # owes leak coverage, which the recoverable LSan check provides.
+        if kind == "sanitizer" and leak_checking == "authoritative" and "leaks" not in checkpoints:
+            gaps.append("pre-kill checkpoint ran without LeakSanitizer")
+        if kind == "valgrind":
+            proc["notes"].append("killed: no final Valgrind leak summary")
+    else:
+        gaps.append("no clean exit and no pre-kill checkpoint")
+    proc["coverage_complete"] = not gaps
+    proc["coverage_gaps"] = gaps
+    return proc
+
+
+def _node_matches(expected, recorded):
+    # exec.sh names node directories after `hostname` with unsafe characters replaced
+    expected = re.sub(r"[^A-Za-z0-9._-]", "_", expected)
+    return (expected == recorded or recorded.startswith(expected + ".")
+            or expected.startswith(recorded + "."))
+
+
+def cmd_scan(args):
+    root = args.root
+    processes = []
+    nodes_dir = os.path.join(root, "nodes")
+    recorded_nodes = sorted(n for n in os.listdir(nodes_dir)
+                            if not n.startswith(".")) if os.path.isdir(nodes_dir) else []
+    for node in recorded_nodes:
+        inv_root = os.path.join(nodes_dir, node, "invocations")
+        if not os.path.isdir(inv_root):
+            continue
+        for pid in sorted(os.listdir(inv_root), key=lambda p: (len(p), p)):
+            processes.append(scan_process(os.path.join(inv_root, pid), args.kind,
+                                          args.leak_checking))
+
+    incomplete = [line.strip() for line in
+                  (_read(os.path.join(root, "incomplete.txt")) or "").splitlines()
+                  if line.strip()]
+    # written by servers that a test started without exec.sh (db/memdebug.c)
+    uncovered = os.path.join(root, "uncovered")
+    for name in sorted(os.listdir(uncovered)) if os.path.isdir(uncovered) else []:
+        incomplete.append("server %s started without the memory launcher: %s"
+                          % (name, (_read(os.path.join(uncovered, name)) or "").strip()))
+    if processes:
+        seen = {p.get("node") or "" for p in processes}
+        for node in args.expected_node:
+            if not any(_node_matches(node, s) for s in seen):
+                incomplete.append("no memory-tool server process recorded for node %s" % node)
+    for p in processes:
+        incomplete += ["%s pid %s: %s" % (p.get("node"), p.get("pid"), g)
+                       for g in p["coverage_gaps"]]
+
+    findings = sorted({f for p in processes for f in p["findings"]})
+    if findings:
+        memory_status = "fail"
+    elif incomplete:
+        memory_status = "incomplete"
+    elif not processes:
+        memory_status = "not-run"
+    else:
+        memory_status = "pass"
+    overall = ("pass" if args.functional_status == "pass"
+               and memory_status in ("pass", "not-run") else "fail")
+
+    summary = {
+        "variant": args.variant,
+        "testcase": args.testcase,
+        "functional_status": args.functional_status,
+        "memory_status": memory_status,
+        "overall_status": overall,
+        "coverage_complete": not incomplete,
+        "leak_checking": args.leak_checking,
+        "findings": findings,
+        "incomplete_reasons": incomplete,
+        "processes": processes,
+    }
+    with open(os.path.join(root, "summary.json"), "w") as f:
+        json.dump(summary, f, indent=2)
+        f.write("\n")
+
+    lines = ["variant: %s" % args.variant, "testcase: %s" % args.testcase,
+             "functional: %s" % args.functional_status, "memory: %s" % memory_status,
+             "overall: %s" % overall, "leak checking: %s" % args.leak_checking]
+    for p in processes:
+        lines.append("  %-4s %s pid %s clean_exit=%s checkpoint=%s findings=[%s]" % (
+            "ok" if p["coverage_complete"] and not p["findings"] else "FAIL",
+            p.get("node"), p.get("pid"), p["clean_exit"], p["intentional_kill_checkpoint"],
+            ", ".join(p["findings"])))
+    lines += ["incomplete: %s" % r for r in incomplete]
+    with open(os.path.join(root, "summary.txt"), "w") as f:
+        f.write("\n".join(lines) + "\n")
+    print("memory-tools: %s %s: memory %s, overall %s (%d processes%s%s)" % (
+        args.testcase, args.variant, memory_status, overall, len(processes),
+        "; findings: " + ", ".join(findings) if findings else "",
+        "; %d coverage gaps" % len(incomplete) if incomplete else ""))
+    return 0 if memory_status in ("pass", "not-run") else 1
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     sub = parser.add_subparsers(dest="command")
@@ -271,6 +430,16 @@ def main(argv=None):
     s.add_argument("--source-sha", default="")
     s.add_argument("--stage-failure", default="", help="set when configure/build/linkage failed")
     s.set_defaults(func=cmd_summarize)
+
+    sc = sub.add_parser("scan", help="scan every server process of one database test")
+    sc.add_argument("--root", required=True, help="the test's memory-tool artifact root")
+    sc.add_argument("--variant", required=True)
+    sc.add_argument("--testcase", required=True)
+    sc.add_argument("--kind", required=True, choices=("sanitizer", "valgrind"))
+    sc.add_argument("--leak-checking", required=True)
+    sc.add_argument("--functional-status", required=True, choices=("pass", "fail", "not-run"))
+    sc.add_argument("--expected-node", action="append", default=[])
+    sc.set_defaults(func=cmd_scan)
 
     args = parser.parse_args(argv)
     return args.func(args)

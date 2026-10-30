@@ -30,6 +30,7 @@ cdb2sql ${CDB2_OPTIONS} $db $default "create table t(a int)"
 cdb2sql ${CDB2_OPTIONS} $db $default "create lua consumer odh on (table t for insert)"
 cdb2sql ${CDB2_OPTIONS} $db $default "exec procedure sys.cmd.send('flush')"
 sleep 5
+${TESTSROOTDIR}/memory_tools/before_db_kill.sh $db
 kill -9 $(cat ${TMPDIR}/${DBNAME}.pid)
 # give pmux a second to recognize we're down
 sleep 10
@@ -39,7 +40,7 @@ init_with_queue_ondisk_header off
 init_with_queue_compr off
 init_with_queue_persistent_sequence off
 EOF
-${COMDB2_EXE} $db --lrl ${DBDIR}/${db}.lrl >${DBDIR}/logs/$db.restart 2>&1 &
+${DEBUG_PREFIX} ${COMDB2_EXE} $db --lrl ${DBDIR}/${db}.lrl >${DBDIR}/logs/$db.restart 2>&1 &
 hi=0
 while :; do
     one=$(cdb2sql ${CDB2_OPTIONS} --tabs $db $default "select 1")

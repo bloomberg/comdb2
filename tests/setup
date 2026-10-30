@@ -128,7 +128,7 @@ setup_db() {
     echo "enable_temptable_clean_exit on" >> ${LRL}
     echo "assert_no_schemalk_in_distributed_commit 1" >> ${LRL}
     echo "replicant_poll_on_sc 1" >> ${LRL}
-    echo "exitalarmsec 10" >> ${LRL}
+    echo "exitalarmsec ${MEMORY_TOOL_EXITALARMSEC:-10}" >> ${LRL}
 
     # If CLUSTER is defined, populate config and lrl with that info
     if [[ -n "$CLUSTER" ]]; then
@@ -207,7 +207,8 @@ setup_db() {
 
     # The script occasionally fails here. Let's find out what the rc is.
     set +e
-    $COMDB2_EXE --create ${DBNAME} ${PARAMS} &> $LOGDIR/${DBNAME}.init
+    # memory-tool runs cover --create too; other DEBUG_PREFIX uses (gdb, perf) do not
+    ${MEMORY_TOOL_VARIANT:+$DEBUG_PREFIX} $COMDB2_EXE --create ${DBNAME} ${PARAMS} &> $LOGDIR/${DBNAME}.init
     rc=$?
     rm -f ${DBNAME}.trap
     if [[ $rc -ne 0 ]]; then

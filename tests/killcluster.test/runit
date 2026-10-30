@@ -62,7 +62,7 @@ function bouncecluster
     for node in $CLUSTER ; do
         PARAMS="$db --no-global-lrl"
         REP_ENV_VARS="${DBDIR}/replicant_env_vars"
-        CMD="sleep $sleeptime ; source ${REP_ENV_VARS} ; ${COMDB2_EXE} ${PARAMS} --lrl $DBDIR/${db}.lrl --pidfile ${TMPDIR}/${db}.pid"
+        CMD="sleep $sleeptime ; source ${REP_ENV_VARS} ; ${DEBUG_PREFIX} ${COMDB2_EXE} ${PARAMS} --lrl $DBDIR/${db}.lrl --pidfile ${TMPDIR}/${db}.pid"
         if [ $node == $(hostname) ] ; then
             (
                 kill -9 $(cat ${TMPDIR}/${db}.${node}.pid)
@@ -71,7 +71,7 @@ function bouncecluster
             ) &
         else
             kill -9 $(cat ${TMPDIR}/${db}.${node}.pid)
-            ssh -o StrictHostKeyChecking=no -tt $node ${DEBUG_PREFIX} ${CMD} 2>&1 </dev/null > >(gawk '{ print strftime("%H:%M:%S>"), $0; fflush(); }' >> $TESTDIR/logs/${db}.${node}.db) &
+            ssh -o StrictHostKeyChecking=no -tt $node ${CMD} 2>&1 </dev/null > >(gawk '{ print strftime("%H:%M:%S>"), $0; fflush(); }' >> $TESTDIR/logs/${db}.${node}.db) &
             echo $! > ${TMPDIR}/${db}.${node}.pid
         fi
     done

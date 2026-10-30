@@ -29,4 +29,14 @@ void memdebug_dump_blocks(FILE *f);
 /* Add a debug block */
 void memdebug_add_debug_block(char *debug_msg);
 
+/* Memory-tool test runs only (tests/memory_tools): note a server started
+ * without the memory launcher, record a clean exit, run a recoverable
+ * LeakSanitizer check. No-ops outside such runs. */
+void memdebug_note_start(int argc, char **argv);
+void memdebug_note_clean_exit(void);
+void memdebug_leakcheck(void);
+#ifdef COMDB2_TEST
+void memdebug_testleak(void); /* deliberate leak, for testing the harness */
+#endif
+
 #endif

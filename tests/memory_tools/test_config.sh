@@ -100,6 +100,26 @@ done
 [[ $MEMORY_TOOL_MAX_OPEN_FILES -gt 0 ]] || fail "valgrind-system has no open-files ceiling"
 pass "valgrind-system"
 
+# Server flavour (exec.sh): findings never change the exit status or stop the
+# server early, except ASan memory errors; the probe flavour stays strict.
+memory_tool_configure asan-system /tmp/memory-tools-test server || fail "server flavour rejected"
+[[ ${MEMORY_TOOL_ENV[*]} == *"LSAN_OPTIONS=exitcode=0:"* ]] || fail "server: LSan changes exit status"
+[[ ${MEMORY_TOOL_ENV[*]} == *"UBSAN_OPTIONS=halt_on_error=0:"* ]] || fail "server: UBSan halts"
+[[ ${MEMORY_TOOL_ENV[0]} == *":halt_on_error=1:abort_on_error=1:"* ]] || fail "server: ASan errors must still stop"
+memory_tool_configure asan-native /tmp/memory-tools-test server
+[[ ${MEMORY_TOOL_ENV[*]} == *"UBSAN_OPTIONS=halt_on_error=0:"* ]] || fail "server asan-native: UBSan halts"
+memory_tool_configure tsan-system /tmp/memory-tools-test server
+[[ ${MEMORY_TOOL_ENV[0]} == TSAN_OPTIONS=halt_on_error=0:exitcode=0:* ]] || fail "server: TSan halts or sets exit code"
+memory_tool_configure valgrind-system /tmp/memory-tools-test server
+has --error-exitcode=97 "${MEMORY_TOOL_COMMAND_PREFIX[@]}" && fail "server: Valgrind sets an error exit code"
+[[ ${MEMORY_TOOL_COMMAND_PREFIX[-1]} == "--log-file=/tmp/memory-tools-test/valgrind.%p.log" ]] ||
+    fail "server: Valgrind prefix broken: ${MEMORY_TOOL_COMMAND_PREFIX[*]}"
+memory_tool_configure asan-system /tmp/memory-tools-test probe
+[[ ${MEMORY_TOOL_ENV[*]} == *"LSAN_OPTIONS=exitcode=23:"* && ${MEMORY_TOOL_ENV[*]} == *"UBSAN_OPTIONS=halt_on_error=1:"* ]] ||
+    fail "probe flavour not strict"
+memory_tool_configure asan-system /tmp/memory-tools-test wat 2>/dev/null && fail "unknown flavour accepted"
+pass "server and probe runtime flavours"
+
 # Unknown variant and bad arguments fail with a clear message.
 errfile=$(mktemp)
 # Not in $(...): the stale-state check needs the variables of this shell.

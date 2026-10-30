@@ -53,6 +53,67 @@ Artifacts:
     detector/      asan.<pid>, tsan.<pid>, valgrind.<pid>.log, ...
 ```
 
+## Running database tests under a memory tool
+
+Set `MEMORY_TOOL_VARIANT` for an ordinary test run, and point `COMDB2_EXE` at
+a server built for that variant. Client tools (`cdb2sql`, `pmux`, `comdb2ar`,
+...) should come from a normal build: tests run them without any prefix.
+
+```bash
+MEMORY_TOOL_VARIANT=asan-system make -C tests dohsql_pack \
+    COMDB2_EXE=/path/to/asan-system-build/db/comdb2
+```
+
+With `MEMORY_TOOL_VARIANT` unset nothing changes. When it is set,
+`runtestcase` (through `lifecycle.sh`):
+
+1. rejects `DEBUGGER`, validates the variant, and sets `DEBUG_PREFIX` to
+   `exec.sh`, the launch prefix the harness already puts in front of server
+   starts. `exec.sh` replaces itself with the server (same pid, so `$!` and
+   pidfiles are unchanged), applies the variant's settings from `config.sh`,
+   and records each process under
+   `$TESTDIR/.memory-tools/$TESTCASE/nodes/<host>/invocations/<pid>/`
+   (`launch.json`, a copy of stderr, detector logs);
+2. runs `--create` through the same prefix, copies the runtime files to every
+   cluster node, scales the test timeouts and gives servers longer to exit
+   (`exitalarmsec`, unsetup's wait), always asking them to exit cleanly;
+3. after unsetup, waits for any recorded server still exiting, collects remote
+   records, and scans every process with `check_report.py scan`, writing
+   `summary.json` and `summary.txt` next to the records.
+
+A test passes only if both the test and the memory check pass. The memory
+status is:
+
+| Status | Meaning |
+|---|---|
+| `pass` | every recorded server exited cleanly (or was checkpointed before an intended kill) with no finding |
+| `fail` | any finding (leak, use-after-free, race, UB, Valgrind error, sanitizer crash) |
+| `incomplete` | coverage cannot be proven: no clean exit and no checkpoint, missing node or artifacts, a server started without the launcher, a failed checkpoint |
+| `not-run` | no server ran (e.g. `COMDB2_UNITTEST` tests, or setup failed first) |
+
+`fail` and `incomplete` make the test fail (`!<test>: failed memory check`
+in `test.log`, nonzero exit), even if the test itself passed.
+
+Server side (`db/memdebug.c`), active only in these runs:
+
+- a server reaching the end of a clean exit writes `clean-exit` into its
+  invocation directory; a clean sanitizer run writes no report otherwise;
+- `exec procedure sys.cmd.send("memdebug leakcheck")` runs LeakSanitizer's
+  recoverable check (reports leaks, keeps running) and records a checkpoint;
+- a server started in such a run without `exec.sh` (a direct `$COMDB2_EXE` in a
+  test) leaves an `uncovered/` record, which makes the result incomplete.
+
+Tests that deliberately SIGKILL a server call
+`${TESTSROOTDIR}/memory_tools/before_db_kill.sh <dbname> [host]` right before
+the kill (already done in `tools/cluster_utils.sh` `kill_by_pidfile`). The kill
+itself is unchanged. Tests that start servers themselves should use
+`${DEBUG_PREFIX} ${COMDB2_EXE} ...`, with the prefix directly in front of the
+binary (inside the command string when started over ssh).
+
+`MEMORY_TOOL_INJECT_LEAK=1` (testing the harness only, needs a `COMDB2_TEST`
+build) makes the server leak one block right after setup; the test must then
+fail its memory check.
+
 ## Interface for other tooling
 
 Use these files instead of repeating their contents:
@@ -63,6 +124,7 @@ Use these files instead of repeating their contents:
 | `tests/memory_tools/config.sh` | variant → CMake options, runtime environment, command prefix, expected probes |
 | `tests/memory_tools/check_report.py` | detector output → finding categories and JSON |
 | `tests/memory_tools/selftest.sh` | the end-to-end proof for one variant |
+| `tests/memory_tools/exec.sh`, `lifecycle.sh` | running database tests under a variant |
 
 To run any program under a variant:
 
@@ -109,6 +171,12 @@ recognised is a failure, and so is any finding other than the expected one.
   unchanged. See `cmake/Comdb2Sanitizers.cmake`.
 - **No suppressions.** None are shipped; findings in Comdb2 code are not to be
   baselined here.
+- **Killed servers.** SIGKILL skips the exit-time leak check and Valgrind's
+  final leak summary. `asan-system` covers intended kills with the pre-kill
+  checkpoint; Valgrind keeps the errors found before the kill but has no leak
+  summary for that process. Recovery that `comdb2ar`/`copycomdb2` run with
+  `-x $COMDB2_EXE` cannot be prefixed, and a server a test starts directly
+  over ssh without the prefix is not detected (no environment reaches it).
 - **TSan and ASLR.** Some kernels with `vm.mmap_rnd_bits` above 28 make older
   TSan runtimes fail at startup with `FATAL: ThreadSanitizer: unexpected memory
   mapping`. The self-test records the value in `tool-versions.txt` and reports
