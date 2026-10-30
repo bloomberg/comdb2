@@ -87,4 +87,8 @@ downgrade $DBNAME &> downgrade.out &
 dgpid=$!
 trap "kill $dgpid" INT EXIT
 
-${TESTSBUILDDIR}/inscntdel --dbname $DBNAME --numthreads $N --iterations 1000
+# hasql requires snapshot isolation; don't use it below that
+tranlevel=$(cdb2sql --tabs ${CDB2_OPTIONS} ${DBNAME} default "select value from comdb2_tunables where name='sql_tranlevel_default'")
+[[ "$tranlevel" != SNAPSHOT && "$tranlevel" != SERIALIZABLE ]] && nohasql=--nohasql
+
+${TESTSBUILDDIR}/inscntdel --dbname $DBNAME --numthreads $N --iterations 1000 $nohasql

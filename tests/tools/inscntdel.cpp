@@ -14,6 +14,7 @@
 
 int gbl_iterations;
 int gbl_print_cnonce;
+int gbl_nohasql; // hasql needs snapshot; without it a not-durable write's outcome is unknown
 static std::string quote("");
 static std::string comma(",");
 static std::string space(" ");
@@ -23,11 +24,22 @@ static std::string commit("commit");
 static std::string rollback("rollback");
 static std::string sethasql("set hasql on");
 
-int runsql(cdb2_hndl_tp *h, std::string &sql)
+// With --nohasql, sets *unknown if a write's outcome is unknown (not durable, or dup after one)
+int runsql(cdb2_hndl_tp *h, std::string &sql, int *unknown = NULL)
 {
     int rc = cdb2_run_statement(h, sql.c_str());
     if (gbl_print_cnonce)
         printf("sql=%s, cnonce=%s\n", sql.c_str(), cdb2_cnonce(h));
+
+    if (unknown && gbl_nohasql) {
+        if (rc == CDB2ERR_NOTDURABLE || rc == 210 /* SQLITE_CLIENT_CHANGENODE */ ||
+            (rc == CDB2ERR_DUPLICATE && *unknown)) {
+            printf("allowing rc %d %s (%s) cnonce=%s\n", rc, cdb2_errstr(h), sql.c_str(), cdb2_cnonce(h));
+            *unknown = 1;
+            return 0;
+        }
+        *unknown = 0;
+    }
 
     if (rc != 0) {
         fprintf(stderr, "Error: cdb2_run_statement failed: %d %s (%s) cnonce=%s\n", rc,
@@ -117,7 +129,8 @@ void *thr(void *arg)
     thr_info_t *tinfo = (thr_info_t *)arg;
     int i = tinfo->thrid;
 
-    runsql(h, sethasql); // this also causes cdb2api to wrap the insert/delete with a explicit begin/commit
+    if (!gbl_nohasql)
+        runsql(h, sethasql); // this also causes cdb2api to wrap the insert/delete with a explicit begin/commit
     int N = 100;
 
     std::string ins;
@@ -139,18 +152,19 @@ void *thr(void *arg)
         del = ss.str();
     }
 
+    int unknown = 0;
     for (unsigned int j = 0; j < tinfo->count; j++) {
         usleep(10); // slow down just a bit
         gbl_iterations++; // don't need absolute precision
-        runsql(h, ins);
+        runsql(h, ins, &unknown);
         int cnt = runsql(h, counts);
-        if (cnt != N) {
+        if (cnt != N && !(unknown && cnt == 0)) {
             fprintf(stderr, "Error: count is %d but should be %d cnonce=%s\n", cnt, N, cdb2_cnonce(h));
             exit(1);
         }
-        runsql(h, del);
+        runsql(h, del, &unknown);
         cnt = runsql(h, counts);
-        if (cnt != 0) {
+        if (cnt != 0 && !(unknown && cnt == N)) {
             fprintf(stderr, "Error: count is %d but should be 0 cnonce=%s\n", cnt, cdb2_cnonce(h));
             exit(1);
         }
@@ -163,7 +177,7 @@ void *thr(void *arg)
 
 void usage_and_exit(const char *p, const char *err) {
     fprintf(stderr, "%s\n", err);
-    fprintf(stderr, "Usage %s --dbname DBNAME --numthreads NUMTHREADS --iterations ITERATIONS \n", p);
+    fprintf(stderr, "Usage %s --dbname DBNAME --numthreads NUMTHREADS --iterations ITERATIONS [--nohasql]\n", p);
     exit(1);
 }
 
@@ -188,18 +202,20 @@ int main(int argc, char *argv[])
         {"numthreads", required_argument, NULL, 'n'},
         {"iterations", required_argument, NULL, 'i'},
         {"printcnonce", optional_argument, NULL, 'p'},
+        {"nohasql", no_argument, NULL, 'l'},
         {NULL, 0, NULL, 0}
     };
 
     int c;
     int index;
-    while ((c = getopt_long(argc, argv, "d:n:i:p?", long_options, &index)) != -1) {
+    while ((c = getopt_long(argc, argv, "d:n:i:pl?", long_options, &index)) != -1) {
         //printf("c '%c' %d index %d optarg '%s'\n", c, c, index, optarg);
         switch(c) {
             case 'd': dbname = strdup(optarg); break;
             case 'n': numthreads = atoi(optarg); break;
             case 'i': iterations = atoi(optarg); break;
             case 'p': gbl_print_cnonce = 1; break;
+            case 'l': gbl_nohasql = 1; break;
             case '?':  break;
             default: break;
         }
