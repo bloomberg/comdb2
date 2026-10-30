@@ -16,3 +16,8 @@
 (name='aaa', definition='CREATE VIEW aaa AS SELECT 1')
 (tablename='sqlite_stat1')
 (tablename='sqlite_stat4')
+(test='create views using reserved sqlite_stat names')
+[CREATE VIEW sqlite_stat1 AS SELECT 1] failed with rc -3 object name reserved for internal use: sqlite_stat1
+[CREATE VIEW sqlite_stat4 AS SELECT 1] failed with rc -3 object name reserved for internal use: sqlite_stat4
+(tablename='sqlite_stat1')
+(tablename='sqlite_stat4')

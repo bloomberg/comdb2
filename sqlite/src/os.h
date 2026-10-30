@@ -33,6 +33,19 @@
 # define SET_FULLSYNC(x,y)
 #endif
 
+/* Maximum pathname length.  Note: FILENAME_MAX defined by stdio.h
+*/
+#ifndef SQLITE_MAX_PATHLEN
+# define SQLITE_MAX_PATHLEN FILENAME_MAX
+#endif
+
+/* Maximum number of symlinks that will be resolved while trying to
+** expand a filename in xFullPathname() in the VFS.
+*/
+#ifndef SQLITE_MAX_SYMLINK
+# define SQLITE_MAX_SYMLINK 200
+#endif
+
 /*
 ** The default size of a disk sector
 */
@@ -63,6 +76,13 @@
 */
 #ifndef SQLITE_TEMP_FILE_PREFIX
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
+/*
+** In most cases where SQLite needs a temp table/index, it will ask
+** _us_ to create it rather than going directly to the filesystem.
+** Sorting _should_ be the only case where SQLite interacts directly with the
+** filesystem to create temp files. `bdb_tmp_size()` also relies on this
+** naming convention when summing the size of all temp files.
+*/
 # define SQLITE_TEMP_FILE_PREFIX "sqlsort_"
 #else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 # define SQLITE_TEMP_FILE_PREFIX "etilqs_"
