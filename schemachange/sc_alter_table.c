@@ -950,7 +950,7 @@ convert_records:
         if (rc) {
             logmsg(LOGMSG_ERROR, "%s\ncsc2: \"%s\"\n", err.errstr,
                    newdb->csc2_schema);
-            sc_client_error(s, "%s", err.errval, err.errstr);
+            sc_client_error(s, "%s", err.errstr);
             return -1;
         }
     }
