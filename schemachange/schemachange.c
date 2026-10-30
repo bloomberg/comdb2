@@ -1207,6 +1207,10 @@ int sc_timepart_add_table(const char *existingTableName,
 
     /* save timepartition name here */
     sc.timepartition_name = db->timepartition_name;
+    /* the new shard inherits the version of the newest shard, as phase 2
+     * will set it; creating it with 0 leaves replicant sqlite engines
+     * caching a stale version once the shard joins the partition */
+    sc.timepartition_version = db->tableversion;
 
     int rc = do_schema_change_locked(&sc, NULL);
     if (rc) {
