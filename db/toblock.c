@@ -77,6 +77,7 @@
 #include "logmsg.h"
 #include "reqlog.h"
 #include "comdb2_atomic.h"
+#include "seqnum_wait.h"
 #include "str0.h"
 #include "schemachange.h"
 #include "views.h"
@@ -942,7 +943,7 @@ int dist_txn_abort_write_blkseq(void *in_bdb_state, void *bskey, int bskeylen)
 
 extern int gbl_debug_force_non_durable;
 
-static inline int durable_change_rcode(struct ireq *iq)
+int durable_change_rcode(struct ireq *iq)
 {
     if (iq->sorese && iq->sorese->dist_txnid) {
         return 1;
@@ -6454,12 +6455,9 @@ add_blkseq:
         iq->dbenv->biggest_txn = iq->total_txnsize;
     iq->dbenv->total_txn_sz = iq->total_txnsize;
     iq->dbenv->num_txns++;
-    if (iq->timeoutms > iq->dbenv->max_timeout_ms)
-        iq->dbenv->max_timeout_ms = iq->timeoutms;
-    iq->dbenv->total_timeouts_ms += iq->timeoutms;
-    if (iq->reptimems > iq->dbenv->max_reptime_ms)
-        iq->dbenv->max_reptime_ms = iq->reptimems;
-    iq->dbenv->total_reptime_ms += iq->reptimems;
+    /* a commit whose ack wait comes after us counts these once it is over */
+    if (!iq->handoff)
+        seqnum_wait_count_reptime(iq);
 
     if (iq->debug) {
         uint64_t rate;
@@ -6473,9 +6471,11 @@ add_blkseq:
                   trans, iq->total_txnsize, iq->timeoutms, iq->reptimems, rate);
     }
 
-    int diff_time_micros = (int)reqlog_current_us(iq->reqlogger);
-
-    ATOMIC_ADD64(n_commit_time, diff_time_micros);
+    /* a commit whose ack wait comes after us counts its time once it is over */
+    if (!iq->handoff) {
+        int diff_time_micros = (int)reqlog_current_us(iq->reqlogger);
+        ATOMIC_ADD64(n_commit_time, diff_time_micros);
+    }
     ATOMIC_ADD32(n_commits, 1);
 
     if (outrc == 0) {
@@ -6505,7 +6505,7 @@ cleanup:
        if this is not a osql request, this is fine
        the iq will not be hashed and this is a nop
      */
-    if (outrc != RC_INTERNAL_RETRY)
+    if (outrc != RC_INTERNAL_RETRY && !iq->handoff)
         osql_blkseq_unregister(iq);
 
     /* XXX
