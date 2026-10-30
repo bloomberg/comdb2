@@ -102,6 +102,7 @@ extern int gbl_debug_exit_coordinator_before_commit;
 extern int gbl_debug_exit_coordinator_after_commit;
 extern int gbl_debug_coordinator_dispatch_failure;
 extern int gbl_debug_sleep_coordinator_before_commit;
+extern int gbl_debug_sleep_in_snap_rollback;
 extern int gbl_debug_sleep_on_set_read_only;
 extern int gbl_debug_wait_on_verify_off;
 extern int gbl_debug_disttxn_trace;

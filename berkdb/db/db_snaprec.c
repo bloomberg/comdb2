@@ -8,6 +8,7 @@ static const char revid[] = "$Id: db_rec.c,v 11.48 2003/08/27 03:54:18 ubell Exp
 #include <sys/types.h>
 
 #include <string.h>
+#include <poll.h>
 #endif
 
 #include "db_int.h"
@@ -31,6 +32,8 @@ extern void __db_relink_prev_rem_undo(PAGE *, __db_relink_args *);
 
 extern void __db_pg_free_undo(PAGE *pagep, __db_pg_freedata_args *argp, int data);
 extern void __db_pg_free_meta_undo(DBMETA *meta, __db_pg_freedata_args *argp);
+
+int gbl_debug_sleep_in_snap_rollback = 0;
 
 extern void __db_pg_alloc_target_undo(DB *file_dbp, PAGE *pagep, __db_pg_alloc_args *argp);
 extern void __db_pg_alloc_meta_undo(DB *file_dbp, DBMETA *meta, __db_pg_alloc_args *argp);
@@ -57,6 +60,8 @@ __db_addrem_snap_recover(dbenv, dbtp, lsnp, op, pagep)
 
 	ret = 0;
 	REC_INTRO(__db_addrem_read, 1);
+	if (gbl_debug_sleep_in_snap_rollback) /* widen the window in which the dbp is in use */
+		poll(NULL, 0, gbl_debug_sleep_in_snap_rollback);
 
 	if (IS_REM_OPCODE(argp->opcode)) {
  		if ((ret = __db_addrem_redo_add_undo_del(dbc, argp, pagep, op, NULL)) != 0) {
