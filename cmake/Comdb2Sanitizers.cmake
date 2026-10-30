@@ -7,7 +7,9 @@
 #   none               no instrumentation (default)
 #   address-undefined  AddressSanitizer + UndefinedBehaviorSanitizer; LeakSanitizer
 #                      is part of the ASan runtime on Linux and is enabled at run
-#                      time via ASAN_OPTIONS=detect_leaks=1
+#                      time via ASAN_OPTIONS=detect_leaks=1. UBSan is built
+#                      recoverable: whether a report stops the program is the
+#                      runtime UBSAN_OPTIONS=halt_on_error setting (config.sh)
 #   thread             ThreadSanitizer
 #
 # Allocator selection is orthogonal and stays with COMDB2_PER_THREAD_MALLOC.
@@ -57,8 +59,10 @@ function(comdb2_configure_sanitizer)
 
   if(mode STREQUAL address-undefined)
     set(sanitize -fsanitize=address,undefined)
+    # Recoverable, so a whole-server run can report every UBSan finding and
+    # keep going; berkdb hits several (e.g. misaligned log writes) on startup.
     set(compile_flags ${sanitize} -fno-omit-frame-pointer -fno-optimize-sibling-calls
-                      -fno-sanitize-recover=undefined)
+                      -fsanitize-recover=undefined)
   else()
     set(sanitize -fsanitize=thread)
     set(compile_flags ${sanitize} -fno-omit-frame-pointer -fno-optimize-sibling-calls)
@@ -112,6 +116,10 @@ function(comdb2_configure_sanitizer)
       # GCC 14/15: false positive in berkdb's P_ENTRY/P_INP, whose (pg) ? .. : 0
       # gives GCC a NULL-page path ("source object is likely at address zero").
       string(APPEND compile_flags " -Wno-error=array-bounds")
+      # GCC 13/14: recoverable UBSan non-null checks leave a NULL path past the
+      # check, reported as "null format string" (csc2/macc_so.c vsnprintf) and
+      # "null destination pointer" (bdb/file.c, util/roll_file.c sprintf).
+      string(APPEND compile_flags " -Wno-error=format-truncation -Wno-error=format-overflow")
     elseif(mode STREQUAL thread)
       # GCC 13/14: db/fdb_fend.c snprintf()s an int into a 3-byte buffer. Real
       # truncation for values >= 100, to be fixed separately; remove this then.

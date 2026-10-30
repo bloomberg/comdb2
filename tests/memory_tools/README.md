@@ -89,17 +89,23 @@ recognised is a failure, and so is any finding other than the expected one.
   inside mspaces either; this lane covers memory outside them (stack,
   globals, plain `malloc`, third-party libraries). Use `asan-system` and
   `valgrind-system` for Comdb2 leaks.
+- **UBSan is built recoverable** (`-fsanitize-recover=undefined`): whether a
+  finding stops the program is the runtime `UBSAN_OPTIONS=halt_on_error`
+  setting. The probe configuration halts on the first finding; whole-server
+  runs can report every finding and continue (berkdb triggers several, e.g.
+  misaligned log writes, while creating a database).
 - **UBSan writes to stderr.** With GCC's combined ASan+UBSan runtime, UBSan
   ignores `log_path` and prints findings to stderr. `run_probe.sh` captures and
   scans stderr; any harness that runs the server must do the same.
 - **GCC only in CI.** The CMake option also accepts Clang, but Clang links
   sanitizer runtimes statically by default, so the `ldd` part of the linkage
   check expects GCC.
-- **Two warnings are not fatal in sanitizer builds**, each scoped to the mode
-  where it was shown to break the build: `-Warray-bounds` with ASan (GCC
-  14/15 false positive in berkdb's `P_ENTRY`) and `-Wformat-truncation` with
-  TSan (a real truncation in `db/fdb_fend.c`, to be fixed separately). They
-  are still reported. Everything else stays fatal; default builds are
+- **Some warnings are not fatal in sanitizer builds**, each scoped to the
+  mode where it was shown to break the build: with ASan, `-Warray-bounds`
+  (GCC 14/15 false positive in berkdb's `P_ENTRY`) and `-Wformat-truncation` /
+  `-Wformat-overflow` (NULL paths that recoverable UBSan checks leave behind);
+  with TSan, `-Wformat-truncation` (a real truncation in `db/fdb_fend.c`, to be
+  fixed separately). They are still reported. Everything else stays fatal; default builds are
   unchanged. See `cmake/Comdb2Sanitizers.cmake`.
 - **No suppressions.** None are shipped; findings in Comdb2 code are not to be
   baselined here.

@@ -79,8 +79,8 @@ memory_tool_configure()
         return 2
     fi
 
-    # Shared strict settings. ASan aborts on the first error; UBSan findings
-    # are fatal because the build uses -fno-sanitize-recover=undefined.
+    # Shared strict settings. ASan aborts on the first error; UBSan is built
+    # recoverable, and halt_on_error=1 below makes its first finding fatal.
     local asan_common="halt_on_error=1:abort_on_error=1:detect_stack_use_after_return=1"
     asan_common+=":strict_string_checks=1:fast_unwind_on_malloc=0:malloc_context_size=50"
     asan_common+=":symbolize=1:log_path=${logdir}/asan"
