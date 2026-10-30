@@ -1,0 +1,106 @@
+name: Memory tools
+
+# Proves that each canonical memory-tool variant builds the full server and
+# that its detector catches deliberate faults. Variant definitions live in
+# tests/memory_tools/config.sh and cmake/Comdb2Sanitizers.cmake; this workflow
+# only picks a variant and runs the self-test.
+
+on:
+  # Every PR: the self-test builds the whole server, so a change anywhere can
+  # break a sanitized build.
+  pull_request:
+    branches: [main]
+
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-pr-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+jobs:
+  harness_tests:
+    name: Memory tools [harness tests]
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        shell: bash -o errexit -o nounset -o pipefail {0}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Shell syntax
+        run: |
+          for f in tests/memory_tools/*.sh; do
+            bash -n "$f"
+          done
+
+      - name: Variant configuration tests
+        run: bash tests/memory_tools/test_config.sh
+
+      - name: Report parser tests
+        run: python3 -m unittest tests/memory_tools/test_check_report.py
+
+  selftest:
+    name: Memory tools [${{ matrix.variant }}]
+    # No continue-on-error: a detector that misses its probe must fail the check.
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+
+    strategy:
+      fail-fast: false
+      matrix:
+        variant: [asan-system, asan-native, tsan-system, valgrind-system]
+
+    env:
+      CC: gcc
+      CXX: g++
+
+    defaults:
+      run:
+        shell: bash -o errexit -o nounset -o pipefail {0}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # Same packages as build.yml, plus valgrind.
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y  \
+            bison                \
+            build-essential      \
+            cmake                \
+            flex                 \
+            libevent-dev         \
+            liblz4-dev           \
+            libprotobuf-c-dev    \
+            libreadline-dev      \
+            libsqlite3-dev       \
+            libssl-dev           \
+            libunwind-dev        \
+            ncurses-dev          \
+            protobuf-c-compiler  \
+            tcl                  \
+            tcl-dev              \
+            uuid-dev             \
+            valgrind             \
+            zlib1g-dev
+
+      - name: Self-test [${{ matrix.variant }}]
+        run: |
+          ./tests/memory_tools/selftest.sh \
+            --variant "${{ matrix.variant }}" \
+            --build-dir "${{ runner.temp }}/build/${{ matrix.variant }}" \
+            --artifact-dir "${{ runner.temp }}/memory-tools/${{ matrix.variant }}" \
+            --jobs "$(nproc)"
+
+      - name: Upload artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: memory-tools-${{ matrix.variant }}
+          path: ${{ runner.temp }}/memory-tools/${{ matrix.variant }}
+          if-no-files-found: error
