@@ -70,6 +70,14 @@ static unsigned int recd_udp = 0;
 static unsigned int recl_udp = 0; /* problem with recv'd len */
 static unsigned int rect_udp = 0; /* problem with recv'd to */
 
+/* UDP prefault hints, shown by "udp stat" */
+static unsigned int pf_ufid_sent = 0;    /* UFID hints sent by the master */
+static unsigned int pf_ufid_recd = 0;    /* UFID hints received */
+static unsigned int pf_ufid_dropped = 0; /* UFID hints not queued (prefault queue full) */
+unsigned int udp_pf_ufid_pinned = 0;     /* UFID hints that found an open handle (bdb/rep.c) */
+unsigned int udp_pf_ufid_skipped = 0;    /* UFID hints for a file not open or closing (bdb/rep.c) */
+static unsigned int pf_dbreg_recd = 0;   /* legacy dbreg-id hints received */
+
 int bdb_udp_send(bdb_state_type *bdb_state, const char *to, size_t len,
                  void *data)
 {
@@ -372,34 +380,33 @@ int udppfault_thdpool_init(void)
     return 0;
 }
 
-static int send_prefault(bdb_state_type *bdb_state, const char *tohost,
-                         unsigned int fileid, unsigned int pgno)
+/* USER_TYPE_UDP_PREFAULT_UFID payload: the file's UFID, then the page number */
+enum { UDP_PREFAULT_UFID_LEN = DB_FILE_ID_LEN + sizeof(uint32_t) };
+
+static int send_prefault(bdb_state_type *bdb_state, const char *tohost, const unsigned char *ufid, unsigned int pgno)
 {
     ack_info *info;
     uint8_t *p_buf;
     uint8_t *p_buf_end;
 
-    filepage_type filepage;
-    filepage.fileid = fileid;
-    filepage.pgno = pgno;
-
-    new_ack_info(info, BDB_FILEPAGE_TYPE_LEN, bdb_state->repinfo->myhost);
+    new_ack_info(info, UDP_PREFAULT_UFID_LEN, bdb_state->repinfo->myhost);
     p_buf = ack_info_data(info);
-    p_buf_end = p_buf + BDB_FILEPAGE_TYPE_LEN;
-    rep_udp_filepage_type_put(&filepage, p_buf, p_buf_end);
+    p_buf_end = p_buf + UDP_PREFAULT_UFID_LEN;
+    p_buf = buf_no_net_put(ufid, DB_FILE_ID_LEN, p_buf, p_buf_end);
+    buf_put(&pgno, sizeof(pgno), p_buf, p_buf_end);
 
     info->from = 0;
     info->to = 0;
-    info->type = USER_TYPE_UDP_PREFAULT;
-    info->len = sizeof(filepage_type);
+    info->type = USER_TYPE_UDP_PREFAULT_UFID;
+    info->len = UDP_PREFAULT_UFID_LEN;
 
-    udp_send(bdb_state, info, tohost);
+    if (udp_send(bdb_state, info, tohost) > 0)
+        __atomic_add_fetch(&pf_ufid_sent, 1, __ATOMIC_RELAXED);
 
     return 0;
 }
 
-void udp_prefault_all(bdb_state_type *bdb_state, unsigned int fileid,
-                      unsigned int pgno)
+void udp_prefault_all(bdb_state_type *bdb_state, const unsigned char *ufid, unsigned int pgno)
 {
     repinfo_type *repinfo = bdb_state->repinfo;
     const char *hosts[REPMAX];
@@ -414,7 +421,7 @@ void udp_prefault_all(bdb_state_type *bdb_state, unsigned int fileid,
     i = net_get_all_nodes_connected(repinfo->netinfo, hosts);
 
     while (i--) {
-        send_prefault(bdb_state, hosts[i], fileid, pgno);
+        send_prefault(bdb_state, hosts[i], ufid, pgno);
     }
 }
 
@@ -447,6 +454,7 @@ static void print_ping_rtt(ack_info *info)
 
 int enque_udppfault_filepage(bdb_state_type *bdb_state, unsigned int fileid,
                              unsigned int pgno);
+int enque_udppfault_ufid(bdb_state_type *bdb_state, const uint8_t *ufid, unsigned int pgno);
 
 const uint8_t *rep_udp_filepage_type_get(filepage_type *p_filepage_type,
                                          const uint8_t *p_buf,
@@ -574,6 +582,7 @@ static void udp_reader(int fd, short what, void *arg)
         p_buf = data;
         p_buf_end = ((uint8_t *)data + info->len);
         p_buf = (uint8_t *)rep_udp_filepage_type_get(&fp, p_buf, p_buf_end);
+        ++pf_dbreg_recd;
         enque_udppfault_filepage(bdb_state, fp.fileid, fp.pgno);
 #ifdef UDP_DEBUG
         /* ack every received lsn. */
@@ -581,6 +590,19 @@ static void udp_reader(int fd, short what, void *arg)
         debug_trace("sent ack %d -> %s", info->to, from);
 #endif
         break;
+
+    case USER_TYPE_UDP_PREFAULT_UFID: {
+        uint32_t pgno;
+        if (info->len != UDP_PREFAULT_UFID_LEN)
+            break;
+        data = ack_info_data(info);
+        p_buf_end = (uint8_t *)data + info->len;
+        buf_get(&pgno, sizeof(pgno), (uint8_t *)data + DB_FILE_ID_LEN, p_buf_end);
+        ++pf_ufid_recd;
+        if (enque_udppfault_ufid(bdb_state, data, pgno) != 0)
+            ++pf_ufid_dropped;
+        break;
+    }
 
     case USER_TYPE_UDP_ACK:
         debug_trace("received ack from %s %s", from,
@@ -673,6 +695,14 @@ void udp_summary(void)
            "udp packets received with len mismatch: %u\n"
            "udp packets received with destination mismatch: %u\n",
            sent_udp, fail_udp, recd_udp, recl_udp, rect_udp);
+    logmsg(LOGMSG_USER,
+           "udp prefault ufid hints sent: %u\n"
+           "udp prefault ufid hints received: %u\n"
+           "udp prefault ufid hints dropped (queue full): %u\n"
+           "udp prefault ufid hints pinned: %u\n"
+           "udp prefault ufid hints skipped (file not open): %u\n"
+           "udp prefault dbreg hints received: %u\n",
+           pf_ufid_sent, pf_ufid_recd, pf_ufid_dropped, udp_pf_ufid_pinned, udp_pf_ufid_skipped, pf_dbreg_recd);
 }
 
 void udp_stats(unsigned int *in_sent_udp, unsigned int *in_fail_udp,
@@ -688,6 +718,7 @@ void udp_reset(netinfo_type *netinfo)
 {
     if (!netinfo) return;
     rect_udp = recl_udp = fail_udp = sent_udp = recd_udp = 0;
+    pf_ufid_sent = pf_ufid_recd = pf_ufid_dropped = udp_pf_ufid_pinned = udp_pf_ufid_skipped = pf_dbreg_recd = 0;
     net_reset_udp_stat(netinfo);
 }
 

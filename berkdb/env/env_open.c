@@ -399,6 +399,7 @@ __dbenv_open(dbenv, db_home, flags, mode)
 	}
 	dbenv->ufid_to_db_hash = hash_init(DB_FILE_ID_LEN);
 	Pthread_mutex_init(&dbenv->ufid_to_db_lk, NULL);
+	Pthread_cond_init(&dbenv->ufid_to_db_cond, NULL);
 	dbenv->prepared_txn_hash = hash_init_strptr(offsetof(struct __db_txn_prepared, dist_txnid));
 	dbenv->prepared_utxnid_hash = hash_init_o(offsetof(struct __db_txn_prepared, utxnid), sizeof(u_int64_t));
 	dbenv->prepared_children = hash_init(sizeof(u_int64_t));
@@ -887,6 +888,11 @@ __dbenv_close(dbenv, rep_check)
 
 	ret = 0;
 
+	/* Stop UDP prefaults and wait for those in flight.  The ufid hash and
+	 * its mutex exist only if the environment was opened. */
+	if (dbenv->ufid_to_db_hash != NULL)
+		__ufid_prefault_stop(dbenv);
+
 	/*
 	 * Before checking the reference count, we have to see if we were in
 	 * the middle of restoring transactions and need to close the open
@@ -952,8 +958,11 @@ __dbenv_close(dbenv, rep_check)
 	}
 
 	if (dbenv->ufid_to_db_hash != NULL) {
+		Pthread_mutex_lock(&dbenv->ufid_to_db_lk);
 		hash_clear(dbenv->ufid_to_db_hash);
 		hash_free(dbenv->ufid_to_db_hash);
+		dbenv->ufid_to_db_hash = NULL;
+		Pthread_mutex_unlock(&dbenv->ufid_to_db_lk);
 	}
 
 	if (dbenv->prepared_txn_hash != NULL) {

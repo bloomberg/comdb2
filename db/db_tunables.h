@@ -520,7 +520,7 @@ REGISTER_TUNABLE("enable_page_compact_backward_scan", NULL, TUNABLE_INTEGER, &gb
                  INVERSE_VALUE | READONLY | NOARG, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("enable_partial_indexes", "If set, allows partial index definitions in table schema. (Default: off)",
                  TUNABLE_BOOLEAN, &gbl_partial_indexes, READONLY | NOARG, NULL, NULL, NULL, NULL);
-REGISTER_TUNABLE("enable_prefault_udp", "Send lossy prefault requests to replicants. (Default: off)", TUNABLE_BOOLEAN,
+REGISTER_TUNABLE("enable_prefault_udp", "Send lossy prefault requests to replicants. (Default: on)", TUNABLE_BOOLEAN,
                  &gbl_prefault_udp, NOARG, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("enable_selectv_range_check",
                  "If set, SELECTV will send ranges for verification, not every "

@@ -32,6 +32,8 @@ static const char revid[] = "$Id: dbreg_util.c,v 11.39 2003/11/10 17:42:34 sue E
 #include "comdb2_atomic.h"
 #include "sys_wrap.h"
 #include <fsnapf.h>
+#include <assert.h>
+#include <time.h>
 #if defined (UFID_HASH_DEBUG)
 #include <limits.h>
 #endif
@@ -397,6 +399,154 @@ __dbreg_close_files(dbenv)
 	return (ret);
 }
 
+/*
+ * UDP prefault pins.  A replicant prefaults a page for a UFID by pinning the
+ * open handle in the ufid hash (pfcnt), touching the page and unpinning.  Every
+ * path that detaches the handle from its entry or frees the entry first calls
+ * __ufid_drain_pins, which refuses new pins and waits for the current ones.
+ * The prefetcher holds no lock while it touches the page.
+ */
+
+/* Wait (ufid_to_db_lk held) up to 100ms for a prefault pin to be released. */
+static void
+__ufid_pin_wait(dbenv)
+	DB_ENV *dbenv;
+{
+	struct timespec ts;
+
+	clock_gettime(CLOCK_REALTIME, &ts);
+	ts.tv_nsec += 100 * 1000 * 1000;
+	if (ts.tv_nsec >= 1000 * 1000 * 1000) {
+		ts.tv_sec++;
+		ts.tv_nsec -= 1000 * 1000 * 1000;
+	}
+	(void)pthread_cond_timedwait(&dbenv->ufid_to_db_cond,
+	    &dbenv->ufid_to_db_lk, &ts);
+}
+
+/*
+ * __ufid_drain_pins --
+ *	Called with ufid_to_db_lk held.  Wait until no UDP prefault holds the
+ *	handle of the entry for fileid.  The lock is dropped while waiting, so
+ *	the entry is looked up again; returns it, or NULL if there is none.
+ */
+static struct __ufid_to_db_t *
+__ufid_drain_pins(dbenv, fileid)
+	DB_ENV *dbenv;
+	u_int8_t *fileid;
+{
+	struct __ufid_to_db_t *ufid;
+	unsigned int waits;
+
+	waits = 0;
+	while ((ufid = hash_find(dbenv->ufid_to_db_hash, fileid)) != NULL &&
+	    ufid->pfcnt > 0) {
+		ufid->pfclosing = 1;
+		if (++waits % 100 == 0)
+			logmsg(LOGMSG_ERROR,
+			    "%s waiting for prefault on %s to complete\n",
+			    __func__, ufid->fname ? ufid->fname : "?");
+		__ufid_pin_wait(dbenv);
+	}
+	if (ufid != NULL)
+		ufid->pfclosing = 0;
+	return (ufid);
+}
+
+/*
+ * __ufid_prefault_pin --
+ *	Pin the open handle for a UFID for a UDP prefault.  Returns ENOENT if
+ *	this node has no open handle for the file or it is being closed.
+ *	Release with __ufid_prefault_unpin.
+ *
+ * PUBLIC: int __ufid_prefault_pin __P((DB_ENV *, const u_int8_t *, DB **,
+ * PUBLIC:     void **));
+ */
+int
+__ufid_prefault_pin(dbenv, inufid, dbpp, pinp)
+	DB_ENV *dbenv;
+	const u_int8_t *inufid;
+	DB **dbpp;
+	void **pinp;
+{
+	struct __ufid_to_db_t *ufid;
+	int ret;
+
+	ret = ENOENT;
+	Pthread_mutex_lock(&dbenv->ufid_to_db_lk);
+	if (!dbenv->ufid_pf_stop &&
+	    (ufid = hash_find(dbenv->ufid_to_db_hash, inufid)) != NULL &&
+	    ufid->dbp != NULL && ufid->dbp->mpf != NULL &&
+	    !ufid->ignore && !ufid->pfclosing) {
+		ufid->pfcnt++;
+		*dbpp = ufid->dbp;
+		*pinp = ufid;
+		ret = 0;
+	}
+	Pthread_mutex_unlock(&dbenv->ufid_to_db_lk);
+	return (ret);
+}
+
+/*
+ * __ufid_prefault_unpin --
+ *	Release a pin taken by __ufid_prefault_pin.
+ *
+ * PUBLIC: void __ufid_prefault_unpin __P((DB_ENV *, void *));
+ */
+void
+__ufid_prefault_unpin(dbenv, pin)
+	DB_ENV *dbenv;
+	void *pin;
+{
+	struct __ufid_to_db_t *ufid;
+
+	ufid = pin;
+	Pthread_mutex_lock(&dbenv->ufid_to_db_lk);
+	assert(ufid->pfcnt > 0);
+	if (--ufid->pfcnt == 0 && ufid->pfclosing)
+		Pthread_cond_broadcast(&dbenv->ufid_to_db_cond);
+	Pthread_mutex_unlock(&dbenv->ufid_to_db_lk);
+}
+
+static int
+__ufid_count_pins(obj, arg)
+	void *obj;
+	void *arg;
+{
+	struct __ufid_to_db_t *ufid;
+
+	ufid = obj;
+	if (ufid->pfcnt > 0) {
+		ufid->pfclosing = 1;
+		*(int *)arg += ufid->pfcnt;
+	}
+	return (0);
+}
+
+/*
+ * __ufid_prefault_stop --
+ *	Refuse new UDP prefault pins and wait for the current ones (env close).
+ *
+ * PUBLIC: void __ufid_prefault_stop __P((DB_ENV *));
+ */
+void
+__ufid_prefault_stop(dbenv)
+	DB_ENV *dbenv;
+{
+	int pins;
+
+	Pthread_mutex_lock(&dbenv->ufid_to_db_lk);
+	dbenv->ufid_pf_stop = 1;
+	for (;;) {
+		pins = 0;
+		hash_for(dbenv->ufid_to_db_hash, __ufid_count_pins, &pins);
+		if (pins == 0)
+			break;
+		__ufid_pin_wait(dbenv);
+	}
+	Pthread_mutex_unlock(&dbenv->ufid_to_db_lk);
+}
+
 // PUBLIC: int __ufid_clear_dbp __P(( DB_ENV *, DB *));
 int
 __ufid_clear_dbp(dbenv, dbp)
@@ -408,12 +558,10 @@ __ufid_clear_dbp(dbenv, dbp)
 	dbp->added_to_ufid = 0;
 	Pthread_mutex_lock(&dbenv->ufid_to_db_lk);
 	fileid = dbp->use_close_fileid ? dbp->close_fileid : dbp->fileid;
-	if ((ufid = hash_find(dbenv->ufid_to_db_hash, fileid)) != NULL) {
-		if (ufid->dbp) {
-			ufid->dbp->added_to_ufid = 0;
-		}
+	/* the drain drops the lock: the entry may now hold another handle */
+	if ((ufid = __ufid_drain_pins(dbenv, fileid)) != NULL &&
+	    ufid->dbp == dbp)
 		ufid->dbp = NULL;
-	}
 	Pthread_mutex_unlock(&dbenv->ufid_to_db_lk);
 #if defined (UFID_HASH_DEBUG)
     char fid_str[(DB_FILE_ID_LEN * 2) + 1] = {0};
@@ -455,7 +603,10 @@ __ufid_add_dbp(dbenv, dbp)
 	int ret = 0;
 
 	Pthread_mutex_lock(&dbenv->ufid_to_db_lk);
-	if ((ufid = hash_find(dbenv->ufid_to_db_hash, dbp->fileid))) {
+	if ((ufid = hash_find(dbenv->ufid_to_db_hash, dbp->fileid)) != NULL &&
+	    ufid->dbp != NULL && ufid->dbp != dbp)
+		ufid = __ufid_drain_pins(dbenv, dbp->fileid);
+	if (ufid != NULL) {
 		if (ufid->dbp != NULL && ufid->dbp != dbp) {
 			/* There may be 2 dbp's for the same ufid, if a replicant upgrades to a
 			   master and later assigns a dbreg ID to a btree (see __dbreg_lazy_id).
@@ -468,6 +619,8 @@ __ufid_add_dbp(dbenv, dbp)
 			abort();
 		}
 		memcpy(ufid->ufid, dbp->fileid, DB_FILE_ID_LEN);
+		ufid->pfcnt = 0;
+		ufid->pfclosing = 0;
 		if (dbp->fname) {
 			ufid->fname = strdup(dbp->fname);
 			ufid->ignore = dbenv->rep_ignore ? dbenv->rep_ignore(ufid->fname) : 0;
@@ -508,7 +661,7 @@ __ufid_rem_dbp(dbenv, uid)
 	struct __ufid_to_db_t *ufid;
 
 	Pthread_mutex_lock(&dbenv->ufid_to_db_lk);
-	if ((ufid = hash_find(dbenv->ufid_to_db_hash, uid))) {
+	if ((ufid = __ufid_drain_pins(dbenv, uid)) != NULL) {
 		if (ufid->dbp)
 			ufid->dbp->added_to_ufid = 0;
 		hash_del(dbenv->ufid_to_db_hash, ufid);
@@ -650,7 +803,12 @@ __ufid_to_db_int(dbenv, txn, dbpp, inufid, lsnp, is_trigger, create, abort_on_no
 	DB *close_dbp = NULL;
 	(*dbpp) = NULL;
 	Pthread_mutex_lock(&dbenv->ufid_to_db_lk);
-	if ((ufid = hash_find(dbenv->ufid_to_db_hash, inufid)) != NULL) {
+	/* remove_on_found hands the handle to the caller to close */
+	if (remove_on_found)
+		ufid = __ufid_drain_pins(dbenv, inufid);
+	else
+		ufid = hash_find(dbenv->ufid_to_db_hash, inufid);
+	if (ufid != NULL) {
 		if (ufid->dbp == NULL && create) {
 			DB *dbp = NULL;
 			Pthread_mutex_unlock(&dbenv->ufid_to_db_lk);
