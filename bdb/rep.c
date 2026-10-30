@@ -3025,6 +3025,8 @@ static int bdb_track_replication_time(bdb_state_type *bdb_state,
     return 0;
 }
 
+#define WAIT_SEQNUM_LOCK_DESIRED -3 /* skipped a node because the bdb lock is desired */
+
 static inline int wait_for_seqnum_remove_node(bdb_state_type *bdb_state, int rc)
 {
     switch (rc) {
@@ -3062,7 +3064,7 @@ static int bdb_wait_for_seqnum_from_node_int(bdb_state_type *bdb_state,
                                              struct interned_string *host, int timeoutms, int lineno,
                                              int fakeincoherent)
 {
-    int rc, reset_ts = 1, remaining = timeoutms;
+    int rc, reset_ts = 1, remaining = timeoutms, lock_desired = 0;
     int seqnum_wait_interval = bdb_state->attr->seqnum_wait_interval;
     struct timespec waittime;
     int i, coherent_state;
@@ -3126,7 +3128,7 @@ static int bdb_wait_for_seqnum_from_node_int(bdb_state_type *bdb_state,
 
 again:
 
-    if (h->seqnum.lsn.file == INT_MAX || bdb_lock_desired(bdb_state)) {
+    if (h->seqnum.lsn.file == INT_MAX || (lock_desired = bdb_lock_desired(bdb_state))) {
         /* add 1 ms of latency if we have someone catching up */
         poll(NULL, 0, 1);
         Pthread_mutex_unlock(&(bdb_state->seqnum_info->lock));
@@ -3135,7 +3137,8 @@ again:
             logmsg(LOGMSG_USER, PR_LSN " %s is catching up, not waiting\n",
                    PARM_LSN(seqnum->lsn), host->str);
         }
-        return 1;
+        /* Not an ack: the caller must not report this commit durable */
+        return lock_desired ? WAIT_SEQNUM_LOCK_DESIRED : 1;
     }
 
     uint32_t gen = h->seqnum.generation;
@@ -3483,7 +3486,7 @@ int bdb_wait_for_seqnum_from_all_int(bdb_state_type *bdb_state, seqnum_type *seq
             rc = bdb_wait_for_seqnum_from_node_int(bdb_state, seqnum,
                     nodelist[i], 1000, __LINE__, fake_incoherent);
 
-            if (bdb_lock_desired(bdb_state)) {
+            if (rc == WAIT_SEQNUM_LOCK_DESIRED || bdb_lock_desired(bdb_state)) {
                 logmsg(LOGMSG_ERROR, "%s line %d early exit because lock-is-desired\n", __func__, __LINE__);
                 ATOMIC_ADD64(gbl_distributed_commit_count, 1);
                 ATOMIC_ADD64(gbl_not_durable_commit_count, 1);
@@ -3576,7 +3579,7 @@ got_ack:
 
         rc = bdb_wait_for_seqnum_from_node_int(bdb_state, seqnum, nodelist[i], waitms, __LINE__, fake_incoherent);
 
-        if (bdb_lock_desired(bdb_state)) {
+        if (rc == WAIT_SEQNUM_LOCK_DESIRED || bdb_lock_desired(bdb_state)) {
             logmsg(LOGMSG_ERROR, "%s line %d early exit because lock-is-desired\n", __func__, __LINE__);
 
             ATOMIC_ADD64(gbl_distributed_commit_count, 1);
