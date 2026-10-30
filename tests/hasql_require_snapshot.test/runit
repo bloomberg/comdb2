@@ -1,0 +1,38 @@
+#!/usr/bin/env bash
+bash -n "$0" || exit 1
+source ${TESTSROOTDIR}/tools/runit_common.sh
+
+# hasql needs a snapshot to retry: below snapshot or serializable the server rejects it,
+# or with hasql_require_snapshot off (the legacy default) only logs a warning
+run()
+{
+    printf "$1\nselect 1\n" | cdb2sql --tabs ${CDB2_OPTIONS} $DBNAME default - 2>&1
+}
+
+expect_ok()
+{
+    out=$(run "$1")
+    echo "$out" | grep -qx 1 || failexit "'$1' should succeed, got '$out'"
+}
+
+require=$(cdb2sql --tabs ${CDB2_OPTIONS} $DBNAME default "select value from comdb2_tunables where name='hasql_require_snapshot'")
+if [[ "$TESTCASE" == *legacy* ]]; then
+    [[ "$require" == "OFF" ]] || failexit "legacy_defaults should turn hasql_require_snapshot off, got '$require'"
+else
+    [[ "$require" == "ON" ]] || failexit "hasql_require_snapshot should default on, got '$require'"
+fi
+
+expect_ok "set hasql on\nset transaction snapshot isolation"
+expect_ok "set transaction serializable\nset hasql on"
+
+if [[ "$require" == "ON" ]]; then
+    out=$(run "set hasql on")
+    echo "$out" | grep -q "hasql requires snapshot or serializable isolation" || failexit "hasql below snapshot should fail, got '$out'"
+    for node in ${CLUSTER:-$(hostname)}; do
+        cdb2sql ${CDB2_OPTIONS} $DBNAME --host $node "put tunable hasql_require_snapshot = 'off'" || failexit "put tunable on $node"
+    done
+fi
+
+expect_ok "set hasql on"
+grep -q "hasql below snapshot isolation" ${TESTDIR}/logs/${DBNAME}*.db || failexit "no hasql warning in the logs"
+echo "Success"
