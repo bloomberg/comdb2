@@ -1,0 +1,7 @@
+Verify that replacing a time-partition view transfers ownership of the logical
+partition name to every physical shard.
+
+The test changes a manual partition's retention, churns similarly sized view
+names so a stale pointer cannot accidentally retain the expected contents,
+then grants a principal read access only to the logical partition. Direct reads
+of all surviving physical shards must still be authorized as that partition.
