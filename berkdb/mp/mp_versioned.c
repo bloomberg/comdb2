@@ -241,6 +241,13 @@ int __mempv_fget(mpf, dbc, pgno, ret_page, flags)
 
 	elr = LOCKING_ON(dbenv) && SNAPCUR_EARLY_LOCK_RELEASE(dbc);
 
+	/* Keep online recovery from truncating the log or closing files under the rollback.
+	 * Recovery takes page locks under recoverlk: wait only if we hold no page lock. */
+	if (elr)
+		Pthread_rwlock_rdlock(&dbenv->recoverlk);
+	else if (pthread_rwlock_tryrdlock(&dbenv->recoverlk) != 0)
+		return DB_LOCK_DEADLOCK;
+
 	/* The lock is dropped right after the copy, so copy up front; a cached version needs neither. */
 	if (elr) {
 		if ((ret = __mempv_alloc_image(dbenv, dbp->pgsize, &bhp, &page_image, caller_id)) != 0)
@@ -419,6 +426,7 @@ err:
 	if (ret != 0 && bhp != NULL) {
 		__os_free(dbenv, bhp);
 	}
+	Pthread_rwlock_unlock(&dbenv->recoverlk);
 	return ret;
 }
 

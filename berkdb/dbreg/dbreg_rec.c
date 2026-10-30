@@ -60,7 +60,7 @@ static const char revid[] = "$Id: dbreg_rec.c,v 11.120 2003/10/27 15:54:31 sue E
 #include <tohex.h>
 
 static int __dbreg_open_file __P((DB_ENV *,
-    DB_TXN *, __dbreg_register_args *, void *));
+    DB_TXN *, __dbreg_register_args *, void *, int));
 
 int
 __dbreg_register_print(DB_ENV *dbenv, DBT *dbtp, DB_LSN *lsnp, db_recops notused2, void *notused3);
@@ -69,6 +69,26 @@ __dbreg_register_print(DB_ENV *dbenv, DBT *dbtp, DB_LSN *lsnp, db_recops notused
 void comdb2_cheapstack_sym(FILE *f, char *fmt, ...);
 #endif
 
+
+/*
+ * Snapshot rollback uses ufid dbps on sql threads under recoverlk: a replicant
+ * must not close one under it.  Recovery passes already hold recoverlk.
+ */
+static int
+__dbreg_close_dbp(dbenv, dbp, apply)
+	DB_ENV *dbenv;
+	DB *dbp;
+	int apply;
+{
+	int ret;
+
+	if (apply)
+		dbenv->wrlock_recovery_lock(dbenv, __func__, __LINE__);
+	ret = __db_close(dbp, NULL, DB_NOSYNC);
+	if (apply)
+		dbenv->unlock_recovery_lock(dbenv, __func__, __LINE__);
+	return ret;
+}
 
 /*
  * PUBLIC: int __dbreg_register_recover
@@ -202,7 +222,7 @@ __dbreg_register_recover(dbenv, dbtp, lsnp, op, info)
 		 */
 		ret = __dbreg_open_file(dbenv,
 		    op == DB_TXN_ABORT || op == DB_TXN_POPENFILES ?
-		    argp->txnid : NULL, argp, info);
+		    argp->txnid : NULL, argp, info, op == DB_TXN_APPLY);
 
 		if (ret != 0 && op == DB_TXN_APPLY) {
 			/*
@@ -236,7 +256,7 @@ __dbreg_register_recover(dbenv, dbtp, lsnp, op, info)
 			    dblp->dbentry[argp->fileid].deleted) {
 				dblp->dbentry[argp->fileid].deleted = 0;
 				ret =
-				    __dbreg_open_file(dbenv, NULL, argp, info);
+				    __dbreg_open_file(dbenv, NULL, argp, info, 0);
 			}
 			/*
 			 * We treat ENOENT as OK since it's possible that
@@ -357,8 +377,8 @@ __dbreg_register_recover(dbenv, dbtp, lsnp, op, info)
 				else {
 					if (op == DB_TXN_APPLY)
 						__db_sync(dbp);
-					t_ret =
-					    __db_close(dbp, NULL, DB_NOSYNC);
+					t_ret = __dbreg_close_dbp(dbenv, dbp,
+					    op == DB_TXN_APPLY);
 				}
 				if (t_ret != 0 && ret == 0)
 					ret = t_ret;
@@ -382,11 +402,12 @@ out:	if (argp != NULL)
  *	non-zero on error.
  */
 static int
-__dbreg_open_file(dbenv, txn, argp, info)
+__dbreg_open_file(dbenv, txn, argp, info, apply)
 	DB_ENV *dbenv;
 	DB_TXN *txn;
 	__dbreg_register_args *argp;
 	void *info;
+	int apply;
 {
 	DB_ENTRY *dbe;
 	DB_LOG *lp;
@@ -429,7 +450,7 @@ __dbreg_open_file(dbenv, txn, argp, info)
 			(void)__dbreg_revoke_id(dbp, 0,
 				DB_LOGFILEID_INVALID);
 			if (F_ISSET(dbp, DB_AM_RECOVER))
-				__db_close(dbp, NULL, DB_NOSYNC);
+				__dbreg_close_dbp(dbenv, dbp, apply);
 
 			goto reopen;
 		}
