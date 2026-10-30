@@ -1,0 +1,59 @@
+#!/usr/bin/env bash
+bash -n "$0" || exit 1
+set -euo pipefail
+
+source "${TESTSROOTDIR}/tools/runit_common.sh"
+
+dbnm=${1:-}
+[[ -n "$dbnm" ]] || failexit "need a database name"
+
+OP='bpi:procauth:cluster:test:user:op:bpkg:setup'
+READER='bpi:procauth:cluster:test:user:reader:bpkg:test'
+
+run_as() {
+    local principal=$1
+    shift
+    "${TESTSBUILDDIR}/simpleauth_test" "$dbnm" "$principal" "$@"
+}
+
+restore_wildcard() {
+    run_as "$OP" \
+        "insert into comdb2_simple_auth(cluster,user,bpkg,verb,resourcetype,resourcename) values('*','*','*','*','*','*') on conflict do nothing" \
+        >/dev/null 2>&1 || true
+}
+
+sqlval() {
+    "${CDB2SQL_EXE}" --tabs ${CDB2_OPTIONS} "$dbnm" default "$1"
+}
+
+# The wildcard installed by simpleauth initialization permits setup.
+run_as "$OP" \
+    "create table authpart(a int) partitioned by manual retention 2 start 1" \
+    "insert into authpart values(1)" \
+    "alter table authpart partitioned by manual retention 3" \
+    "create table churn001(a int) partitioned by manual retention 2 start 1" \
+    "create table churn002(a int) partitioned by manual retention 2 start 1" \
+    "create table churn003(a int) partitioned by manual retention 2 start 1"
+
+shards=$(sqlval "select shardname from comdb2_timepartshards where name='authpart' order by shardname")
+[[ $(wc -l <<< "$shards" | tr -d '[:space:]') == 3 ]] ||
+    failexit "expected three authpart shards, got: $shards"
+
+# Leave the reader with access to the logical name only. A physical-shard read
+# therefore succeeds only if dbtable->timepartition_name still names authpart.
+run_as "$OP" \
+    "insert into comdb2_simple_auth(cluster,user,bpkg,verb,resourcetype,resourcename) values('*','op','*','Read','table','comdb2_simple_auth')" \
+    "insert into comdb2_simple_auth(cluster,user,bpkg,verb,resourcetype,resourcename) values('*','op','*','Write','table','comdb2_simple_auth')" \
+    "insert into comdb2_simple_auth(cluster,user,bpkg,verb,resourcetype,resourcename) values('*','reader','*','Read','table','authpart')" \
+    "delete from comdb2_simple_auth where cluster='*' and user='*' and bpkg='*' and verb='*' and resourcetype='*' and resourcename='*'"
+
+trap restore_wildcard EXIT
+
+while IFS= read -r shard; do
+    [[ -n "$shard" ]] || continue
+    run_as "$READER" "select count(*) from '$shard'"
+done <<< "$shards"
+
+restore_wildcard
+trap - EXIT
+echo SUCCESS

@@ -595,6 +595,7 @@ int views_handle_replicant_reload(void *tran, const char *name)
 {
     timepart_views_t *_views = thedb->timepart_views;
     timepart_view_t *view = NULL;
+    timepart_view_t *old_view = NULL;
     struct dbtable *db;
     int rc = VIEW_NOERR;
     char *str = NULL;
@@ -625,6 +626,16 @@ int views_handle_replicant_reload(void *tran, const char *name)
         goto done;
     }
 
+    /* keep the old name string; shards read it without views_lk, including
+     * the one phase3 has not dropped yet, which is not in the new view */
+    for (i = 0; i < _views->nviews && !old_view; i++) {
+        if (strcasecmp(_views->views[i]->name, name) == 0) {
+            old_view = _views->views[i];
+            free(view->name);
+            view->name = old_view->name;
+        }
+    }
+
     /* double-checks... make sure all the tables exist */
     for (i = 0; i < view->nshards; i++) {
         db = get_dbtable_by_name(view->shards[i].tblname);
@@ -634,6 +645,8 @@ int views_handle_replicant_reload(void *tran, const char *name)
                 logmsg(LOGMSG_ERROR,
                        "%s: unable to locate shard %s for view %s\n", __func__,
                        view->shards[i].tblname, view->name);
+                if (old_view)
+                    view->name = NULL; /* still owned by old_view */
                 timepart_free_view(view);
                 view = NULL;
                 goto done;
@@ -663,6 +676,8 @@ alter_struct:
                 _view_unregister_shards_lkless(_views, _views->views[i],
                                                &bump_dbopen);
             }
+            if (view)
+                _views->views[i]->name = NULL; /* now owned by view */
             timepart_free_view(_views->views[i]);
 
             if (view) {
