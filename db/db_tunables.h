@@ -1591,7 +1591,7 @@ REGISTER_TUNABLE("time_rep_apply",
                  TUNABLE_BOOLEAN, &gbl_time_rep_apply, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("logput_window",
                  "Drop log-broadcasts for incoherent nodes "
-                 "more than this many bytes behind.  (Default: 0)",
+                 "more than this many bytes behind.  (Default: 40000000)",
                  TUNABLE_INTEGER, &gbl_incoherent_logput_window, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("dump_net_queue_on_partial_write",
                  "Dump net-queue info on partial write. (Default: off):",

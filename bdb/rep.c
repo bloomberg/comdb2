@@ -724,7 +724,8 @@ int is_incoherent(bdb_state_type *bdb_state, struct interned_string *host)
 }
 
 int gbl_throttle_logput_trace = 0;
-int gbl_incoherent_logput_window = 0;
+/* The CATCHUP_WINDOW default: a node gets live log again once the master starts waiting for it */
+int gbl_incoherent_logput_window = 40000000;
 
 static int throttle_updates_incoherent_nodes(netinfo_type *netinfo_ptr, struct interned_string *host)
 {
@@ -754,7 +755,8 @@ static int throttle_updates_incoherent_nodes(netinfo_type *netinfo_ptr, struct i
 
         lsnp = &h->seqnum.lsn;
         masterlsn = &m->seqnum.lsn;
-        cntbytes = subtract_lsn(bdb_state, masterlsn, lsnp);
+        /* A node at or past the master (a starting node acks INT_MAX:INT_MAX) is 0 bytes behind */
+        cntbytes = log_compare(masterlsn, lsnp) > 0 ? subtract_lsn(bdb_state, masterlsn, lsnp) : 0;
         if (cntbytes > window) {
             ret = 1;
             throttles++;
