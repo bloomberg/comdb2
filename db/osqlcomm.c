@@ -7631,7 +7631,15 @@ static int _process_partition_retention(struct ireq *iq)
     sc->nothrevent = 1;    /* serialize, mirrors create/rollout paths */
 
     rc = SC_OK;
-    for (i = 0; i < nnames; i++) {
+    if (is_increase) {
+        /* new shards inherit the partition's table version */
+        sc->timepartition_version = comdb2_table_version(sc->tablename);
+        if (sc->timepartition_version == (unsigned long long)-1) {
+            sc_errf(sc, "Failed to get the version of partition %s", sc->tablename);
+            rc = ERR_SC;
+        }
+    }
+    for (i = 0; rc == SC_OK && i < nnames; i++) {
         struct schema_change_type *cur;
 
         if (i == 0) {
