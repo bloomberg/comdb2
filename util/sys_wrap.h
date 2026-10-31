@@ -23,6 +23,32 @@
 #include <pthread.h>
 #include "logmsg.h"
 
+#if defined (__GLIBC__) && defined (_LINUX_SOURCE)
+static inline int is_rwlock_held(pthread_rwlock_t *rwlock)
+{
+    struct __pthread_rwlock_arch_t {
+        int __readers;
+        int __writers;
+        int __wrphase_futex;
+        int __writers_futex;
+        int __pad3;
+        int __pad4;
+        int __cur_writer;
+        int __shared;
+        signed char __rwelision;
+        unsigned char __flags;
+        unsigned short __attr;
+    };
+    struct __pthread_rwlock_arch_t *rw = (struct __pthread_rwlock_arch_t *)rwlock;
+    return (rw->__readers > 0 || rw->__cur_writer != 0);
+}
+#else
+static inline int is_rwlock_held(pthread_rwlock_t *rwlock)
+{
+    return 1;
+}
+#endif
+
 #ifdef SYSWRAP_DEBUG
 #define SYSWRAPDBG_TRACE(STR, FUNC, OBJ)                                                                               \
     logmsg(LOGMSG_USER, "%s:%d " #STR " " #FUNC "(0x%" PRIxPTR ") thd:%p\n", __func__, __LINE__, (uintptr_t)OBJ,       \
@@ -33,6 +59,26 @@
 
 #define SYSWRAP_FIRST_(a, ...) a
 #define SYSWRAP_FIRST(...) SYSWRAP_FIRST_(__VA_ARGS__, 0)
+
+#define WRAP_SYSFUNC_RWUNLOCK(FUNC, ...)                                                                               \
+    do {                                                                                                               \
+        int rc;                                                                                                        \
+        SYSWRAPDBG_TRACE(TRY, FUNC, SYSWRAP_FIRST(__VA_ARGS__));                                                       \
+        if (!is_rwlock_held(__VA_ARGS__)) {                                                                            \
+            logmsg(LOGMSG_FATAL, "%s:%d RWLOCK NOT HELD " #FUNC "(0x%" PRIxPTR ") thd:%p\n", __func__, __LINE__,            \
+                   (uintptr_t)SYSWRAP_FIRST(__VA_ARGS__), (void *)pthread_self());                   \
+            abort();                                                                                                   \
+        }                                                                                                              \
+        if ((rc = FUNC(__VA_ARGS__)) != 0) {                                                                           \
+            logmsg(LOGMSG_FATAL, "%s:%d " #FUNC "(0x%" PRIxPTR ") rc:%d (%s) thd:%p\n", __func__, __LINE__,            \
+                   (uintptr_t)SYSWRAP_FIRST(__VA_ARGS__), rc, strerror(rc), (void *)pthread_self());                   \
+            abort();                                                                                                   \
+        }                                                                                                              \
+        SYSWRAPDBG_TRACE(GOT, FUNC, SYSWRAP_FIRST(__VA_ARGS__));                                                       \
+    } while (0)
+
+
+
 #define WRAP_SYSFUNC(FUNC, ...)                                                                                        \
     do {                                                                                                               \
         int rc;                                                                                                        \
@@ -83,7 +129,7 @@
 #define Pthread_rwlock_destroy(...) WRAP_SYSFUNC(pthread_rwlock_destroy, __VA_ARGS__)
 #define Pthread_rwlock_init(...) WRAP_SYSFUNC(pthread_rwlock_init, __VA_ARGS__)
 #define Pthread_rwlock_rdlock(...) WRAP_SYSFUNC(pthread_rwlock_rdlock, __VA_ARGS__)
-#define Pthread_rwlock_unlock(...) WRAP_SYSFUNC(pthread_rwlock_unlock, __VA_ARGS__)
+#define Pthread_rwlock_unlock(...) WRAP_SYSFUNC_RWUNLOCK(pthread_rwlock_unlock, __VA_ARGS__)
 #define Pthread_rwlock_wrlock(...) WRAP_SYSFUNC(pthread_rwlock_wrlock, __VA_ARGS__)
 #define Pthread_setspecific(...) WRAP_SYSFUNC(pthread_setspecific, __VA_ARGS__)
 #define Close(...) WRAP_SYSFUNC_ABORT_ERRNO(close, EBADF, __VA_ARGS__)
