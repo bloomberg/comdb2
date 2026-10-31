@@ -8,6 +8,7 @@ bash -n "$0" || exit 1
 # permissive maxtime because im killing my hardware
 export maxtime=300000
 export stopfile=./stopfile.txt
+export NODES=${CLUSTER:-$(hostname)}
 
 export debug=1
 
@@ -17,7 +18,7 @@ export comdb2db_hosts="${SENARY_DBNAME}:1234"
 export COMDB2DB_DBNAME=${SENARY_DBNAME}
 export COMDB2DB_OPTIONS=${SENARY_CDB2_OPTIONS}
 export LOGDIR=$TESTDIR/logs
-export LONGINSERTTIME=10000
+export LONGINSERTTIME=30000
 
 export LONGUPDATETIME=30000
 export FAIL_ON_LONG_INSERT=1
@@ -31,7 +32,7 @@ export keepup_on_failure=0
 
 function stop_all_databases
 {
-    for node in $CLUSTER ; do
+    for node in $NODES ; do
          kill -9 $(cat ${TMPDIR}/${DBNAME}.${node}.pid)
          kill -9 $(cat ${TMPDIR}/${SECONDARY_DBNAME}.${node}.pid)
          kill -9 $(cat ${TMPDIR}/${TERTIARY_DBNAME}.${node}.pid)
@@ -66,7 +67,7 @@ function send_message_machine
 function send_message_all
 {
     typeset msg="$1"
-    for node in $CLUSTER ; do
+    for node in $NODES ; do
         send_message_machine "$msg" "$node"
     done
 }
@@ -87,7 +88,7 @@ function send_message_cluster
     typeset dbname="$2"
     typeset options="$3"
 
-    for node in $CLUSTER ; do
+    for node in $NODES ; do
         send_message_db_machine "$msg" "$dbname" "$options" "$node"
     done
 }
@@ -150,7 +151,7 @@ function set_tunable_machine
 
 function benchmark_common_tunables
 {
-    for mach in ${CLUSTER}; do
+    for mach in $NODES; do
         set_tunable_machine debug_disttxn_trace 0 $mach
         set_tunable_machine verbose_toblock_backouts 0 $mach
         set_tunable_machine dump_blkseq 0 $mach
@@ -166,7 +167,7 @@ function benchmark_common_tunables
 # Disables all safety measures
 function benchmark_loose_tunables
 {
-    for mach in ${CLUSTER}; do
+    for mach in $NODES; do
         set_tunable_machine coordinator_sync_on_commit 0 $mach
         set_tunable_machine flush_on_prepare 0 $mach
         set_tunable_machine flush_on_replicant_prepare 0 $mach
@@ -176,7 +177,7 @@ function benchmark_loose_tunables
 
 function benchmark_austere_tunables
 {
-    for mach in ${CLUSTER}; do
+    for mach in $NODES; do
         set_tunable_machine coordinator_sync_on_commit 1 $mach
         set_tunable_machine flush_on_prepare 1 $mach
         set_tunable_machine flush_on_replicant_prepare 1 $mach
@@ -203,7 +204,7 @@ function update_all_tunables
         $CDB2SQL_EXE -admin $QUINARY_CDB2_OPTIONS $QUINARY_DBNAME default "put tunable foreign_metadb '${COMDB2DB_DBNAME}'" >/dev/null 2>&1
         $CDB2SQL_EXE -admin $QUINARY_CDB2_OPTIONS $QUINARY_DBNAME default "put tunable foreign_metadb_class 'local'" >/dev/null 2>&1
     else
-        for mach in ${CLUSTER}; do
+        for mach in $NODES; do
             $CDB2SQL_EXE -admin $CDB2_OPTIONS $DBNAME --host $mach "put tunable foreign_metadb '${COMDB2DB_DBNAME}'" >/dev/null 2>&1
             $CDB2SQL_EXE -admin $CDB2_OPTIONS $DBNAME --host $mach "put tunable foreign_metadb_class 'local'" >/dev/null 2>&1
 
@@ -252,9 +253,14 @@ function create_comdb2db
     if [[ -z ${CLUSTER} ]]; then
         $CDB2SQL_EXE $COMDB2DB_OPTIONS $COMDB2DB_DBNAME default "insert into machines(name, cluster, room) values ('localhost', 'KABOOM', 'NY') on conflict do nothing" >/dev/null 2>&1
         comdb2db_hosts="${comdb2db_hosts}:localhost"
+        # fdb opens remote dbs by class, which needs their hosts in config.d
+        mkdir -p $TESTDIR/etc/cdb2/config.d
+        for db in $DBNAME $SECONDARY_DBNAME $TERTIARY_DBNAME $QUATERNARY_DBNAME $QUINARY_DBNAME; do
+            echo "$db 0 localhost" > $TESTDIR/etc/cdb2/config.d/$db.cfg
+        done
     else
         let nnodes=0
-        for mach in ${CLUSTER} ; do
+        for mach in $NODES ; do
             $CDB2SQL_EXE $COMDB2DB_OPTIONS $COMDB2DB_DBNAME default "insert into machines(name, cluster, room) values('${mach}', 'KABOOM', 'NY') on conflict do nothing" >/dev/null 2>&1
             comdb2db_hosts="${comdb2db_hosts}:${mach}"
             let nnodes=nnodes+1
@@ -806,7 +812,7 @@ commit
     # Verify counts
     x=$($CDB2SQL_EXE -tabs $CDB2_OPTIONS $DBNAME default "select count(*) from t1")
     if [[ "$x" != "$records" ]] ; then 
-        for node in $CLUSTER ; do
+        for node in $NODES ; do
             echo "Node $node"
             x=$($CDB2SQL_EXE -tabs $CDB2_OPTIONS $DBNAME --host $node "select count(*) from t1")
             x=$($CDB2SQL_EXE -tabs $CDB2_OPTIONS $DBNAME --host $node "select * from t1 order by a")
@@ -816,7 +822,7 @@ commit
 
     x=$($CDB2SQL_EXE -tabs $CDB2_OPTIONS $DBNAME default "select count(*) from $SECONDARY_DBNAME.t1")
     if [[ "$x" != "$records" ]] ; then 
-        for node in $CLUSTER ; do
+        for node in $NODES ; do
             echo "Node $node"
             x=$($CDB2SQL_EXE -tabs $SECONDARY_CDB2_OPTIONS $SECONDARY_DBNAME --host $node "select count(*) from t1")
             x=$($CDB2SQL_EXE -tabs $SECONDARY_CDB2_OPTIONS $SECONDARY_DBNAME --host $node "select * from t1 order by a")
@@ -826,7 +832,7 @@ commit
 
     x=$($CDB2SQL_EXE -tabs $CDB2_OPTIONS $DBNAME default "select count(*) from $TERTIARY_DBNAME.t1")
     if [[ "$x" != "$records" ]] ; then 
-        for node in $CLUSTER ; do
+        for node in $NODES ; do
             echo "Node $node"
             x=$($CDB2SQL_EXE -tabs $TERTIARY_CDB2_OPTIONS $TERTIARY_DBNAME --host $node "select count(*) from t1")
             x=$($CDB2SQL_EXE -tabs $TERTIARY_CDB2_OPTIONS $TERTIARY_DBNAME --host $node "select * from t1 order by a")
@@ -836,7 +842,7 @@ commit
 
     x=$($CDB2SQL_EXE -tabs $CDB2_OPTIONS $DBNAME default "select count(*) from $QUATERNARY_DBNAME.t1")
     if [[ "$x" != "$records" ]] ; then 
-        for node in $CLUSTER ; do
+        for node in $NODES ; do
             echo "Node $node"
             x=$($CDB2SQL_EXE -tabs $QUATERNARY_CDB2_OPTIONS $QUATERNARY_DBNAME --host $node "select count(*) from t1")
             x=$($CDB2SQL_EXE -tabs $QUATERNARY_CDB2_OPTIONS $QUATERNARY_DBNAME --host $node "select * from t1 order by a")
@@ -846,7 +852,7 @@ commit
 
     x=$($CDB2SQL_EXE -tabs $CDB2_OPTIONS $DBNAME default "select count(*) from $QUINARY_DBNAME.t1")
     if [[ "$x" != "$records" ]] ; then 
-        for node in $CLUSTER ; do
+        for node in $NODES ; do
             echo "Node $node"
             x=$($CDB2SQL_EXE -tabs $QUINARY_CDB2_OPTIONS $QUINARY_DBNAME --host $node "select count(*) from t1")
             x=$($CDB2SQL_EXE -tabs $QUINARY_CDB2_OPTIONS $QUINARY_DBNAME --host $node "select * from t1 order by a")
@@ -904,7 +910,7 @@ function toggle_tunable
             $CDB2SQL_EXE -admin $QUINARY_CDB2_OPTIONS $QUINARY_DBNAME default "put tunable ${tunable} '${onoff}'" >/dev/null 2>&1
         fi
     else
-        for mach in ${CLUSTER}; do
+        for mach in $NODES; do
             if [[ "$skip_coordinator" == "0" ]]; then
                 $CDB2SQL_EXE -admin $CDB2_OPTIONS $DBNAME --host $mach "put tunable ${tunable} '${onoff}'" >/dev/null 2>&1
             fi
@@ -924,7 +930,7 @@ function set_sleep_before_dispatch_tertiary
     if [[ -z ${CLUSTER} ]]; then
         $CDB2SQL_EXE -admin $TERTIARY_CDB2_OPTIONS $TERTIARY_DBNAME default "put tunable 'sleep_before_dispatch' '${slp}'"
     else
-        for mach in ${CLUSTER}; do
+        for mach in $NODES; do
             $CDB2SQL_EXE -admin $TERTIARY_CDB2_OPTIONS $TERTIARY_DBNAME --host $mach "put tunable 'sleep_before_dispatch' '${slp}'"
         done
     fi
@@ -2227,7 +2233,7 @@ function kill_restart_cluster
 
     REP_ENV_VARS="${dbdir}/replicant_env_vars"
     # Kill first
-    for node in $CLUSTER ; do
+    for node in $NODES ; do
         if [[ "$node" != "$skipmach" ]]; then
             $CDB2SQL_EXE $options $dbname --host $node "exec procedure sys.cmd.send('flush')"
             kill -9 $(cat ${TMPDIR}/${dbname}.${node}.pid)
@@ -2238,7 +2244,7 @@ function kill_restart_cluster
     sleep $sleeptime
 
     # restart
-    for node in $CLUSTER ; do
+    for node in $NODES ; do
         if [[ "$node" != "$skipmach" ]]; then
             PARAMS="$dbname --no-global-lrl"
             CMD="source ${REP_ENV_VARS} ; ${COMDB2_EXE} ${PARAMS} --lrl $dbdir/${dbname}.lrl --pidfile ${TMPDIR}/${dbname}.pid"
@@ -2270,7 +2276,7 @@ function block_until_cluster_is_up
 
     while [[ "$isup" == 0 ]]; do
         isup=1
-        for node in ${CLUSTER}; do
+        for node in $NODES; do
             $CDB2SQL_EXE $options $dbname --host $node "select 1"
             if [[ $? != 0 ]]; then
                 isup=0
@@ -2459,7 +2465,7 @@ commit
         fail_exit "Expected prepare-was-not-durable rcode"
     fi
 
-    for node in $CLUSTER; do
+    for node in $NODES; do
         r=-1
         while [[ "$r" -ne "0" ]]; do
             $CDB2SQL_EXE $QUATERNARY_CDB2_OPTIONS $QUATERNARY_DBNAME --host $node "select 1"
@@ -2548,7 +2554,7 @@ commit
 
     # Do a select, but this might take a while
 
-    for node in $CLUSTER; do
+    for node in $NODES; do
         r=-1
         while [[ "$r" -ne "0" ]]; do
             $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME --host $node "select 1"
@@ -3354,6 +3360,192 @@ function test_verify_retry
     done
 }
 
+function count_failed_replay_writes
+{
+    cat $LOGDIR/${DBNAME}.db $LOGDIR/${DBNAME}.*.db 2>/dev/null | grep -c "debug failing replayed push write"
+}
+
+function count_verify_replays
+{
+    typeset total=0
+    typeset n=0
+    typeset node
+    for node in $NODES; do
+        n=$($CDB2SQL_EXE -tabs $CDB2_OPTIONS $DBNAME --host $node "select value from comdb2_metrics where name='verify_replays'")
+        let total=total+n
+    done
+    echo $total
+}
+
+# Fail pushed writes on the first $1 replays with rc $4; a txn must commit everywhere or nowhere.
+# With $3 == 0 the txn has only remote writes, so the first replayed statement is a push.
+# A transient rc (-1) replays again; a permanent one (-3) fails the txn with CDB2ERR_DIST_ABORT, without another replay.
+function replay_push_write_failure
+{
+    typeset fails=$1
+    typeset expect_all=$2
+    typeset local=${3:-1}
+    typeset failrc=${4:--1}
+    typeset records=300
+    typeset ncommitted=0
+    typeset j=0
+    typeset r=0
+    typeset out=""
+    typeset tables="$SECONDARY_DBNAME.t1 $TERTIARY_DBNAME.t1 $QUATERNARY_DBNAME.t1 $QUINARY_DBNAME.t1"
+    typeset before=$(count_failed_replay_writes)
+    typeset replays_before=$(count_verify_replays)
+    typeset expectrc=2
+    typeset tag="replay_push_write_failure $fails $local $failrc"
+
+    if [[ "$local" == "1" ]]; then
+        tables="t1 $tables"
+    fi
+    if [[ "$failrc" != "-1" ]]; then
+        expectrc=410
+    fi
+
+    toggle_verify_retry_max 10
+    toggle_tunable debug_fail_push_write_on_replay $fails 0 1
+    toggle_tunable debug_fail_push_write_on_replay_rc $failrc 0 1
+    toggle_random_verify_errors 1
+    typeset -A rows
+    while [[ $j -lt $records ]]; do
+        # insert j, move j-1 to j-1+1000, and delete j-2+1000
+        typeset dml=""
+        for tbl in $tables; do
+            dml="${dml}insert into $tbl(a) values($j)
+update $tbl set a = a + 1000 where a = $(( j - 1 ))
+delete from $tbl where a = $(( j - 2 + 1000 ))
+"
+        done
+        out=$(echo "begin
+${dml}commit
+" | $CDB2SQL_EXE $DEBUGTRACE $CDB2_OPTIONS $DBNAME default - 2>&1)
+        r=$?
+        if [[ "$r" == "0" ]]; then
+            rows[$j]=1
+            if [[ -n "${rows[$(( j - 1 ))]}" ]]; then
+                unset rows[$(( j - 1 ))]
+                rows[$(( j - 1 + 1000 ))]=1
+            fi
+            unset rows[$(( j - 2 + 1000 ))]
+            let ncommitted=ncommitted+1
+        elif [[ "$expect_all" == "1" ]]; then
+            fail_exit "$tag: txn $j failed: $out"
+        elif [[ "$out" != *"failed with rc $expectrc "* ]]; then
+            fail_exit "$tag: txn $j expected rc $expectrc: $out"
+        fi
+        let j=j+1
+    done
+    toggle_random_verify_errors 0
+    toggle_tunable debug_fail_push_write_on_replay 0 0 1
+    toggle_tunable debug_fail_push_write_on_replay_rc -1 0 1
+    toggle_verify_retry_max 499
+
+    typeset after=$(count_failed_replay_writes)
+    typeset replays=$(( $(count_verify_replays) - replays_before ))
+    typeset failed=$(( after - before ))
+    # remote-only txns may not draw a verify error; consistency below is the real check for them
+    if [[ "$local" == "1" ]]; then
+        [[ "$failed" -gt 0 ]] || fail_exit "$tag: no replayed push write was failed"
+        [[ "$expect_all" == "1" || "$ncommitted" -lt "$records" ]] || fail_exit "$tag: no txn failed"
+    else
+        typeset x=$($CDB2SQL_EXE -tabs $CDB2_OPTIONS $DBNAME default "select count(*) from t1")
+        [[ "$x" == "0" ]] || fail_exit "$tag: local t1 has $x rows"
+    fi
+    # every replay fails: once its first push fails, it must not run the others
+    if [[ "$fails" -ge 10 ]]; then
+        [[ "$failed" == "$replays" ]] || fail_exit "$tag: $failed failed pushes in $replays replays"
+    fi
+    # a permanent error ends the txn after a single replay
+    if [[ "$failrc" != "-1" ]]; then
+        [[ "$replays" == "$(( records - ncommitted ))" ]] || fail_exit "$tag: $replays replays for $(( records - ncommitted )) failed txns"
+    fi
+
+    typeset expected=$(echo ${!rows[@]} | tr ' ' '\n' | sort -n | tr '\n' ' ')
+    for tbl in $tables; do
+        typeset found=$($CDB2SQL_EXE -tabs $CDB2_OPTIONS $DBNAME default "select a from $tbl order by a" | tr '\n' ' ')
+        [[ "$found" == "$expected" ]] || fail_exit "$tag: $tbl has \"$found\", expected \"$expected\""
+    done
+    echo "$tag: committed $ncommitted of $records, failed $failed replayed writes in $replays replays"
+    delete_records
+}
+
+# Failing to start the local txn for a pushed write must answer the client, and roll back cleanly
+function push_write_start_failure
+{
+    typeset out=""
+    typeset x=""
+    toggle_tunable debug_fail_push_write_start 1 0 1
+    out=$(echo "begin
+insert into $SECONDARY_DBNAME.t1(a) values(1)
+rollback
+" | timeout 60 $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default - 2>&1)
+    typeset r=$?
+    toggle_tunable debug_fail_push_write_start 0 0 1
+    [[ "$r" != "124" ]] || fail_exit "push_write_start_failure: client hung"
+    [[ "$out" == *"failed with rc -101 failed to start transaction"* ]] || fail_exit "push_write_start_failure: no error: $out"
+    x=$($CDB2SQL_EXE -tabs $CDB2_OPTIONS $DBNAME default "select count(*) from $SECONDARY_DBNAME.t1")
+    [[ "$x" == "0" ]] || fail_exit "push_write_start_failure: remote has $x rows"
+}
+
+function test_replay_push_write_failure
+{
+    replay_push_write_failure 1000 0
+    replay_push_write_failure 1 1
+    replay_push_write_failure 1000 0 0
+    replay_push_write_failure 1 1 0
+    replay_push_write_failure 1000 0 1 -3
+    replay_push_write_failure 1000 0 0 -3
+    push_write_start_failure
+}
+
+# Local txns after a 2pc txn on the same connection are no coordinators: after a (forced) master swing they
+# must resend their commit, so each restarted session waits on the master again
+function local_txn_after_disttxn
+{
+    typeset node=$(echo $NODES | awk '{print $1}')
+    typeset log=$LOGDIR/${DBNAME}.${node}.db
+    [[ -z "$CLUSTER" ]] && log=$LOGDIR/${DBNAME}.db
+    typeset start=$(( $(wc -l < $log) + 1 ))
+    typeset txns=500
+    typeset stmts=""
+    typeset out=""
+    typeset x=""
+    typeset u=""
+    typeset j=1
+    while [[ $j -le $txns ]]; do
+        stmts="${stmts}begin
+insert into t1(a) values($j)
+commit
+"
+        let j=j+1
+    done
+    out=$( { echo "begin
+insert into t1(a) values(0)
+insert into $SECONDARY_DBNAME.t1(a) values(0)
+commit"
+        sleep 5
+        $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME --host $node "exec procedure sys.cmd.send('on cause_random_blkseq_replays')" >/dev/null 2>&1
+        echo "$stmts"
+    } | $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME --host $node - 2>&1)
+    typeset r=$?
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME --host $node "exec procedure sys.cmd.send('off cause_random_blkseq_replays')" >/dev/null 2>&1
+    [[ "$r" == "0" ]] || fail_exit "local_txn_after_disttxn: failed: $out"
+    typeset restarts=$(tail -n +$start $log | grep -o "osql_sock_restart [^ ]* restarting uuid=[0-9a-f-]*" | sed 's/.*uuid=//')
+    [[ -n "$restarts" ]] || fail_exit "local_txn_after_disttxn: no master swing was forced"
+    for u in $restarts; do
+        x=$(tail -n +$start $log | grep -c "osql_wait .*uuid=$u")
+        [[ "$x" -ge 2 ]] || fail_exit "local_txn_after_disttxn: $u restarted but did not resend its commit"
+    done
+    x=$($CDB2SQL_EXE -tabs $CDB2_OPTIONS $DBNAME default "select count(*) from t1")
+    [[ "$x" == "$(( txns + 1 ))" ]] || fail_exit "local_txn_after_disttxn: t1 has $x rows"
+    x=$($CDB2SQL_EXE -tabs $CDB2_OPTIONS $DBNAME default "select a from $SECONDARY_DBNAME.t1")
+    [[ "$x" == "0" ]] || fail_exit "local_txn_after_disttxn: remote has \"$x\""
+    echo "local_txn_after_disttxn: $(echo $restarts | wc -w) master swings"
+    delete_records
+}
+
 function test_verify_participant_constraint_violation
 {
     typeset cnt=0
@@ -3593,7 +3785,7 @@ function dist_retry_waits_off_thread
 {
     typeset poll=$1
     typeset master=$(find_master) node mach
-    for mach in $CLUSTER; do
+    for mach in $NODES; do
         [[ "$mach" != "$master" ]] && node=$mach && break
     done
     $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "insert into t1(a) values(-1)" >/dev/null 2>&1
@@ -3657,14 +3849,10 @@ function run_test
     no_coordinator_writes
     testcase_finish $testcase
 
-    # This test is flakey- peridically returns 'unknown error'..
-    # also fixed by fdb push-mode.  Disable until push-mode verify-retry
-    # is implemented- will re-test thoroughly then
-
-    #testcase="verify_no_distcommit"
-    #testcase_preamble $testcase
-    #verify_no_distcommit
-    #testcase_finish $testcase
+    testcase="verify_no_distcommit"
+    testcase_preamble $testcase
+    verify_no_distcommit
+    testcase_finish $testcase
 
     # Writes to comdb2_distributed_transactions
     testcase="allow_write_to_disttxn_table"
@@ -3700,16 +3888,18 @@ function run_test
     coordinator_whitelist
     testcase_finish $testcase
 
-    # Durability tests
-    testcase="non_durable_commit"
-    testcase_preamble $testcase
-    non_durable_commit
-    testcase_finish $testcase
+    # Durability tests need replicants
+    if [[ -n "$CLUSTER" ]]; then
+        testcase="non_durable_commit"
+        testcase_preamble $testcase
+        non_durable_commit
+        testcase_finish $testcase
 
-    testcase="non_durable_prepare"
-    testcase_preamble $testcase
-    non_durable_prepare
-    testcase_finish $testcase
+        testcase="non_durable_prepare"
+        testcase_preamble $testcase
+        non_durable_prepare
+        testcase_finish $testcase
+    fi
 
     # Hand-crafted distributed deadlocks (add others later)
     testcase="test_hand_crafted_distributed_deadlocks"
@@ -3723,7 +3913,22 @@ function run_test
     test_compound_distributed_deadlocks
     testcase_finish $testcase
 
-    # Verify-retry test
+    # Verify-retry tests
+    testcase="test_verify_retry"
+    testcase_preamble $testcase
+    test_verify_retry
+    testcase_finish $testcase
+
+    testcase="test_replay_push_write_failure"
+    testcase_preamble $testcase
+    test_replay_push_write_failure
+    testcase_finish $testcase
+
+    testcase="local_txn_after_disttxn"
+    testcase_preamble $testcase
+    local_txn_after_disttxn
+    testcase_finish $testcase
+
     testcase="test_verify_participant_constraint_violation"
     testcase_preamble $testcase
     test_verify_participant_constraint_violation
@@ -3734,37 +3939,40 @@ function run_test
     test_verify_coordinator_constraint_violation
     testcase_finish $testcase
 
-    # Participant recovery-tests
-    testcase="exit_participant_after_prepare"
-    testcase_preamble $testcase
-    exit_participant_after_prepare
-    testcase_finish $testcase
+    # These need other nodes: recovery tests exit a master, retry tests need a replicant
+    if [[ -n "$CLUSTER" ]]; then
+        # Participant recovery-tests
+        testcase="exit_participant_after_prepare"
+        testcase_preamble $testcase
+        exit_participant_after_prepare
+        testcase_finish $testcase
 
-    testcase="exit_participant_after_prepare_from_table"
-    testcase_preamble $testcase
-    exit_participant_after_prepare_from_table
-    testcase_finish $testcase
+        testcase="exit_participant_after_prepare_from_table"
+        testcase_preamble $testcase
+        exit_participant_after_prepare_from_table
+        testcase_finish $testcase
 
-    # Coordinator recovery-tests
-    testcase="exit_coordinator_before_commit"
-    testcase_preamble $testcase
-    exit_coordinator_before_commit
-    testcase_finish $testcase
+        # Coordinator recovery-tests
+        testcase="exit_coordinator_before_commit"
+        testcase_preamble $testcase
+        exit_coordinator_before_commit
+        testcase_finish $testcase
 
-    testcase="exit_coordinator_after_commit"
-    testcase_preamble $testcase
-    exit_coordinator_after_commit
-    testcase_finish $testcase
+        testcase="exit_coordinator_after_commit"
+        testcase_preamble $testcase
+        exit_coordinator_after_commit
+        testcase_finish $testcase
 
-    testcase="dist_retry_waits_off_thread"
-    testcase_preamble $testcase
-    dist_retry_waits_off_thread 60000
-    testcase_finish $testcase
+        testcase="dist_retry_waits_off_thread"
+        testcase_preamble $testcase
+        dist_retry_waits_off_thread 60000
+        testcase_finish $testcase
 
-    testcase="dist_retry_poll_off_backs_off"
-    testcase_preamble $testcase
-    dist_retry_waits_off_thread 0
-    testcase_finish $testcase
+        testcase="dist_retry_poll_off_backs_off"
+        testcase_preamble $testcase
+        dist_retry_waits_off_thread 0
+        testcase_finish $testcase
+    fi
 }
 
 function run_some_tests
@@ -3781,7 +3989,6 @@ function run_some_tests
 }
 
 rm $stopfile >/dev/null 2>&1 
-[[ -z "$CLUSTER" ]] && fail_exit "This test requires a 3-node cluster"
 
 setup
 #run_some_tests
