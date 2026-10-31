@@ -59,6 +59,11 @@ function check_log_node
         max="$x"
         echo "$node applied $max log records"
     done
+
+    # Verify that we are emitting 'Longest rep-apply time' stats
+    lb=$(egrep "Longest rep-dispatch time" $log)
+    lines=$(echo "$lb" | wc -l)
+    [[ "$lines" -eq "0" ]] && failexit "Did not emit longest-rep-apply"
 }
 
 function check_logs
