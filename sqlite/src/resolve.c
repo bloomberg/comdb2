@@ -20,6 +20,8 @@
 extern int gbl_strict_dbl_quotes;
 int sqlite3IsComdb2Rowid(Table *pTab, const char *);
 int sqlite3IsComdb2RowTimestamp(Table *pTab, const char *);
+int sqlite3IsComdb2InsertTimestamp(Table *pTab, const char *);
+int sqlite3IsComdb2UpdateTimestamp(Table *pTab, const char *);
 int is_comdb2_index_blob(const char *dbname, int icol);
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
@@ -423,6 +425,14 @@ static int lookupName(
     }else if( cnt==0 && cntTab==1 && pMatch && sqlite3IsComdb2RowTimestamp(pMatch->pTab, zCol) ){
        cnt = 1;
        pExpr->iColumn = -3;
+       pExpr->affinity = SQLITE_AFF_TEXT;
+    }else if( cnt==0 && cntTab==1 && pMatch && sqlite3IsComdb2InsertTimestamp(pMatch->pTab, zCol) ){
+       cnt = 1;
+       pExpr->iColumn = -4;
+       pExpr->affinity = SQLITE_AFF_TEXT;
+    }else if( cnt==0 && cntTab==1 && pMatch && sqlite3IsComdb2UpdateTimestamp(pMatch->pTab, zCol) ){
+       cnt = 1;
+       pExpr->iColumn = -5;
        pExpr->affinity = SQLITE_AFF_TEXT;
     }
 
