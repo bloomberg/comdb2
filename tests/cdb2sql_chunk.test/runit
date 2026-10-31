@@ -24,6 +24,6 @@ UPDATE t1 SET i = i WHERE i = 1
 UPDATE t1 SET i = i WHERE i = 1
 EOF
 
-sed -i 's/genid=[0-9]\+//g' actual
+sed -i 's/genid=[0-9a-f]\+//g' actual
 set -e
 diff expected actual

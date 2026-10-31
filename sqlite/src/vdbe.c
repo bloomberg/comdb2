@@ -94,13 +94,28 @@ void getRowid(BtCursor *pCursor, i64 rowId, u8 p3, Mem *pOut)
     sqlite3VdbeMemSetStr(pOut, zRowId, nRowId, SQLITE_UTF8, sqlite3_free);
     return;
   }
-  if( p3==2 ){
+  /* p3 2/3: comdb2_rowtimestamp and comdb2_insert_timestamp (same value),
+   * p3 4: comdb2_update_timestamp.  Prefer the odh2 header time; with none,
+   * an odh1 row falls back to its time-based genid and a synthetic row (no
+   * time at all, just the marker bits) reports NULL. */
+  if( p3==2 || p3==3 || p3==4 ){
     unsigned long long genId = 0;
+    u32 secs;
     if( sqlite3BtreeGetGenId(rowId, &genId, 0, 0)!=SQLITE_OK ){
       MemSetTypeFlag(pOut, MEM_Null);
       return;
     }
-    pOut->u.i = (genId & 0xffffffff00000000ull) >> 32;
+    secs = (p3==4) ? sqlite3BtreeUpdateTimestamp(pCursor)
+                   : sqlite3BtreeInsertTimestamp(pCursor);
+    if( secs==0 ){
+      /* GENID_SYNTHETIC_BIT (top bit) set => uncommitted synthetic row. */
+      if( genId & 0x8000000000000000ull ){
+        MemSetTypeFlag(pOut, MEM_Null);
+        return;
+      }
+      secs = (u32)((genId & 0xffffffff00000000ull) >> 32);
+    }
+    pOut->u.i = secs;
     MemSetTypeFlag(pOut, MEM_Int);
     sqlite3VdbeMemDatetimefy(pOut);
   }
