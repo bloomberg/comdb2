@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+bash -n "$0" || exit 1
+source ${TESTSROOTDIR}/tools/runit_common.sh
+
+# Downgrades make replicants truncate their logs and reopen files while hasql
+# snapshot reads roll back pages; debug_sleep_in_snap_rollback widens the race
+downgrade()
+{
+    while true; do
+        master=`getmaster`
+        cdb2sql ${CDB2_OPTIONS} --host $master ${DBNAME} "exec procedure sys.cmd.send('downgrade')" 2>&1
+        sleep 2
+    done
+}
+
+N=20
+for i in $(seq 0 $((N-1))); do
+    cdb2sql ${CDB2_OPTIONS} ${DBNAME} default "create table tt${i} (i int primary key)" || failexit "create tt${i}"
+done
+
+downgrade &> downgrade.out &
+dgpid=$!
+trap "kill $dgpid" INT EXIT
+
+${TESTSBUILDDIR}/inscntdel --dbname $DBNAME --numthreads $N --iterations 300 || failexit "inscntdel failed"

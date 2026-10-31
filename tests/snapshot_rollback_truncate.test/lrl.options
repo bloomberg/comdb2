@@ -1,0 +1,9 @@
+dtastripe 1
+durable_lsns on
+setattr REP_PROCESSORS 0
+setattr REP_WORKERS 0
+decoupled_logputs off
+setattr LOGDELETE_RUN_INTERVAL 1
+snapisol on
+sql_tranlevel_default snapshot
+debug_sleep_in_snap_rollback 2
