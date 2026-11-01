@@ -35,7 +35,7 @@ void memdebug_add_debug_block(char *debug_msg);
 void memdebug_note_start(int argc, char **argv);
 void memdebug_note_clean_exit(void);
 void memdebug_leakcheck(void);
-#ifdef COMDB2_TEST
+#ifdef COMDB2_MEMORY_FAULT_INJECTION
 void memdebug_testleak(void); /* deliberate leak, for testing the harness */
 #endif
 

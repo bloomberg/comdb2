@@ -15,6 +15,21 @@ before anything relies on its silence.
 
 Every variant also runs the `clean` probe, which must exit 0 with no finding.
 
+A build selects a variant with one CMake option, and nothing else:
+
+```bash
+cmake -S . -B build -DCOMDB2_MEMORY_VARIANT=asan-system
+```
+
+`cmake/Comdb2MemoryVariant.cmake` maps the name to `COMDB2_SANITIZER` and
+`COMDB2_PER_THREAD_MALLOC` (table above) and turns on
+`COMDB2_MEMORY_TEST_HOOKS`, the server side of the test lifecycle described
+below. That is the whole difference from a normal build: no `COMDB2_TEST`, no
+probes, no fault injection. Giving one of those settings with a different
+value as well, or reusing a build directory configured for another variant, is
+a configure error. `test_variant_mapping.sh` checks the CMake mapping against
+`config.sh`.
+
 ## Running the self-test
 
 ```bash
@@ -34,8 +49,9 @@ The self-test:
 1. checks the required tools (`gcc`, `cmake`, `python3`, and `valgrind` for
    `valgrind-system`) and records versions and resource limits;
 2. refuses to run a sanitizer variant under a virtual-memory limit (`ulimit -v`);
-3. configures a clean build with the variant's CMake options and checks the
-   resulting cache;
+3. configures a clean build with the variant's CMake option plus
+   `-DCOMDB2_TEST=ON -DCOMDB2_MEMORY_PROBES=ON` (the probes are test code, so
+   only the self-test builds them) and checks the resulting cache;
 4. builds the full `comdb2` target and `memory-tool-probes`;
 5. checks with `ldd`/`readelf` that `comdb2` and every probe link and reference
    exactly the expected sanitizer runtimes (none for Valgrind);
@@ -75,8 +91,8 @@ With `MEMORY_TOOL_VARIANT` unset nothing changes. When it is set,
    `$TESTDIR/.memory-tools/$TESTCASE/<run-id>/nodes/<host>/invocations/<pid>/`
    (`launch.json`, a copy of stderr, detector logs). Every run gets a new
    `<run-id>` directory, and `$TESTDIR/.memory-tools/$TESTCASE/latest` points
-   to it. `COMDB2_EXE` must be built for the variant (sanitizer runtime and
-   allocator are checked), otherwise the test fails at once;
+   to it. `COMDB2_EXE` must be built for the variant (sanitizer runtime,
+   allocator and server hooks are checked), otherwise the test fails at once;
 2. runs `--create` through the same prefix, copies the runtime files to every
    cluster node, scales the test timeouts and gives servers longer to exit
    (`exitalarmsec`, unsetup's wait), always asking them to exit cleanly;
@@ -99,7 +115,9 @@ status is:
 `fail` and `incomplete` make the test fail (`!<test>: failed memory check`
 in `test.log`, nonzero exit), even if the test itself passed.
 
-Server side (`db/memdebug.c`), active only in these runs:
+Server side (`db/memdebug.c`), built with `COMDB2_MEMORY_TEST_HOOKS` (every
+variant turns it on; `COMDB2_EXE` without the hooks is refused) and active
+only in these runs:
 
 - a server reaching the end of a clean exit writes `clean-exit` into its
   invocation directory, and any normal process exit (`exit()`, return from
@@ -116,9 +134,11 @@ itself is unchanged. Tests that start servers themselves should use
 `${DEBUG_PREFIX} ${COMDB2_EXE} ...`, with the prefix directly in front of the
 binary (inside the command string when started over ssh).
 
-`MEMORY_TOOL_INJECT_LEAK=1` (testing the harness only, needs a `COMDB2_TEST`
-build) makes the server leak one block right after setup; the test must then
-fail its memory check.
+`MEMORY_TOOL_INJECT_LEAK=1` (testing the harness only) makes the server leak
+one block right after setup; the test must then fail its memory check. It needs
+a server built with `-DCOMDB2_MEMORY_FAULT_INJECTION=ON` as well as the variant
+(never in a production-style build); with any other server the memory result is
+incomplete.
 
 ## Interface for other tooling
 
@@ -126,8 +146,9 @@ Use these files instead of repeating their contents:
 
 | File | Owns |
 |---|---|
+| `cmake/Comdb2MemoryVariant.cmake` | variant → `COMDB2_SANITIZER`, `COMDB2_PER_THREAD_MALLOC`, `COMDB2_MEMORY_TEST_HOOKS` |
 | `cmake/Comdb2Sanitizers.cmake` | `COMDB2_SANITIZER` (`none`, `address-undefined`, `thread`) → compiler and linker flags |
-| `tests/memory_tools/config.sh` | variant → CMake options, runtime environment, command prefix, expected probes |
+| `tests/memory_tools/config.sh` | variant → CMake option, runtime environment, command prefix, expected probes |
 | `tests/memory_tools/check_report.py` | detector output → finding categories and JSON |
 | `tests/memory_tools/selftest.sh` | the end-to-end proof for one variant |
 | `tests/memory_tools/exec.sh`, `lifecycle.sh` | running database tests under a variant |

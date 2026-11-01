@@ -146,15 +146,20 @@ fi
 
 echo "== configure"
 reset_dir "$build_dir" || fail_stage "cannot prepare build directory ${build_dir}"
+# The variant exactly as a production-style build gets it, plus the
+# deliberately faulty probes, which only this self-test builds.
 if ! cmake -S "$source_dir" -B "$build_dir" "${MEMORY_TOOL_CMAKE_ARGS[@]}" \
+        -DCOMDB2_TEST=ON -DCOMDB2_MEMORY_PROBES=ON \
         > "${artifact_dir}/configure.log" 2>&1; then
     tail -n 30 "${artifact_dir}/configure.log" >&2
     fail_stage "cmake configure failed (configure.log)"
 fi
 cache="${build_dir}/CMakeCache.txt"
-if ! command grep -qx "COMDB2_SANITIZER:STRING=${MEMORY_TOOL_SANITIZER}" "$cache" ||
-   ! command grep -qx "COMDB2_PER_THREAD_MALLOC:BOOL=${MEMORY_TOOL_PER_THREAD_MALLOC}" "$cache"; then
-    fail_stage "configured cache does not match variant ${variant} (expected COMDB2_SANITIZER=${MEMORY_TOOL_SANITIZER}, COMDB2_PER_THREAD_MALLOC=${MEMORY_TOOL_PER_THREAD_MALLOC})"
+if ! command grep -qx "COMDB2_MEMORY_VARIANT:STRING=${variant}" "$cache" ||
+   ! command grep -qx "COMDB2_SANITIZER:STRING=${MEMORY_TOOL_SANITIZER}" "$cache" ||
+   ! command grep -qx "COMDB2_PER_THREAD_MALLOC:BOOL=${MEMORY_TOOL_PER_THREAD_MALLOC}" "$cache" ||
+   ! command grep -qx "COMDB2_MEMORY_TEST_HOOKS:BOOL=ON" "$cache"; then
+    fail_stage "configured cache does not match variant ${variant} (expected COMDB2_MEMORY_VARIANT=${variant}, COMDB2_SANITIZER=${MEMORY_TOOL_SANITIZER}, COMDB2_PER_THREAD_MALLOC=${MEMORY_TOOL_PER_THREAD_MALLOC}, COMDB2_MEMORY_TEST_HOOKS=ON)"
 fi
 
 echo "== build comdb2 memory-tool-probes"

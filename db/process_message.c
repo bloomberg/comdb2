@@ -3294,7 +3294,7 @@ clipper_usage:
             memdebug_dump_blocks(stderr);
         } else if (tokcmp(tok, ltok, "leakcheck") == 0) {
             memdebug_leakcheck();
-#ifdef COMDB2_TEST
+#ifdef COMDB2_MEMORY_FAULT_INJECTION
         } else if (tokcmp(tok, ltok, "testleak") == 0) {
             memdebug_testleak();
 #endif

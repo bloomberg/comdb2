@@ -27,13 +27,12 @@ expect_variant()
         return
     fi
     [[ $MEMORY_TOOL_VARIANT == "$variant" ]] || fail "$variant: MEMORY_TOOL_VARIANT=$MEMORY_TOOL_VARIANT"
-    has "-DCOMDB2_SANITIZER=${sanitizer}" "${MEMORY_TOOL_CMAKE_ARGS[@]}" ||
-        fail "$variant: sanitizer mapping (${MEMORY_TOOL_CMAKE_ARGS[*]})"
-    has "-DCOMDB2_PER_THREAD_MALLOC=${malloc}" "${MEMORY_TOOL_CMAKE_ARGS[@]}" ||
-        fail "$variant: allocator mapping (${MEMORY_TOOL_CMAKE_ARGS[*]})"
-    has -DCOMDB2_TEST=ON "${MEMORY_TOOL_CMAKE_ARGS[@]}" || fail "$variant: COMDB2_TEST missing"
-    has -DCOMDB2_MEMORY_PROBES=ON "${MEMORY_TOOL_CMAKE_ARGS[@]}" || fail "$variant: COMDB2_MEMORY_PROBES missing"
-    [[ ${#MEMORY_TOOL_CMAKE_ARGS[@]} -eq 4 ]] || fail "$variant: expected 4 CMake args, got ${#MEMORY_TOOL_CMAKE_ARGS[@]}"
+    # A production-style build gets the variant name and nothing else: CMake
+    # maps it, and COMDB2_TEST and the probes are for selftest.sh only.
+    [[ ${MEMORY_TOOL_CMAKE_ARGS[*]} == "-DCOMDB2_MEMORY_VARIANT=${variant}" ]] ||
+        fail "$variant: CMake args (${MEMORY_TOOL_CMAKE_ARGS[*]})"
+    [[ $MEMORY_TOOL_SANITIZER == "$sanitizer" ]] || fail "$variant: sanitizer $MEMORY_TOOL_SANITIZER"
+    [[ $MEMORY_TOOL_PER_THREAD_MALLOC == "$malloc" ]] || fail "$variant: allocator $MEMORY_TOOL_PER_THREAD_MALLOC"
     [[ $MEMORY_TOOL_REPORT_KIND == "$kind" ]] || fail "$variant: report kind $MEMORY_TOOL_REPORT_KIND"
     has clean "${MEMORY_TOOL_EXPECTED_PROBES[@]}" || fail "$variant: clean control missing"
     [[ ${#MEMORY_TOOL_FAILURE_EXIT_CODES[@]} -gt 0 ]] || fail "$variant: no failure exit codes"
@@ -123,7 +122,8 @@ pass "server and probe runtime flavours"
 # memory_tool_check_binary: an uninstrumented program fails every sanitizer
 # variant and passes valgrind-system (system allocator, no runtime).
 fake=$(mktemp)
-printf '#!/bin/sh\nexit 0\n' > "$fake"; chmod +x "$fake"
+# the string the server hooks read, as a COMDB2_MEMORY_TEST_HOOKS build has it
+printf '#!/bin/sh\n# COMDB2_MEMORY_INVOCATION_DIR\nexit 0\n' > "$fake"; chmod +x "$fake"
 memory_tool_configure asan-system /tmp/memory-tools-test
 err=$(memory_tool_check_binary "$fake" server) && fail "uninstrumented binary accepted for asan-system"
 [[ $err == *"not linked against libasan"* ]] || fail "check_binary message: $err"
@@ -131,6 +131,10 @@ memory_tool_configure tsan-system /tmp/memory-tools-test
 memory_tool_check_binary "$fake" server > /dev/null && fail "uninstrumented binary accepted for tsan-system"
 memory_tool_configure valgrind-system /tmp/memory-tools-test
 memory_tool_check_binary "$fake" server > /dev/null || fail "plain system-allocator binary rejected for valgrind-system"
+printf '#!/bin/sh\nexit 0\n' > "$fake"
+err=$(memory_tool_check_binary "$fake" server) && fail "server without memory-tool hooks accepted"
+[[ $err == *"no memory-tool server hooks"* ]] || fail "check_binary hooks message: $err"
+memory_tool_check_binary "$fake" > /dev/null || fail "hooks required of a non-server binary"
 memory_tool_check_binary /nonexistent/comdb2 server > /dev/null && fail "missing binary accepted"
 rm -f "$fake"
 pass "binary/variant check"

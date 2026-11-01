@@ -39,6 +39,9 @@ jobs:
       - name: Variant configuration tests
         run: bash tests/memory_tools/test_config.sh
 
+      - name: Variant mapping tests (CMake vs config.sh)
+        run: bash tests/memory_tools/test_variant_mapping.sh
+
       - name: Database-test lifecycle tests
         run: bash tests/memory_tools/test_lifecycle.sh
 

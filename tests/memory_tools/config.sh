@@ -1,8 +1,11 @@
 # Canonical memory-tool variants. Source this file from bash; do not execute it.
 #
-# This is the only place that maps a variant name to CMake options, runtime
-# detector settings and the probes that must be caught. Compiler and linker
-# flags for each COMDB2_SANITIZER mode live in cmake/Comdb2Sanitizers.cmake.
+# This is the only place that maps a variant name to runtime detector settings
+# and the probes that must be caught. The build settings behind a name live in
+# cmake/Comdb2MemoryVariant.cmake, and compiler and linker flags for each
+# COMDB2_SANITIZER mode in cmake/Comdb2Sanitizers.cmake.
+# MEMORY_TOOL_SANITIZER and MEMORY_TOOL_PER_THREAD_MALLOC repeat the CMake
+# mapping for binary checks; test_variant_mapping.sh keeps the two in step.
 #
 #   source tests/memory_tools/config.sh
 #   memory_tool_configure asan-system /path/to/detector-logs || exit 1
@@ -22,7 +25,8 @@
 #   MEMORY_TOOL_VARIANT           variant name
 #   MEMORY_TOOL_SANITIZER         COMDB2_SANITIZER value
 #   MEMORY_TOOL_PER_THREAD_MALLOC COMDB2_PER_THREAD_MALLOC value
-#   MEMORY_TOOL_CMAKE_ARGS        array of CMake -D arguments
+#   MEMORY_TOOL_CMAKE_ARGS        array of CMake -D arguments for a production-style
+#                                 build (the variant only; selftest.sh adds probes)
 #   MEMORY_TOOL_ENV               array of NAME=value runtime settings
 #   MEMORY_TOOL_COMMAND_PREFIX    array to put in front of the program (may be empty)
 #   MEMORY_TOOL_EXPECTED_PROBES   array of probes this variant must pass
@@ -189,20 +193,16 @@ memory_tool_configure()
 
     [[ $flavour == server ]] && MEMORY_TOOL_FAILURE_EXIT_CODES=()
     MEMORY_TOOL_VARIANT=$variant
-    MEMORY_TOOL_CMAKE_ARGS=(
-        "-DCOMDB2_SANITIZER=${MEMORY_TOOL_SANITIZER}"
-        "-DCOMDB2_PER_THREAD_MALLOC=${MEMORY_TOOL_PER_THREAD_MALLOC}"
-        -DCOMDB2_TEST=ON
-        -DCOMDB2_MEMORY_PROBES=ON
-    )
+    # CMake maps the name to the build settings (cmake/Comdb2MemoryVariant.cmake).
+    MEMORY_TOOL_CMAKE_ARGS=("-DCOMDB2_MEMORY_VARIANT=${variant}")
     return 0
 }
 
 # memory_tool_check_binary <binary> [server]
 # Prints one line per problem and fails unless <binary> links and references
 # exactly the configured variant's sanitizer runtimes; with "server" it must
-# also be Comdb2 built with the variant's allocator. Call after
-# memory_tool_configure.
+# also be Comdb2 built with the variant's allocator and the memory-tool server
+# hooks (COMDB2_MEMORY_TEST_HOOKS). Call after memory_tool_configure.
 memory_tool_check_binary()
 {
     local bin=$1 server=${2-} libs syms lib want expected linked instrumented native rc=0
@@ -239,6 +239,11 @@ memory_tool_check_binary()
             echo "$bin uses the system allocator; ${MEMORY_TOOL_VARIANT} needs COMDB2_PER_THREAD_MALLOC=ON"; rc=1
         elif [[ $MEMORY_TOOL_PER_THREAD_MALLOC == OFF && $native -eq 1 ]]; then
             echo "$bin uses Comdb2's allocator; ${MEMORY_TOOL_VARIANT} needs COMDB2_PER_THREAD_MALLOC=OFF"; rc=1
+        fi
+        # the hooks (db/memdebug.c) are what read COMDB2_MEMORY_INVOCATION_DIR;
+        # without them no run can prove a clean exit
+        if ! command grep -qaF COMDB2_MEMORY_INVOCATION_DIR "$bin"; then
+            echo "$bin has no memory-tool server hooks; build it with -DCOMDB2_MEMORY_VARIANT=${MEMORY_TOOL_VARIANT}"; rc=1
         fi
     fi
     return $rc

@@ -678,8 +678,12 @@ void memdebug_stats() {}
 
 #endif
 
-/* Memory-tool test runs (tests/memory_tools/exec.sh) export the directory that
- * records one server process. Without it these do nothing. */
+/* Server hooks for memory-tool test runs, built only with
+ * COMDB2_MEMORY_TEST_HOOKS (which every COMDB2_MEMORY_VARIANT turns on).
+ * tests/memory_tools/exec.sh exports the directory that records one server
+ * process; without it these do nothing. */
+#ifdef COMDB2_MEMORY_TEST_HOOKS
+
 static const char *memory_tool_invocation_dir(void)
 {
     const char *dir = getenv("COMDB2_MEMORY_INVOCATION_DIR");
@@ -768,7 +772,7 @@ void memdebug_leakcheck(void)
     logmsg(LOGMSG_USER, "memdebug leakcheck: %s\n", leaks ? "leaks found" : "ok");
 }
 
-#ifdef COMDB2_TEST
+#ifdef COMDB2_MEMORY_FAULT_INJECTION
 /* Tests of the memory-tool harness: lose one block on purpose. */
 void memdebug_testleak(void)
 {
@@ -785,3 +789,19 @@ void memdebug_testleak(void)
     logmsg(LOGMSG_USER, "memdebug testleak: leaked 64 bytes\n");
 }
 #endif
+
+#else /* !COMDB2_MEMORY_TEST_HOOKS */
+
+void memdebug_note_start(int argc, char **argv)
+{
+}
+void memdebug_note_clean_exit(void)
+{
+}
+
+void memdebug_leakcheck(void)
+{
+    logmsg(LOGMSG_USER, "memdebug leakcheck: unavailable (built without COMDB2_MEMORY_TEST_HOOKS)\n");
+}
+
+#endif /* COMDB2_MEMORY_TEST_HOOKS */

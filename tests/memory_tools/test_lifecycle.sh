@@ -173,6 +173,26 @@ assert d["run_id"] == sys.argv[3], d' \
     exit $((failures > 0))
 ) && pass "before_db_kill outcomes" || fail "before_db_kill outcomes"
 
+# 5b. MEMORY_TOOL_INJECT_LEAK=1 against a server without fault injection must
+#     not let the run pass as if the leak had been caught
+(
+    failures=0
+    init_case injectleak
+    export MEMORY_TOOL_VARIANT=asan-system MEMORY_TOOL_INJECT_LEAK=1 DBNAME=db
+    memory_tool_lifecycle_init || exit 1
+    fake="$work/fake-cdb2sql"
+    printf '#!/bin/sh\necho "memdebug testleak: leaked 64 bytes"\n' > "$fake"; chmod +x "$fake"
+    CDB2SQL_EXE=$fake memory_tool_lifecycle_after_setup > /dev/null
+    [[ ! -e $MEMORY_TOOL_ARTIFACT_ROOT/incomplete.txt ]] || fail "injected leak recorded as incomplete"
+    command grep -qx "inject_leak=1" "$MEMORY_TOOL_ARTIFACT_ROOT/run.txt" || fail "injection not recorded"
+    # what a server without COMDB2_MEMORY_FAULT_INJECTION answers: the help page
+    printf '#!/bin/sh\necho "callers            - dump callers"\n' > "$fake"
+    CDB2SQL_EXE=$fake memory_tool_lifecycle_after_setup > /dev/null
+    command grep -q "no leak injected" "$MEMORY_TOOL_ARTIFACT_ROOT/incomplete.txt" ||
+        fail "missing fault injection not recorded"
+    exit $((failures > 0))
+) && pass "inject leak needs a fault-injection server" || fail "inject leak needs a fault-injection server"
+
 # 6. COMDB2_EXE must match the variant (real check); no server: not-run only
 #    for unit tests
 (
@@ -183,6 +203,18 @@ assert d["run_id"] == sys.argv[3], d' \
     export MEMORY_TOOL_VARIANT=asan-system
     err=$(memory_tool_lifecycle_init 2>&1) && fail "uninstrumented COMDB2_EXE accepted"
     [[ $err == *"does not match asan-system"*"not linked against libasan"* ]] || fail "binary check message: $err"
+
+    # right runtime and allocator, but built without COMDB2_MEMORY_TEST_HOOKS
+    init_case nohooks
+    unset -f memory_tool_check_binary
+    source "${here}/config.sh"
+    mkdir -p "$work/vgshim"
+    printf '#!/bin/sh\nexit 0\n' > "$work/vgshim/valgrind"; chmod +x "$work/vgshim/valgrind"
+    printf '#!/bin/sh\nexit 0\n' > "$work/bin/comdb2-nohooks"; chmod +x "$work/bin/comdb2-nohooks"
+    export COMDB2_EXE="$work/bin/comdb2-nohooks"
+    export MEMORY_TOOL_VARIANT=valgrind-system PATH="$work/vgshim:$PATH"
+    err=$(memory_tool_lifecycle_init 2>&1) && fail "COMDB2_EXE without server hooks accepted"
+    [[ $err == *"no memory-tool server hooks"* ]] || fail "hooks check message: $err"
 
     init_case noserver
     export MEMORY_TOOL_VARIANT=asan-system

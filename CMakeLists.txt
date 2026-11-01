@@ -51,6 +51,9 @@ endif()
 
 list(APPEND CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/cmake)
 
+# Before COMDB2_PER_THREAD_MALLOC and COMDB2_SANITIZER: a variant sets both.
+include(Comdb2MemoryVariant)
+
 if(COMDB2_BBCMAKE)
   include(${COMDB2_BBCMAKE})
 else()

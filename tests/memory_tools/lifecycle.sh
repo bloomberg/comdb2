@@ -109,9 +109,16 @@ memory_tool_lifecycle_after_setup()
     memory_tool_lifecycle_active || return 0
     [[ ${MEMORY_TOOL_INJECT_LEAK-} == 1 ]] || return 0
     echo "inject_leak=1" >> "${MEMORY_TOOL_ARTIFACT_ROOT-}/run.txt"
+    local out
     # shellcheck disable=SC2086
-    timeout --kill-after=5s 120s "${CDB2SQL_EXE:-cdb2sql}" ${CDB2_OPTIONS-} --tabs "${DBNAME-}" default \
-        'exec procedure sys.cmd.send("memdebug testleak")'
+    out=$(timeout --kill-after=5s 120s "${CDB2SQL_EXE:-cdb2sql}" ${CDB2_OPTIONS-} --tabs "${DBNAME-}" default \
+        'exec procedure sys.cmd.send("memdebug testleak")' 2>&1)
+    echo "$out"
+    # Only a -DCOMDB2_MEMORY_FAULT_INJECTION=ON server knows testleak. Without
+    # the leak the run proves nothing about the harness, so it must not pass.
+    [[ $out == *"memdebug testleak: leaked"* ]] ||
+        memory_tool_lifecycle_note_incomplete \
+            "MEMORY_TOOL_INJECT_LEAK=1: no leak injected (needs a COMDB2_MEMORY_FAULT_INJECTION=ON server)"
 }
 
 memory_tool_lifecycle_wait_exit()
