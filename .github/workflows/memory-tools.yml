@@ -42,6 +42,9 @@ jobs:
       - name: Variant mapping tests (CMake vs config.sh)
         run: bash tests/memory_tools/test_variant_mapping.sh
 
+      - name: Single-node startup wait tests
+        run: bash tests/memory_tools/test_wait_for_pidfile.sh
+
       - name: Database-test lifecycle tests
         run: bash tests/memory_tools/test_lifecycle.sh
 

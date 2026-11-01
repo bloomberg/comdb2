@@ -87,6 +87,7 @@ memory_tool_lifecycle_init()
     export DEBUG_PREFIX="${runtime}/exec.sh"
     # Instrumented servers need longer to start, run and finish cleanly; the
     # clean exit must complete for LeakSanitizer and Valgrind to report.
+    export MEMORY_TOOL_SLOWDOWN  # setup scales its wait for the pidfile by it
     export MEMORY_TOOL_EXITALARMSEC=${MEMORY_TOOL_EXITALARMSEC:-300}
     export MEMORY_TOOL_CLEAN_EXIT_TIMEOUT=${MEMORY_TOOL_CLEAN_EXIT_TIMEOUT:-$MEMORY_TOOL_DEFAULT_CLEAN_EXIT_TIMEOUT}
     export MEMORY_TOOL_EXIT_REQUEST_TIMEOUT=${MEMORY_TOOL_EXIT_REQUEST_TIMEOUT:-60}

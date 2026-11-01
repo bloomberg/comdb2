@@ -33,6 +33,7 @@ done
 
 # set paths
 source $TESTSROOTDIR/setup.common
+source $TESTSROOTDIR/tools/wait_for_pidfile.sh
 
 mkdir -p $DBDIR
 
@@ -238,11 +239,11 @@ setup_db() {
             echo "!$TESTCASE: starting single node"
             ${DEBUG_PREFIX} $COMDB2_EXE ${DBNAME} ${PARAMS} &> $LOGDIR/${DBNAME}.db &
             dbpid=$!
-            sleep 2
-
-            if [ ! -f ${TMPDIR}/${DBNAME}.pid ] ; then
-                echo "pid ${TMPDIR}/${DBNAME}.pid does not exist"
+            # Not a fixed sleep: an instrumented server (memory-tool run) takes
+            # many times longer to get this far.
+            if ! wait_for_pidfile ${TMPDIR}/${DBNAME}.pid $dbpid $((10 * ${MEMORY_TOOL_SLOWDOWN:-1})); then
                 check_db_port_running_local # this error is immediate so we should be able to catch it early
+                failexit "single node did not start, see $LOGDIR/${DBNAME}.db"
             fi
 
             kill -0 `cat ${TMPDIR}/${DBNAME}.pid` > /dev/null

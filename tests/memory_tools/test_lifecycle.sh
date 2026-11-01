@@ -88,6 +88,7 @@ init_case()
     done
     [[ $MEMORY_TOOL_EXITALARMSEC -gt 10 && $MEMORY_TOOL_CLEAN_EXIT_TIMEOUT -gt 10 ]] ||
         fail "memory-mode exit timeouts not raised"
+    [[ $(bash -c 'echo "${MEMORY_TOOL_SLOWDOWN-}"') == 3 ]] || fail "slowdown not exported to setup"
     [[ $(memory_tool_lifecycle_scale_timeout 5m) == 16m ]] || fail "asan timeout scale"
 
     cd "$work" || exit 1
