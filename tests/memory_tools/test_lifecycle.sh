@@ -90,6 +90,7 @@ init_case()
         fail "memory-mode exit timeouts not raised"
     [[ $(bash -c 'echo "${MEMORY_TOOL_SLOWDOWN-}"') == 3 ]] || fail "slowdown not exported to setup"
     [[ $(bash -c 'echo "${MEMORY_TOOL_WATCHTHRESHOLD-}"') == 180 ]] || fail "watchdog threshold not scaled for setup"
+    [[ $(bash -c 'echo "${MEMORY_TOOL_CONNECT_TIMEOUT-}"') == 3000 ]] || fail "client connect timeout not scaled for setup"
     [[ $(memory_tool_lifecycle_scale_timeout 5m) == 16m ]] || fail "asan timeout scale"
 
     cd "$work" || exit 1

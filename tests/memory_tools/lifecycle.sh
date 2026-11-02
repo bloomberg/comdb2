@@ -92,6 +92,11 @@ memory_tool_lifecycle_init()
     # the watchdog aborts a server whose watchdog thread has not run for
     # watchthreshold (60) seconds; Valgrind runs one thread at a time
     export MEMORY_TOOL_WATCHTHRESHOLD=${MEMORY_TOOL_WATCHTHRESHOLD:-$((60 * MEMORY_TOOL_SLOWDOWN))}
+    # client connect timeout for the test's cdb2 config, as setup does for stress
+    # tests: cdb2api's 100 ms (1000 ms with SSL handshakes), times the slowdown
+    local connect_base=1000
+    [[ ${SKIPSSL-} == 1 ]] && connect_base=100
+    export MEMORY_TOOL_CONNECT_TIMEOUT=${MEMORY_TOOL_CONNECT_TIMEOUT:-$((connect_base * MEMORY_TOOL_SLOWDOWN))}
     export MEMORY_TOOL_CLEAN_EXIT_TIMEOUT=${MEMORY_TOOL_CLEAN_EXIT_TIMEOUT:-$MEMORY_TOOL_DEFAULT_CLEAN_EXIT_TIMEOUT}
     export MEMORY_TOOL_EXIT_REQUEST_TIMEOUT=${MEMORY_TOOL_EXIT_REQUEST_TIMEOUT:-60}
     return 0
