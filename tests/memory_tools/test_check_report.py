@@ -441,6 +441,19 @@ class ScanTest(unittest.TestCase):
         s = self.scan(kind="valgrind")
         self.assertEqual(s["findings"], ["invalid-read", "leak", "uninitialized-read"])
 
+    def test_valgrind_core_dump_is_not_a_log(self):
+        # A server Valgrind saw abort leaves <log>.core.<pid> next to its log:
+        # noted, not read (it can be gigabytes) and not an unrecognised log.
+        d = self.proc(detector={"valgrind.100.log": VG_DEFINITELY_LOST})
+        for name in ("valgrind.100.log.core.100", "vgcore.100"):
+            with open(os.path.join(d, "detector", name), "wb") as f:
+                f.write(b"\x7fELF\x02\x01\x01" + bytes(range(256)) * 4)
+        s = self.scan(kind="valgrind")
+        self.assertEqual(s["findings"], ["leak"], s)
+        self.assertEqual(s["incomplete_reasons"], [], s)
+        self.assertEqual(s["processes"][0]["notes"],
+                         ["core dump valgrind.100.log.core.100", "core dump vgcore.100"])
+
     def test_valgrind_missing_log_is_incomplete(self):
         self.proc()
         self.assertEqual(self.scan(kind="valgrind")["memory_status"], "incomplete")

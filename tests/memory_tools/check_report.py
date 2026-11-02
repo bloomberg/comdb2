@@ -63,6 +63,9 @@ VALGRIND_KNOWN_CONTEXT = re.compile(
     r"|Conditional jump or move depends|Use of uninitialised value|Syscall param .* (uninitialised|unaddressable)"
     r"|.*are (definitely|indirectly|possibly) lost in loss record)")
 VALGRIND_HEADER = re.compile(r"Memcheck, a memory error detector")
+# Core dumps Valgrind writes next to its --log-file (<log>.core.<pid>) or as
+# vgcore.<pid>: binary, possibly gigabytes, not reports.
+CORE_DUMP = re.compile(r"(^vgcore\.\d+|\.core\.\d+)$")
 # Lines that show a sanitizer runtime produced the file even without findings.
 SANITIZER_HEADER = re.compile(r"(Sanitizer|SUMMARY: \w+Sanitizer)")
 
@@ -304,6 +307,9 @@ def scan_process(inv_dir, kind, leak_checking, run_id=None):
     logs = sorted(os.listdir(det_dir)) if os.path.isdir(det_dir) else []
     valgrind_summary = False
     for name in logs:
+        if CORE_DUMP.search(name):
+            proc["notes"].append("core dump %s" % name)
+            continue
         text = _read(os.path.join(det_dir, name))
         if not text or not text.strip():
             gaps.append("empty or unreadable detector log %s" % name)
