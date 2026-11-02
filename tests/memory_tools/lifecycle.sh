@@ -89,6 +89,9 @@ memory_tool_lifecycle_init()
     # clean exit must complete for LeakSanitizer and Valgrind to report.
     export MEMORY_TOOL_SLOWDOWN  # setup scales its wait for the pidfile by it
     export MEMORY_TOOL_EXITALARMSEC=${MEMORY_TOOL_EXITALARMSEC:-300}
+    # the watchdog aborts a server whose watchdog thread has not run for
+    # watchthreshold (60) seconds; Valgrind runs one thread at a time
+    export MEMORY_TOOL_WATCHTHRESHOLD=${MEMORY_TOOL_WATCHTHRESHOLD:-$((60 * MEMORY_TOOL_SLOWDOWN))}
     export MEMORY_TOOL_CLEAN_EXIT_TIMEOUT=${MEMORY_TOOL_CLEAN_EXIT_TIMEOUT:-$MEMORY_TOOL_DEFAULT_CLEAN_EXIT_TIMEOUT}
     export MEMORY_TOOL_EXIT_REQUEST_TIMEOUT=${MEMORY_TOOL_EXIT_REQUEST_TIMEOUT:-60}
     return 0

@@ -130,6 +130,9 @@ setup_db() {
     echo "assert_no_schemalk_in_distributed_commit 1" >> ${LRL}
     echo "replicant_poll_on_sc 1" >> ${LRL}
     echo "exitalarmsec ${MEMORY_TOOL_EXITALARMSEC:-10}" >> ${LRL}
+    if [[ -n ${MEMORY_TOOL_WATCHTHRESHOLD} ]]; then
+        echo "watchthreshold ${MEMORY_TOOL_WATCHTHRESHOLD}" >> ${LRL}
+    fi
 
     # If CLUSTER is defined, populate config and lrl with that info
     if [[ -n "$CLUSTER" ]]; then
