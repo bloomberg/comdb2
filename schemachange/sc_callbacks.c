@@ -470,6 +470,66 @@ done:
     return rc;
 }
 
+/* An update that doesn't touch a blob column sends a placeholder instead of
+ * the blob data.  That's fine as long as the new table stores the column the
+ * same way, since upd_new_record() just moves the existing blob over.  If the
+ * column's type or inline size changes, the conversion may need the actual
+ * data (e.g. vutf8 -> vutf8[64] moves short values inline), so fetch it from
+ * the original table.  On return, fetched[] holds the blobs to convert;
+ * blobs that were fetched here must be released with free_fetched_blobs(). */
+static int fetch_placeholder_blobs(struct ireq *iq, void *trans, unsigned long long genid, blob_buffer_t *blobs,
+                                   blob_buffer_t *fetched, int *nfetched)
+{
+    struct dbtable *usedb = iq->usedb;
+    struct schema *oldsc = usedb->schema;
+    struct schema *newsc = usedb->sc_to->schema;
+
+    memcpy(fetched, blobs, sizeof(blob_buffer_t) * MAXBLOBS);
+    *nfetched = 0;
+
+    for (int i = 0; i < MAXBLOBS; i++) {
+        if (!blobs[i].exists || blobs[i].length != OSQL_BLOB_FILLER_LENGTH)
+            continue;
+
+        int oldidx = get_schema_blob_field_idx_sc(oldsc, i);
+        if (oldidx < 0)
+            continue;
+        int newidx = find_field_idx_in_tag(newsc, oldsc->member[oldidx].name);
+        if (newidx < 0)
+            continue;
+        if (oldsc->member[oldidx].type == newsc->member[newidx].type &&
+            oldsc->member[oldidx].len == newsc->member[newidx].len)
+            continue;
+
+        size_t blobsize = 0, bloboff = 0;
+        void *blobptr = NULL;
+        int rc = ix_find_blobs_by_rrn_and_genid_tran(iq, trans, 2, genid, 1, &i, &blobsize, &bloboff, &blobptr);
+        if (rc)
+            return rc;
+        /* No blob means the value is stored inline in the record already */
+        if (blobptr == NULL)
+            continue;
+
+        fetched[i].exists = 1;
+        fetched[i].data = blobptr;
+        fetched[i].length = blobsize;
+        fetched[i].collected = blobsize;
+        fetched[i].odhind = i;
+        fetched[i].qblob = NULL;
+        fetched[i].freeptr = NULL;
+        (*nfetched)++;
+    }
+    return 0;
+}
+
+static void free_fetched_blobs(blob_buffer_t *blobs, blob_buffer_t *fetched)
+{
+    for (int i = 0; i < MAXBLOBS; i++) {
+        if (fetched[i].data != blobs[i].data)
+            free(fetched[i].data);
+    }
+}
+
 /* both new and old are to the left of SC ptr, need to update
  */
 int live_sc_post_upd_record(struct ireq *iq, void *trans,
@@ -489,6 +549,23 @@ int live_sc_post_upd_record(struct ireq *iq, void *trans,
 #endif
 
     int rc;
+    blob_buffer_t fetched[MAXBLOBS];
+    int nfetched = 0;
+
+    if (blobs) {
+        rc = fetch_placeholder_blobs(iq, trans, newgenid, blobs, fetched, &nfetched);
+        if (rc) {
+            free_fetched_blobs(blobs, fetched);
+            if (rc == RC_INTERNAL_RETRY)
+                return rc;
+            logmsg(LOGMSG_ERROR, "%s: rcode %d fetching blobs for genid 0x%llx\n", __func__, rc, newgenid);
+            logmsg(LOGMSG_ERROR, "Aborting schema change due to unexpected error\n");
+            usedb->sc_abort = 1;
+            MEMORY_SYNC;
+            return 0; // should just fail SC
+        }
+    }
+
     /* point to the new table */
     iq->usedb = usedb->sc_to;
 
@@ -507,13 +584,16 @@ int live_sc_post_upd_record(struct ireq *iq, void *trans,
     iq->usedb = _distribute_rows(usedb, iq->usedb, oldgenid);
     if (!iq->usedb) {
         iq->usedb = usedb;
+        if (nfetched)
+            free_fetched_blobs(blobs, fetched);
         return -1;
     }
 
-    rc = upd_new_record(iq, trans, oldgenid, old_dta, newgenid, new_dta,
-                        ins_keys, del_keys, od_len, updCols, blobs, deferredAdd,
-                        oldblobs, newblobs, 1);
+    rc = upd_new_record(iq, trans, oldgenid, old_dta, newgenid, new_dta, ins_keys, del_keys, od_len, updCols,
+                        nfetched ? fetched : blobs, deferredAdd, oldblobs, newblobs, 1);
     iq->usedb = usedb;
+    if (nfetched)
+        free_fetched_blobs(blobs, fetched);
     if (rc != 0 && rc != RC_INTERNAL_RETRY) {
         logmsg(LOGMSG_ERROR, "%s: rcode %d for update genid 0x%llx to 0x%llx\n",
                __func__, rc, oldgenid, newgenid);
