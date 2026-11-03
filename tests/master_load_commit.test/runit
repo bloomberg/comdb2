@@ -9,7 +9,7 @@ bash -n "$0" || exit 1
 # Force every commit to be reported non-durable on all nodes. This simulates a
 # master that cannot confirm the commit was replicated to a majority (e.g. under
 # I/O / replication load, or during a master swing) -- the condition that makes
-# osql_sock_commit() return SQLITE_CLIENT_CHANGENODE (rc 210).
+# osql_sock_commit() return SQLITE_CLIENT_CHANGENODE.
 function force_all_non_durable
 {
     typeset val=$1
@@ -42,7 +42,7 @@ hide_non_durable_rcode 0
 force_all_non_durable 1
 
 # An explicit socksql transaction whose commit cannot be confirmed durable comes
-# back as rc 210 (SQLITE_CLIENT_CHANGENODE). The client must receive a populated
+# back as rc 402 (CDB2ERR_NOTDURABLE). The client must receive a populated
 # error message -- "Transaction is not durable" -- not an empty errstr.
 x=$($CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default 2>&1 <<'EOF'
 set transaction blocksql
@@ -56,8 +56,8 @@ echo "$x"
 
 force_all_non_durable 0
 
-if [[ "$x" != *"[commit] failed with rc 210 Transaction is not durable"* ]]; then
-    failexit "socksql commit should report rc 210 with a populated 'Transaction is not durable' message"
+if [[ "$x" != *"[commit] failed with rc 402 Transaction is not durable"* ]]; then
+    failexit "socksql commit should report rc 402 with a populated 'Transaction is not durable' message"
 fi
 
 echo "Success!"
