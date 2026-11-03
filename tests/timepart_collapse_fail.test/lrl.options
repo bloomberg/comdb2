@@ -1,0 +1,2 @@
+# Fail the first schema change of the first collapse after it registers as running
+test_fail_partition_merge_sc 1
