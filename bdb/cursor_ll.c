@@ -104,6 +104,7 @@ static int bdb_berkdb_dtasize(bdb_berkdb_t *pberkdb, int *dtasize, int *bdberr);
 static int bdb_berkdb_key(bdb_berkdb_t *pberkdb, char **key, int *bdberr);
 static int bdb_berkdb_keysize(bdb_berkdb_t *pberkdb, int *keysize, int *bdberr);
 static int bdb_berkdb_ver(bdb_berkdb_t *pberkdb, uint8_t *ver, int *bdberr);
+static int bdb_berkdb_odh2_times(bdb_berkdb_t *pberkdb, uint32_t *insert_secs, uint32_t *update_secs);
 static int bdb_berkdb_insert(bdb_berkdb_t *pberkdb, char *key, int keylen,
                              char *dta, int dtalen, int *bdberr);
 static int bdb_berkdb_delete(bdb_berkdb_t *pberkdb, int *bdberr);
@@ -503,6 +504,7 @@ bdb_berkdb_t *bdb_berkdb_open(bdb_cursor_impl_t *cur, int type, int maxdata,
     pberkdb->is_at_eof = bdb_berkdb_is_at_eof;
 
     pberkdb->ver = bdb_berkdb_ver;
+    pberkdb->odh2_times = bdb_berkdb_odh2_times;
 
     berkdb->cur = cur;
 
@@ -738,6 +740,8 @@ static int process_bulk_odh(bdb_berkdb_t *pberkdb, int *bdberr)
 
     bt->odh.size = odh.length;
     bt->ver = odh.csc2vers;
+    bt->insert_secs = odh.insert_secs;
+    bt->update_secs = odh.update_secs;
     if (ip_updates_enabled(berkdb->cur->state)) {
         genptr = (unsigned long long *)bt->lastkey;
 #ifdef _SUN_SOURCE
@@ -1176,6 +1180,23 @@ static int bdb_berkdb_ver(bdb_berkdb_t *pberkdb, uint8_t *ver, int *bdberr)
     return 0;
 }
 
+/* odh2 insert/update times of the current committed data payload; 0 for other streams. */
+static int bdb_berkdb_odh2_times(bdb_berkdb_t *pberkdb, uint32_t *insert_secs, uint32_t *update_secs)
+{
+    bdb_berkdb_impl_t *berkdb = pberkdb->impl;
+    if (berkdb->type == BERKDB_REAL && berkdb->u.rl.use_odh) {
+        *insert_secs = pberkdb->impl->u.rl.insert_secs;
+        *update_secs = pberkdb->impl->u.rl.update_secs;
+    } else if (berkdb->type == BERKDB_REAL_ROWLOCKS && berkdb->cur->type == BDBC_DT) {
+        *insert_secs = pberkdb->impl->u.row.insert_secs;
+        *update_secs = pberkdb->impl->u.row.update_secs;
+    } else {
+        *insert_secs = 0;
+        *update_secs = 0;
+    }
+    return 0;
+}
+
 static int bdb_berkdb_is_at_eof(struct bdb_berkdb *pberkdb)
 {
     return pberkdb->impl->at_eof;
@@ -1398,8 +1419,8 @@ static int bdb_berkdb_cget(bdb_berkdb_impl_t *berkdb, int use_bulk, int how,
 
     bt->need_update_shadows = 1;
     if (bt->use_odh && !bt->use_bulk)
-        rc = bdb_cget_unpack(berkdb->cur->state, bt->dbc, &bt->key, &bt->data,
-                             &bt->ver, how);
+        rc = bdb_cget_unpack_times(berkdb->cur->state, bt->dbc, &bt->key, &bt->data, &bt->ver, how, 1, &bt->insert_secs,
+                                   &bt->update_secs);
     else {
         if (!bt->dbc) {
             *bdberr = BDBERR_DEADLOCK;

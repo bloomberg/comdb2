@@ -2267,12 +2267,29 @@ int sqlite3IsComdb2RowTimestamp(Table *pTab, const char *z){
     if (IsVirtual(pTab))
         return 0;
 #endif
-  if (comdb2genidcontainstime()){
-      return 
-          (sqlite3StrICmp(z, "COMDB2_ROW_TIMESTAMP") == 0 ||
-           sqlite3StrICmp(z, "COMDB2_ROWTIMESTAMP") == 0);
-  }
-  return 0;
+  /* No longer gated on comdb2genidcontainstime(): with odh2 the insert time is
+   * read from the record header, and for odh1 records (which predate any
+   * genid48 conversion) it still comes from the time-based genid.  So the
+   * column resolves regardless of the current genid format. */
+  return
+      (sqlite3StrICmp(z, "COMDB2_ROW_TIMESTAMP") == 0 ||
+       sqlite3StrICmp(z, "COMDB2_ROWTIMESTAMP") == 0);
+}
+
+int sqlite3IsComdb2InsertTimestamp(Table *pTab, const char *z){
+#ifndef SQLITE_OMIT_VIRTUALTABLE
+    if (IsVirtual(pTab))
+        return 0;
+#endif
+  return (sqlite3StrICmp(z, "COMDB2_INSERT_TIMESTAMP") == 0);
+}
+
+int sqlite3IsComdb2UpdateTimestamp(Table *pTab, const char *z){
+#ifndef SQLITE_OMIT_VIRTUALTABLE
+    if (IsVirtual(pTab))
+        return 0;
+#endif
+  return (sqlite3StrICmp(z, "COMDB2_UPDATE_TIMESTAMP") == 0);
 }
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
@@ -3421,6 +3438,10 @@ void sqlite3ExprCodeGetColumnOfTable(
       sqlite3VdbeAddOp3(v, OP_Rowid, iTabCur, regOut, 1);
     }else if( iCol == -3 ){
       sqlite3VdbeAddOp3(v, OP_Rowid, iTabCur, regOut, 2);
+    }else if( iCol == -4 ){
+      sqlite3VdbeAddOp3(v, OP_Rowid, iTabCur, regOut, 3); /* comdb2_insert_timestamp */
+    }else if( iCol == -5 ){
+      sqlite3VdbeAddOp3(v, OP_Rowid, iTabCur, regOut, 4); /* comdb2_update_timestamp */
     }else{
       sqlite3VdbeAddOp2(v, OP_Rowid, iTabCur, regOut);
     }
@@ -6472,8 +6493,14 @@ default_prec:
         return NULL;
 
       assert(pExpr->y.pTab &&
-        (pExpr->iColumn >= -3 && pExpr->y.pTab->nCol > pExpr->iColumn));
+        (pExpr->iColumn >= -5 && pExpr->y.pTab->nCol > pExpr->iColumn));
       switch(pExpr->iColumn) {
+      case -5:
+        name = "comdb2_update_timestamp";
+        break;
+      case -4:
+        name = "comdb2_insert_timestamp";
+        break;
       case -3:
         name = "comdb2_rowtimestamp";
         break;
