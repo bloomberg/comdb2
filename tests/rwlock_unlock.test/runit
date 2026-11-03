@@ -1,0 +1,49 @@
+#!/usr/bin/env bash
+bash -n "$0" | exit 1
+
+#set -e
+debug=1
+[[ "$debug" != 0 ]] && set -x
+source ${TESTSROOTDIR}/tools/runit_common.sh
+
+# Testcase variables
+unset CLUSTER
+DBNAME=ttsz$TESTID
+DBDIR=$TESTDIR/$DBNAME
+CDB2_CONFIG=$DBDIR/comdb2db.cfg
+CDB2_OPTIONS="--cdb2cfg $CDB2_CONFIG"
+export dbpid=""
+
+function call_unsetup()
+{
+    local successful=$1
+    COMDB2_UNITTEST=0 $TESTSROOTDIR/unsetup $successful &> $TESTDIR/logs/$DBNAME.unsetup
+}
+
+function setup_db()
+{
+    COMDB2_UNITTEST=0 $TESTSROOTDIR/setup &> $TESTDIR/logs/$DBNAME.setup
+}
+
+
+# Trap to call_unsetup if the test exits
+trap "call_unsetup \"0\"" INT EXIT
+
+echo "Setting core ulimit to 0"
+ulimit -c 0
+
+echo "Setting up database $DBNAME"
+setup_db
+dbpid=$(cat ${TMPDIR}/${DBNAME}.pid)
+
+kill -0 $dbpid
+[[ $? != 0 ]] && failexit "Database is not running"
+
+echo "Telling database to unlock a rwlock which is not locked- this should abort"
+$CDB2SQL_EXE $CDB2_OPTIONS $DBNAME "exec procedure sys.cmd.send('test_abort_rwlock')"
+
+sleep 5
+kill -0 $dbpid
+[[ $? == 0 ]] && failexit "Unlocking an unlocked rwlock did not abort the database"
+
+echo "Success"
