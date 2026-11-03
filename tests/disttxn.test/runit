@@ -3354,6 +3354,32 @@ function test_verify_retry
     done
 }
 
+# Standalone push writes must not leave a local osql session behind; client sets must not override ours
+function standalone_push_write
+{
+    typeset j=0
+    typeset r=0
+    while [[ $j -lt 10 ]]; do
+        $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "insert into $SECONDARY_DBNAME.t1(a) values($((800000+j)))"
+        r=$?
+        [[ "$r" == "0" ]] || fail_exit "standalone push write $j failed"
+        let j=j+1
+    done
+    echo "set verifyretry on
+begin
+insert into t1(a) values(800100)
+insert into $SECONDARY_DBNAME.t1(a) values(800100)
+commit" | $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default -
+    r=$?
+    [[ "$r" == "0" ]] || fail_exit "2pc txn with explicit verifyretry on failed"
+    for node in $CLUSTER; do
+        $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME --host $node "select 1" >/dev/null || fail_exit "$DBNAME on $node is down"
+    done
+    x=$($CDB2SQL_EXE -tabs $SECONDARY_CDB2_OPTIONS $SECONDARY_DBNAME default "select count(*) from t1 where a >= 800000")
+    [[ "$x" == "11" ]] || fail_exit "$SECONDARY_DBNAME has $x standalone rows, expected 11"
+    delete_records
+}
+
 function test_verify_participant_constraint_violation
 {
     typeset cnt=0
@@ -3665,6 +3691,11 @@ function run_test
     #testcase_preamble $testcase
     #verify_no_distcommit
     #testcase_finish $testcase
+
+    testcase="standalone_push_write"
+    testcase_preamble $testcase
+    standalone_push_write
+    testcase_finish $testcase
 
     # Writes to comdb2_distributed_transactions
     testcase="allow_write_to_disttxn_table"
