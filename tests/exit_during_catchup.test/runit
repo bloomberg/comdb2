@@ -1,0 +1,103 @@
+#!/usr/bin/env bash
+
+# appsock (and so sys.cmd.send) is rejected until a node is ready, so SIGTERM is
+# the only way to ask a starting replicant to exit.  Start one node alone so it
+# sits in the startup "waiting for a master" loop, and require that it honors a
+# SIGTERM rather than dropping it.
+
+bash -n "$0" || exit 1
+
+. ${TESTSROOTDIR}/tools/runit_common.sh
+
+export debug=1
+[[ "$debug" == "1" ]] && set -x
+
+db=$1
+EXIT_DEADLINE=30
+PARAMS="$DBNAME --no-global-lrl"
+CMD="source ${TESTDIR}/replicant_vars ; ${COMDB2_EXE} ${PARAMS} --lrl $DBDIR/${DBNAME}.lrl -pidfile ${TMPDIR}/${DBNAME}.pid"
+
+function logfile
+{
+    echo "${TESTDIR}/logs/${DBNAME}.$1.db"
+}
+
+function start_node
+{
+    local node=$1
+    mv --backup=numbered $(logfile $node) $(logfile $node).1
+    ssh -o StrictHostKeyChecking=no $node "rm -f ${TMPDIR}/${DBNAME}.pid"
+    ssh -o StrictHostKeyChecking=no -tt $node ${DEBUG_PREFIX} ${CMD} 2>&1 </dev/null \
+        > >(gawk '{ print strftime("%H:%M:%S>"), $0; fflush(); }' >> $(logfile $node)) &
+}
+
+function wait_for_log
+{
+    local node=$1 pattern=$2 elapsed=0
+    while [[ $elapsed -lt $EXIT_DEADLINE ]]; do
+        grep -q "$pattern" $(logfile $node) 2>/dev/null && return 0
+        sleep 1
+        elapsed=$((elapsed + 1))
+    done
+    return 1
+}
+
+function node_is_up
+{
+    ssh -o StrictHostKeyChecking=no $1 "kill -0 \$(cat ${TMPDIR}/${DBNAME}.pid)" 2>/dev/null
+}
+
+function wait_node_down
+{
+    local node=$1 elapsed=0
+    while node_is_up $node; do
+        [[ $elapsed -ge $EXIT_DEADLINE ]] && return 1
+        sleep 1
+        elapsed=$((elapsed + 1))
+    done
+    return 0
+}
+
+function run_test
+{
+    wait_for_db $DBNAME || failexit "DB $DBNAME not ready"
+
+    local node=$(echo $CLUSTER | awk '{print $1}')
+
+    # Bring the whole cluster down so a lone node can't elect a master
+    for n in $CLUSTER; do
+        $CDB2SQL_EXE ${CDB2_OPTIONS} $DBNAME --host $n "exec procedure sys.cmd.send('exit')" &>/dev/null
+    done
+    for n in $CLUSTER; do
+        wait_node_down $n || failexit "$n did not exit"
+    done
+
+    start_node $node
+    wait_for_log $node "waiting for a master" \
+        || failexit "$node never reached the waiting-for-master loop"
+
+    ssh -o StrictHostKeyChecking=no $node "kill -TERM \$(cat ${TMPDIR}/${DBNAME}.pid)"
+
+    wait_node_down $node \
+        || failexit "$node ignored SIGTERM while waiting for a master"
+    grep -q "exit requested while waiting for a master" $(logfile $node) \
+        || failexit "$node exited, but not from the startup exit check"
+
+    # Restore the cluster for teardown
+    for n in $CLUSTER; do
+        start_node $n
+    done
+    local tries=0
+    until wait_for_db $DBNAME; do
+        [[ $((tries++)) -ge 60 ]] && failexit "Cluster did not come back"
+        sleep 2
+    done
+}
+
+cnt=$(echo $CLUSTER | wc -w)
+if [[ -z "$CLUSTER" || $cnt -lt 3 ]]; then
+    failexit "This test requires a clustered installation of at least 3 nodes"
+fi
+
+run_test
+echo "Success"
