@@ -1,0 +1,4 @@
+forbid_remote_admin 0
+rep_verify_will_recover_trace 1
+# legacy_defaults (prod) turns this off; only then does bdb_rep_verify take the writelock
+online_recovery off
