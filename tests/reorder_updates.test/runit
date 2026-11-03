@@ -142,7 +142,14 @@ if [[ $DBNAME == *"noreordergenerated"* ]] ; then
     fi
 else
     assertres $rr "ON"
-    if [[ $ddcount -gt 10 ]] ; then
+    # Under the randomize_odh2 coexistence fuzzer roughly half the updates
+    # change the record's header size (odh1 <-> odh2), which defeats inplace
+    # updates and forces genid-changing delete+re-add with index writes -- so
+    # deadlocks are expected and the ceiling below does not apply.
+    rodh=$(cdb2sql -s --tabs ${CDB2_OPTIONS} $dbnm --host ${master} "select value from comdb2_tunables where name='randomize_odh2'" 2>/dev/null)
+    if [[ "$rodh" == "ON" ]] ; then
+        echo "randomize_odh2 is on; skipping deadlock ceiling (ddcount=$ddcount)"
+    elif [[ $ddcount -gt 10 ]] ; then
         failexit 'reorder expected to get less than 10 deadlocks for this test'
     fi
 fi
