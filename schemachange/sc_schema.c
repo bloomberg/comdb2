@@ -1428,3 +1428,39 @@ void change_schemas_recover(char *table)
     backout_schemas(table);
     live_sc_off(db);
 }
+
+static const char *ix_name(const struct schema *ix)
+{
+    /* the new table of an alter has its index tags prefixed */
+    return strncasecmp(ix->csctag, ".NEW.", 5) == 0 ? ix->csctag + 5 : ix->csctag;
+}
+
+/* A partial index predicate comparing a datetime with a literal that has no
+ * timezone selects different rows in different session timezones, so new
+ * ones need an explicit timezone.  Indexes that already had such a
+ * predicate, olddb's, keep working as long as they are left unchanged. */
+int check_partial_index_tz(struct schema_change_type *s, struct dbtable *olddb, struct dbtable *newdb)
+{
+    extern int gbl_debug_allow_tzless_partial_index;
+    if (gbl_debug_allow_tzless_partial_index)
+        return 0;
+    for (int ix = 0; ix < newdb->nix; ix++) {
+        if (!(newdb->ix_partial_tzless & (1ULL << ix)))
+            continue;
+        struct schema *newix = newdb->ixschema[ix];
+        int grandfathered = 0;
+        for (int oix = 0; olddb && oix < olddb->nix && !grandfathered; oix++) {
+            struct schema *oldix = olddb->ixschema[oix];
+            grandfathered =
+                strcasecmp(ix_name(oldix), ix_name(newix)) == 0 && cmp_index_int(oldix, newix, NULL, 0) == 0;
+        }
+        if (grandfathered)
+            continue;
+        sc_client_error(s,
+                        "Partial index %s compares a datetime with a literal that has no timezone, "
+                        "give it one, e.g. '9999-12-31T00:00:00 America/New_York'",
+                        ix_name(newix));
+        return SC_CSC2_ERROR;
+    }
+    return 0;
+}

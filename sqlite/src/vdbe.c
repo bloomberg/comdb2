@@ -8847,6 +8847,17 @@ case OP_OpFuncNext: {            /* jump */
   if( more ) goto jump_to_p2;
   break;
 }
+
+/* Opcode: PartIdxTz P1 * * * *
+** Synopsis: partial index timezone enter=P1
+**
+** With P1==1, switch to the fixed timezone partial index predicates are
+** evaluated in (see comdb2PartIdxTz()).  With P1==0, switch back.
+*/
+case OP_PartIdxTz: {
+  comdb2PartIdxTz(p, pOp->p1);
+  break;
+}
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
 /* Opcode: Noop * * * * *
