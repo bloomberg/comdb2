@@ -4956,7 +4956,14 @@ static int bdb_cursor_reposition(bdb_cursor_ifn_t *pcur_ifn, int how,
 
         if (bdb_keycontainsgenid(cur->state, cur->idx)) {
             /*keysize += sizeof(unsigned long long); Uh*/
-            memcpy(key + cur->datalen, (char *)&cur->genid, sizeof(cur->genid));
+            /* Use the genid suffix as stored in the key, which still follows
+               the payload in cur->data, not cur->genid: a unique index that
+               allows nulls stores 0 there for a non-null key, and a dup index
+               stores the search genid (see bdb_maybe_use_genid_for_key).
+               Searching with cur->genid lands past our own row, and a DB_PREV
+               reposition then reports end of index or returns that row
+               again. */
+            memcpy(key + cur->datalen, (char *)cur->data + cur->datalen, sizeof(unsigned long long));
         }
 
         /* we also need to store the genid for later match,

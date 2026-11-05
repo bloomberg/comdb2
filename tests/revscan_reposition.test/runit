@@ -1,0 +1,107 @@
+#!/usr/bin/env bash
+bash -n "$0" | exit 1
+
+# A cursor that releases its page locks mid-scan repositions on its next move
+# by searching for the key it was on.  For an index whose keys carry a genid
+# suffix, that search must use the suffix as stored -- a unique index that
+# allows nulls stores 0 there for a non-null key.  Searching with the row's own
+# genid instead lands past the row, which a reverse scan read as either end of
+# index (truncated result) or "found the previous row" (the same row again).
+#
+# random_lock_release_interval makes the cursor-move hook drop page locks at
+# random, with no writer needed.  Each index kind below stores a different
+# suffix; every scan must return every row exactly once.  The same tunable
+# makes every full release sleep 10s, and on a cluster each scan takes one, so
+# keep the scan count low.
+
+dbnm=$1
+if [[ -z "$dbnm" ]] ; then
+    echo "need a DB name"
+    exit 1
+fi
+
+nrows=20000
+nnulls=100
+iterations=2
+
+failexit()
+{
+    echo "Failed: $1"
+    exit 1
+}
+
+sql()
+{
+    $CDB2SQL_EXE ${CDB2_OPTIONS} --tabs $dbnm default "$@"
+}
+
+# Per node, since reads spread across the cluster.
+send_all()
+{
+    local n
+    if [[ -n "$CLUSTER" ]] ; then
+        for n in $CLUSTER ; do
+            $CDB2SQL_EXE ${CDB2_OPTIONS} --tabs --host $n $dbnm "exec procedure sys.cmd.send('$1')" >/dev/null ||
+                failexit "send '$1' to $n"
+        done
+    else
+        sql "exec procedure sys.cmd.send('$1')" >/dev/null || failexit "send '$1'"
+    fi
+}
+
+# uniq_null: unique, nullable -- non-null keys store a 0 suffix, nulls their genid
+# dup:       dups allowed     -- every key stores its genid
+# uniq:      unique, not null -- no suffix at all
+setup()
+{
+    local s
+    for s in "CREATE TABLE uniq_null(a INTEGER, b INTEGER NOT NULL)" \
+             "CREATE UNIQUE INDEX uniq_null_a ON uniq_null(a)" \
+             "CREATE TABLE dup(a INTEGER, b INTEGER NOT NULL)" \
+             "CREATE INDEX dup_a ON dup(a)" \
+             "CREATE TABLE uniq(a INTEGER NOT NULL, b INTEGER NOT NULL)" \
+             "CREATE UNIQUE INDEX uniq_a ON uniq(a)" \
+             "INSERT INTO uniq_null SELECT value, value FROM generate_series(1, $nrows)" \
+             "INSERT INTO uniq_null SELECT NULL, value FROM generate_series($nrows + 1, $nrows + $nnulls)" \
+             "INSERT INTO dup SELECT value / 2, value FROM generate_series(1, $nrows)" \
+             "INSERT INTO uniq SELECT value, value FROM generate_series(1, $nrows)" ; do
+        sql "$s" >/dev/null || failexit "$s"
+    done
+}
+
+# An aggregate over a LIMITed, ordered subquery: the LIMIT keeps sqlite from
+# flattening the ORDER BY away, so the index is still scanned in that order,
+# and no rows are streamed back mid-scan (the emit-row release path would do a
+# full release, which sleeps under random_lock_release_interval).  b is unique
+# per row, so count(DISTINCT b) catches a row returned twice.
+check_scan()
+{
+    local tbl=$1 order=$2 expected=$3
+    local q="SELECT count(*), count(DISTINCT b) FROM (SELECT a, b FROM $tbl ORDER BY a $order LIMIT 10000000)"
+    local plan
+    plan=$(sql "EXPLAIN QUERY PLAN $q") || failexit "explain $tbl $order"
+    echo "$plan" | grep -q "USING .*INDEX" || failexit "$tbl $order does not scan an index: $plan"
+    echo "$plan" | grep -q "TEMP B-TREE" && failexit "$tbl $order sorts instead of scanning the index: $plan"
+
+    local i out
+    for i in $(seq 1 $iterations) ; do
+        out=$(sql "$q") || failexit "$tbl $order scan $i"
+        echo "$tbl $order scan $i: $out"
+        [[ "$out" == "$expected"$'\t'"$expected" ]] ||
+            failexit "$tbl $order scan $i returned count/distinct '$out', expected $expected"
+    done
+}
+
+setup
+send_all "random_lock_release_interval 50"
+
+check_scan uniq_null DESC $((nrows + nnulls))
+check_scan uniq_null ASC $((nrows + nnulls))
+check_scan dup DESC $nrows
+check_scan dup ASC $nrows
+check_scan uniq DESC $nrows
+check_scan uniq ASC $nrows
+
+send_all "random_lock_release_interval -1"
+
+echo "Success"
