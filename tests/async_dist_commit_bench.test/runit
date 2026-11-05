@@ -5,7 +5,10 @@
 #   CLUSTER="m1 m2 m3 m4" INCLUDE_LONG_RUNNING=1 BENCH="offon catchup" CLIENTS="16 64" DUR=120 make async_dist_commit_bench
 # SCALE=pr runs every section at the sizes the PR reports (hours); any variable
 # below set by hand still wins.  Every *_CLIENTS takes a list.  DUR is seconds per
-# run (default 60), REPS is runs per setting (default 1).
+# run (default 60), REPS is runs per setting (default 1).  LOADHOSTS="h1 h2 ..." spreads the clients over
+# those hosts (ssh, same paths; default: all from this host, which caps the load near 1000 clients).
+# On the 8-node btda cluster the PR numbers come from:
+#   cd ~/btc-run && btc test async_dist_commit_bench SCALE=pr INCLUDE_LONG_RUNNING=1 LOADHOSTS="<4 of the nodes>"
 # Sections (BENCH, default all):
 #   offon    inserts/s, waiter off vs on, for each client count in CLIENTS
 #   wthreads waiter on, writer threads WTHREADS
@@ -21,7 +24,8 @@
 #   catchup  one replicant stopped a third of the way in, down CATCHUP_DOWN s,
 #            restarted: how long until it is coherent again
 # Each client inserts single rows (autocommit) into its own table, one commit in
-# flight per client, and talks only to replicants.  It fails only on errors
+# flight per client, and talks only to replicants.  The rates count the inserts acked to
+# clients.  The database runs with a 128 MB cache (lrl.options), as the PR numbers do.  It fails only on errors
 # (and on acked inserts going missing), never on the numbers.
 bash -n "$0" || exit 1
 
@@ -102,6 +106,7 @@ configure() {
 # reply is stamped when it arrives.  The clients run past <secs> to drain what is already queued.
 load() {
     local clients=$1 secs=$2 tag=$3 unpinned=${4:-} reps=($(replicants)) i pids=()
+    [[ -n ${LOADHOSTS:-} ]] && { load_remote "$@"; return; }
     local end=$((SECONDS + secs))
     for ((i = 0; i < clients; i++)); do
         local where="--host ${reps[i % ${#reps[@]}]}"
@@ -112,6 +117,34 @@ load() {
     done
     # only the clients: a node kill_restart_node started is a background job of this shell too
     wait "${pids[@]}"
+}
+# load_remote: the same clients, spread over LOADHOSTS (client i on host i mod n) so one box's CPU and
+# process limit don't cap the load.  Each host logs its clients' replies under $out, and the logs are
+# copied back afterwards, so everything that reads $out/<tag>.c<i> works unchanged.
+load_remote() {
+    local clients=$1 secs=$2 tag=$3 unpinned=${4:-} reps=($(replicants)) hosts=($LOADHOSTS) k h pids=()
+    local deadline=$(($(date +%s) + secs)) where="--host"
+    [[ -n $unpinned ]] && where=default
+    for ((k = 0; k < ${#hosts[@]}; k++)); do
+        h=${hosts[k]}
+        ssh -o StrictHostKeyChecking=no "$h" "mkdir -p $out" && scp -q "$CDB2_CONFIG" "$h:$out/cdb2.cfg" || fail "load host $h"
+        ssh -o StrictHostKeyChecking=no "$h" bash -s <<EOF &
+reps=(${reps[*]}); end=\$((SECONDS + $deadline - \$(date +%s)))
+for ((i = $k; i < $clients; i += ${#hosts[@]})); do
+    w="$where"; [[ \$w == --host ]] && w="--host \${reps[i % \${#reps[@]}]}"
+    ( n=0; while ((SECONDS < end)); do echo "insert into bench\$i(i) values(\$n)"; n=\$((n + 1)); done |
+          COMDB2_IOLBF=1 $CDB2SQL_EXE --cdb2cfg $out/cdb2.cfg $db \$w - 2>&1 | gawk '{ print systime(), \$0; fflush() }' > "$out/$tag.c\$i" ) &
+done
+wait
+EOF
+        pids+=($!)
+    done
+    wait "${pids[@]}"
+    for h in "${hosts[@]}"; do
+        # the host running this test already has its files in $out
+        [[ $(ssh -n "$h" hostname) == "$(hostname)" ]] && continue
+        ssh -n "$h" "cd $out && tar cf - $tag.c* && rm -f $tag.c*" | tar -C "$out" -xf - || fail "logs from $h"
+    done
 }
 # acked <tag> <from> <to>: inserts acked from epoch second <from> up to, not including, <to>
 acked() { cat "$out/$1".c* | gawk -v a=$2 -v b=$3 '/\] rc 0$/ && $1 >= a && $1 < b { n++ } END { print n + 0 }'; }
