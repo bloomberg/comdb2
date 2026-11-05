@@ -331,6 +331,7 @@
 (name='emit_gen_commits', description='Emit commit-records which include cluster generation.  (Default: on)', type='BOOLEAN', value='ON', read_only='N')
 (name='emptystrnum', description='Empty strings don't convert to numbers', type='BOOLEAN', value='ON', read_only='N')
 (name='enable_2pc', description='Enable 2pc fdb transactions.  (Default: off)', type='BOOLEAN', value='OFF', read_only='Y')
+(name='enable_2pc_ddl', description='Make schema changes on generic-shard partitions 2pc distributed transactions; requires enable_2pc.  (Default: off)', type='BOOLEAN', value='OFF', read_only='Y')
 (name='enable_berkdb_retry_deadlock_bias', description='', type='BOOLEAN', value='OFF', read_only='Y')
 (name='enable_bulk_import', description='Enable bulk import. (Default: off)', type='BOOLEAN', value='OFF', read_only='N')
 (name='enable_bulk_import_different_tables', description='Enable bulk import across tables with different names. (Default: off)', type='BOOLEAN', value='OFF', read_only='N')

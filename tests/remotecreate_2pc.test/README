@@ -1,0 +1,3 @@
+Test schema changes on generic-shard partitions as 2pc distributed transactions
+(CREATE/DROP TABLE).  Verifies that they commit on every shard or on none, and
+that replicants do not show a prepared schema change before it commits.

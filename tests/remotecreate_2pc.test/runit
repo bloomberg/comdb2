@@ -1,0 +1,679 @@
+#!/usr/bin/env bash
+bash -n "$0" | exit 1
+set -x
+
+# Distributed schema changes (CREATE/DROP TABLE) on a generic-shard
+# partition as 2pc distributed transactions (enable_2pc + enable_2pc_ddl).
+#
+# Every shard is a 2pc participant and the db running the ddl is the
+# coordinator.  A participant prepares its schema change's finalize transaction
+# and commits or aborts it with the coordinator's decision; the coordinator
+# does not prepare its own schema change, it writes the decision row in the
+# same transaction.
+#
+# Test cases:
+#  1. Basic create: create partitioned table across 4 shards, verify all shards
+#  2. Basic drop: drop partitioned table, verify cleanup on all shards
+#  3. Create-then-drop: full lifecycle
+#  4. Verify non-key sharding still fails properly with 2pc enabled
+#  5. Multiple create/drop cycles: stress test for resource leaks
+#  6. Coordinator decides abort (a participant fails to prepare): no shard
+#     applies the change
+#  7. Replicants do not show a prepared schema change before it commits
+################################################################################
+
+# Validate required environment variables
+echo "main db vars"
+vars="TESTCASE DBNAME DBDIR TESTSROOTDIR TESTDIR CDB2_OPTIONS CDB2_CONFIG SECONDARY_DBNAME SECONDARY_DBDIR SECONDARY_CDB2_CONFIG SECONDARY_CDB2_OPTIONS TERTIARY_DBNAME TERTIARY_DBDIR TERTIARY_CDB2_CONFIG TERTIARY_CDB2_OPTIONS QUATERNARY_DBNAME QUATERNARY_DBDIR QUATERNARY_CDB2_CONFIG QUATERNARY_CDB2_OPTIONS"
+for required in $vars; do
+    q=${!required}
+    echo "$required=$q"
+    if [[ -z "$q" ]]; then
+        echo "$required not set" >&2
+        exit 1
+    fi
+done
+
+# Build shard list
+shards=""
+SHARDS_LIST="$DBNAME $SECONDARY_DBNAME $TERTIARY_DBNAME $QUATERNARY_DBNAME"
+numshards=4
+
+# Configure partition discovery and cross-database resolution
+# Each database needs to be able to find every other database for 2PC
+cluster_line=$(head -n 1 $DBDIR/comdb2db.cfg)
+echo "s1$cluster_line" >> $DBDIR/comdb2db.cfg
+echo "s2$cluster_line" >> $DBDIR/comdb2db.cfg
+echo "s3$cluster_line" >> $DBDIR/comdb2db.cfg
+echo "partition partitiondb:$SHARDS_LIST" >> $DBDIR/comdb2db.cfg
+
+# For 2PC, each secondary database needs to resolve the primary and other secondaries
+# via their comdb2db.cfg (used by cdb2_open in dispatch_participants)
+for cfgfile in $SECONDARY_DBDIR/comdb2db.cfg $TERTIARY_DBDIR/comdb2db.cfg $QUATERNARY_DBDIR/comdb2db.cfg; do
+    echo "s1$cluster_line" >> $cfgfile
+    echo "s2$cluster_line" >> $cfgfile
+    echo "s3$cluster_line" >> $cfgfile
+    # Add primary db reference
+    echo "${cluster_line}" >> $cfgfile 2>/dev/null
+done
+
+# SQL command shortcuts
+P_SQLT="cdb2sql --tabs ${CDB2_OPTIONS} partitiondb default"
+P_SQL="cdb2sql ${CDB2_OPTIONS} partitiondb default"
+S0_SQLT="cdb2sql --tabs ${CDB2_OPTIONS} ${DBNAME} default"
+S0_SQL="cdb2sql ${CDB2_OPTIONS} ${DBNAME} default"
+S1_SQLT="cdb2sql --tabs ${SECONDARY_CDB2_OPTIONS} ${SECONDARY_DBNAME} default"
+S1_SQL="cdb2sql ${SECONDARY_CDB2_OPTIONS} ${SECONDARY_DBNAME} default"
+S2_SQLT="cdb2sql --tabs ${TERTIARY_CDB2_OPTIONS} ${TERTIARY_DBNAME} default"
+S2_SQL="cdb2sql ${TERTIARY_CDB2_OPTIONS} ${TERTIARY_DBNAME} default"
+S3_SQLT="cdb2sql --tabs ${QUATERNARY_CDB2_OPTIONS} ${QUATERNARY_DBNAME} default"
+S3_SQL="cdb2sql ${QUATERNARY_CDB2_OPTIONS} ${QUATERNARY_DBNAME} default"
+
+CDB2SQL_EXE=${CDB2SQL_EXE:-cdb2sql}
+COMDB2_EXE=${COMDB2_EXE:-comdb2}
+
+# Coordinator tier must match machine_class in tier_local.lrl / tier_cluster.lrl
+if [[ -n "$CLUSTER" ]]; then
+    COORDINATOR_TIER="prod"
+else
+    COORDINATOR_TIER="local"
+fi
+
+OUT=log.txt
+export stopfile=./stopfile.txt
+export LOGDIR=$TESTDIR/logs
+
+rm -f ${OUT} $stopfile
+
+function fail_exit
+{
+    echo "Failed: $@" | tee ${DBNAME}.fail_exit
+    touch $stopfile
+}
+
+########################################
+# Helper: find the tertiary master
+########################################
+function find_tertiary_master
+{
+    $CDB2SQL_EXE --tabs $TERTIARY_CDB2_OPTIONS $TERTIARY_DBNAME default 'select host from comdb2_cluster where is_master="Y"'
+}
+
+########################################
+# Helper: set tunable on all nodes of a database
+########################################
+function set_tunable
+{
+    local dbname=$1
+    local opts=$2
+    local tunable=$3
+    local value=$4
+    if [[ -z "$CLUSTER" ]]; then
+        $CDB2SQL_EXE -admin $opts $dbname default "put tunable $tunable '$value'" 2>/dev/null
+        return
+    fi
+    for node in $CLUSTER; do
+        $CDB2SQL_EXE -admin $opts $dbname --host $node "put tunable $tunable '$value'" 2>/dev/null
+    done
+}
+
+########################################
+# Helper: wait until all nodes of a database respond
+########################################
+function block_until_cluster_is_up
+{
+    typeset dbname=$1
+    typeset options=$2
+    typeset max_wait=${3:-120}
+    typeset elapsed=0
+
+    while [[ "$elapsed" -lt "$max_wait" ]]; do
+        typeset isup=1
+        if [[ -z "$CLUSTER" ]]; then
+            $CDB2SQL_EXE $options $dbname default "select 1" >/dev/null 2>&1 || isup=0
+        fi
+        for node in ${CLUSTER}; do
+            $CDB2SQL_EXE $options $dbname --host $node "select 1" 2>/dev/null
+            if [[ $? != 0 ]]; then
+                isup=0
+            fi
+        done
+        [[ "$isup" == 1 ]] && return 0
+        sleep 1
+        elapsed=$((elapsed + 1))
+    done
+    echo "Cluster $dbname did not come up after $max_wait seconds"
+    return 1
+}
+
+########################################
+# Helper: verify table exists on all shards (with retry for scdone propagation)
+########################################
+function verify_table
+{
+    tbl=$1
+    local max_wait=30
+    local elapsed=0
+
+    while [[ "$elapsed" -lt "$max_wait" ]]; do
+        local all_ok=1
+        $S0_SQLT "SELECT * from ${tbl}" 2>/dev/null || all_ok=0
+        $S1_SQLT "SELECT * from ${tbl}" 2>/dev/null || all_ok=0
+        $S2_SQLT "SELECT * from ${tbl}" 2>/dev/null || all_ok=0
+        $S3_SQLT "SELECT * from ${tbl}" 2>/dev/null || all_ok=0
+        [[ "$all_ok" == 1 ]] && return 0
+        sleep 1
+        elapsed=$((elapsed + 1))
+    done
+
+    # Final check with error reporting
+    $S0_SQLT "SELECT * from ${tbl}"
+    if (( $? != 0 )); then
+        fail_exit "verify_table: could not select from ${tbl} on ${DBNAME}"
+        return 1
+    fi
+    $S1_SQLT "SELECT * from ${tbl}"
+    if (( $? != 0 )); then
+        fail_exit "verify_table: could not select from ${tbl} on ${SECONDARY_DBNAME}"
+        return 1
+    fi
+    $S2_SQLT "SELECT * from ${tbl}"
+    if (( $? != 0 )); then
+        fail_exit "verify_table: could not select from ${tbl} on ${TERTIARY_DBNAME}"
+        return 1
+    fi
+    $S3_SQLT "SELECT * from ${tbl}"
+    if (( $? != 0 )); then
+        fail_exit "verify_table: could not select from ${tbl} on ${QUATERNARY_DBNAME}"
+        return 1
+    fi
+    return 0
+}
+
+########################################
+# Helper: verify table does NOT exist on any shard (with retry for scdone propagation)
+########################################
+function verify_table_gone
+{
+    tbl=$1
+    local max_wait=30
+    local elapsed=0
+
+    while [[ "$elapsed" -lt "$max_wait" ]]; do
+        local all_gone=1
+        $S0_SQLT "SELECT * from ${tbl}" 2>/dev/null && all_gone=0
+        $S1_SQLT "SELECT * from ${tbl}" 2>/dev/null && all_gone=0
+        $S2_SQLT "SELECT * from ${tbl}" 2>/dev/null && all_gone=0
+        $S3_SQLT "SELECT * from ${tbl}" 2>/dev/null && all_gone=0
+        [[ "$all_gone" == 1 ]] && return 0
+        sleep 1
+        elapsed=$((elapsed + 1))
+    done
+
+    # Final check with error reporting
+    $S0_SQLT "SELECT * from ${tbl}" 2>/dev/null
+    if (( $? == 0 )); then
+        fail_exit "verify_table_gone: table ${tbl} still exists on ${DBNAME}"
+        return 1
+    fi
+    $S1_SQLT "SELECT * from ${tbl}" 2>/dev/null
+    if (( $? == 0 )); then
+        fail_exit "verify_table_gone: table ${tbl} still exists on ${SECONDARY_DBNAME}"
+        return 1
+    fi
+    $S2_SQLT "SELECT * from ${tbl}" 2>/dev/null
+    if (( $? == 0 )); then
+        fail_exit "verify_table_gone: table ${tbl} still exists on ${TERTIARY_DBNAME}"
+        return 1
+    fi
+    $S3_SQLT "SELECT * from ${tbl}" 2>/dev/null
+    if (( $? == 0 )); then
+        fail_exit "verify_table_gone: table ${tbl} still exists on ${QUATERNARY_DBNAME}"
+        return 1
+    fi
+    return 0
+}
+
+########################################
+# Helper: verify table is absent from llmeta gen_shard
+########################################
+function verify_llmeta
+{
+    local tblname=${1:-t}
+    local result entry
+    result=$($S0_SQLT "EXEC PROCEDURE sys.cmd.send('llmeta list')" | grep "gen_shard")
+    if echo "$result" | grep -q "\"${tblname}\""; then
+        fail_exit "verify_llmeta: table '$tblname' still in gen_shard on $DBNAME"
+    fi
+    result=$($S1_SQLT "EXEC PROCEDURE sys.cmd.send('llmeta list')" | grep "gen_shard")
+    if echo "$result" | grep -q "\"${tblname}\""; then
+        fail_exit "verify_llmeta: table '$tblname' still in gen_shard on ${SECONDARY_DBNAME}"
+    fi
+    result=$($S2_SQLT "EXEC PROCEDURE sys.cmd.send('llmeta list')" | grep "gen_shard")
+    if echo "$result" | grep -q "\"${tblname}\""; then
+        fail_exit "verify_llmeta: table '$tblname' still in gen_shard on ${TERTIARY_DBNAME}"
+    fi
+    result=$($S3_SQLT "EXEC PROCEDURE sys.cmd.send('llmeta list')" | grep "gen_shard")
+    if echo "$result" | grep -q "\"${tblname}\""; then
+        fail_exit "verify_llmeta: table '$tblname' still in gen_shard on ${QUATERNARY_DBNAME}"
+    fi
+}
+
+########################################
+# Helper: clean up test table
+########################################
+function setup_testcase
+{
+    # A node lost in an earlier test would otherwise surface as an unrelated
+    # fan-out error in this one
+    if [[ -n "$CLUSTER" ]]; then
+        for pair in "$DBNAME|$CDB2_OPTIONS" "$SECONDARY_DBNAME|$SECONDARY_CDB2_OPTIONS" \
+                    "$TERTIARY_DBNAME|$TERTIARY_CDB2_OPTIONS" "$QUATERNARY_DBNAME|$QUATERNARY_CDB2_OPTIONS"; do
+            IFS='|' read -r db opts <<< "$pair"
+            if ! block_until_cluster_is_up $db "$opts" 60; then
+                fail_exit "setup_testcase: $db is not fully up"
+                return
+            fi
+        done
+    fi
+
+    $P_SQL "DROP TABLE IF EXISTS t" 2>/dev/null
+    # Give a moment for drop to propagate
+    sleep 1
+}
+
+########################################
+# TEST 1: Basic 2PC create
+########################################
+function test_basic_create
+{
+    echo "=== TEST: test_basic_create ==="
+    setup_testcase
+    [[ -f $stopfile ]] && return
+
+    $P_SQL "create table t(a int unique, b int) partitioned by columns(a) on (${shards})"
+    if (( $? != 0 )); then
+        fail_exit "test_basic_create: could not create partitioned table"
+        return
+    fi
+
+    verify_table "t"
+    [[ -f $stopfile ]] && return
+
+    echo "test_basic_create PASSED"
+}
+
+########################################
+# TEST 2: Basic 2PC drop
+########################################
+function test_basic_drop
+{
+    echo "=== TEST: test_basic_drop ==="
+    setup_testcase
+    [[ -f $stopfile ]] && return
+
+    # Create first
+    $P_SQL "create table t(a int unique, b int) partitioned by columns(a) on (${shards})"
+    if (( $? != 0 )); then
+        fail_exit "test_basic_drop: could not create partitioned table"
+        return
+    fi
+
+    verify_table "t"
+    [[ -f $stopfile ]] && return
+
+    # Now drop
+    $P_SQL "drop table t"
+    if (( $? != 0 )); then
+        fail_exit "test_basic_drop: could not drop partitioned table"
+        return
+    fi
+
+    # Verify llmeta is clean
+    verify_llmeta t
+    [[ -f $stopfile ]] && return
+
+    echo "test_basic_drop PASSED"
+}
+
+########################################
+# TEST 3: Create-then-drop lifecycle
+########################################
+function test_create_drop_lifecycle
+{
+    echo "=== TEST: test_create_drop_lifecycle ==="
+    setup_testcase
+    [[ -f $stopfile ]] && return
+
+    # Create
+    $P_SQL "create table t(a int unique, b int) partitioned by columns(a) on (${shards})"
+    if (( $? != 0 )); then
+        fail_exit "test_create_drop_lifecycle: could not create"
+        return
+    fi
+    verify_table "t"
+    [[ -f $stopfile ]] && return
+
+    # Drop
+    $P_SQL "drop table t"
+    if (( $? != 0 )); then
+        fail_exit "test_create_drop_lifecycle: could not drop"
+        return
+    fi
+    verify_llmeta t
+    [[ -f $stopfile ]] && return
+
+    # Re-create to verify clean state
+    $P_SQL "create table t(a int unique, b int) partitioned by columns(a) on (${shards})"
+    if (( $? != 0 )); then
+        fail_exit "test_create_drop_lifecycle: could not re-create after drop"
+        return
+    fi
+    verify_table "t"
+    [[ -f $stopfile ]] && return
+
+    # Final cleanup
+    $P_SQL "drop table t"
+
+    echo "test_create_drop_lifecycle PASSED"
+}
+
+########################################
+# TEST 4: Non-key sharding still fails with 2PC
+########################################
+function test_nonkey_sharding_fails
+{
+    echo "=== TEST: test_nonkey_sharding_fails ==="
+    setup_testcase
+    [[ -f $stopfile ]] && return
+
+    $P_SQL "create table t(a int, b int) partitioned by columns(a) on (${shards})"
+    if (( $? == 0 )); then
+        fail_exit "test_nonkey_sharding_fails: should have failed with non-key sharding column"
+        return
+    fi
+
+    echo "test_nonkey_sharding_fails PASSED"
+}
+
+########################################
+# TEST 5: Multiple create/drop cycles with 2PC
+# Stress test: create and drop multiple times to verify
+# no resource leaks or state corruption.
+########################################
+function test_multiple_create_drop
+{
+    echo "=== TEST: test_multiple_create_drop ==="
+    setup_testcase
+    [[ -f $stopfile ]] && return
+
+    for i in 1 2 3; do
+        echo "Cycle $i: create"
+        $P_SQL "create table t(a int unique, b int) partitioned by columns(a) on (${shards})"
+        if (( $? != 0 )); then
+            fail_exit "test_multiple_create_drop: create failed on cycle $i"
+            return
+        fi
+        verify_table "t"
+        [[ -f $stopfile ]] && return
+
+        echo "Cycle $i: drop"
+        $P_SQL "drop table t"
+        if (( $? != 0 )); then
+            fail_exit "test_multiple_create_drop: drop failed on cycle $i"
+            return
+        fi
+        verify_llmeta t
+        [[ -f $stopfile ]] && return
+    done
+
+    echo "test_multiple_create_drop PASSED"
+}
+
+########################################
+# 2pc outcome helpers
+########################################
+
+# Run ddl on the coordinator db directly, so the coordinator is known
+C_SQL="cdb2sql ${CDB2_OPTIONS} ${DBNAME} default"
+
+# Turn off every fault-injection tunable on every node of every shard
+function clear_debug_tunables
+{
+    local pair db opts t
+    for pair in "$DBNAME|$CDB2_OPTIONS" "$SECONDARY_DBNAME|$SECONDARY_CDB2_OPTIONS" \
+                "$TERTIARY_DBNAME|$TERTIARY_CDB2_OPTIONS" "$QUATERNARY_DBNAME|$QUATERNARY_CDB2_OPTIONS"; do
+        IFS='|' read -r db opts <<< "$pair"
+        for t in debug_fail_ddl_prepare debug_sleep_coordinator_before_commit; do
+            set_tunable $db "$opts" $t 0
+        done
+    done
+}
+
+function verify_ddl_outcome
+{
+    local kind=$1 applied=$2
+    case $kind in
+        create) if (( applied )); then verify_table t; else verify_table_gone t; fi ;;
+        drop) if (( applied )); then verify_table_gone t; else verify_table t; fi ;;
+    esac
+}
+
+function setup_outcome_ddl
+{
+    setup_testcase
+    [[ -f $stopfile ]] && return
+    if [[ "$1" != "create" ]]; then
+        $P_SQL "create table t(a int unique, b int) partitioned by columns(a) on (${shards})"
+        if (( $? != 0 )); then
+            fail_exit "setup_outcome_ddl: could not create t"
+            return
+        fi
+        verify_table t
+    fi
+}
+
+########################################
+# TEST 6: Coordinator decides abort
+# The quaternary fails to prepare, so the coordinator aborts and every shard
+# that prepared must roll its drop back.
+########################################
+function test_coordinator_decides_abort
+{
+    echo "=== TEST: test_coordinator_decides_abort ==="
+
+    setup_outcome_ddl drop
+    [[ -f $stopfile ]] && return
+
+    set_tunable $QUATERNARY_DBNAME "$QUATERNARY_CDB2_OPTIONS" debug_fail_ddl_prepare 1
+
+    $C_SQL "drop table t" 2>&1
+    local rc=$?
+    set_tunable $QUATERNARY_DBNAME "$QUATERNARY_CDB2_OPTIONS" debug_fail_ddl_prepare 0
+    if (( rc == 0 )); then
+        fail_exit "test_coordinator_decides_abort: drop should have failed"
+        return
+    fi
+
+    verify_ddl_outcome drop 0
+    [[ -f $stopfile ]] && return
+
+    echo "test_coordinator_decides_abort PASSED"
+}
+
+########################################
+# TEST 7: Replicants do not show a prepared schema change
+# The coordinator sleeps after every participant has prepared and before it
+# commits.  In that window a participant replicant must still show the table;
+# once the drop commits it must not.
+########################################
+function test_replicant_hides_prepare
+{
+    echo "=== TEST: test_replicant_hides_prepare ==="
+    # needs a replicant
+    [[ -z "$CLUSTER" ]] && { echo "SKIP: requires cluster"; return; }
+
+    setup_outcome_ddl drop
+    [[ -f $stopfile ]] && return
+
+    local master=$(find_tertiary_master) replicant node
+    for node in $CLUSTER; do
+        [[ "$node" != "$master" ]] && { replicant=$node; break; }
+    done
+    [[ -z "$replicant" ]] && { echo "SKIP: no tertiary replicant"; return; }
+
+    set_tunable $DBNAME "$CDB2_OPTIONS" debug_sleep_coordinator_before_commit 1
+
+    $C_SQL "drop table t" &
+    local drop_pid=$!
+    sleep 3
+
+    local R_SQL="$CDB2SQL_EXE --tabs $TERTIARY_CDB2_OPTIONS $TERTIARY_DBNAME --host $replicant"
+    local before=0
+    $R_SQL "select 1 from t limit 1" >/dev/null 2>&1 && before=1
+    wait $drop_pid
+    local rc=$?
+    set_tunable $DBNAME "$CDB2_OPTIONS" debug_sleep_coordinator_before_commit 0
+
+    if (( ! before )); then
+        fail_exit "test_replicant_hides_prepare: replicant $replicant lost table t before commit"
+        return
+    fi
+    if (( rc != 0 )); then
+        fail_exit "test_replicant_hides_prepare: drop failed rc=$rc"
+        return
+    fi
+    sleep 2
+    if $R_SQL "select 1 from t limit 1" >/dev/null 2>&1; then
+        fail_exit "test_replicant_hides_prepare: replicant $replicant still shows table t after commit"
+        return
+    fi
+
+    echo "test_replicant_hides_prepare PASSED"
+}
+
+########################################
+# Main
+########################################
+
+rm -f $stopfile >/dev/null 2>&1
+
+# Build comma-separated shard list for SQL
+for shard in $SHARDS_LIST; do
+    shards+=" ${shard},"
+done
+# Remove trailing comma
+shards=$(echo $shards | sed 's/.$//')
+echo "Shards: $shards"
+
+# Allow all databases as coordinators for each other
+# In single-node mode, use cdb2sql -admin directly
+function setup_coordinators
+{
+    local all_dbs="$DBNAME $SECONDARY_DBNAME $TERTIARY_DBNAME $QUATERNARY_DBNAME"
+    local db_opts_pairs=(
+        "$DBNAME|$CDB2_OPTIONS"
+        "$SECONDARY_DBNAME|$SECONDARY_CDB2_OPTIONS"
+        "$TERTIARY_DBNAME|$TERTIARY_CDB2_OPTIONS"
+        "$QUATERNARY_DBNAME|$QUATERNARY_CDB2_OPTIONS"
+    )
+
+    # allow-coordinator is per-node; in cluster mode send to every node
+    local targets="default"
+    if [[ -n "$CLUSTER" ]]; then
+        targets=""
+        for node in $CLUSTER; do
+            targets="$targets --host $node"
+        done
+    fi
+
+    for pair in "${db_opts_pairs[@]}"; do
+        IFS='|' read -r db opts <<< "$pair"
+        for coord_db in $all_dbs; do
+            if [[ -n "$CLUSTER" ]]; then
+                for node in $CLUSTER; do
+                    $CDB2SQL_EXE -admin $opts $db --host $node \
+                        "exec procedure sys.cmd.send('allow-coordinator ${coord_db}/${COORDINATOR_TIER}')" 2>/dev/null
+                done
+            else
+                $CDB2SQL_EXE -admin $opts $db default \
+                    "exec procedure sys.cmd.send('allow-coordinator ${coord_db}/${COORDINATOR_TIER}')" 2>/dev/null
+            fi
+        done
+    done
+}
+
+setup_coordinators
+
+# Wait for comdb2_distributed_transactions table to be created on all databases
+# This table is created lazily by disttxn_timer() and is required for 2PC
+function wait_dist_table
+{
+    echo "Waiting for comdb2_distributed_transactions table on all databases..."
+    local max_wait=60
+    local all_opts=(
+        "$CDB2_OPTIONS|$DBNAME"
+        "$SECONDARY_CDB2_OPTIONS|$SECONDARY_DBNAME"
+        "$TERTIARY_CDB2_OPTIONS|$TERTIARY_DBNAME"
+        "$QUATERNARY_CDB2_OPTIONS|$QUATERNARY_DBNAME"
+    )
+
+    for pair in "${all_opts[@]}"; do
+        IFS='|' read -r opts db <<< "$pair"
+        local elapsed=0
+        while [[ "$elapsed" -lt "$max_wait" ]]; do
+            local tbl=$($CDB2SQL_EXE --tabs $opts $db default \
+                "select tablename from comdb2_tables where tablename='comdb2_distributed_transactions'" 2>/dev/null)
+            if [[ "$tbl" == "comdb2_distributed_transactions" ]]; then
+                echo "  $db: table ready"
+                break
+            fi
+            sleep 1
+            elapsed=$((elapsed + 1))
+        done
+        if [[ "$elapsed" -ge "$max_wait" ]]; then
+            fail_exit "comdb2_distributed_transactions table not created on $db after ${max_wait}s"
+            return
+        fi
+    done
+    echo "All databases have comdb2_distributed_transactions table"
+}
+
+wait_dist_table
+[[ -f $stopfile ]] && { echo "Testcase failed"; exit -1; }
+
+# Run tests in order
+
+echo "========================================="
+echo "Running basic tests"
+echo "========================================="
+
+test_basic_create
+[[ -f $stopfile ]] && { echo "Testcase failed"; exit -1; }
+
+test_basic_drop
+[[ -f $stopfile ]] && { echo "Testcase failed"; exit -1; }
+
+test_create_drop_lifecycle
+[[ -f $stopfile ]] && { echo "Testcase failed"; exit -1; }
+
+test_nonkey_sharding_fails
+[[ -f $stopfile ]] && { echo "Testcase failed"; exit -1; }
+
+test_multiple_create_drop
+[[ -f $stopfile ]] && { echo "Testcase failed"; exit -1; }
+
+echo "========================================="
+echo "Running 2pc outcome tests"
+echo "========================================="
+
+for testcase in test_coordinator_decides_abort test_replicant_hides_prepare; do
+    $testcase
+    clear_debug_tunables
+    [[ -f $stopfile ]] && { echo "Testcase failed"; exit -1; }
+done
+
+echo "========================================="
+echo "All tests passed"
+echo "========================================="
+echo "Success"
