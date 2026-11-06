@@ -1878,6 +1878,7 @@ void clean_exit(void)
         abort();
 
     logmsg(LOGMSG_USER, "goodbye\n");
+    memdebug_note_clean_exit();
     exit(0);
 }
 
@@ -3895,6 +3896,7 @@ static int init(int argc, char **argv)
     }
 
     handle_cmdline_options(argc, argv, &lrlname);
+    memdebug_note_start(argc, argv);
 
     if (gbl_create_mode) {        /*  10  */
         logmsg(LOGMSG_INFO, "create mode.\n");
@@ -5779,6 +5781,7 @@ static void handle_resume_sc()
 static void goodbye()
 {
     logmsg(LOGMSG_USER, "goodbye\n");
+    memdebug_note_clean_exit();
 #ifdef GENERATE_COVERAGE
     extern void __gcov_dump(void);
     __gcov_dump();

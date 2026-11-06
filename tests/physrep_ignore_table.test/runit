@@ -99,7 +99,7 @@ function create_physrep
     
     export replog=$DEST_DBDIR/$DESTDB.log
     
-    ( timeout $TEST_TIMEOUT $COMDB2_EXE $DESTDB -lrl $DEST_DBDIR/${DESTDB}.lrl -pidfile $DEST_DBDIR/${DESTDB}.pid >$replog 2>&1) &
+    ( timeout $TEST_TIMEOUT ${DEBUG_PREFIX} $COMDB2_EXE $DESTDB -lrl $DEST_DBDIR/${DESTDB}.lrl -pidfile $DEST_DBDIR/${DESTDB}.pid >$replog 2>&1) &
 
     sleep 2
 

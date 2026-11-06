@@ -45,12 +45,12 @@ function start_db {
     echo "$COMDB2_EXE $DBNAME -dir $DBDIR"
     (
         echo "creating database"
-        $COMDB2_EXE --create $DBNAME -dir $DBDIR --tunable 'do scon' --tunable "setattr maxappsockslimit $APPSOX"
+        ${MEMORY_TOOL_VARIANT:+$DEBUG_PREFIX} $COMDB2_EXE --create $DBNAME -dir $DBDIR --tunable 'do scon' --tunable "setattr maxappsockslimit $APPSOX"
         echo " initial ulimit -n: $(ulimit -n)"
         ulimit -n ${MAXFDS}
         echo "adjusted ulimit -n: $(ulimit -n)"
         echo "starting database"
-        $COMDB2_EXE $DBNAME -dir $DBDIR --pidfile $DBDIR/my.pid
+        ${DEBUG_PREFIX} $COMDB2_EXE $DBNAME -dir $DBDIR --pidfile $DBDIR/my.pid
     ) > $DBDIR/server.txt 2>&1 &
     while [ ! -f $DBDIR/my.pid ] ; do
         sleep 0.1

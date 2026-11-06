@@ -56,7 +56,7 @@ function setup_physical_replicant
     sed -i "s/qdump const2 const2.txt 0/qdump const2 rconst2.txt 0/g" $DEST_DBDIR/${DESTDB}.lrl
     sed -i "s/qdump const3 const3.txt 1/qdump const3 rconst3.txt 1/g" $DEST_DBDIR/${DESTDB}.lrl
 
-    (cd $DBDIR; timeout --kill-after=5s $TEST_TIMEOUT $COMDB2_EXE $DESTDB --lrl $DEST_DBDIR/${DESTDB}.lrl > $REPLOG 2>&1 &) &
+    (cd $DBDIR; timeout --kill-after=5s $TEST_TIMEOUT ${DEBUG_PREFIX} $COMDB2_EXE $DESTDB --lrl $DEST_DBDIR/${DESTDB}.lrl > $REPLOG 2>&1 &) &
     PHYSREP_PID=$!
 
     out=

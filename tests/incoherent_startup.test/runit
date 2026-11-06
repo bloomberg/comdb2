@@ -30,7 +30,7 @@ cluster=$($CDB2SQL_EXE --tabs ${CDB2_OPTIONS} ${DBNAME} default "select host fro
 mv --backup=numbered ${TESTDIR}/logs/${DBNAME}.${host}.db ${TESTDIR}/logs/${DBNAME}.${host}.db.1
 
 PARAMS="$DBNAME --no-global-lrl"
-CMD="source ${TESTDIR}/replicant_vars ; ${COMDB2_EXE} ${PARAMS} --lrl $DBDIR/${DBNAME}.lrl -pidfile ${TMPDIR}/${DBNAME}.pid"
+CMD="source ${TESTDIR}/replicant_vars ; ${DEBUG_PREFIX} ${COMDB2_EXE} ${PARAMS} --lrl $DBDIR/${DBNAME}.lrl -pidfile ${TMPDIR}/${DBNAME}.pid"
 
 otherhosts=$($CDB2SQL_EXE --tabs ${CDB2_OPTIONS} ${DBNAME} --host $master "select host from comdb2_cluster where host != '$host' and is_master='N'")
 
@@ -39,7 +39,7 @@ for other in $otherhosts; do
     $CDB2SQL_EXE ${CDB2_OPTIONS} ${DBNAME} --host $other "select comdb2_host(), count(*) from t"
 done
 
-ssh -o StrictHostKeyChecking=no -tt $host ${DEBUG_PREFIX} ${CMD} 2>&1 </dev/null > >(gawk '{ print strftime("%H:%M:%S>"), $0; fflush(); }' >> $TESTDIR/logs/${DBNAME}.${host}.db) &
+ssh -o StrictHostKeyChecking=no -tt $host ${CMD} 2>&1 </dev/null > >(gawk '{ print strftime("%H:%M:%S>"), $0; fflush(); }' >> $TESTDIR/logs/${DBNAME}.${host}.db) &
 kpid=$!
 
 failed=0
