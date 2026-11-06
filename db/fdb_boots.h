@@ -38,6 +38,13 @@ int fdb_locate(const char *dbname, enum mach_class class, int refresh,
                fdb_location_t **ploc, pthread_mutex_t *mtx);
 
 /**
+ * Is node one of the nodes of loc
+ * NOTE: caller holds the mutex protecting loc
+ *
+ */
+int fdb_location_has_node(fdb_location_t *loc, const char *node);
+
+/**
  * Routing algo
  *
  * Actions:

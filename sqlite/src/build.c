@@ -738,6 +738,21 @@ Table *sqlite3LocateTable(
 
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
 extern int gbl_allow_user_schema;
+extern const char *fdb_rempush_srcdb(const char *table);
+extern int fdb_rempush_validate(char *err, int errlen);
+
+/*
+** A table of a pushed statement resolved to the source db: the source db is
+** discovered now, check that the source node is one of its nodes.
+*/
+static Table *rempushValidate(Parse *pParse, Table *pTab, const char *zSrcDb){
+  char zErr[256];
+  if( pTab && zSrcDb && fdb_rempush_validate(zErr, sizeof(zErr)) ){
+    sqlite3ErrorMsg(pParse, "%s", zErr);
+    return 0;
+  }
+  return pTab;
+}
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
 /*
@@ -763,16 +778,30 @@ Table *sqlite3LocateTableItem(
     zDb = p->zDatabase;
   }
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
+  /* a statement pushed from a source db: unqualified tables are tables of
+  ** the source db, as seen by its client
+  */
+  const char *zSrcDb = NULL;
+  if( zDb==0 && !pParse->db->init.busy && !p->fg.isTabFunc
+   && !sqlite3HashFind(&pParse->db->aModule, p->zName) ){
+    /* table-valued functions and virtual tables are evaluated locally */
+    zSrcDb = fdb_rempush_srcdb(p->zName);
+    if( zSrcDb ) zDb = zSrcDb;
+  }
   if( gbl_allow_user_schema ){
     char tblName[MAXTABLELEN];
     if (resolveTableName(pParse->db, p, zDb, tblName, sizeof(tblName))) {
         sqlite3ErrorMsg(pParse, "failed to resolve table name");
         return 0;
     }
-    return sqlite3LocateTable(pParse, flags, tblName, zDb);
+    Table *pTab = sqlite3LocateTable(pParse, flags, tblName, zDb);
+    return rempushValidate(pParse, pTab, zSrcDb);
   }
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+  Table *pTab = sqlite3LocateTable(pParse, flags, p->zName, zDb);
+  return rempushValidate(pParse, pTab, zSrcDb);
+#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   return sqlite3LocateTable(pParse, flags, p->zName, zDb);
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 }
 
 /*
