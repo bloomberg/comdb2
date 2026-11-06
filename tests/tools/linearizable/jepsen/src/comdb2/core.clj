@@ -121,6 +121,8 @@
   [conn]
   (with-retry [tries 30]
     (info "Waiting for conn")
+    ; hasql is rejected below snapshot isolation
+    (query conn ["set transaction serializable"])
     (query conn ["set hasql on"])
     ; I know it says "nontransient" but maaaybe it is???
     (catch java.sql.SQLNonTransientConnectionException e
@@ -166,6 +168,8 @@
 (defn hasql!
   "Set up hasql for a transaction."
   [c]
+  ; hasql is rejected below snapshot isolation
+  (query c ["set transaction serializable"])
   (query c ["set hasql on"])
   (query c ["set max_retries 100000"]))
 
