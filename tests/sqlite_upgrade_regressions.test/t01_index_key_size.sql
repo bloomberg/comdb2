@@ -1,0 +1,6 @@
+CREATE TABLE t1(a INT, b INT)$$
+CREATE INDEX t1_b ON t1(b);
+INSERT INTO t1 VALUES(1, 1), (2, 1), (3, 2);
+SELECT COUNT(*) FROM t1 WHERE b = 1;
+SELECT value FROM generate_series(1, 3) ORDER BY -value LIMIT 1;
+DROP TABLE t1;

@@ -34,4 +34,7 @@ macro(add_plugin LIBNAME TYPE SOURCES)
   else()
     message(FATAL_ERROR "Unsupported COMDB2_PLUGIN_TYPE : ${COMDB2_PLUGIN_TYPE}")
   endif()
+
+  # Every plugin includes <bbinc/comdb2_plugin.h>, which in turn includes <sqlite3.h>.
+  add_dependencies(${LIBNAME} sqlite3_header)
 endmacro()

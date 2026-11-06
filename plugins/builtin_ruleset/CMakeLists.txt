@@ -20,6 +20,7 @@ include_directories(
   ${PROJECT_BINARY_DIR}/db
   ${PROJECT_BINARY_DIR}/mem
   ${PROJECT_BINARY_DIR}/protobuf
+  ${PROJECT_BINARY_DIR}/sqlite
   ${CMAKE_CURRENT_BINARY_DIR}
   ${OPENSSL_INCLUDE_DIR}
 )

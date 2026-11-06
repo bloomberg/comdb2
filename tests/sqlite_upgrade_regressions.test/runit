@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+bash -n "$0" || exit 1
+
+source ${TESTSROOTDIR}/tools/runstepper.sh
+
+${TESTSROOTDIR}/tools/compare_results.sh -s -d $1
+[ $? -eq 0 ] || exit 1
+
+# cdb2sql strips a statement's trailing semicolon, which SET MULTILINE ON
+# requires, so these run through stepper instead.
+for script in *.stepper; do
+    testname=${script%.stepper}
+    runstepper $1 $script $testname.output 1
+    if ! diff -u $testname.expected $testname.output; then
+        echo "failed $testname"
+        exit 1
+    fi
+    echo "passed $testname"
+done
+exit 0

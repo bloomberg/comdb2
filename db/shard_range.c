@@ -237,7 +237,7 @@ static int _colIndex(Table *pTab, const char *zCol)
     Column *pCol;
 
     for (j = 0, pCol = pTab->aCol; j < pTab->nCol; j++, pCol++)
-        if (sqlite3StrICmp(pCol->zName, zCol) == 0)
+        if (sqlite3StrICmp(pCol->zCnName, zCol) == 0)
             return j;
     return -1;
 }

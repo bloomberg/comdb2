@@ -1,0 +1,1 @@
+(current_timestamp IS NOT NULL=1)

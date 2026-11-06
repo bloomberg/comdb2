@@ -2011,7 +2011,7 @@ char *fdb_sqlexplain_get_field_name(struct sqlclntstate *clnt, Vdbe *v, int root
     }
 
 done:
-    return pCol ? pCol->zName : NULL;
+    return pCol ? pCol->zCnName : NULL;
 }
 
 static int _fdb_remote_reconnect(fdb_t *fdb, COMDB2BUF **psb, char *host, int use_cache)

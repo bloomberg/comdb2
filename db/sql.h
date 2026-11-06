@@ -1194,6 +1194,7 @@ struct Btree {
     unsigned is_temporary : 1;
     unsigned is_hashtable : 1;
     unsigned is_remote : 1;
+    unsigned is_single : 1;
 
     hash_t *temp_tables;
     int num_temp_tables;

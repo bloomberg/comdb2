@@ -32,7 +32,7 @@
 */
 
 // reach into sqlite innards a bit for these
-extern int sqlite3GetToken(const unsigned char *z, int *tokenType);
+extern sqlite3_int64 sqlite3GetToken(const unsigned char *z, int *tokenType);
 extern int sqlite3ParserFallback(int iToken);
 
 
@@ -161,8 +161,8 @@ static int systblKeywordsColumn(
             strncpy(kw, zName, nName);
             kw[nName] = 0;
 
-            rc = sqlite3GetToken((unsigned char*) kw, &tok);
-            if (rc > 0) {
+            sqlite3_int64 nTok = sqlite3GetToken((unsigned char*) kw, &tok);
+            if (nTok > 0) {
                 int isfallback = sqlite3ParserFallback(tok);
                 sqlite3_result_text(ctx, isfallback ? "N" : "Y", 1, NULL);
             }
