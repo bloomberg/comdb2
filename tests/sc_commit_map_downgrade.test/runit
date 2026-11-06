@@ -1,0 +1,198 @@
+#!/usr/bin/env bash
+bash -n "$0" || exit 1
+
+# sc_commit_map_skip on a cluster.  Only the master keeps its converter commits
+# out of the commit LSN map; replicants still add them.  A master that loses
+# mastership mid rebuild, even while waiting for its checkpoint, leaves the
+# rebuild to the next master instead of aborting it, and every node reads the
+# rebuilt table correctly afterwards.
+
+source ${TESTSROOTDIR}/tools/runit_common.sh
+source ${TESTSROOTDIR}/tools/cluster_utils.sh
+set -o pipefail
+
+[ -z "${CLUSTER}" ] && { echo "Test requires a cluster"; exit 0; }
+
+dbnm=$1
+N=${SC_COMMIT_MAP_ROWS:-5000}
+SLACK=${SC_COMMIT_MAP_SLACK:-200}
+SUM=$((N * (N + 1) / 2))
+
+on() { local h=$1; shift; cdb2sql --tabs ${CDB2_OPTIONS} --host "$h" "$dbnm" "$@"; }
+master() { getmaster; }
+fail() { echo "FAIL: $*"; exit 1; }
+log() { echo $TESTDIR/logs/$dbnm.$1.db; }
+entries() { on $1 "exec procedure sys.cmd.send('bdb clminfo')" | grep -oP '(?<=Entries: )[0-9]+'; }
+snapshot() {
+	on $1 - <<EOF | grep -v -e '^$' -e '^\['
+set transaction snapshot isolation
+begin
+$2
+commit
+EOF
+}
+
+# every node reads the table, in a snapshot, as it should be
+check_nodes() {
+	local tbl=$1 node got
+	for node in $CLUSTER; do
+		for _ in $(seq 1 60); do
+			got=$(snapshot $node "select count(*), sum(j) from $tbl" 2>/dev/null)
+			[[ "$got" == "$N	$SUM" ]] && break
+			sleep 1
+		done
+		[[ "$got" == "$N	$SUM" ]] || fail "$tbl on $node: got '$got'"
+	done
+}
+
+wait_committed() {
+	local st
+	for _ in $(seq 1 300); do
+		st=$(on $(master) "select status from comdb2_sc_status where name='$1'" 2>/dev/null)
+		[[ "$st" == "COMMITTED" ]] && return 0
+		[[ "$st" == "ABORTED" ]] && fail "schema change of $1 was aborted"
+		sleep 1
+	done
+	fail "schema change of $1 did not finish: '$st'"
+}
+
+fill() {
+	on $(master) "create table $1(i int, j int)" >/dev/null || fail "create $1"
+	on $(master) "insert into $1 select value, value from generate_series(1, $N)" >/dev/null || fail "fill $1"
+}
+
+for node in $CLUSTER; do
+	on $node "exec procedure sys.cmd.send('sync log-delete off 3600')" >/dev/null
+done
+trap 'for node in $CLUSTER; do on $node "exec procedure sys.cmd.send(\"sync log-delete on\")" >/dev/null 2>&1; done' EXIT
+
+echo "=== only the master leaves the converter commits out"
+fill t
+m=$(master)
+declare -A before
+for node in $CLUSTER; do before[$node]=$(entries $node); done
+on $m "rebuild t" >/dev/null || fail "rebuild t"
+check_nodes t
+for node in $CLUSTER; do
+	delta=$(( $(entries $node) - before[$node] ))
+	echo "$node: $delta entries"
+	if [[ $node == $m ]]; then
+		(( delta < SLACK )) || fail "master $node added $delta entries"
+	else
+		(( delta >= N )) || fail "replicant $node added only $delta entries"
+	fi
+done
+
+echo "=== a downgrade while the master waits for its checkpoint leaves the rebuild to the next master"
+fill d
+m=$(master)
+holds=$(grep -c "holding before the commit LSN map checkpoint" "$(log $m)")
+on $m "put tunable 'debug_sc_commit_map_checkpoint_hold' 1" >/dev/null
+on $m "rebuild d" >/dev/null 2>&1 &
+rb_pid=$!
+for _ in $(seq 1 600); do
+	(( $(grep -c "holding before the commit LSN map checkpoint" "$(log $m)") > holds )) && break
+	sleep 0.1
+done
+(( $(grep -c "holding before the commit LSN map checkpoint" "$(log $m)") > holds )) || fail "rebuild of d never held"
+downgrade_master
+on $m "put tunable 'debug_sc_commit_map_checkpoint_hold' 0" >/dev/null
+wait $rb_pid
+grep -q "Master downgrading before the commit LSN map checkpoint" "$(log $m)" || fail "downgrade did not stop the wait on $m"
+wait_committed d
+nm=$(master)
+echo "old master $m, new master $nm"
+grep -q "checkpoint is past the converter commits" "$(log $nm)" || fail "new master $nm did not checkpoint"
+check_nodes d
+on $nm "exec procedure sys.cmd.send('llmeta list')" | grep "LLMETA_SCHEMACHANGE" | grep -v "HISTORY" | grep -qw d &&
+	fail "schema change of d left in llmeta"
+
+echo "=== a checkpoint blocked past the timeout hands mastership over; the next master publishes"
+fill b
+m=$(master)
+on $m "put tunable 'sc_commit_map_checkpoint_timeout_ms' 2000" >/dev/null
+on $m "exec procedure sys.cmd.send('bdb setattr DELAY_WRITES_IN_RECORD_C 8000')" >/dev/null
+# an application transaction that holds the checkpoint back past the timeout
+on $m "insert into t values(-1, -1), (-2, -2)" >/dev/null 2>&1 &
+ins_pid=$!
+sleep 1
+on $m "rebuild b" >/dev/null 2>&1 &
+rb_pid=$!
+for _ in $(seq 1 300); do
+	grep -q "transferring mastership" "$(log $m)" && break
+	sleep 0.1
+done
+grep -q "transferring mastership" "$(log $m)" || fail "blocked checkpoint did not transfer mastership"
+wait $rb_pid
+wait $ins_pid
+on $m "exec procedure sys.cmd.send('bdb setattr DELAY_WRITES_IN_RECORD_C 0')" >/dev/null 2>&1
+on $m "put tunable 'sc_commit_map_checkpoint_timeout_ms' 600000" >/dev/null 2>&1
+wait_committed b
+nm=$(master)
+echo "old master $m, new master $nm"
+check_nodes b
+on $nm "delete from t where i < 0" >/dev/null
+
+# hold the master's rebuild of $1 at its checkpoint; prints the master
+hold_rebuild() {
+	local m=$(master) holds
+	holds=$(grep -c "holding before the commit LSN map checkpoint" "$(log $m)")
+	on $m "put tunable 'debug_sc_commit_map_checkpoint_hold' 1" >/dev/null
+	on $m "rebuild $1" >/dev/null 2>&1 &
+	for _ in $(seq 1 600); do
+		(( $(grep -c "holding before the commit LSN map checkpoint" "$(log $m)") > holds )) && break
+		sleep 0.1
+	done
+	(( $(grep -c "holding before the commit LSN map checkpoint" "$(log $m)") > holds )) || fail "rebuild of $1 never held"
+	echo $m
+}
+
+echo "=== a snapshot on the old master, started before the downgrade, never reads a partial table"
+fill f
+m=$(hold_rebuild f) || fail "rebuild of f never held"
+fifo=$TMPDIR/old.fifo
+out=$TMPDIR/old.out
+rm -f "$fifo"
+mkfifo "$fifo"
+cdb2sql --tabs ${CDB2_OPTIONS} --host "$m" "$dbnm" - <"$fifo" >"$out" 2>&1 &
+snap_pid=$!
+exec 9>"$fifo"
+printf '%s\n' "set transaction snapshot isolation" "begin" "select count(*), sum(j) from f" >&9
+for _ in $(seq 1 100); do grep -q "^$N	$SUM$" "$out" && break; sleep 0.1; done
+grep -q "^$N	$SUM$" "$out" || { cat "$out"; fail "snapshot on $m did not start"; }
+downgrade_master
+on $m "put tunable 'debug_sc_commit_map_checkpoint_hold' 0" >/dev/null 2>&1
+wait_committed f
+printf '%s\n' "select count(*), sum(j) from f" "commit" >&9
+exec 9>&-
+wait $snap_pid
+cat "$out"
+grep -E "^[0-9]+	" "$out" | grep -v "^$N	$SUM$" && fail "snapshot on the old master read a partial table"
+echo "old master $m, new master $(master)"
+# after the old snapshot: fresh snapshots on that node running the same query
+# first, then a schema change there, leave an sql engine with an unfinalized
+# statement (happens without sc_commit_map_skip too)
+check_nodes f
+
+echo "=== a master swing during conversion: the next master resumes, every node reads the result"
+fill s
+m=$(master)
+on $m "exec procedure sys.cmd.send('bdb setattr SC_FORCE_DELAY 1')" >/dev/null
+on $m "rebuild s" >/dev/null 2>&1 &
+rb_pid=$!
+for _ in $(seq 1 100); do
+	converted=$(on $m "select coalesce(max(converted), 0) from comdb2_sc_status where name='s'")
+	(( converted > 0 )) && break
+	sleep 0.1
+done
+(( converted > 0 )) || fail "rebuild of s never started"
+downgrade_master
+on $m "exec procedure sys.cmd.send('bdb setattr SC_FORCE_DELAY 0')" >/dev/null
+wait $rb_pid
+wait_committed s
+check_nodes s
+
+for tbl in t d b f s; do
+	do_verify $tbl
+done
+echo "Passed test"

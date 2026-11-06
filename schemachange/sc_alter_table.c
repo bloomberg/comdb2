@@ -295,6 +295,59 @@ static void backout(struct dbtable *db)
     live_sc_off(db);
 }
 
+/* Stop live writes into newdb, then remove it unless it is borrowed */
+static int backout_conversion(struct ireq *iq, struct schema_change_type *s, struct dbtable *db, struct dbtable *newdb,
+                              int borrowed)
+{
+    int rc = 0;
+
+    /* For live schema change, MUST do this before trying to remove
+     * the .new tables or you get crashes */
+    live_sc_off(db);
+
+    while (s->logical_livesc) {
+        usleep(200);
+    }
+
+    if (db->sc_live_logical) {
+        bdb_clear_logical_live_sc(db->handle, 1 /* lock table */);
+        db->sc_live_logical = 0;
+    }
+
+    backout_constraint_pointers(newdb, db);
+    if (!borrowed)
+        rc = delete_temp_table(iq, newdb);
+    change_schemas_recover(s->tablename);
+    return rc;
+}
+
+/* Back out an alter whose conversion finished but which cannot be finalized.
+ * Returns nonzero if the replacement could not be removed. */
+int backout_converted_alter(struct ireq *iq, struct schema_change_type *s)
+{
+    int rc = backout_conversion(iq, s, s->db, s->newdb, 0);
+    unlink_reverse_constraints(s->newdb);
+    freedb(s->newdb);
+    s->newdb = NULL;
+    return rc;
+}
+
+extern int gbl_sc_commit_map_skip;
+
+/* Converter commits can stay out of the commit LSN map only while they write
+ * this schema change's own replacement, which no reader can see before it is
+ * published.  A merge copies rows into a table that may already be readable,
+ * and a sharding function sends them to other tables.  Decided, and the
+ * replacement marked, under the schema lock that opened it: a snapshot that
+ * caches the replacement's version afterwards finds the mark. */
+static void set_sc_commit_map_skip(struct schema_change_type *s, struct dbtable *db, struct dbtable *newdb)
+{
+    s->sc_skip_commit_map = gbl_sc_commit_map_skip && s->partition.type != PARTITION_MERGE && !db->sharding_func &&
+                            get_dbtable_by_name(newdb->tablename) != newdb;
+    if (s->sc_skip_commit_map)
+        bdb_set_sc_commit_map_skip(newdb->handle, 1);
+}
+
 static inline int wait_to_resume(struct schema_change_type *s)
 {
     if (s->resume) {
@@ -481,6 +534,7 @@ int do_alter_table(struct ireq *iq, struct schema_change_type *s,
     if (s->resume == SC_PREEMPT_RESUME) {
         newdb = db->sc_to;
         changed = s->schema_change;
+        set_sc_commit_map_skip(s, db, newdb);
         goto convert_records;
     }
 
@@ -613,6 +667,8 @@ int do_alter_table(struct ireq *iq, struct schema_change_type *s,
             unlock_schema_lk();
         clean_exit();
     }
+
+    set_sc_commit_map_skip(s, db, newdb);
 
     if (local_lock)
         unlock_schema_lk();
@@ -804,8 +860,6 @@ convert_records:
 
 errout:
     if (rc && rc != SC_MASTER_DOWNGRADE) {
-        /* For live schema change, MUST do this before trying to remove
-         * the .new tables or you get crashes */
         if (gbl_sc_abort || db->sc_abort || iq->sc_should_abort ||
             rc == SC_ABORTED) {
             sc_errf(s, "convert_all_records aborted\n");
@@ -813,25 +867,11 @@ errout:
             sc_errf(s, "convert_all_records failed\n");
         }
 
-        live_sc_off(db);
-
         for (i = 0; i < gbl_dtastripe; i++) {
             sc_errf(s, "  > [%s] stripe %2d was at 0x%016llx\n", s->tablename, i, db->sc_genids[i]);
         }
 
-        while (s->logical_livesc) {
-            usleep(200);
-        }
-
-        if (db->sc_live_logical) {
-            bdb_clear_logical_live_sc(db->handle, 1 /* lock table */);
-            db->sc_live_logical = 0;
-        }
-
-        backout_constraint_pointers(newdb, db);
-        if (!newdb_borrowed_from_partition)
-            delete_temp_table(iq, newdb);
-        change_schemas_recover(s->tablename);
+        backout_conversion(iq, s, db, newdb, newdb_borrowed_from_partition);
         return rc;
     }
     newdb->iq = NULL;

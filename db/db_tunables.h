@@ -2634,6 +2634,21 @@ REGISTER_TUNABLE("alternate_normalize",
 REGISTER_TUNABLE("sc_logbytes_per_second",
                  "Throttle schema-changes to this many logbytes per second.  (Default: 10000000)",
                  TUNABLE_INTEGER, &gbl_sc_logbytes_per_second, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("sc_commit_map_skip",
+                 "Keep schema-change rebuild commits out of the commit LSN map on the master; the schema change "
+                 "checkpoints past them before publishing.  (Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_sc_commit_map_skip, 0, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("sc_commit_map_checkpoint_timeout_ms",
+                 "Transfer mastership (or fail the schema change on a standalone master) when a transaction holds "
+                 "the commit LSN map checkpoint back this long; 0 waits forever.  (Default: 600000)",
+                 TUNABLE_INTEGER, &gbl_sc_commit_map_checkpoint_timeout_ms, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL,
+                 NULL);
+REGISTER_TUNABLE("debug_sc_commit_map_checkpoint_hold",
+                 "Hold schema changes before their commit LSN map checkpoint.  (Default: off)", TUNABLE_BOOLEAN,
+                 &gbl_debug_sc_commit_map_checkpoint_hold, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("debug_sc_commit_map_checkpoint_fail",
+                 "Fail the commit LSN map checkpoint of schema changes.  (Default: off)", TUNABLE_BOOLEAN,
+                 &gbl_debug_sc_commit_map_checkpoint_fail, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 
 REGISTER_TUNABLE("net_somaxconn",
                  "listen() backlog setting.  (Default: 0, implies system default)",

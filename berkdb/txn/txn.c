@@ -1098,7 +1098,7 @@ __txn_commit_int(txnp, flags, ltranid, llid, last_commit_lsn, rlocks, inlks,
 		DB_TXN_LOGICAL_BEGIN | DB_TXN_LOGICAL_COMMIT | DB_TXN_NOSYNC |
 		DB_TXN_SYNC | DB_TXN_REP_ACK | DB_TXN_DONT_GET_REPO_MTX |
 		DB_TXN_SCHEMA_LOCK | DB_TXN_LOGICAL_GEN | DB_TXN_DIST_PREPARE |
-		DB_TXN_DIST_UPD_SHADOWS) != 0)
+		DB_TXN_DIST_UPD_SHADOWS | DB_TXN_SC_SKIP_COMMIT_MAP) != 0)
 		flags = DB_TXN_SYNC;
 	if (__db_fcchk(dbenv,
 		"DB_TXN->commit", flags, DB_TXN_NOSYNC, DB_TXN_SYNC) != 0)
@@ -1571,7 +1571,12 @@ __txn_commit_int(txnp, flags, ltranid, llid, last_commit_lsn, rlocks, inlks,
 
 	Pthread_mutex_lock(&dbenv->txmap->txmap_mutexp);
 
-	if (commit_lsn_map && !txnp->parent) {
+	/*
+	 * A schema-change converter writes only to a replacement table that no
+	 * snapshot can read until it is published, and the schema change takes a
+	 * checkpoint past these commits before publishing it.
+	 */
+	if (commit_lsn_map && !txnp->parent && !LF_ISSET(DB_TXN_SC_SKIP_COMMIT_MAP)) {
 		ret = __txn_commit_map_add_nolock(dbenv, txnp->utxnid, txnp->last_lsn);
 		if (ret != 0) {
 			Pthread_mutex_unlock(&dbenv->txmap->txmap_mutexp);
@@ -2792,6 +2797,54 @@ int gbl_ckp_sleep_before_sync = 0;
 int gbl_disable_ckp = 0;
 
 /*
+ * __txn_checkpoint_floor --
+ *	Lower *ckp_lsnp to the begin LSN of the oldest active, logical or
+ *	prepared transaction: the lowest LSN a checkpoint taken now can record.
+ *
+ * PUBLIC: void __txn_checkpoint_floor __P((DB_ENV *, DB_LSN *));
+ */
+void
+__txn_checkpoint_floor(dbenv, ckp_lsnp)
+	DB_ENV *dbenv;
+	DB_LSN *ckp_lsnp;
+{
+	DB_LSN ltrans_ckp_lsn, prepared;
+	DB_TXNMGR *mgr;
+	DB_TXNREGION *region;
+	TXN_DETAIL *txnp;
+
+	mgr = dbenv->tx_handle;
+	region = mgr->reginfo.primary;
+
+	/*
+	 * Find the oldest active transaction and figure out its "begin" LSN.
+	 * This is the lowest LSN we can checkpoint, since any record written
+	 * after it may be involved in a transaction and may therefore need
+	 * to be undone in the case of an abort.
+	 */
+	R_LOCK(dbenv, &mgr->reginfo);
+	for (txnp = SH_TAILQ_FIRST(&region->active_txn, __txn_detail);
+		txnp != NULL;
+		txnp = SH_TAILQ_NEXT(txnp, links, __txn_detail))
+		if (!IS_ZERO_LSN(txnp->begin_lsn) &&
+			log_compare(&txnp->begin_lsn, ckp_lsnp) < 0)
+			*ckp_lsnp = txnp->begin_lsn;
+
+	__txn_ltrans_find_lowest_lsn(dbenv, &ltrans_ckp_lsn);
+	R_UNLOCK(dbenv, &mgr->reginfo);
+
+	if (!IS_ZERO_LSN(ltrans_ckp_lsn) &&
+		log_compare(&ltrans_ckp_lsn, ckp_lsnp) < 0)
+		*ckp_lsnp = ltrans_ckp_lsn;
+
+	__txn_lowest_prepared_lsn(dbenv, &prepared);
+	if (!IS_ZERO_LSN(prepared) &&
+		log_compare(&prepared, ckp_lsnp) < 0) {
+		*ckp_lsnp = prepared;
+	}
+}
+
+/*
  * __txn_checkpoint --
  *	DB_ENV->txn_checkpoint.
  *
@@ -2804,10 +2857,9 @@ __txn_checkpoint(dbenv, kbytes, minutes, flags)
 	u_int32_t kbytes, minutes, flags;
 {
 	struct mintruncate_entry *newmt;
-	DB_LSN ckp_lsn, last_ckp, ltrans_ckp_lsn, ckp_lsn_sav, prepared;
+	DB_LSN ckp_lsn, last_ckp, ckp_lsn_sav;
 	DB_TXNMGR *mgr;
 	DB_TXNREGION *region;
-	TXN_DETAIL *txnp;
 	DB_LOG *dblp;
 	LOG *lp;
 	time_t last_ckp_time, now;
@@ -2883,33 +2935,7 @@ do_ckp:
 
 	/* Retrieve lsn again after locking */
 	__log_txn_lsn(dbenv, &ckp_lsn, &mbytes, &bytes);
-
-	/*
-	 * Find the oldest active transaction and figure out its "begin" LSN.
-	 * This is the lowest LSN we can checkpoint, since any record written
-	 * after it may be involved in a transaction and may therefore need
-	 * to be undone in the case of an abort.
-	 */
-	R_LOCK(dbenv, &mgr->reginfo);
-	for (txnp = SH_TAILQ_FIRST(&region->active_txn, __txn_detail);
-		txnp != NULL;
-		txnp = SH_TAILQ_NEXT(txnp, links, __txn_detail))
-		if (!IS_ZERO_LSN(txnp->begin_lsn) &&
-			log_compare(&txnp->begin_lsn, &ckp_lsn) < 0)
-			ckp_lsn = txnp->begin_lsn;
-
-	__txn_ltrans_find_lowest_lsn(dbenv, &ltrans_ckp_lsn);
-	R_UNLOCK(dbenv, &mgr->reginfo);
-
-	if (!IS_ZERO_LSN(ltrans_ckp_lsn) &&
-		log_compare(&ltrans_ckp_lsn, &ckp_lsn) < 0)
-		ckp_lsn = ltrans_ckp_lsn;
-
-	__txn_lowest_prepared_lsn(dbenv, &prepared);
-	if (!IS_ZERO_LSN(prepared) &&
-		log_compare(&prepared, &ckp_lsn) < 0) {
-		ckp_lsn = prepared;
-	}
+	__txn_checkpoint_floor(dbenv, &ckp_lsn);
 	if (unlikely(gbl_ckp_sleep_before_sync > 0))
 		usleep(gbl_ckp_sleep_before_sync * 1000LL);
 

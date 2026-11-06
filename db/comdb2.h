@@ -1393,6 +1393,7 @@ struct ireq {
     /************/
     uint8_t region3; /* used for offsetof */
 
+    uint8_t sc_skip_commit_map; /* schema-change converter: keep commits out of the commit LSN map */
     uint64_t startus; /* thread handling; start time stamp */
     /* for waking up socket thread. */
     void *request_data;
