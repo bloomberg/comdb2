@@ -2363,9 +2363,19 @@ struct __lc_cache {
 	pthread_mutex_t lk;
 };
 
+/*
+ * Class of a btree file, from its name, for the order in which a replicant
+ * takes a replicated transaction's page locks (see __lock_get_list_ordered).
+ */
+#define DB_LKCLASS_INDEX 1
+#define DB_LKCLASS_DATA 2
+#define DB_LKCLASS_BLOB 3
+#define DB_LKCLASS_OTHER 4
+
 struct __ufid_to_db_t {
 	u_int8_t ufid[DB_FILE_ID_LEN];
 	int ignore : 1;
+	u_int8_t lock_class;	/* DB_LKCLASS_*, from fname */
 	void *log_trigger;
 	char *fname;
 	DB *dbp;

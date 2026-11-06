@@ -445,6 +445,27 @@ __ufid_dump(dbenv)
 
 #include <tohex.h>
 
+/*
+ * Class of a btree file for the replicant lock order, from the suffix of its
+ * name: ".index" (".ix<n>" for old names), ".data" or ".datas<n>" (striped),
+ * ".blob" or ".blobs<n>".
+ */
+static u_int8_t
+__ufid_fname_lock_class(const char *fname)
+{
+	const char *dot = fname ? strrchr(fname, '.') : NULL;
+
+	if (dot == NULL)
+		return DB_LKCLASS_OTHER;
+	if (strcmp(dot, ".index") == 0 || strncmp(dot, ".ix", 3) == 0)
+		return DB_LKCLASS_INDEX;
+	if (strncmp(dot, ".data", 5) == 0)
+		return DB_LKCLASS_DATA;
+	if (strncmp(dot, ".blob", 5) == 0)
+		return DB_LKCLASS_BLOB;
+	return DB_LKCLASS_OTHER;
+}
+
 // PUBLIC: int __ufid_add_dbp __P(( DB_ENV *, DB *));
 int
 __ufid_add_dbp(dbenv, dbp)
@@ -472,10 +493,12 @@ __ufid_add_dbp(dbenv, dbp)
 			ufid->fname = strdup(dbp->fname);
 			ufid->ignore = dbenv->rep_ignore ? dbenv->rep_ignore(ufid->fname) : 0;
 			ufid->log_trigger = dbenv->rep_is_log_trigger ? dbenv->rep_is_log_trigger(ufid->fname) : 0;
+			ufid->lock_class = __ufid_fname_lock_class(ufid->fname);
 		} else {
 			ufid->fname = NULL;
 			ufid->ignore = 0;
 			ufid->log_trigger = 0;
+			ufid->lock_class = DB_LKCLASS_OTHER;
 		}
 		hash_add(dbenv->ufid_to_db_hash, ufid);
 	}
@@ -752,6 +775,22 @@ __ufid_to_fname(dbenv, fname, inufid)
 	}
 	Pthread_mutex_unlock(&dbenv->ufid_to_db_lk);
 	return ret;
+}
+
+// PUBLIC: int __ufid_to_lock_class __P(( DB_ENV *, u_int8_t *));
+int
+__ufid_to_lock_class(dbenv, inufid)
+	DB_ENV *dbenv;
+	u_int8_t *inufid;
+{
+	struct __ufid_to_db_t *ufid;
+	int cls = DB_LKCLASS_OTHER;
+
+	Pthread_mutex_lock(&dbenv->ufid_to_db_lk);
+	if ((ufid = hash_find(dbenv->ufid_to_db_hash, inufid)) != NULL)
+		cls = ufid->lock_class;
+	Pthread_mutex_unlock(&dbenv->ufid_to_db_lk);
+	return cls;
 }
 
 // PUBLIC: int __dbreg_id_to_db __P(( DB_ENV *, DB_TXN *, DB **, int32_t, int, DB_LSN *, int));

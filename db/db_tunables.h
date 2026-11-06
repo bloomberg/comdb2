@@ -1476,6 +1476,14 @@ REGISTER_TUNABLE("bdboslog", NULL, TUNABLE_INTEGER, &gbl_namemangle_loglevel,
 REGISTER_TUNABLE("deadlock_rep_retry_max", NULL, TUNABLE_INTEGER,
                  &max_replication_trans_retries, READONLY | NOZERO, NULL, NULL,
                  NULL, NULL);
+REGISTER_TUNABLE("rep_lock_order",
+                 "On a replicant, take the locks of a replicated transaction in the order readers take them: "
+                 "table locks first, then index, data and blob pages, in page order.  (Default: on)",
+                 TUNABLE_BOOLEAN, &gbl_rep_lock_order, 0, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("debug_rep_lock_order_check",
+                 "Check that rep_lock_order takes the same locks as the lock-list order; abort if not.  "
+                 "(Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_debug_rep_lock_order_check, INTERNAL, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("logmsg", NULL, TUNABLE_COMPOSITE, NULL, INTERNAL | READEARLY,
                  NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("logmsg.level",

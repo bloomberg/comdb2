@@ -476,6 +476,10 @@ extern int gbl_namemangle_loglevel;
 /* berkdb/rep/rep_record.c */
 extern int max_replication_trans_retries;
 
+/* berkdb/lock/lock.c */
+extern int gbl_rep_lock_order;
+extern int gbl_debug_rep_lock_order_check;
+
 /* net/net.c */
 extern int explicit_flush_trace;
 

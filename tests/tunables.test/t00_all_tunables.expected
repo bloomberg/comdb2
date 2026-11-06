@@ -871,6 +871,7 @@
 (name='rep_db_pagesize', description='Page size for BerkeleyDB's replication cache db.', type='INTEGER', value='0', read_only='N')
 (name='rep_debug_delay', description='Set an artificial replication delay (used for debugging).', type='INTEGER', value='0', read_only='N')
 (name='rep_delay', description='rep_delay', type='BOOLEAN', value='OFF', read_only='N')
+(name='rep_lock_order', description='On a replicant, take the locks of a replicated transaction in the order readers take them: table locks first, then index, data and blob pages, in page order.  (Default: on)', type='BOOLEAN', value='ON', read_only='N')
 (name='rep_longreq', description='Warn if replication events are taking this long to process.', type='INTEGER', value='1', read_only='N')
 (name='rep_lsn_chaining', description='If set, will force transactions on replicant to always release locks in LSN order.', type='BOOLEAN', value='OFF', read_only='N')
 (name='rep_memsize', description='Maximum size for a local copy of log records for transaction processors on replicants. Larger transactions will read from the log directly.', type='INTEGER', value='524288', read_only='N')
