@@ -5242,8 +5242,11 @@ static void udppfault_ufid_do_work(udppf_rq_t *req)
     __atomic_add_fetch(&udp_pf_ufid_pinned, 1, __ATOMIC_RELAXED);
 
     /* On the master (replica write hints) a prefetch that reads the page from disk
-       hints the replicas, as the block processor would have done */
-    int hint = gbl_rep_write_hints && req->bdb_state->repinfo->myhost == req->bdb_state->repinfo->master_host;
+       hints the replicas, as the block processor would have done, unless the
+       replica that read the page already sent it to them (peer fanout: the
+       request was queued with forward 0) */
+    int hint =
+        req->forward && gbl_rep_write_hints && req->bdb_state->repinfo->myhost == req->bdb_state->repinfo->master_host;
     if (hint) {
         send_prefault_udp = 1;
         prefault_dbp = dbp;
@@ -5324,7 +5327,7 @@ static void udppfault_do_work_pp(struct thdpool *pool, void *work,
     free(req);
 }
 
-int enque_udppfault_ufid(bdb_state_type *bdb_state, const uint8_t *ufid, unsigned int pgno)
+int enque_udppfault_ufid(bdb_state_type *bdb_state, const uint8_t *ufid, unsigned int pgno, int forward)
 {
     udppf_rq_t *qdata;
     int rc;
@@ -5339,6 +5342,7 @@ int enque_udppfault_ufid(bdb_state_type *bdb_state, const uint8_t *ufid, unsigne
     memcpy(qdata->ufid, ufid, DB_FILE_ID_LEN);
     qdata->pgno = pgno;
     qdata->enq_us = udppf_now_us();
+    qdata->forward = forward;
 
     rc = thdpool_enqueue(gbl_udppfault_thdpool, udppfault_do_work_pp, qdata, 0, NULL,
                          gbl_udp_prefault_lifo ? THDPOOL_ENQUEUE_FRONT : 0);
