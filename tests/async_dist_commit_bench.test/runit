@@ -11,7 +11,7 @@
 #   cd ~/btc-run && btc test async_dist_commit_bench SCALE=pr INCLUDE_LONG_RUNNING=1 LOADHOSTS="<4 of the nodes>"
 # Sections (BENCH, default all):
 #   offon    inserts/s, waiter off vs on, for each client count in CLIENTS
-#   wthreads waiter on, writer threads WTHREADS
+#   wthreads writer threads WTHREADS, waiter WTHREAD_WAITERS (default on only)
 #   lateack  every replicant sends its acks ACK_DELAYS ms late (a slow network)
 #   slowrep  every replicant sleeps 1 ms per message it receives (slow replicants)
 #   cap      waiter on, CAP_CLIENTS clients, for each cap in CAPS: the most commits
@@ -20,9 +20,15 @@
 #            client count limit anything (one commit in flight per client).
 #   durable  durable_lsns on
 #   kill     master killed with kill -9 halfway through: rates before/after,
-#            retried requests, failed requests, acked inserts lost
+#            seconds until back to 90% of the rate before, retried requests,
+#            failed requests, acked inserts lost
 #   catchup  one replicant stopped a third of the way in, down CATCHUP_DOWN s,
-#            restarted: how long until it is coherent again
+#            restarted: how long until it is coherent again, MB/s it closed, and
+#            what it parked in its repdb
+# Every RESULT line ends with the CPU the master's comdb2 used, in cores.
+# Each make starts a fresh database; runs within it share it but get fresh tables.  For startup settings
+# use a generated variant: the .testopts files here append to lrl.options, e.g.
+#   ... BENCH=catchup make async_dist_commit_bench_logput_window_generated
 # Each client inserts single rows (autocommit) into its own table, one commit in
 # flight per client, and talks only to replicants.  The rates count the inserts acked to
 # clients.  The database runs with a 128 MB cache (lrl.options), as the PR numbers do.  It fails only on errors
@@ -33,9 +39,9 @@ db=$1
 . ${TESTSROOTDIR}/tools/cluster_utils.sh
 
 if [[ ${SCALE:-} == pr ]]; then
-    : ${DUR:=300} ${REPS:=2} ${CLIENTS:=16 32 64 128 256 1000} ${WTHREAD_CLIENTS:=64 1000}
-    : ${CAPS:=128 256 512 1024 2048} ${CAP_CLIENTS:=500 1000} ${DURABLE_CLIENTS:=32 128}
-    : ${KILL_CLIENTS:=500 1000} ${CATCHUP_CLIENTS:=1000} ${CATCHUP_DOWN:=60} ${SQLTHREADS:=141}
+    : ${DUR:=300} ${REPS:=2} ${CLIENTS:=4 8 16 32 64 128 256 1000} ${WTHREAD_CLIENTS:=32 64 1000} ${WTHREAD_WAITERS:=0 1}
+    : ${ACK_DELAYS:=0 1 2 3 4 5} ${CAPS:=128 256 512 1024 2048} ${CAP_CLIENTS:=500 1000} ${DURABLE_CLIENTS:=32 128}
+    : ${KILL_CLIENTS:=500 1000} ${CATCHUP_CLIENTS:=1000} ${CATCHUP_DOWN:=60} ${CATCHUP_DUR:=900} ${SQLTHREADS:=141}
 fi
 BENCH=${BENCH:-offon wthreads lateack slowrep cap durable kill catchup}
 DUR=${DUR:-60}
@@ -43,6 +49,7 @@ REPS=${REPS:-1}
 CLIENTS=${CLIENTS:-16 64}
 WTHREADS=${WTHREADS:-8 16 32}
 WTHREAD_CLIENTS=${WTHREAD_CLIENTS:-64}
+WTHREAD_WAITERS=${WTHREAD_WAITERS:-1}
 ACK_DELAYS=${ACK_DELAYS:-1 2 5}
 LATE_CLIENTS=${LATE_CLIENTS:-64}
 SLOW_CLIENTS=${SLOW_CLIENTS:-16}
@@ -53,6 +60,8 @@ DURABLE_CLIENTS=${DURABLE_CLIENTS:-32}
 KILL_CLIENTS=${KILL_CLIENTS:-64}
 CATCHUP_CLIENTS=${CATCHUP_CLIENTS:-64}
 CATCHUP_DOWN=${CATCHUP_DOWN:-30}
+# seconds the catch-up runs load for (default DUR); the replica is watched only while they do
+CATCHUP_DUR=${CATCHUP_DUR:-$DUR}
 # SQL threads per node; at least one per client a node serves, or commits queue for a thread instead
 SQLTHREADS=${SQLTHREADS:-}
 
@@ -155,6 +164,15 @@ acked() { cat "$out/$1".c* | gawk -v a=$2 -v b=$3 '/\] rc 0$/ && $1 >= a && $1 <
 # persec <tag> <start> <secs>: acks per second over the <secs> the clients were sending
 persec() { echo $(($(acked "$1" $2 $(($2 + $3))) / $3)); }
 
+# cputicks <node>: CPU ticks (user + system) the node's comdb2 has used so far
+cputicks() {
+    ssh -n -o StrictHostKeyChecking=no "$1" "for p in \$(pgrep -u \$(id -u) -x comdb2); do
+        tr '\\0' ' ' < /proc/\$p/cmdline | grep -q ' $db ' && awk '{ print \$14 + \$15 }' /proc/\$p/stat && break; done"
+}
+hz=$(getconf CLK_TCK)
+# cores <ticks before> <ticks after> <secs>
+cores() { gawk -v a="$1" -v b="$2" -v s="$3" -v hz="$hz" 'BEGIN { if (a == "" || b == "" || s <= 0) print "?"; else printf "%.1f", (b - a) / hz / s }'; }
+
 # run <name> <clients> <waiter> [configure args...]: one timed run, prints its RESULT line
 run() {
     local name=$1 clients=$2 adc=$3
@@ -162,9 +180,11 @@ run() {
     configure "$adc" "$@"
     for ((r = 1; r <= REPS; r++)); do
         tables "$clients"
-        local t0=$(date +%s)
+        local m=$(master) t0=$(date +%s) c0 c1
+        c0=$(cputicks "$m")
         load "$clients" "$DUR" "$name"
-        echo "RESULT $name clients=$clients waiter=$adc $* rep=$r inserts/s=$(persec "$name" $t0 "$DUR")"
+        c1=$(cputicks "$m")
+        echo "RESULT $name clients=$clients waiter=$adc $* rep=$r inserts/s=$(persec "$name" $t0 "$DUR") master_cpu=$(cores "$c0" "$c1" $(($(date +%s) - t0)))"
         rm -f "$out/$name".c*
     done
 }
@@ -185,7 +205,9 @@ for b in $BENCH; do
             run offon "$c" 1
         done ;;
     wthreads)
-        for c in $WTHREAD_CLIENTS; do for t in $WTHREADS; do run wthreads "$c" 1 wt=$t; done; done ;;
+        for c in $WTHREAD_CLIENTS; do for w in $WTHREAD_WAITERS; do for t in $WTHREADS; do
+            run wthreads "$c" "$w" wt=$t
+        done; done; done ;;
     lateack)
         for c in $LATE_CLIENTS; do for d in $ACK_DELAYS; do
             run lateack "$c" 0 ackdelay=$d
@@ -238,7 +260,12 @@ for b in $BENCH; do
             rate() { (($2 > $1)) && echo $(($(acked kill $1 $2) / ($2 - $1))) || echo "?"; }
             before=$(rate $((t0 + 2)) $tk)
             after=$(rate $((tk + 5)) $((t0 + DUR)))
-            echo "RESULT kill clients=$kc waiter=$adc before=${before}/s after=${after}/s retried=$replays failed=$failed failed_but_written=$failpresent acked_but_lost=$lost"
+            # seconds from the kill until 5 seconds in a row each ack at least 90% of the rate before it
+            back90=$(cat "$out"/kill.c* | gawk -v k=$tk -v e=$((t0 + DUR)) -v r="$before" '/\] rc 0$/ { n[$1]++ }
+                END { if (r !~ /^[0-9]+$/) { print "?"; exit } for (s = k; s + 4 < e; s++) { ok = 1
+                      for (i = 0; i < 5; i++) if (n[s + i] < 0.9 * r) { ok = 0; break }
+                      if (ok) { print s - k; exit } } print "never" }')
+            echo "RESULT kill clients=$kc waiter=$adc before=${before}/s after=${after}/s back_to_90%=${back90}s retried=$replays failed=$failed failed_but_written=$failpresent acked_but_lost=$lost"
             rm -f "$out"/kill.c*
             kill_restart_node "$old" 0 1 >/dev/null 2>&1
             ((lost == 0)) || fail "kill: $lost acked inserts are missing"
@@ -250,9 +277,9 @@ for b in $BENCH; do
             m=$(master)
             v=$(replicants | tail -1)
             ts=$(date +%s)
-            load "$cc" "$DUR" catchup &
+            load "$cc" "$CATCHUP_DUR" catchup &
             lp=$!
-            sleep $((DUR / 3))
+            sleep $((CATCHUP_DUR / 3))
             # stops it, sleeps CATCHUP_DOWN, starts it again
             kill_restart_node "$v" "$CATCHUP_DOWN" 0 >/dev/null 2>&1
             t0=$(date +%s)
@@ -266,8 +293,14 @@ for b in $BENCH; do
                 sleep 1
             done
             maxlag=$(gawk '$2 >= 0 && $2 > m { m = $2 } END { print int(m / 1048576) }' "$out/catchup.lag")
+            speed="?"; [[ -n $back ]] && ((back > 0)) && speed=$(gawk -v a=$maxlag -v b=$back 'BEGIN { printf "%.1f", a / b }')
+            # what the restarted replica parked: records, and its repdb file's pages written to / read from disk
+            parked=$(send "$v" "bdb repstat" | grep -o 'st_log_queued_total: [0-9]*' | grep -o '[0-9]*$')
+            repdb=$(send "$v" "bdb cachestatall" | gawk '/Pool file \[/ { f = ($0 ~ /__db\.rep\./) }
+                f && /st_pagesize/ { ps = $NF } f && /st_page_out/ { o += $NF } f && /st_page_in / { i += $NF }
+                END { printf "repdb_written=%dMB repdb_read=%dMB", o * ps / 1048576, i * ps / 1048576 }')
             wait $lp
-            echo "RESULT catchup clients=$cc waiter=$adc down=${CATCHUP_DOWN}s max_lag=${maxlag}MB coherent_after_restart=${back:-not within the run}s inserts/s=$(persec catchup $ts "$DUR")"
+            echo "RESULT catchup clients=$cc waiter=$adc down=${CATCHUP_DOWN}s max_lag=${maxlag}MB coherent_after_restart=${back:-not within the run}s closed=${speed}MB/s parked=${parked:-?} $repdb inserts/s=$(persec catchup $ts "$CATCHUP_DUR")"
             rm -f "$out"/catchup.c*
             waitmach "$v"
         done; done ;;
