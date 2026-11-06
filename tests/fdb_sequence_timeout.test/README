@@ -1,0 +1,6 @@
+A remote transaction request that waits for an earlier request which never
+arrives must give up after fdb_sequence_timeout_ms instead of waiting forever,
+and must not hold the remote db's bdb readlock while it waits.
+
+The remote db drops a transactional cursor open (fdb_test_drop_cursor_open),
+so the remote insert that follows it can never be sequenced.

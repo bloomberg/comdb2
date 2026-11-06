@@ -2768,15 +2768,16 @@ static int fdb_cursor_close(BtCursor *pCur)
 {
     if (pCur->fdbc) {
         fdb_cursor_t *fdbc = pCur->fdbc->impl;
-        if (fdbc->type == FCON_TYPE_LEGACY) { 
+        int cache = 1;
+        if (fdbc->type == FCON_TYPE_LEGACY) {
 
-            fdb_send_close(fdbc->msg, fdbc->cid,
-                    (fdbc->trans) ? fdbc->trans->tid : 0,
-                    (fdbc->trans) ? fdbc->trans->seq : 0,
-                    fdbc->fcon.sock.sb);
+            /* a socket we failed to write to is broken: don't pool it */
+            if (fdb_send_close(fdbc->msg, fdbc->cid, (fdbc->trans) ? fdbc->trans->tid : 0,
+                               (fdbc->trans) ? fdbc->trans->seq : 0, fdbc->fcon.sock.sb))
+                cache = 0;
         }
         /* closing the cursor locally */
-        fdb_cursor_close_on_open(pCur, 1);
+        fdb_cursor_close_on_open(pCur, cache);
     } else {
         logmsg(LOGMSG_ERROR, "%s cursor already closed rootpage=%d?\n", __func__,
                 pCur->rootpage);
