@@ -1,2 +1,8 @@
 disable_partial_indexes
 logmsg level info
+
+# This checks that a one-pass DELETE reads its WHERE columns from the index it
+# seeks.  That presumes the planner picks the index, which it does only while
+# the freshly created index has no statistics: with real statistics for this
+# one-row table, a table scan is cheaper.  Keep the old behavior here.
+analyze_new_indexes off

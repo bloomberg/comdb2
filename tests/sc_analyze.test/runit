@@ -1,0 +1,247 @@
+#!/usr/bin/env bash
+bash -n "$0" | exit 1
+source ${TESTSROOTDIR}/tools/runit_common.sh
+
+dbnm=$1
+if [ "x$dbnm" == "x" ] ; then
+    echo "need a DB name"
+    exit 1
+fi
+
+NROWS=2000
+
+run() {
+    cdb2sql ${CDB2_OPTIONS} $dbnm default "$1"
+}
+
+runtabs() {
+    cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "$1"
+}
+
+# comdb2 advertises index names to sqlite in "new style" form:
+# "$<keyname>_<crc>".  Match on that prefix rather than the whole name.
+stat_rows_like() {
+    runtabs "select count(*) from sqlite_stat1 where tbl='$1' and idx like '\$$2_%'"
+}
+
+dump_stats() {
+    echo "--- sqlite_stat1 ---"
+    runtabs "select tbl, idx, stat from sqlite_stat1"
+    echo "--------------------"
+}
+
+# cdb2sql "default" may route to any node, so a query issued immediately after
+# the schema change can land on a replicant that has not applied the stats
+# transaction yet.  That is replication lag, not a violation of the ordering
+# guarantee -- such a node has not seen the index either.  Poll briefly.
+assert_stats_present() {
+    local tbl=$1 key=$2 what=$3
+    local n i
+    for i in $(seq 1 20); do
+        n=$(stat_rows_like $tbl $key)
+        [ "$n" != "0" ] && [ "x$n" != "x" ] && break
+        sleep 1
+    done
+    if [ "$n" == "0" ] || [ "x$n" == "x" ]; then
+        echo "FAIL: $what: no sqlite_stat1 rows for $tbl key $key"
+        dump_stats
+        exit 1
+    fi
+    echo "ok: $what (stat rows: $n)"
+}
+
+assert_stats_absent() {
+    local tbl=$1 key=$2 what=$3
+    local n=$(stat_rows_like $tbl $key)
+    if [ "$n" != "0" ]; then
+        echo "FAIL: $what: expected no stat rows for $tbl key $key, got $n"
+        dump_stats
+        exit 1
+    fi
+    echo "ok: $what"
+}
+
+# Statistics are gathered against the pre-commit newdb, whose index tags carry
+# a ".NEW." prefix.  They must be written under the name the index will have
+# once the schema change commits; if any leak through, the planner would never
+# find them.
+assert_no_dotnew_stats() {
+    local n1=$(runtabs "select count(*) from sqlite_stat1 where idx like '%.NEW.%'")
+    if [ "$n1" != "0" ]; then
+        echo "FAIL: $1: sqlite_stat1 has .NEW. index names"
+        dump_stats
+        exit 1
+    fi
+    echo "ok: $1: no .NEW. names in sqlite_stat1"
+}
+
+# The reason these statistics are committed before the schema change finalizes:
+# replication is ordered, so the stats transaction lands on every replicant
+# ahead of the schema change itself.  No node should ever be able to see the
+# new index without its statistics.
+assert_stats_on_all_nodes() {
+    local tbl=$1 key=$2 what=$3
+    local nodes n cnt
+    nodes=$(getclusternodes)
+    # standalone runs have no cluster rows; nothing extra to check
+    [ -z "$nodes" ] && { echo "ok: $what (single node, skipped)"; return; }
+    for n in $nodes; do
+        cnt=$($CDB2SQL_EXE --tabs ${CDB2_OPTIONS} $dbnm --host $n \
+              "select count(*) from sqlite_stat1 where tbl='$tbl' and idx like '\$${key}_%'")
+        if [ "$cnt" == "0" ] || [ "x$cnt" == "x" ]; then
+            echo "FAIL: $what: node $n has no stats for $tbl key $key"
+            $CDB2SQL_EXE --tabs ${CDB2_OPTIONS} $dbnm --host $n \
+                "select tbl, idx, stat from sqlite_stat1"
+            exit 1
+        fi
+    done
+    echo "ok: $what (all nodes: $(echo $nodes | tr '\n' ' '))"
+}
+
+populate() {
+    local tbl=$1
+    # skewed distribution: 'common' dominates, 'rare' is highly selective
+    cdb2sql ${CDB2_OPTIONS} $dbnm default - <<EOF > /dev/null
+set maxtransize 100000
+begin
+$(for ((i=0; i<NROWS; i++)); do
+    if [ $((i % 500)) -eq 0 ]; then
+        echo "insert into $tbl(a, b, c) values($i, 'rare', $i)"
+    else
+        echo "insert into $tbl(a, b, c) values($i, 'common', $i)"
+    fi
+done)
+commit
+EOF
+}
+
+echo "=== setup ==="
+run "drop table if exists t1" > /dev/null
+run "drop table if exists t2" > /dev/null
+run "truncate sqlite_stat1" > /dev/null
+run "truncate sqlite_stat4" > /dev/null
+
+run "create table t1 { schema { int a  cstring b[32]  int c } }" > /dev/null
+populate t1
+assertcnt t1 $NROWS
+
+# ---------------------------------------------------------------------------
+# CREATE INDEX populates stats with no explicit ANALYZE
+# ---------------------------------------------------------------------------
+echo "=== CREATE INDEX ==="
+assert_stats_absent t1 IXA "no stats before index exists"
+
+run "create index ixa on t1(a)" > /dev/null
+assert_stats_present t1 IXA "CREATE INDEX populated stats"
+assert_no_dotnew_stats "CREATE INDEX"
+assert_stats_on_all_nodes t1 IXA "CREATE INDEX stats visible on every node"
+dump_stats
+
+# ---------------------------------------------------------------------------
+# ALTER TABLE adding an index does the same
+# ---------------------------------------------------------------------------
+echo "=== ALTER ADD INDEX ==="
+run "alter table t1 { schema { int a  cstring b[32]  int c }
+                      keys { dup \"IXA\" = a
+                             dup \"IXB\" = b } }" > /dev/null
+assert_stats_present t1 IXB "ALTER ADD INDEX populated stats"
+assert_no_dotnew_stats "ALTER ADD INDEX"
+# Adding an index must not disturb the statistics of indexes it did not
+# rebuild -- those hold no data in newdb and their stats are still good.
+assert_stats_present t1 IXA "ALTER ADD INDEX left IXA stats intact"
+dump_stats
+
+# ---------------------------------------------------------------------------
+# Altering an index definition refreshes its stats.
+# IXB goes from (b) to (b, a); the stat string must change shape.
+# ---------------------------------------------------------------------------
+echo "=== ALTER INDEX DEFINITION ==="
+before=$(runtabs "select stat from sqlite_stat1 where tbl='t1' and idx like '\$IXB_%'")
+echo "stat before: $before"
+
+run "alter table t1 { schema { int a  cstring b[32]  int c }
+                      keys { dup \"IXA\" = a
+                             dup \"IXB\" = b + a } }" > /dev/null
+assert_stats_present t1 IXB "altered index has stats"
+assert_stats_present t1 IXA "altering IXB left IXA stats intact"
+# NB: the pre-alter row survives under the index's previous sqlite name
+# ($IXB_<oldcrc>).  That is pre-existing behavior -- altering an index has
+# always orphaned its old-name row, and a later full ANALYZE reaps it via the
+# cdb2.<tbl>.sav cycle.  It is invisible to the planner, which looks the index
+# up by its current name.
+
+# pick the current definition's row: it has one more value than the old one
+after=$(runtabs "select stat from sqlite_stat1 where tbl='t1' and idx like '\$IXB_%' order by length(stat) desc limit 1")
+echo "stat after: $after"
+
+# (b) yields two integers, (b,a) yields three -- the stats describe the new
+# definition, not the old one.
+nvals=$(echo $after | wc -w)
+if [ "$nvals" -lt 3 ]; then
+    echo "FAIL: altered index stats still describe the old definition: '$after'"
+    exit 1
+fi
+echo "ok: altered index stats reflect new key structure ($nvals values)"
+dump_stats
+
+# ---------------------------------------------------------------------------
+# A rebuild that does not change key structure must not lose stats.
+# Adding a column rebuilds datacopy indexes; their stats stay valid.
+# ---------------------------------------------------------------------------
+echo "=== datacopy rebuild preserves stats ==="
+run "drop table if exists t2" > /dev/null
+run "create table t2 { schema { int a  cstring b[32]  int c }
+                       keys { datacopy dup \"IXA\" = a } }" > /dev/null
+populate t2
+# A plain ANALYZE is refused while a schema change is in progress
+# (do_analyze -> get_schema_change_in_progress), and on a cluster the previous
+# alter can still be settling.  Retry on the outcome we actually care about --
+# stats existing -- rather than on parsing ANALYZE's output.
+analyze_until_stats() {
+    local tbl=$1 key=$2 i n
+    for i in $(seq 1 30); do
+        run "analyze $tbl" > /dev/null 2>&1
+        n=$(stat_rows_like $tbl $key)
+        [ "$n" != "0" ] && [ "x$n" != "x" ] && return 0
+        sleep 2
+    done
+    return 1
+}
+if ! analyze_until_stats t2 IXA; then
+    echo "FAIL: baseline ANALYZE never produced stats for t2"
+    dump_stats
+    exit 1
+fi
+assert_stats_present t2 IXA "baseline stats on datacopy index"
+
+run "alter table t2 { schema { int a  cstring b[32]  int c  int d null=yes }
+                      keys { datacopy dup \"IXA\" = a } }" > /dev/null
+assert_stats_present t2 IXA "datacopy rebuild kept stats"
+
+# ---------------------------------------------------------------------------
+# DROP INDEX leaves no stats behind for the dropped index
+# ---------------------------------------------------------------------------
+echo "=== DROP INDEX ==="
+run "drop index \"IXB\" on t1" > /dev/null
+run "analyze t1" > /dev/null
+assert_stats_absent t1 IXB "dropped index has no stats"
+
+# ---------------------------------------------------------------------------
+# Tunable off restores previous behavior
+# ---------------------------------------------------------------------------
+echo "=== tunable off ==="
+# put tunable is node-local, and the schema change runs on the master, so
+# this has to reach every node.
+sendtocluster "put tunable analyze_new_indexes 0" > /dev/null
+run "drop table if exists t2" > /dev/null
+run "create table t2 { schema { int a  cstring b[32]  int c } }" > /dev/null
+populate t2
+run "create index ixz on t2(a)" > /dev/null
+assert_stats_absent t2 IXZ "tunable off: no stats collected"
+
+sendtocluster "put tunable analyze_new_indexes 1" > /dev/null
+run "create index ixy on t2(b)" > /dev/null
+assert_stats_present t2 IXY "tunable back on: stats collected"
+
+echo "SUCCESS"
+exit 0

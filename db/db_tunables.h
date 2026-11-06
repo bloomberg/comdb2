@@ -81,6 +81,15 @@ REGISTER_TUNABLE("analyze_tbl_threads",
                  NULL, analyze_set_max_table_threads, NULL);
 REGISTER_TUNABLE("always_reload_analyze", "Reload analyze data on every query. (Default: off)", TUNABLE_BOOLEAN,
                  &gbl_always_reload_analyze, 0, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("analyze_new_indexes",
+                 "Collect index statistics during a schema change that builds "
+                 "an index, so the new index has good stats as soon as it is "
+                 "visible. (Default: on)",
+                 TUNABLE_BOOLEAN, &gbl_analyze_new_indexes, 0, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("sc_analyze_threads",
+                 "Size of the dedicated sql pool used by the schema-change "
+                 "inline analyze. (Default: 2)",
+                 TUNABLE_INTEGER, &gbl_sc_analyze_threads, READONLY, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("archive_on_init",
                  "Archive files with database extensions in the database directory "
                  "at the time of init. (Default: ON)",
