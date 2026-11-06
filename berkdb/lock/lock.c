@@ -4351,6 +4351,7 @@ __lock_getlocker_int(lt, locker, indx, partition, create, prop, retp,
 		    sh_locker, links, __db_locker);
 		sh_locker->id = locker;
 		sh_locker->dd_id = 0;
+		memset(sh_locker->uuid, 0, sizeof(sh_locker->uuid));
 		sh_locker->master_locker = INVALID_ROFF;
 		sh_locker->parent_locker = INVALID_ROFF;
 		SH_LIST_INIT(&sh_locker->child_locker);
@@ -4406,6 +4407,13 @@ __lock_getlocker_int(lt, locker, indx, partition, create, prop, retp,
 			if(osql_snap_info)
 				sh_locker->snap_info = osql_snap_info;
 		}
+
+		/* For comdb2_locks; child lockers get it too, as they are
+		 * created on the same thread */
+		extern __thread const unsigned char *osql_locker_uuid;
+		if (osql_locker_uuid)
+			memcpy(sh_locker->uuid, osql_locker_uuid,
+			    sizeof(sh_locker->uuid));
 	}
 
 	*retp = sh_locker;

@@ -109,6 +109,7 @@ void req_stats(struct dbtable *db)
 
 extern pthread_mutex_t delay_lock;
 extern __thread snap_uid_t *osql_snap_info; /* contains cnonce */
+extern __thread const unsigned char *osql_locker_uuid;
 extern int gbl_print_deadlock_cycles;
 
 static void adjust_maxwthreadpenalty(int *totpen_p,
@@ -444,6 +445,9 @@ int handle_ireq(struct ireq *iq)
         iq->rawnodestats->opcode_counts[iq->opcode]++;
     if (gbl_print_deadlock_cycles && IQ_HAS_SNAPINFO(iq))
         osql_snap_info = IQ_SNAPINFO(iq);
+    /* the lockers this thread creates belong to the session's transaction */
+    if (iq->sorese && iq->sorese->rqid == OSQL_RQID_USE_UUID)
+        osql_locker_uuid = iq->sorese->uuid;
 
     comdb2_opcode_t *opcode = hash_find_readonly(gbl_opcode_hash, &iq->opcode);
     if (!opcode || !opcode_supported(iq->opcode)) {
@@ -607,6 +611,7 @@ int handle_ireq(struct ireq *iq)
     }
     if (gbl_print_deadlock_cycles)
         osql_snap_info = NULL;
+    osql_locker_uuid = NULL;
 
     return rc;
 }

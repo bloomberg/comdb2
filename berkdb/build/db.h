@@ -2378,7 +2378,7 @@ typedef int (*collect_locks_f)(void *args, int64_t threadid, int32_t lockerid,
 		const char *mode, const char *status, const char *table,
 		int64_t page, const char *rectype, int stackid,
 		const unsigned char *fingerprint, char fingerprint_role,
-		uint32_t client_id);
+		uint32_t client_id, const unsigned char *uuid);
 
 typedef int (*collect_prepared_f)(void *args, char *dist_txnid, uint32_t flags,
 		DB_LSN *lsn, DB_LSN *begin_lsn, uint32_t coordinator_gen, char *coordinator_name,

@@ -232,6 +232,8 @@ int comdb2SystblInit(
   if (rc == SQLITE_OK)
     rc = systblTransactionStateInit(db);
   if (rc == SQLITE_OK)
+    rc = systblTransactionOpsInit(db);
+  if (rc == SQLITE_OK)
     rc = systblTriggersInit(db);
   if (rc == SQLITE_OK)  
     rc = systblStacks(db);
