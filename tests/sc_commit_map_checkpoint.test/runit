@@ -1,0 +1,315 @@
+#!/usr/bin/env bash
+bash -n "$0" || exit 1
+
+# A rebuild that keeps its converter commits out of the commit LSN map waits,
+# before publishing, for a checkpoint whose recovery LSN is past all of them.
+# Check that the wait holds no lock other work needs, and what happens when it
+# is aborted, fails, or is interrupted by a restart or a shutdown.
+
+source ${TESTSROOTDIR}/tools/runit_common.sh
+source ${TESTSROOTDIR}/tools/cluster_utils.sh
+set -o pipefail
+
+dbnm=$1
+N=${SC_COMMIT_MAP_ROWS:-2000}
+master=$(getmaster)
+[[ -n "$master" ]] || { echo "FAIL: could not find master"; exit 1; }
+if [[ -n "$CLUSTER" ]]; then
+	log() { echo $TESTDIR/logs/$dbnm.$master.db; }
+else
+	log() { echo $TESTDIR/logs/$dbnm.db; }
+fi
+lrl=$DBDIR/$dbnm.lrl
+
+run() { cdb2sql --tabs ${CDB2_OPTIONS} --host "$master" "$dbnm" "$@"; }
+send() { run "exec procedure sys.cmd.send(\"$1\")"; }
+fail() { echo "FAIL: $*"; exit 1; }
+tunable() { run "put tunable '$1' $2" >/dev/null || fail "put tunable $1 $2"; }
+count() { grep -c "$1" "$(log)"; }
+wait_log() {
+	for _ in $(seq 1 600); do
+		(( $(count "$1") > $2 )) && return 0
+		sleep 0.1
+	done
+	fail "never logged '$1'"
+}
+table_files() { ls "$DBDIR" | grep -E "^$1_[0-9a-f]{16}\." | sort | tr '\n' ' '; }
+fill() {
+	run "create table $1(i int, j int)" >/dev/null || fail "create $1"
+	run "create index ${1}_j on $1(j)" >/dev/null
+	run "insert into $1 select value, value from generate_series(1, $2)" >/dev/null || fail "fill $1"
+}
+check_rows() {
+	[[ "$(run "select count(*), sum(j) from $1")" == "$2	$(($2 * ($2 + 1) / 2))" ]] || fail "$1: rows changed"
+}
+
+# The schema change failed after its conversion finished: nothing of it may be left
+backed_out() {
+	local tbl=$1 files=$2 st
+	st=$(run "select status from comdb2_sc_status where name='$tbl'")
+	[[ "$st" == "ABORTED" ]] || fail "$tbl: schema change status is '$st'"
+	send "llmeta list" | grep "LLMETA_SCHEMACHANGE" | grep -v "HISTORY" | grep -qw "$tbl" &&
+		fail "$tbl: schema change left in llmeta"
+	run "insert into $tbl values(-1, 0)" >/dev/null || fail "$tbl: write after backout"
+	run "delete from $tbl where i = -1" >/dev/null || fail "$tbl: delete after backout"
+	if [[ -z "$CLUSTER" ]]; then
+		# the replacement's files are deleted, or queued to be like any other unused file
+		local f queued
+		queued=$(run "select filename from comdb2_unused_files")
+		for f in $(table_files $tbl); do
+			[[ " $files " == *" $f "* ]] && continue
+			grep -q "$f" <<<"$queued" || fail "$tbl: $f is neither deleted nor queued for deletion"
+		done
+	fi
+	check_rows $tbl $N
+	# nothing stale stops the next schema change
+	run "rebuild $tbl" >/dev/null || fail "$tbl: rebuild after backout"
+	check_rows $tbl $N
+}
+
+tunable sc_commit_map_skip 1
+fill t $N
+fill other 10
+
+echo "=== the wait holds no lock other work needs"
+holds=$(count "holding before the commit LSN map checkpoint")
+tunable debug_sc_commit_map_checkpoint_hold 1
+run "rebuild t" >/dev/null &
+rb_pid=$!
+wait_log "holding before the commit LSN map checkpoint" $holds
+start=$SECONDS
+[[ "$(run "select count(*) from other")" == "10" ]] || fail "read of another table"
+run "insert into other values(11, 11)" >/dev/null || fail "write to another table"
+run "insert into t values($((N + 1)), 0)" >/dev/null || fail "write to the table being rebuilt"
+run "delete from t where i = $((N + 1))" >/dev/null || fail "delete from the table being rebuilt"
+run "create table ddl(i int)" >/dev/null || fail "ddl on another table"
+(( SECONDS - start < 5 )) || fail "other work waited $((SECONDS - start)) seconds"
+kill -0 $rb_pid 2>/dev/null || fail "rebuild did not wait"
+tunable debug_sc_commit_map_checkpoint_hold 0
+wait $rb_pid || fail "rebuild failed"
+check_rows t $N
+
+echo "=== sc abort during the wait backs the schema change out"
+files=$(table_files t)
+holds=$(count "holding before the commit LSN map checkpoint")
+tunable debug_sc_commit_map_checkpoint_hold 1
+run "rebuild t" >/dev/null 2>&1 &
+rb_pid=$!
+wait_log "holding before the commit LSN map checkpoint" $holds
+send "scabort" >/dev/null
+wait $rb_pid && fail "aborted rebuild succeeded"
+tunable debug_sc_commit_map_checkpoint_hold 0
+backed_out t "$files"
+
+echo "=== a failed checkpoint backs the schema change out"
+files=$(table_files t)
+tunable debug_sc_commit_map_checkpoint_fail 1
+run "rebuild t" >/dev/null 2>&1 && fail "rebuild with a failed checkpoint succeeded"
+tunable debug_sc_commit_map_checkpoint_fail 0
+backed_out t "$files"
+
+echo "=== a transaction begun before the end of conversion holds the checkpoint back"
+fill s 100
+waits=$(count "holds the checkpoint below")
+# application writes (not the converter's) sleep first: this insert stays open ~10s
+send "bdb setattr DELAY_WRITES_IN_RECORD_C 5000" >/dev/null
+run "insert into other values(-2, -2), (-3, -3)" >/dev/null &
+ins_pid=$!
+sleep 1
+run "rebuild s" >/dev/null &
+rb_pid=$!
+wait_log "holds the checkpoint below" $waits
+send "bdb setattr DELAY_WRITES_IN_RECORD_C 0" >/dev/null
+wait $ins_pid || fail "insert holding the checkpoint failed"
+wait $rb_pid || fail "rebuild of s failed"
+[[ "$(run "select count(*) from other where i in (-2, -3)")" == "2" ]] || fail "insert lost"
+check_rows s 100
+
+echo "=== a transaction that has not written yet does not hold it back"
+cdb2sql ${CDB2_OPTIONS} --host "$master" "$dbnm" - >/dev/null 2>&1 <<'EOF' &
+begin
+insert into other values(-1, -1)
+select sleep(8)
+commit
+EOF
+open_pid=$!
+sleep 1
+run "rebuild s" >/dev/null || fail "rebuild of s failed"
+kill -0 $open_pid 2>/dev/null || fail "rebuild waited for a transaction that began after its conversion"
+wait $open_pid || fail "open transaction failed"
+
+if [[ -n "$CLUSTER" ]]; then
+	echo "Passed test"
+	exit 0
+fi
+
+echo "=== a standalone master whose checkpoint stays blocked past the timeout backs the schema change out"
+files=$(table_files s)
+tunable sc_commit_map_checkpoint_timeout_ms 2000
+send "bdb setattr DELAY_WRITES_IN_RECORD_C 5000" >/dev/null
+run "insert into other values(-4, -4), (-5, -5)" >/dev/null &
+ins_pid=$!
+sleep 1
+run "rebuild s" >/dev/null 2>&1 && fail "rebuild blocked past the timeout succeeded"
+send "bdb setattr DELAY_WRITES_IN_RECORD_C 0" >/dev/null
+wait $ins_pid || fail "insert holding the checkpoint failed"
+tunable sc_commit_map_checkpoint_timeout_ms 600000
+grep -q "no node to hand mastership to" "$(log)" || fail "timeout was not reported"
+N_SAVE=$N; N=100
+backed_out s "$files"
+N=$N_SAVE
+
+set_lrl() {
+	sed -i "/^$1 /d" "$lrl"
+	[[ -n "$2" ]] && echo "$1 $2" >>"$lrl"
+}
+
+# Kill the master in the middle of a rebuild; the restarted node resumes it.
+restart_during_rebuild() {
+	local tbl=${1:-r} converted
+	send "bdb setattr SC_FORCE_DELAY 1" >/dev/null
+	cdb2sql ${CDB2_OPTIONS} --host "$master" "$dbnm" "rebuild $tbl" >/dev/null 2>&1 &
+	local rb_pid=$!
+	for _ in $(seq 1 100); do
+		converted=$(run "select coalesce(max(converted), 0) from comdb2_sc_status where name='$tbl'")
+		(( converted > 0 )) && break
+		sleep 0.1
+	done
+	(( converted > 0 )) || fail "rebuild of $tbl never started"
+	kill -9 $rb_pid
+	wait $rb_pid 2>/dev/null
+	kill_restart_node "$master" 5
+	[[ "$2" == nowait ]] || wait_for_sc $tbl
+}
+
+wait_for_sc() {
+	local st
+	for _ in $(seq 1 300); do
+		st=$(run "select status from comdb2_sc_status where name='$1'" 2>/dev/null)
+		[[ -n "$st" && "$st" != "RUNNING" && "$st" != "COMMIT_PENDING" ]] && return 0
+		sleep 1
+	done
+	fail "schema change of $1 did not finish: '$st'"
+}
+
+set_lrl sc_commit_map_skip 1
+for mtddl in 0 1; do
+	echo "=== a rebuild resumed after a restart checkpoints before publishing (multitable_ddl $mtddl)"
+	set_lrl multitable_ddl $mtddl
+	tunable multitable_ddl $mtddl
+	fill r $N
+	restart_during_rebuild
+	grep -q "Resuming schema change" "$(log)" || fail "rebuild was not resumed"
+	grep -q "converter commits skip the commit LSN map" "$(log)" || fail "resumed rebuild did not skip"
+	grep -q "checkpoint is past the converter commits" "$(log)" || fail "resumed rebuild did not checkpoint"
+	[[ "$(run "select status from comdb2_sc_status where name='r'")" == "COMMITTED" ]] || fail "resumed rebuild"
+	check_rows r $N
+
+	echo "=== a resumed rebuild whose checkpoint fails is backed out (multitable_ddl $mtddl)"
+	files=$(table_files r)
+	set_lrl debug_sc_commit_map_checkpoint_fail 1
+	restart_during_rebuild
+	grep -q "Failed to checkpoint past the converter commits" "$(log)" || fail "checkpoint did not fail"
+	set_lrl debug_sc_commit_map_checkpoint_fail
+	tunable debug_sc_commit_map_checkpoint_fail 0
+	backed_out r "$files"
+	run "drop table r" >/dev/null
+done
+
+echo "=== a snapshot taken after a resumed rebuild reopens the replacement, before conversion goes on"
+# the resumed rebuild sleeps SC_RESTART_SEC between reopening the replacement and converting
+set_lrl multitable_ddl 0
+set_lrl "setattr SC_RESTART_SEC" 20
+fill p $N
+restart_during_rebuild p nowait
+wait_log "Schema change will resume in" 0
+fifo=$TMPDIR/early.fifo
+out=$TMPDIR/early.out
+rm -f "$fifo"
+mkfifo "$fifo"
+cdb2sql --tabs ${CDB2_OPTIONS} --host "$master" "$dbnm" - <"$fifo" >"$out" 2>&1 &
+snap_pid=$!
+exec 9>"$fifo"
+printf '%s\n' "set transaction snapshot isolation" "begin" "select count(*) from p" >&9
+for _ in $(seq 1 100); do grep -q "^$N$" "$out" && break; sleep 0.1; done
+grep -q "^$N$" "$out" || { cat "$out"; fail "snapshot did not start before the resumed conversion"; }
+grep -q "Schema change resuming" "$(log)" && fail "snapshot started too late: conversion had already resumed"
+wait_for_sc p
+printf '%s\n' "select count(*) from p" "commit" >&9
+exec 9>&-
+wait $snap_pid
+[[ $(grep -c "^[0-9][0-9]*$" "$out") == 1 ]] || { cat "$out"; fail "snapshot read the replacement it cannot unroll"; }
+grep -q 'table "p" was schema changed' "$out" || { cat "$out"; fail "snapshot was not failed"; }
+set_lrl "setattr SC_RESTART_SEC"
+check_rows p $N
+
+echo "=== a crash during the wait leaves the rebuild to resume"
+fill c $N
+holds=$(count "holding before the commit LSN map checkpoint")
+tunable debug_sc_commit_map_checkpoint_hold 1
+cdb2sql ${CDB2_OPTIONS} --host "$master" "$dbnm" "rebuild c" >/dev/null 2>&1 &
+rb_pid=$!
+wait_log "holding before the commit LSN map checkpoint" $holds
+kill -9 $rb_pid
+wait $rb_pid 2>/dev/null
+kill_restart_node "$master" 5
+wait_for_sc c
+[[ "$(run "select status from comdb2_sc_status where name='c'")" == "COMMITTED" ]] ||
+	fail "rebuild interrupted by a crash did not resume"
+grep -q "checkpoint is past the converter commits" "$(log)" || fail "resumed rebuild of c did not checkpoint"
+check_rows c $N
+
+echo "=== a shutdown during the checkpoint itself leaves the rebuild to resume"
+# exit sets stopsc from its own thread while the barrier's checkpoint sleeps
+fill g $N
+published=$(count "\[g\] Got table write lock")
+holds=$(count "holding before the commit LSN map checkpoint")
+tunable debug_sc_commit_map_checkpoint_hold 1
+run "rebuild g" >/dev/null 2>&1 &
+rb_pid=$!
+wait_log "holding before the commit LSN map checkpoint" $holds
+send "ckp_sleep_before_sync 8000" >/dev/null
+ckps=$(count "bdb_checkpoint_past_lsn: rc 0")
+tunable debug_sc_commit_map_checkpoint_hold 0
+sleep 2
+send "exit" >/dev/null
+wait $rb_pid
+for _ in $(seq 1 300); do
+	kill -0 "$(cat $TMPDIR/$dbnm.pid)" 2>/dev/null || break
+	sleep 0.1
+done
+(( $(count "bdb_checkpoint_past_lsn: rc 0") > ckps )) || fail "the checkpoint did not run"
+grep -q "Master downgrading before the commit LSN map checkpoint" "$(log)" ||
+	fail "the rebuild went on after a shutdown during its checkpoint"
+(( $(count "\[g\] Got table write lock") == published )) || fail "the rebuild published during the shutdown"
+kill_restart_node "$master" 5
+wait_for_sc g
+[[ "$(run "select status from comdb2_sc_status where name='g'")" == "COMMITTED" ]] ||
+	fail "rebuild interrupted during its checkpoint did not resume"
+check_rows g $N
+
+echo "=== a shutdown during the wait leaves the rebuild to resume"
+fill r $N
+holds=$(count "holding before the commit LSN map checkpoint")
+tunable debug_sc_commit_map_checkpoint_hold 1
+run "rebuild r" >/dev/null 2>&1 &
+rb_pid=$!
+wait_log "holding before the commit LSN map checkpoint" $holds
+send "exit" >/dev/null
+wait $rb_pid
+for _ in $(seq 1 100); do
+	kill -0 "$(cat $TMPDIR/$dbnm.pid)" 2>/dev/null || break
+	sleep 0.1
+done
+grep -q "Master downgrading before the commit LSN map checkpoint" "$(log)" || fail "shutdown did not stop the wait"
+kill_restart_node "$master" 5
+wait_for_sc r
+[[ "$(run "select status from comdb2_sc_status where name='r'")" == "COMMITTED" ]] ||
+	fail "rebuild interrupted by a shutdown did not resume"
+check_rows r $N
+
+set_lrl sc_commit_map_skip
+for tbl in t s r c p g; do
+	do_verify $tbl
+done
+echo "Passed test"
