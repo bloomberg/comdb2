@@ -73,13 +73,17 @@ master() {
 }
 replicants() { local m=$(master) n; for n in "${nodes[@]}"; do [[ $n != "$m" ]] && echo "$n"; done; }
 
-maxclients=0
-for c in $CLIENTS $WTHREAD_CLIENTS $LATE_CLIENTS $SLOW_CLIENTS $CAP_CLIENTS $DURABLE_CLIENTS $KILL_CLIENTS $CATCHUP_CLIENTS; do
-    ((c > maxclients)) && maxclients=$c
-done
-for ((i = 0; i < maxclients; i++)); do
-    q "${nodes[0]}" "create table if not exists bench$i(i int)" >/dev/null || fail "create bench$i"
-done
+# tables <n>: exactly bench0 .. bench<n-1>, all empty, before every run.  The table count alone moves the
+# numbers (64 clients ran 17% slower with 1000 tables in the db), and rows kept from earlier runs would too.
+ntables=0
+tables() {
+    local n=$1 i
+    { for ((i = 0; i < (ntables > n ? ntables : n); i++)); do echo "drop table if exists bench$i"; done
+      for ((i = 0; i < n; i++)); do echo "create table bench$i(i int)\$\$"; done; } |
+        $CDB2SQL_EXE $CDB2_OPTIONS $db --host "$(master)" - > "$out/ddl" 2>&1
+    grep -q "failed" "$out/ddl" && fail "tables $n: $(grep -m1 failed "$out/ddl")"
+    ntables=$n
+}
 default_sqlthreads=$(q "${nodes[0]}" "select max_thds from comdb2_threadpools where name='sqlenginepool'")
 
 # configure <waiter 0|1> [wt=N] [cap=N] [ackdelay=MS] [repdelay=MS] [durable=0|1] [sqlthreads=N]:
@@ -157,6 +161,7 @@ run() {
     shift 3
     configure "$adc" "$@"
     for ((r = 1; r <= REPS; r++)); do
+        tables "$clients"
         local t0=$(date +%s)
         load "$clients" "$DUR" "$name"
         echo "RESULT $name clients=$clients waiter=$adc $* rep=$r inserts/s=$(persec "$name" $t0 "$DUR")"
@@ -203,7 +208,7 @@ for b in $BENCH; do
             configure $adc cap=$kc
             old=$(master)
             # empty tables, so a row left by an earlier run can't stand in for a lost insert
-            for ((i = 0; i < kc; i++)); do q "$old" "truncate table bench$i" >/dev/null || fail "truncate bench$i"; done
+            tables "$kc"
             r0=$(send "${nodes[0]}" "stat replay" | grep -o 'Blkseq-replay-count: [0-9]*' | grep -o '[0-9]*$')
             t0=$(date +%s)
             load "$kc" "$DUR" kill unpinned &
@@ -241,6 +246,7 @@ for b in $BENCH; do
     catchup)
         for cc in $CATCHUP_CLIENTS; do for adc in 0 1; do
             configure $adc
+            tables "$cc"
             m=$(master)
             v=$(replicants | tail -1)
             ts=$(date +%s)
