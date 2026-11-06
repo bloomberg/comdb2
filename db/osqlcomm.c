@@ -1879,6 +1879,102 @@ static uint8_t *osqlcomm_clientinfo_uuid_rpl_type_put(const osql_clientinfo_rpl_
     return p_buf;
 }
 
+/* Who this transaction runs as, for the master: the client identity if it
+ * sent one, else what is known of argv0/origin/pid. The string follows the
+ * message, as OSQL_USEDB's tablename does. */
+typedef struct osql_identity {
+    int len;    /* including trailing 0 */
+    int unused; /* alignment: keeps the rpl types a multiple of 8 */
+} osql_identity_t;
+
+enum { OSQLCOMM_IDENTITY_TYPE_LEN = 4 + 4 };
+
+BB_COMPILE_TIME_ASSERT(osqlcomm_identity_type_len, sizeof(osql_identity_t) == OSQLCOMM_IDENTITY_TYPE_LEN);
+
+static uint8_t *osqlcomm_identity_type_put(const osql_identity_t *p_osql_identity, uint8_t *p_buf,
+                                           const uint8_t *p_buf_end)
+{
+    if (p_buf_end < p_buf || OSQLCOMM_IDENTITY_TYPE_LEN > p_buf_end - p_buf)
+        return NULL;
+
+    p_buf = buf_put(&(p_osql_identity->len), sizeof(p_osql_identity->len), p_buf, p_buf_end);
+    p_buf = buf_put(&(p_osql_identity->unused), sizeof(p_osql_identity->unused), p_buf, p_buf_end);
+
+    return p_buf;
+}
+
+static const uint8_t *osqlcomm_identity_type_get(osql_identity_t *p_osql_identity, const uint8_t *p_buf,
+                                                 const uint8_t *p_buf_end)
+{
+    if (p_buf_end < p_buf || OSQLCOMM_IDENTITY_TYPE_LEN > p_buf_end - p_buf)
+        return NULL;
+
+    p_buf = buf_get(&(p_osql_identity->len), sizeof(p_osql_identity->len), p_buf, p_buf_end);
+    p_buf = buf_get(&(p_osql_identity->unused), sizeof(p_osql_identity->unused), p_buf, p_buf_end);
+
+    return p_buf;
+}
+
+typedef struct osql_identity_rpl {
+    osql_rpl_t hd;
+    osql_identity_t dt;
+} osql_identity_rpl_t;
+
+enum { OSQLCOMM_IDENTITY_RPL_TYPE_LEN = OSQLCOMM_RPL_TYPE_LEN + OSQLCOMM_IDENTITY_TYPE_LEN };
+
+BB_COMPILE_TIME_ASSERT(osqlcomm_identity_rpl_type_len, sizeof(osql_identity_rpl_t) == OSQLCOMM_IDENTITY_RPL_TYPE_LEN);
+
+static uint8_t *osqlcomm_identity_rpl_type_put(const osql_identity_rpl_t *p_identity_rpl, uint8_t *p_buf,
+                                               uint8_t *p_buf_end)
+{
+    if (p_buf_end < p_buf || OSQLCOMM_IDENTITY_RPL_TYPE_LEN > (p_buf_end - p_buf))
+        return NULL;
+
+    p_buf = osqlcomm_rpl_type_put(&(p_identity_rpl->hd), p_buf, p_buf_end);
+    p_buf = osqlcomm_identity_type_put(&(p_identity_rpl->dt), p_buf, p_buf_end);
+
+    return p_buf;
+}
+
+typedef struct osql_identity_rpl_uuid {
+    osql_uuid_rpl_t hd;
+    osql_identity_t dt;
+} osql_identity_rpl_uuid_t;
+
+enum { OSQLCOMM_IDENTITY_RPL_UUID_TYPE_LEN = OSQLCOMM_UUID_RPL_TYPE_LEN + OSQLCOMM_IDENTITY_TYPE_LEN };
+
+BB_COMPILE_TIME_ASSERT(osqlcomm_identity_rpl_uuid_type_len,
+                       sizeof(osql_identity_rpl_uuid_t) == OSQLCOMM_IDENTITY_RPL_UUID_TYPE_LEN);
+
+static uint8_t *osqlcomm_identity_uuid_rpl_type_put(const osql_identity_rpl_uuid_t *p_identity_uuid_rpl,
+                                                    uint8_t *p_buf, uint8_t *p_buf_end)
+{
+    if (p_buf_end < p_buf || OSQLCOMM_IDENTITY_RPL_UUID_TYPE_LEN > (p_buf_end - p_buf))
+        return NULL;
+
+    p_buf = osqlcomm_uuid_rpl_type_put(&(p_identity_uuid_rpl->hd), p_buf, p_buf_end);
+    p_buf = osqlcomm_identity_type_put(&(p_identity_uuid_rpl->dt), p_buf, p_buf_end);
+
+    return p_buf;
+}
+
+/* Return the identity string of an OSQL_IDENTITY message, in place; NULL if
+ * the message is malformed */
+static const char *osqlcomm_identity_from_msg(const uint8_t *p_buf, const uint8_t *p_msg_end)
+{
+    osql_identity_t dt = {0};
+    const uint8_t *p_buf_end = p_buf + sizeof(osql_identity_t);
+    const char *identity;
+
+    if (p_buf_end > p_msg_end)
+        return NULL;
+    identity = (const char *)osqlcomm_identity_type_get(&dt, p_buf, p_buf_end);
+    if (identity == NULL || dt.len <= 0 || dt.len > p_msg_end - (const uint8_t *)identity ||
+        identity[dt.len - 1] != '\0')
+        return NULL;
+    return identity;
+}
+
 typedef struct osql_index {
     unsigned long long seq;
     int ixnum;
@@ -3989,6 +4085,7 @@ int osql_comm_is_done(osql_sess_t *sess, int type, char *rpl, int rpllen,
      * loses the no-constraints fast path in osql_process_packet. */
     case OSQL_FINGERPRINT:
     case OSQL_CLIENTINFO:
+    case OSQL_IDENTITY:
         break;
     case OSQL_DONE_SNAP:
         osql_extract_snap_info(sess, rpl, rpllen);
@@ -4533,6 +4630,65 @@ int osql_send_clientinfo(const char *host, unsigned long long rqid, uuid_t uuid,
     /* taskname field is not null-terminated -- send rest of taskname */
     rc = offload_net_send(host, type, &buf, msglen, 0, (tasknamelen > sent) ? (char *)taskname + sent : NULL,
                           (tasknamelen > sent) ? tasknamelen - sent : 0);
+
+    if (rc)
+        logmsg(LOGMSG_ERROR, "%s offload_net_send returns rc=%d\n", __func__, rc);
+
+    return rc;
+}
+
+/**
+ * Send OSQL_IDENTITY op: who this transaction runs as. Sent once per
+ * transaction, ahead of OSQL_DONE.
+ */
+int osql_send_identity(const char *host, unsigned long long rqid, uuid_t uuid, const char *identity, int type)
+{
+    int len = strlen(identity) + 1; /* including trailing 0 */
+    int msglen;
+    int rc = 0;
+
+    uint8_t buf[(int)OSQLCOMM_IDENTITY_RPL_UUID_TYPE_LEN > (int)OSQLCOMM_IDENTITY_RPL_TYPE_LEN
+                    ? OSQLCOMM_IDENTITY_RPL_UUID_TYPE_LEN
+                    : OSQLCOMM_IDENTITY_RPL_TYPE_LEN];
+
+    if (check_master(host))
+        return OSQL_SEND_ERROR_WRONGMASTER;
+
+    if (rqid == OSQL_RQID_USE_UUID) {
+        osql_identity_rpl_uuid_t id_uuid_rpl = {{0}};
+        uint8_t *p_buf = buf;
+        uint8_t *p_buf_end = (p_buf + OSQLCOMM_IDENTITY_RPL_UUID_TYPE_LEN);
+
+        msglen = OSQLCOMM_IDENTITY_RPL_UUID_TYPE_LEN;
+
+        id_uuid_rpl.hd.type = OSQL_IDENTITY;
+        comdb2uuidcpy(id_uuid_rpl.hd.uuid, uuid);
+        id_uuid_rpl.dt.len = len;
+
+        if (!(p_buf = osqlcomm_identity_uuid_rpl_type_put(&id_uuid_rpl, p_buf, p_buf_end))) {
+            logmsg(LOGMSG_ERROR, "%s:%s returns NULL\n", __func__, "osqlcomm_identity_uuid_rpl_type_put");
+            return -1;
+        }
+        type = osql_net_type_to_net_uuid_type(NET_OSQL_SOCK_RPL);
+    } else {
+        osql_identity_rpl_t id_rpl = {{0}};
+        uint8_t *p_buf = buf;
+        uint8_t *p_buf_end = (p_buf + OSQLCOMM_IDENTITY_RPL_TYPE_LEN);
+
+        msglen = OSQLCOMM_IDENTITY_RPL_TYPE_LEN;
+
+        id_rpl.hd.type = OSQL_IDENTITY;
+        id_rpl.hd.sid = rqid;
+        id_rpl.dt.len = len;
+
+        if (!(p_buf = osqlcomm_identity_rpl_type_put(&id_rpl, p_buf, p_buf_end))) {
+            logmsg(LOGMSG_ERROR, "%s:%s returns NULL\n", __func__, "osqlcomm_identity_rpl_type_put");
+            return -1;
+        }
+    }
+
+    /* the string follows the fixed part */
+    rc = offload_net_send(host, type, &buf, msglen, 0, (char *)identity, len);
 
     if (rc)
         logmsg(LOGMSG_ERROR, "%s offload_net_send returns rc=%d\n", __func__, rc);
@@ -7873,6 +8029,12 @@ int osql_process_schemachange(struct schema_change_type *sc, uuid_t uuid)
 
 /* get the table name part of the rpl request
  */
+const char *get_identity_from_rpl(int is_uuid, const uint8_t *rpl, int rpllen)
+{
+    const uint8_t *p_buf = rpl + (is_uuid ? sizeof(osql_uuid_rpl_t) : sizeof(osql_rpl_t));
+    return osqlcomm_identity_from_msg(p_buf, rpl + rpllen);
+}
+
 const char *get_tablename_from_rpl(int is_uuid, const uint8_t *rpl, int rpllen,
                                    int *tableversion)
 {
@@ -8578,6 +8740,12 @@ done_delete:
             }
         }
     } break;
+
+    case OSQL_IDENTITY:
+        /* The session latched it on receipt; nothing to apply. */
+        if (osqlcomm_identity_from_msg(p_buf, p_msg_end) == NULL)
+            goto badmsg;
+        break;
 
     case OSQL_UPDREC:
     case OSQL_UPDATE: {

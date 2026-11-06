@@ -662,6 +662,23 @@ static const unsigned char *fingerprint_or_null(const struct __db_lock *lp)
 	return NULL;
 }
 
+/* The osql transaction uuid of the locker, else of its master transaction;
+ * NULL if neither has one */
+static const unsigned char *locker_uuid_or_null(DB_LOCKTAB *lt, DB_LOCKER *lip)
+{
+	static const u_int8_t zero[sizeof(lip->uuid)];
+	DB_LOCKER *mlip;
+
+	if (memcmp(lip->uuid, zero, sizeof(zero)) != 0)
+		return lip->uuid;
+	if (lip->master_locker == INVALID_ROFF)
+		return NULL;
+	mlip = R_ADDR(&lt->reginfo, lip->master_locker);
+	if (memcmp(mlip->uuid, zero, sizeof(zero)) != 0)
+		return mlip->uuid;
+	return NULL;
+}
+
 static int
 __collect_lock(DB_LOCKTAB *lt, DB_LOCKER *lip, struct __db_lock *lp,
 		collect_locks_f func, void *arg)
@@ -773,7 +790,8 @@ __collect_lock(DB_LOCKTAB *lt, DB_LOCKER *lip, struct __db_lock *lp,
 		namep += 4;
 
 	(*func)(arg, (uint64_t)lip->tid, lip->id, mode, status, namep, page, rectype, lp->stackid,
-		fingerprint_or_null(lp), fp_role_to_char(lp->fp_role), lp->client_id);
+		fingerprint_or_null(lp), fp_role_to_char(lp->fp_role), lp->client_id,
+		locker_uuid_or_null(lt, lip));
 	if (hexdump)
 		free(hexdump);
 	return 0;

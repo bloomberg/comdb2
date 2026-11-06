@@ -267,7 +267,7 @@ Describes all the hard limits in the database.
 Lists all active comdb2 locks.
 
    comdb2_locks(thread, lockerid, mode, status, object, locktype, page,
-                fingerprint, fingerprint_role, client_id)
+                fingerprint, fingerprint_role, client_id, uuid, identity)
 
 * `thread` - Thread Id of the owner thread
 * `lockerid` - Locker Id
@@ -290,6 +290,15 @@ Lists all active comdb2 locks.
                 and `comdb2_active_osqls.client_id` when it is `W`, and
                 `comdb2_replication.client_id` when it is `A`; NULL if not
                 known
+* `uuid` - On the master, the UUID of the transaction the locker applies: joins
+           `comdb2_transaction_ops.uuid` and `comdb2_active_osqls.request_id`. It
+           is kept per locker, not per lock, so every lock of the locker (or
+           of its child lockers) has it. NULL if the locker applies no
+           transaction, or the replicant sent the transaction without a UUID
+* `identity` - Who the transaction in `uuid` runs as, the same as
+               `comdb2_transaction_ops.identity`. Only the transaction keeps
+               it, so it is NULL when `uuid` is, and until the identity
+               arrives
 
 Rows with `fingerprint_role='A'` never carry a `fingerprint`: a replicant
 takes a transaction's locks before it applies any records. They carry a
@@ -771,6 +780,25 @@ Lists all the transaction log records.
 * `generation` - Generation ID
 * `timestamp` - Timestamp
 * `payload` - Paylod
+
+## comdb2_transaction_ops
+
+Lists the operations of the transactions that the master is building or applying, one row per transaction, table
+and opcode. Rows exist only on the master, from when the first operation arrives until the transaction is done.
+
+    comdb2_transaction_ops(uuid, tablename, opcode, count, identity, start_time)
+
+* `uuid` - UUID of the transaction
+* `tablename` - Table the operations are for; NULL for operations ahead of the first table
+* `opcode` - The osql opcode saved for the transaction (`OSQL_INSERT`, `OSQL_DELREC`, ...), or the row a foreign key
+action generated (`FK_CASCADE_DELETE`, `FK_CASCADE_UPDATE`, `FK_SET_NULL`). Foreign key rows are counted while the
+transaction is applied, and start again from zero if the apply is retried.
+* `count` - Number of operations
+* `identity` - Who the transaction runs as: the client identity, or else `argv0=... origin=... pid=...`. Sent only by
+replicants with `osql_send_identity` on, and always ahead of the commit, so it is there while the master applies the
+transaction. A transaction that writes as it runs sends it with the first table it writes; one that buffers its writes
+until the commit (read committed, snapshot, serializable) sends it at the commit. NULL until it arrives.
+* `start_time` - When the master received the first operation of the transaction, in milliseconds since the epoch
 
 ## comdb2_transaction_state
 

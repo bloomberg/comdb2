@@ -222,6 +222,8 @@ static int osql_sock_start_int(struct sqlclntstate *clnt, int type,
     int keep_rqid = start_flags & OSQL_START_KEEP_RQID;
     int is_final = start_flags & OSQL_START_IS_FINAL;
 
+    osql->identity_sent = 0; /* each session sends its identity once */
+
     /* new id */
     if (!keep_rqid) {
         osql->rqid = OSQL_RQID_USE_UUID;
@@ -937,6 +939,7 @@ static int osql_sock_restart(struct sqlclntstate *clnt, int maxretries, int keep
         osql->replicant_numops = 0;
         osql->fingerprint_sent = 0; /* re-send fingerprint for the new session */
         osql->clientinfo_sent = 0;  /* and re-send clientinfo */
+        osql->identity_sent = 0;    /* and identity */
         if (osql->tablename) {
             free(osql->tablename);
             osql->tablename = NULL;
@@ -1022,6 +1025,44 @@ int gbl_osql_send_fingerprint = 0;
 
 /* Send OSQL_CLIENTINFO once per transaction. Default OFF for the same reason. */
 int gbl_osql_send_clientinfo = 0;
+
+/* Send OSQL_IDENTITY once per transaction. Default OFF for the same reason. */
+int gbl_osql_send_identity = 0;
+
+/* The client identity if it sent one, else what we know of argv0/origin/pid.
+ * Returns 0 and leaves buf empty if there is nothing to send. */
+static int osql_identity_str(struct sqlclntstate *clnt, char *buf, size_t buflen)
+{
+    int n = 0;
+
+    buf[0] = '\0';
+    if (clnt->externalAuthUser)
+        return snprintf(buf, buflen, "%s", clnt->externalAuthUser);
+
+    if (clnt->argv0)
+        n += snprintf(buf + n, buflen - n, "argv0=%s", clnt->argv0);
+    if (clnt->origin && n < buflen)
+        n += snprintf(buf + n, buflen - n, "%sorigin=%s", n ? " " : "", clnt->origin);
+    if (clnt->last_pid && n < buflen)
+        n += snprintf(buf + n, buflen - n, "%spid=%d", n ? " " : "", clnt->last_pid);
+    return n;
+}
+
+static int osql_send_identity_logic(struct sqlclntstate *clnt, int nettype)
+{
+    osqlstate_t *osql = &clnt->osql;
+    char identity[1024];
+    int rc = 0;
+
+    if (osql_identity_str(clnt, identity, sizeof(identity)) > 0) {
+        rc = osql_send_identity(osql->target_host, osql->rqid, osql->uuid, identity, nettype);
+        if (rc == 0)
+            osql->replicant_numops++;
+    }
+    if (rc == 0)
+        osql->identity_sent = 1;
+    return rc;
+}
 
 static inline int sock_restart_retryable_rcode(int restart_rc)
 {
@@ -1520,6 +1561,19 @@ static int osql_send_usedb_logic_int(char *tablename, struct sqlclntstate *clnt,
         DEBUG_PRINT_NUMOPS();
     }
 
+    /* Once per transaction, with the first table, so the master can show it
+     * while the transaction is still being built. Writes buffered in shadow
+     * tables do not come through here; osql_send_commit_logic sends it ahead
+     * of OSQL_DONE for those. */
+    if (gbl_osql_send_identity && !osql->identity_sent) {
+        do {
+            rc = osql_send_identity_logic(clnt, nettype);
+            RESTART_SOCKSQL;
+        } while (restarted);
+        if (rc)
+            return rc;
+    }
+
     /* Sent only when the fingerprint changes within the session, and ahead of
      * the usedb dedup so a new statement on the same table still gets one. */
     if (gbl_osql_send_fingerprint && !fingerprint_is_zero(clnt->work.aFingerprint) &&
@@ -1755,6 +1809,11 @@ static int osql_send_commit_logic(struct sqlclntstate *clnt, int retries, int ne
             rc = osql_send_startgen(osql->target_host, osql->rqid, osql->uuid,
                                     clnt->start_gen, nettype);
         }
+
+        /* Not sent yet if the transaction touched no table, buffered its
+         * writes in shadow tables, or restarted */
+        if (rc == 0 && gbl_osql_send_identity && !osql->identity_sent)
+            rc = osql_send_identity_logic(clnt, nettype);
 
         if (rc == 0) {
             osql->replicant_numops++;

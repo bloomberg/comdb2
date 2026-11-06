@@ -148,6 +148,7 @@ typedef struct osqlstate {
                                                       the master this session */
     int fingerprint_sent;                          /* set once we've sent an OSQL_FINGERPRINT */
     int clientinfo_sent;                           /* set once we've sent an OSQL_CLIENTINFO */
+    int identity_sent;                             /* set once we've sent an OSQL_IDENTITY */
     int sentops;             /* number of operations per statement */
     int tran_ops;            /* actual number of operations for a transaction */
     int replicant_numops; /* total num of ops sent by replicant to master which
