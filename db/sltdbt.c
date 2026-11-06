@@ -446,9 +446,19 @@ int handle_ireq(struct ireq *iq)
         osql_snap_info = IQ_SNAPINFO(iq);
 
     comdb2_opcode_t *opcode = hash_find_readonly(gbl_opcode_hash, &iq->opcode);
-    if (!opcode || !opcode_supported(iq->opcode)) {
+    int supported = opcode_supported(iq->opcode);
+    if (!opcode || !supported) {
         logmsg(LOGMSG_ERROR, "bad request %d from %s\n", iq->opcode,
                getorigin(iq));
+        if (!supported) {
+            /* read requests have no BLKF_ERRSTAT flag, so turn errstat on
+             * ourselves or the client never sees why it was rejected */
+            iq->errstrused = 1;
+            if (gbl_disable_tagged_api)
+                reqerrstr(iq, ERR_BADREQ, "tagged api reads are disabled (disable_tagged_api)");
+            else
+                reqerrstr(iq, ERR_BADREQ, "tagged api reads are not supported with rowlocks");
+        }
         /* Starting write, no more reads */
         iq->p_buf_in_end = iq->p_buf_in = NULL;
         rc = ERR_BADREQ;

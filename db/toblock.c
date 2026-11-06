@@ -3256,6 +3256,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle, stru
         }
         if (is_tagged && gbl_disable_tagged_api_writes) {
             logmsg(LOGMSG_ERROR, "Rejecting tagged api request\n");
+            reqerrstr(iq, ERR_BADREQ, "tagged api writes are disabled (disable_tagged_api_writes)");
             outrc = ERR_BADREQ;
             fromline = __LINE__;
             goto cleanup;
