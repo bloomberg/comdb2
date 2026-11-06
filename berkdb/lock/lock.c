@@ -6439,6 +6439,490 @@ err:
 }
 
 
+/*
+ * Replicant lock order.
+ *
+ * __lock_fix_list encodes a commit's lock list in the master's order: page
+ * locks grouped by lock type and raw fileid bytes, so a table's index, data
+ * and blob files come in an effectively random order, pages inside a file in
+ * no particular order, and table locks last.  Readers on a replicant take a
+ * table lock, then index pages, then the row's data and blob pages.  Taking
+ * the list in the master's order closes lock cycles with those readers, and
+ * the replicant's deadlock policy picks the apply thread as the victim every
+ * time.  With rep_lock_order the apply thread takes the same locks in the
+ * readers' order: non-page locks first, in list order, then page locks by
+ * file class (index, data, blob, other), fileid and page number.
+ */
+int gbl_rep_lock_order = 1;
+int gbl_debug_rep_lock_order_check = 0;
+
+#define LKO_NONPAGE 0 /* sorts before the DB_LKCLASS_* page classes */
+
+struct lko_ent {
+	u_int8_t *obj;		/* object in the list buffer */
+	db_pgno_t pgno;		/* page number, native order (ILOCKs) */
+	u_int32_t seq;		/* position in the list */
+	u_int16_t size;
+	u_int8_t cls;		/* LKO_NONPAGE or DB_LKCLASS_* */
+	u_int8_t swap;		/* ILOCK type needs a byte swap */
+};
+
+static int
+__lock_order_cmp(const void *a, const void *b)
+{
+	const struct lko_ent *x = a, *y = b;
+	int c;
+
+	if (x->cls != y->cls)
+		return (x->cls < y->cls ? -1 : 1);
+	if (x->cls != LKO_NONPAGE) {
+		if ((c = memcmp(x->obj + offsetof(DB_LOCK_ILOCK, fileid),
+		    y->obj + offsetof(DB_LOCK_ILOCK, fileid),
+		    DB_FILE_ID_LEN)) != 0)
+			return (c);
+		if (x->pgno != y->pgno)
+			return (x->pgno < y->pgno ? -1 : 1);
+	}
+	return (x->seq < y->seq ? -1 : x->seq > y->seq);
+}
+
+/*
+ * Take the locks of a lock list in the order described above.  The list is
+ * parsed the way __lock_get_list_int_int and __lock_list_parse_pglogs_int
+ * parse it, without modifying it.  For a list this does not handle, it sets
+ * *handled to 0 before taking any lock, and the caller uses the list order.
+ */
+static int
+__lock_get_list_ordered(dbenv, locker, flags, lock_mode, list, pcontext,
+    pglogs, keycnt, handled)
+	DB_ENV *dbenv;
+	u_int32_t locker, flags;
+	db_lockmode_t lock_mode;
+	DBT *list;
+	unsigned long long *pcontext;
+	void **pglogs;
+	u_int32_t *keycnt;
+	int *handled;
+{
+	struct lko_ent *ents = NULL, *e;
+	u_int32_t nents = 0, aents = 0, i, k, nkeys = 0, nlocks, nlsns, ndx;
+	u_int16_t npgno, size;
+	u_int8_t *dp, *end, *obj, *lastfid = NULL;
+	int ret = 0, swap, cls, lastcls = DB_LKCLASS_OTHER;
+	DB_LOCK_ILOCK ilk;
+	DB_LOCKTAB *lt = dbenv->lk_handle;
+	DB_LOCKREGION *region = lt->reginfo.primary;
+	DB_LOCKER *sh_locker;
+	DB_LOCK ret_lock;
+	DBT obj_dbt = {0};
+
+	*handled = 0;
+	if (list->size <= sizeof(unsigned long long))
+		return (0);
+	/* The byte-swap rule of the list-order path for ILOCK pgno and type */
+	swap = LF_ISSET(LOCK_GET_LIST_ENDIANIZE) ? LOG_SWAPPED() :
+	    LF_ISSET(LOCK_GET_LIST_FORCEFLIP) != 0;
+	dp = list->data;
+	end = dp + list->size - sizeof(unsigned long long);
+	GET_COUNT(dp, nlocks);
+	if (nlocks == MAX_LOCK_COUNT) {
+		/* pglogs format: every page is followed by a list of LSNs */
+		GET_NKEYS(dp, nkeys);
+		GET_COUNT(dp, nlocks);
+		if (nkeys != 0 && pglogs == NULL)
+			return (0);
+	}
+
+	for (i = 0; i < nlocks; i++) {
+		GET_PCOUNT(dp, npgno);
+		GET_SIZE(dp, size);
+		obj = dp;
+		dp += ALIGN(size, sizeof(u_int32_t));
+		cls = LKO_NONPAGE;
+		if (size == sizeof(DB_LOCK_ILOCK)) {
+			memcpy(&ilk, obj, sizeof(ilk));
+			if (swap) {
+				M_32_SWAP(ilk.pgno);
+				M_32_SWAP(ilk.type);
+			}
+			/* Skipped by the list-order path, see there */
+			if (nkeys == 0 && IS_WRITELOCK(lock_mode) &&
+			    ilk.type == DB_HANDLE_LOCK) {
+				if (npgno != 0)
+					goto out;
+				continue;
+			}
+			if (ilk.type == DB_PAGE_LOCK) {
+				/* Packed entries of one file are usually adjacent */
+				if (lastfid == NULL || memcmp(lastfid, ilk.fileid,
+				    DB_FILE_ID_LEN) != 0) {
+					lastcls = __ufid_to_lock_class(dbenv,
+					    ilk.fileid);
+					lastfid =
+					    obj + offsetof(DB_LOCK_ILOCK, fileid);
+				}
+				cls = lastcls;
+			}
+		} else if (npgno != 0)
+			goto out;	/* __lock_fix_list never packs these */
+		for (k = 0; k <= npgno; k++) {
+			if (k > 0)
+				GET_PGNO(dp, ilk.pgno);
+			if (nkeys != 0) {
+				GET_LSNCOUNT(dp, nlsns);
+				dp += nlsns * sizeof(DB_LSN);
+			}
+			if (nents == aents) {
+				aents = aents ? aents * 2 : 64;
+				if ((ret = __os_realloc(dbenv,
+				    aents * sizeof(*ents), &ents)) != 0)
+					goto out;
+			}
+			e = &ents[nents];
+			e->obj = obj;
+			e->pgno = ilk.pgno;
+			e->seq = nents++;
+			e->size = size;
+			e->cls = cls;
+			e->swap = swap;
+		}
+		if (dp > end)
+			goto out;
+	}
+	if (nents < 2)
+		goto out;
+
+	qsort(ents, nents, sizeof(*ents), __lock_order_cmp);
+	*handled = 1;
+	*keycnt = nkeys;
+	flags &= ~(LOCK_GET_LIST_GETLOCK | LOCK_GET_LIST_PRINTLOCK |
+	    LOCK_GET_LIST_PREPARE);
+
+	LOCKREGION(dbenv, lt);
+	LOCKER_INDX(lt, region, locker, ndx);
+	if ((ret = __lock_getlocker(lt, locker, ndx, 0, &sh_locker)) != 0)
+		goto unlock;
+	for (i = 0; i < nents; i++) {
+		e = &ents[i];
+		if (e->size == sizeof(DB_LOCK_ILOCK)) {
+			memcpy(&ilk, e->obj, sizeof(ilk));
+			if (e->swap)
+				M_32_SWAP(ilk.type);
+			ilk.pgno = e->pgno;
+			obj_dbt.data = &ilk;
+		} else
+			obj_dbt.data = e->obj;
+		obj_dbt.size = e->size;
+		if ((ret = __lock_get_internal(lt, locker, sh_locker, flags,
+		    &obj_dbt, lock_mode, 0, &ret_lock)) != 0)
+			goto unlock;
+	}
+	if (pcontext)
+		memcpy(pcontext, dp, sizeof(unsigned long long));
+unlock:
+	UNLOCKREGION(dbenv, lt);
+out:
+	if (ents)
+		__os_free(dbenv, ents);
+	return (ret);
+}
+
+/*
+ * debug_rep_lock_order_check: check that the ordered path takes exactly the
+ * locks the list-order path takes.  After the ordered path, the list-order
+ * path runs for the same locker with DB_LOCK_NOWAIT.  Every lock it asks for
+ * is then already held, so each request only adds a reference to the lock,
+ * and both passes must have added the same number of references to every
+ * lock.  A plain list is also re-encoded in the pglogs format, which current
+ * masters no longer write, and both paths are checked on that too.  The
+ * references the check added are dropped at the end.
+ */
+struct lko_held {
+	struct __db_lock *lp;
+	u_int32_t refs;
+};
+
+static int
+__lock_held_cmp(const void *a, const void *b)
+{
+	const struct lko_held *x = a, *y = b;
+
+	return (x->lp < y->lp ? -1 : x->lp > y->lp);
+}
+
+/* The locks the locker holds and their references, sorted by address */
+static int
+__lock_held_snap(dbenv, locker, hp, np)
+	DB_ENV *dbenv;
+	u_int32_t locker;
+	struct lko_held **hp;
+	u_int32_t *np;
+{
+	DB_LOCKTAB *lt = dbenv->lk_handle;
+	DB_LOCKREGION *region = lt->reginfo.primary;
+	DB_LOCKER *sh_locker;
+	struct __db_lock *lp;
+	u_int32_t n = 0, a = 0, ndx;
+	int ret = 0;
+
+	*hp = NULL;
+	LOCKREGION(dbenv, lt);
+	LOCKER_INDX(lt, region, locker, ndx);
+	if (__lock_getlocker(lt, locker, ndx, GETLOCKER_KEEP_PART,
+	    &sh_locker) != 0 || sh_locker == NULL)
+		goto done;
+	for (lp = SH_LIST_FIRST(&sh_locker->heldby, __db_lock); lp != NULL;
+	    lp = SH_LIST_NEXT(lp, locker_links, __db_lock)) {
+		if (n == a) {
+			a = a ? a * 2 : 64;
+			if ((ret = __os_realloc(dbenv, a * sizeof(**hp), hp)) != 0)
+				break;
+		}
+		(*hp)[n].lp = lp;
+		(*hp)[n++].refs = lp->refcount;
+	}
+	unlock_locker_partition(region, sh_locker->partition);
+done:
+	UNLOCKREGION(dbenv, lt);
+	if (n)
+		qsort(*hp, n, sizeof(**hp), __lock_held_cmp);
+	*np = n;
+	return (ret);
+}
+
+static u_int32_t
+__lock_held_refs(h, n, lp)
+	struct lko_held *h;
+	u_int32_t n;
+	struct __db_lock *lp;
+{
+	struct lko_held key = { lp, 0 }, *f;
+
+	f = n ? bsearch(&key, h, n, sizeof(*h), __lock_held_cmp) : NULL;
+	return (f ? f->refs : 0);
+}
+
+/*
+ * Copy a plain lock list in the pglogs format, with one LSN per object.  The
+ * counts are in the byte order of the log, like the rest of the list.  Lists
+ * with a handle lock are not copied: the plain format skips handle locks in
+ * write mode and the pglogs format takes them, so the lock sets differ.
+ */
+static int
+__lock_list_to_pglogs(dbenv, list, swap, out)
+	DB_ENV *dbenv;
+	DBT *list;
+	int swap;
+	DBT *out;
+{
+	u_int8_t *dp = list->data, *op;
+	u_int32_t nlocks, i, k, one = 1, maxcount = MAX_LOCK_COUNT;
+	u_int32_t type;
+	u_int16_t npgno, size;
+	DB_LSN lsn = { 1, 0 };
+	int ret;
+
+	/* Each object grows by an LSN count and an LSN; header: 2 counts */
+	if ((ret = __os_malloc(dbenv, list->size * 4 + 16, &out->data)) != 0)
+		return (ret);
+	if (LOG_SWAPPED())
+		M_32_SWAP(one);
+	op = out->data;
+	memcpy(op, &maxcount, sizeof(maxcount));	/* format marker */
+	memcpy(op + 4, &one, sizeof(one));		/* nkeys != 0 */
+	memcpy(op + 8, dp, sizeof(nlocks));
+	op += 12;
+	GET_COUNT(dp, nlocks);
+	for (i = 0; i < nlocks; i++) {
+		memcpy(op, dp, 4);
+		op += 4;
+		GET_PCOUNT(dp, npgno);
+		GET_SIZE(dp, size);
+		if (size == sizeof(DB_LOCK_ILOCK)) {
+			memcpy(&type, dp + offsetof(DB_LOCK_ILOCK, type),
+			    sizeof(type));
+			if (swap)
+				M_32_SWAP(type);
+			if (type == DB_HANDLE_LOCK) {
+				__os_free(dbenv, out->data);
+				out->data = NULL;
+				return (-1);
+			}
+		}
+		k = ALIGN(size, sizeof(u_int32_t));
+		memcpy(op, dp, k);
+		op += k;
+		dp += k;
+		for (k = 0; k <= npgno; k++) {
+			if (k > 0) {
+				memcpy(op, dp, sizeof(db_pgno_t));
+				op += sizeof(db_pgno_t);
+				dp += sizeof(db_pgno_t);
+			}
+			memcpy(op, &one, sizeof(one));
+			memcpy(op + 4, &lsn, sizeof(lsn));
+			op += 4 + sizeof(lsn);
+		}
+	}
+	memcpy(op, dp, sizeof(unsigned long long));	/* context */
+	out->size = (op - (u_int8_t *)out->data) + sizeof(unsigned long long);
+	return (0);
+}
+
+static int
+__lock_get_list_order_check(dbenv, locker, flags, lock_mode, list, pcontext,
+    maxlsn, pglogs, keycnt, fp)
+	DB_ENV *dbenv;
+	u_int32_t locker, flags;
+	db_lockmode_t lock_mode;
+	DBT *list;
+	unsigned long long *pcontext;
+	DB_LSN *maxlsn;
+	void **pglogs;
+	u_int32_t *keycnt;
+	FILE *fp;
+{
+	static u_int32_t nlists, npglogs;
+	static int lastpr;
+	struct lko_held *s[5] = { NULL };
+	u_int32_t n[5] = { 0 }, last = 1, i, p, kc = 0, base, nlocks;
+	unsigned long long ctx;
+	DBT pgl = { 0 }, copy = { 0 };
+	DB_LOCKTAB *lt = dbenv->lk_handle;
+	DB_LOCKREGION *region = lt->reginfo.primary;
+	struct __db_lock *lp;
+	int ret, r = 0, handled, now;
+	const char *what = NULL;
+	struct __db_lock *badlp = NULL;
+	u_int32_t badbase = 0, badinc = 0;
+
+	if ((ret = __lock_held_snap(dbenv, locker, &s[0], &n[0])) != 0)
+		goto out;
+	ret = __lock_get_list_ordered(dbenv, locker, flags, lock_mode, list,
+	    pcontext, pglogs, keycnt, &handled);
+	if (!handled) {
+		ret = __lock_get_list_int_int(dbenv, locker, flags, lock_mode,
+		    list, pcontext, maxlsn, pglogs, keycnt, fp);
+		goto out;
+	}
+	if (ret != 0 || (ret = __lock_held_snap(dbenv, locker, &s[1],
+	    &n[1])) != 0)
+		goto out;
+
+	flags |= DB_LOCK_NOWAIT;
+	/*
+	 * On a copy: the list-order code swaps objects in place and leaves the
+	 * handle locks it skips swapped.
+	 */
+	if ((ret = __os_malloc(dbenv, list->size, &copy.data)) != 0)
+		goto out;
+	memcpy(copy.data, list->data, list->size);
+	copy.size = list->size;
+	r = __lock_get_list_int_int(dbenv, locker, flags, lock_mode, &copy,
+	    pcontext ? &ctx : NULL, maxlsn, pglogs, &kc, fp);
+	if (r != 0 || kc != *keycnt || (pcontext && ctx != *pcontext)) {
+		what = "list order";
+		goto mismatch;
+	}
+	if ((ret = __lock_held_snap(dbenv, locker, &s[2], &n[2])) != 0)
+		goto out;
+	last = 2;
+
+	memcpy(&nlocks, list->data, sizeof(nlocks));
+	if (*keycnt == 0 && nlocks != MAX_LOCK_COUNT &&
+	    pglogs != NULL && __lock_list_to_pglogs(dbenv, list,
+	    LF_ISSET(LOCK_GET_LIST_ENDIANIZE) ? LOG_SWAPPED() :
+	    LF_ISSET(LOCK_GET_LIST_FORCEFLIP) != 0, &pgl) == 0) {
+		r = __lock_get_list_ordered(dbenv, locker, flags, lock_mode,
+		    &pgl, pcontext ? &ctx : NULL, pglogs, &kc, &handled);
+		if (r != 0 || !handled || (pcontext && ctx != *pcontext)) {
+			what = "ordered, pglogs format";
+			goto mismatch;
+		}
+		if ((ret = __lock_held_snap(dbenv, locker, &s[3], &n[3])) != 0)
+			goto out;
+		r = __lock_get_list_int_int(dbenv, locker, flags, lock_mode,
+		    &pgl, pcontext ? &ctx : NULL, maxlsn, pglogs, &kc, fp);
+		if (r != 0 || (pcontext && ctx != *pcontext)) {
+			what = "list order, pglogs format";
+			goto mismatch;
+		}
+		if ((ret = __lock_held_snap(dbenv, locker, &s[4], &n[4])) != 0)
+			goto out;
+		last = 4;
+		npglogs++;
+	}
+
+	/* No lock is released in between, so s[last] has every lock */
+	for (i = 0; i < n[last]; i++) {
+		lp = s[last][i].lp;
+		base = __lock_held_refs(s[1], n[1], lp) -
+		    __lock_held_refs(s[0], n[0], lp);
+		for (p = 1; p < last; p++) {
+			if (__lock_held_refs(s[p + 1], n[p + 1], lp) -
+			    __lock_held_refs(s[p], n[p], lp) != base) {
+				badlp = lp;
+				badinc = __lock_held_refs(s[p + 1], n[p + 1], lp) -
+				    __lock_held_refs(s[p], n[p], lp);
+				badbase = base;
+				what = p == 1 ? "list order" : p == 2 ?
+				    "ordered, pglogs format" :
+				    "list order, pglogs format";
+				goto mismatch;
+			}
+		}
+	}
+
+	/* Drop the references the check added */
+	LOCKREGION(dbenv, lt);
+	for (i = 0; i < n[last]; i++) {
+		lp = s[last][i].lp;
+		p = s[last][i].refs - __lock_held_refs(s[1], n[1], lp);
+		if (p) {
+			lock_obj_partition(region, lp->lockobj->partition);
+			lp->refcount -= p;
+			unlock_obj_partition(region, lp->lockobj->partition);
+		}
+	}
+	UNLOCKREGION(dbenv, lt);
+
+	nlists++;
+	now = time(NULL);
+	if (now - lastpr >= 10) {
+		lastpr = now;
+		logmsg(LOGMSG_USER, "%s: %u lock lists (%u also as pglogs) took "
+		    "the same locks in both orders\n", __func__, nlists, npglogs);
+	}
+	goto out;
+
+mismatch:
+	logmsg(LOGMSG_FATAL, "%s: %s pass took different locks than the "
+	    "ordered pass, rc %d, handled %d, keycnt %u/%u\n", __func__, what, r,
+	    handled, kc, *keycnt);
+	if (badlp) {
+		char hex[2 * 32 + 1] = {0};
+		u_int32_t sz = badlp->lockobj->lockobj.size;
+
+		for (i = 0; i < sz && i < 32; i++)
+			snprintf(hex + 2 * i, 3, "%02x",
+			    ((u_int8_t *)badlp->lockobj->lockobj.data)[i]);
+		logmsg(LOGMSG_FATAL, "%s: lock size %u mode %d refs %u, added "
+		    "%u by the ordered pass, %u by this pass: %s\n", __func__,
+		    sz, badlp->mode, badlp->refcount, badbase, badinc, hex);
+	}
+	abort();
+out:
+	for (i = 0; i < 5; i++)
+		if (s[i])
+			__os_free(dbenv, s[i]);
+	if (pgl.data)
+		__os_free(dbenv, pgl.data);
+	if (copy.data)
+		__os_free(dbenv, copy.data);
+	return (ret);
+}
+
+
 static int
 __lock_get_list_int(dbenv, locker, flags, lock_mode, list, pcontext, maxlsn,
     pglogs, keycnt, fp)
@@ -6452,12 +6936,25 @@ __lock_get_list_int(dbenv, locker, flags, lock_mode, list, pcontext, maxlsn,
 	u_int32_t *keycnt;
     FILE *fp;
 {
-	int rc;
+	int rc, handled = 0;
 	extern int gbl_lock_get_list_start;
 
 	gbl_lock_get_list_start = time(NULL);
-	rc = __lock_get_list_int_int(dbenv, locker, flags, lock_mode, list,
-	    pcontext, maxlsn, pglogs, keycnt, fp);
+	/* Replication and recovery; not prepare, not printing */
+	if (gbl_rep_lock_order && LF_ISSET(LOCK_GET_LIST_GETLOCK) &&
+	    !LF_ISSET(LOCK_GET_LIST_PREPARE | LOCK_GET_LIST_PRINTLOCK)) {
+		if (gbl_debug_rep_lock_order_check && !use_page_latches(dbenv)) {
+			rc = __lock_get_list_order_check(dbenv, locker, flags,
+			    lock_mode, list, pcontext, maxlsn, pglogs, keycnt,
+			    fp);
+			handled = 1;
+		} else
+			rc = __lock_get_list_ordered(dbenv, locker, flags,
+			    lock_mode, list, pcontext, pglogs, keycnt, &handled);
+	}
+	if (!handled)
+		rc = __lock_get_list_int_int(dbenv, locker, flags, lock_mode,
+		    list, pcontext, maxlsn, pglogs, keycnt, fp);
 	gbl_lock_get_list_start = 0;
 	return rc;
 }
