@@ -2058,6 +2058,11 @@ REGISTER_TUNABLE("rep_write_hints",
                  "statement read, so that the master can prefetch them. socksql (default) transactions only; needed "
                  "on the master too. With udp_prefault_async, a sender thread sends them. (Default: on)",
                  TUNABLE_BOOLEAN, &gbl_rep_write_hints, EXPERIMENTAL, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("rep_write_hints_peer_fanout",
+                 "With rep_write_hints and udp_prefault_async, a replica's sender thread also sends the pages of each "
+                 "write statement to the other replicas as a lossy UDP prefault packet; the master then does not "
+                 "forward the pages it prefetches for that statement. Only needed on the replicas. (Default: on)",
+                 TUNABLE_BOOLEAN, &gbl_rep_write_hints_peer_fanout, EXPERIMENTAL, NULL, NULL, NULL, NULL);
 
 REGISTER_TUNABLE("disable_tpsc_tblvers",
                  "Disable table version checks for time partition schema "

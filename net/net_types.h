@@ -102,6 +102,7 @@ enum {
     USER_TYPE_COMMITDELAYTIMED = 43,
     USER_TYPE_UDP_PREFAULT_UFID = 44,
     USER_TYPE_REP_WRITE_HINTS = 45,
+    USER_TYPE_REP_WRITE_HINTS_FANOUT = 46, /* write hints whose pages the replica also sent to the other replicas */
 
     NET_QUIESCE_THREADS = 100,
     NET_RESUME_THREADS = 101,

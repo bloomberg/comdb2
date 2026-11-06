@@ -429,7 +429,8 @@ static int send_prefault(bdb_state_type *bdb_state, const char *tohost, const st
  * udp_prefault_async_batch > 1 packs up to that many pages into one packet.
  * With rep_write_hints, a replica's write-hint packets (bdb_send_write_hints)
  * go through the same sender: the SQL thread only copies the packet into a
- * second small queue, and the sender sends it to the master of the moment.
+ * second small queue, and the sender sends it to the master of the moment
+ * (and, with rep_write_hints_peer_fanout, to the other replicas).
  */
 int gbl_udp_prefault_async = 1;
 int gbl_udp_prefault_async_batch = 32;
@@ -451,8 +452,9 @@ static struct {
     struct udppf_rwh rq[UDPPF_RWH_QMAX];
 } udppf_async = {.lk = PTHREAD_MUTEX_INITIALIZER, .cd = PTHREAD_COND_INITIALIZER};
 static uint64_t udppf_async_queued, udppf_async_full, udppf_async_notmaster, udppf_async_wakeups, udppf_async_packets;
-static uint64_t udppf_async_rwh_queued, udppf_async_rwh_full, udppf_async_rwh_nomaster;
-static int send_write_hints(bdb_state_type *bdb_state, const uint8_t *buf, int n);
+static uint64_t udppf_async_rwh_queued, udppf_async_rwh_full, udppf_async_rwh_nomaster, udppf_async_rwh_sent;
+static uint64_t rwh_peer_stmts, rwh_peer_packets, rwh_peer_pages, rwh_peer_failed;
+static int send_write_hints(bdb_state_type *bdb_state, const uint8_t *buf, int n, int peers);
 
 static void udppf_async_send(bdb_state_type *bdb_state, const struct udppf_hint *h, int n)
 {
@@ -513,7 +515,7 @@ static void *udppf_async_thd(void *arg)
         bdb_state = udppf_async.bdb_state;
         Pthread_mutex_unlock(&udppf_async.lk);
         for (i = 0; i < rn; i++) {
-            if (send_write_hints(bdb_state, r[i].buf, r[i].n) != 0)
+            if (send_write_hints(bdb_state, r[i].buf, r[i].n, 1) != 0)
                 ATOMIC_ADD64(udppf_async_rwh_nomaster, 1);
         }
         if (n > 0)
@@ -619,21 +621,71 @@ void udp_prefault_all(bdb_state_type *bdb_state, const unsigned char *ufid, unsi
  * Lossy, never retried.
  */
 int gbl_rep_write_hints = 1;
+/*
+ * On by default: with rep_write_hints and udp_prefault_async, a replica's
+ * sender thread also sends each write-hint packet's pairs to every other
+ * connected replica, as one USER_TYPE_UDP_PREFAULT_UFID packet (the multi-page
+ * format of udp_prefault_async_batch), so that they can prefetch these pages
+ * without waiting for the master to read and forward them. Such a write-hint
+ * packet goes to the master as USER_TYPE_REP_WRITE_HINTS_FANOUT, and the
+ * master does not forward the pages it prefetches for it (bdb/rep.c). Write
+ * hints sent without fanout (tunable off, udp_prefault_async off, or no other
+ * replica connected) stay USER_TYPE_REP_WRITE_HINTS and are forwarded as
+ * before. Lossy, never retried.
+ */
+int gbl_rep_write_hints_peer_fanout = 1;
 int __memp_rwh_take(uint8_t *buf, int max);
 
-/* Send n (UFID, pgno) pairs (wire format) to the current master in one packet; -1 if there is none to send to */
-static int send_write_hints(bdb_state_type *bdb_state, const uint8_t *buf, int n)
+/* Send n (UFID, pgno) pairs (wire format) to another replica as one UDP prefault packet */
+static int send_write_hints_peer(bdb_state_type *bdb_state, const char *host, const uint8_t *buf, int n)
+{
+    ack_info *info;
+
+    new_ack_info(info, n * UDP_PREFAULT_UFID_LEN, bdb_state->repinfo->myhost);
+    memcpy(ack_info_data(info), buf, n * UDP_PREFAULT_UFID_LEN);
+    info->type = USER_TYPE_UDP_PREFAULT_UFID;
+    return udp_send(bdb_state, info, host);
+}
+
+/* Send n (UFID, pgno) pairs (wire format) to the current master in one packet, and with peers and
+ * rep_write_hints_peer_fanout to the other connected replicas; -1 if there is no master to send to */
+static int send_write_hints(bdb_state_type *bdb_state, const uint8_t *buf, int n, int peers)
 {
     repinfo_type *repinfo = bdb_state->repinfo;
     const char *master = repinfo->master_host;
+    const char *hosts[REPMAX];
     ack_info *info;
+    int i, nhosts, npeers;
 
     if (!gbl_rep_write_hints || master == repinfo->myhost || master == db_eid_invalid || master == NULL)
         return -1;
+    /* the other replicas that get these pages from us; if there are any, the
+       master is told not to forward them (USER_TYPE_REP_WRITE_HINTS_FANOUT) */
+    npeers = 0;
+    if (peers && gbl_rep_write_hints_peer_fanout) {
+        nhosts = net_get_all_nodes_connected(repinfo->netinfo, hosts);
+        for (i = 0; i < nhosts; i++) {
+            if (hosts[i] != master)
+                hosts[npeers++] = hosts[i];
+        }
+    }
     new_ack_info(info, n * UDP_PREFAULT_UFID_LEN, repinfo->myhost);
     memcpy(ack_info_data(info), buf, n * UDP_PREFAULT_UFID_LEN);
-    info->type = USER_TYPE_REP_WRITE_HINTS;
-    udp_send(bdb_state, info, master);
+    info->type = npeers > 0 ? USER_TYPE_REP_WRITE_HINTS_FANOUT : USER_TYPE_REP_WRITE_HINTS;
+    if (udp_send(bdb_state, info, master) > 0)
+        ATOMIC_ADD64(udppf_async_rwh_sent, 1);
+    if (npeers == 0)
+        return 0;
+
+    ATOMIC_ADD64(rwh_peer_stmts, 1);
+    for (i = 0; i < npeers; i++) {
+        if (send_write_hints_peer(bdb_state, hosts[i], buf, n) > 0) {
+            ATOMIC_ADD64(rwh_peer_packets, 1);
+            ATOMIC_ADD64(rwh_peer_pages, n);
+        } else {
+            ATOMIC_ADD64(rwh_peer_failed, 1);
+        }
+    }
     return 0;
 }
 
@@ -656,7 +708,7 @@ void bdb_send_write_hints(bdb_state_type *bdb_state, int send)
     if (gbl_udp_prefault_async)
         udppf_async_enqueue_rwh(bdb_state, buf, n);
     else
-        send_write_hints(bdb_state, buf, n);
+        send_write_hints(bdb_state, buf, n, 0); /* never to the other replicas from the SQL thread */
 }
 
 static void print_ping_rtt(ack_info *info)
@@ -688,7 +740,7 @@ static void print_ping_rtt(ack_info *info)
 
 int enque_udppfault_filepage(bdb_state_type *bdb_state, unsigned int fileid,
                              unsigned int pgno);
-int enque_udppfault_ufid(bdb_state_type *bdb_state, const uint8_t *ufid, unsigned int pgno);
+int enque_udppfault_ufid(bdb_state_type *bdb_state, const uint8_t *ufid, unsigned int pgno, int forward);
 
 const uint8_t *rep_udp_filepage_type_get(filepage_type *p_filepage_type,
                                          const uint8_t *p_buf,
@@ -836,14 +888,17 @@ static void udp_reader(int fd, short what, void *arg)
         for (p_buf = data; p_buf < p_buf_end; p_buf += UDP_PREFAULT_UFID_LEN) {
             buf_get(&pgno, sizeof(pgno), p_buf + DB_FILE_ID_LEN, p_buf_end);
             ++pf_ufid_recd;
-            if (enque_udppfault_ufid(bdb_state, p_buf, pgno) != 0)
+            if (enque_udppfault_ufid(bdb_state, p_buf, pgno, 0) != 0)
                 ++pf_ufid_dropped;
         }
         break;
     }
 
-    case USER_TYPE_REP_WRITE_HINTS: {
-        /* replica write hints: used only by the master, with rep_write_hints on */
+    case USER_TYPE_REP_WRITE_HINTS:
+    case USER_TYPE_REP_WRITE_HINTS_FANOUT: {
+        /* replica write hints: used only by the master, with rep_write_hints on; the
+           master forwards what it reads for them unless the replica sent them to the
+           other replicas itself (_FANOUT) */
         uint32_t pgno = 0;
         if (info->len == 0 || info->len % UDP_PREFAULT_UFID_LEN != 0 || info->len / UDP_PREFAULT_UFID_LEN > RWH_MAX ||
             !gbl_rep_write_hints || bdb_state->repinfo->myhost != bdb_state->repinfo->master_host)
@@ -852,7 +907,7 @@ static void udp_reader(int fd, short what, void *arg)
         p_buf_end = (uint8_t *)data + info->len;
         for (p_buf = data; p_buf < p_buf_end; p_buf += UDP_PREFAULT_UFID_LEN) {
             buf_get(&pgno, sizeof(pgno), p_buf + DB_FILE_ID_LEN, p_buf_end);
-            if (enque_udppfault_ufid(bdb_state, p_buf, pgno) != 0)
+            if (enque_udppfault_ufid(bdb_state, p_buf, pgno, info->type == USER_TYPE_REP_WRITE_HINTS) != 0)
                 ++pf_ufid_dropped;
         }
         break;
@@ -966,9 +1021,15 @@ void udp_summary(void)
                "udp prefault async packets sent: %" PRIu64 "\n"
                "udp prefault async write-hint packets queued: %" PRIu64 "\n"
                "udp prefault async write-hint packets dropped (queue full): %" PRIu64 "\n"
-               "udp prefault async write-hint packets dropped (no master): %" PRIu64 "\n",
+               "udp prefault async write-hint packets dropped (no master): %" PRIu64 "\n"
+               "udp prefault async write-hint packets sent to master: %" PRIu64 "\n"
+               "udp prefault async write-hint peer fanout statements: %" PRIu64 "\n"
+               "udp prefault async write-hint peer fanout packets sent: %" PRIu64 "\n"
+               "udp prefault async write-hint peer fanout pages sent: %" PRIu64 "\n"
+               "udp prefault async write-hint peer fanout packets failed: %" PRIu64 "\n",
                udppf_async_queued, udppf_async_full, udppf_async_notmaster, udppf_async_wakeups, udppf_async_packets,
-               udppf_async_rwh_queued, udppf_async_rwh_full, udppf_async_rwh_nomaster);
+               udppf_async_rwh_queued, udppf_async_rwh_full, udppf_async_rwh_nomaster, udppf_async_rwh_sent,
+               rwh_peer_stmts, rwh_peer_packets, rwh_peer_pages, rwh_peer_failed);
 }
 
 void udp_stats(unsigned int *in_sent_udp, unsigned int *in_fail_udp,

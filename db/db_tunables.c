@@ -513,6 +513,7 @@ extern int gbl_udp_prefault_async;
 extern int gbl_udp_prefault_async_batch;
 extern int gbl_udp_prefault_async_poll_us;
 extern int gbl_rep_write_hints;
+extern int gbl_rep_write_hints_peer_fanout;
 extern int gbl_osqlpf_bp_keys;
 extern int gbl_udp_prefault_max_age_us;
 extern int gbl_udp_prefault_lifo;
