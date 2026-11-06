@@ -42,7 +42,7 @@
               (catch java.sql.SQLIntegrityConstraintViolationException e nil)))
 
           (try
-            (c/hasql! c)
+            ; No hasql: it is rejected below snapshot, and this test runs at read-committed
             (j/with-db-transaction [c c {:isolation :read-committed}]
               (dotimes [i n]
                 ; Can't use parameters in a transaction, woooo
