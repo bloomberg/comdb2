@@ -85,9 +85,8 @@ static void osqlpfault_do_work_pp(struct thdpool *pool, void *work,
                                   void *thddata, int op);
 
 /* given a table, key   : enqueue a fault for the a single ix record */
-int enque_osqlpfault_oldkey(struct dbtable *db, void *key, int keylen,
-                            int ixnum, int i, unsigned long long rqid,
-                            unsigned long long seq)
+int enque_osqlpfault_oldkey(struct dbtable *db, void *key, int keylen, int ixnum, int i, unsigned long long rqid,
+                            uuid_t uuid, unsigned long long seq)
 {
     osqlpf_rq_t *qdata = NULL;
     int rc;
@@ -106,6 +105,7 @@ int enque_osqlpfault_oldkey(struct dbtable *db, void *key, int keylen,
     qdata->i = i;
     qdata->seq = seq;
     qdata->rqid = rqid;
+    comdb2uuidcpy(qdata->uuid, uuid);
 
     if ((keylen > 0) && (keylen < MAXKEYLEN + 1))
         memcpy(qdata->key, key, keylen);
@@ -120,9 +120,8 @@ int enque_osqlpfault_oldkey(struct dbtable *db, void *key, int keylen,
 }
 
 /* given a table, key   : enqueue a fault for the a single ix record */
-int enque_osqlpfault_newkey(struct dbtable *db, void *key, int keylen,
-                            int ixnum, int i, unsigned long long rqid,
-                            unsigned long long seq)
+int enque_osqlpfault_newkey(struct dbtable *db, void *key, int keylen, int ixnum, int i, unsigned long long rqid,
+                            uuid_t uuid, unsigned long long seq)
 {
     osqlpf_rq_t *qdata = NULL;
     int rc;
@@ -141,6 +140,7 @@ int enque_osqlpfault_newkey(struct dbtable *db, void *key, int keylen,
     qdata->i = i;
     qdata->seq = seq;
     qdata->rqid = rqid;
+    comdb2uuidcpy(qdata->uuid, uuid);
 
     if ((keylen > 0) && (keylen < MAXKEYLEN + 1))
         memcpy(qdata->key, key, keylen);
@@ -287,11 +287,11 @@ static void osqlpfault_do_work(struct thdpool *pool, void *work, void *thddata)
     if (!gbl_osqlpfault_threads)
         goto done;
 
-    if (req->rqid != gbl_osqlpf_step[req->i].rqid) {
+    /* i < 0: issued by the block processor itself (osqlpf_bp_keys), no session checks */
+    if (req->i >= 0 && req->rqid != gbl_osqlpf_step[req->i].rqid) {
         goto done;
     }
-    if (req->rqid == OSQL_RQID_USE_UUID &&
-        comdb2uuidcmp(req->uuid, gbl_osqlpf_step[req->i].uuid))
+    if (req->i >= 0 && req->rqid == OSQL_RQID_USE_UUID && comdb2uuidcmp(req->uuid, gbl_osqlpf_step[req->i].uuid))
         goto done;
 
     step = req->seq << 7;
@@ -332,7 +332,7 @@ static void osqlpfault_do_work(struct thdpool *pool, void *work, void *thddata)
         }
 
         step += ((1 + (unsigned long long)req->index) << 1);
-        if (step <= gbl_osqlpf_step[req->i].step) {
+        if (req->i >= 0 && step <= gbl_osqlpf_step[req->i].step) {
             break;
         }
 
@@ -352,7 +352,7 @@ static void osqlpfault_do_work(struct thdpool *pool, void *work, void *thddata)
         }
 
         step += 1 + ((1 + (unsigned long long)req->index) << 1);
-        if (step <= gbl_osqlpf_step[req->i].step) {
+        if (req->i >= 0 && step <= gbl_osqlpf_step[req->i].step) {
             break;
         }
 
@@ -419,8 +419,7 @@ static void osqlpfault_do_work(struct thdpool *pool, void *work, void *thddata)
                 break;
             }
 
-            rc = enque_osqlpfault_oldkey(iq.usedb, key, keysz, ixnum, req->i,
-                                         req->rqid, req->seq);
+            rc = enque_osqlpfault_oldkey(iq.usedb, key, keysz, ixnum, req->i, req->rqid, req->uuid, req->seq);
         }
         if (fnddta)
             free(fnddta);
@@ -451,8 +450,7 @@ static void osqlpfault_do_work(struct thdpool *pool, void *work, void *thddata)
                 continue;
             }
 
-            rc = enque_osqlpfault_newkey(iq.usedb, key, keysz, ixnum, req->i,
-                                         req->rqid, req->seq);
+            rc = enque_osqlpfault_newkey(iq.usedb, key, keysz, ixnum, req->i, req->rqid, req->uuid, req->seq);
         }
     } break;
     case OSQLPFRQ_OLDDATA_OLDKEYS_NEWKEYS: {
@@ -511,8 +509,7 @@ static void osqlpfault_do_work(struct thdpool *pool, void *work, void *thddata)
                 continue;
             }
 
-            rc = enque_osqlpfault_oldkey(iq.usedb, key, keysz, ixnum, req->i,
-                                         req->rqid, req->seq);
+            rc = enque_osqlpfault_oldkey(iq.usedb, key, keysz, ixnum, req->i, req->rqid, req->uuid, req->seq);
         }
 
         free(fnddta);
@@ -538,8 +535,7 @@ static void osqlpfault_do_work(struct thdpool *pool, void *work, void *thddata)
                 continue;
             }
 
-            rc = enque_osqlpfault_newkey(iq.usedb, key, keysz, ixnum, req->i,
-                                         req->rqid, req->seq);
+            rc = enque_osqlpfault_newkey(iq.usedb, key, keysz, ixnum, req->i, req->rqid, req->uuid, req->seq);
         }
     } break;
     }
@@ -566,31 +562,33 @@ int osql_page_prefault(char *rpl, int rplen, struct dbtable **last_db,
                        int **iq_step_ix, unsigned long long rqid, uuid_t uuid,
                        unsigned long long seq)
 {
-    static int last_step_idex = 0;
+    int last_step_idex;
     int *ii;
     osql_rpl_t rpl_op;
     uint8_t *p_buf = (uint8_t *)rpl;
     uint8_t *p_buf_end = p_buf + rplen;
     osqlcomm_rpl_type_get(&rpl_op, p_buf, p_buf_end);
 
-    if (seq == 0) {
+    if (*iq_step_ix == NULL) {
         Pthread_mutex_lock(&osqlpf_mutex);
         ii = queue_next(gbl_osqlpf_stepq);
         Pthread_mutex_unlock(&osqlpf_mutex);
-        if (ii == NULL) {
-            logmsg(LOGMSG_ERROR, "osql io prefault got a BUG!\n");
-            exit(1);
-        }
-        last_step_idex = *ii;
+        if (ii == NULL) /* all slots in use: no prefault for this transaction */
+            return 0;
+        gbl_osqlpf_step[*ii].step = 0;
+        gbl_osqlpf_step[*ii].rqid = rqid;
+        comdb2uuidcpy(gbl_osqlpf_step[*ii].uuid, uuid);
         *iq_step_ix = ii;
-        gbl_osqlpf_step[last_step_idex].rqid = rqid;
-        comdb2uuidcpy(gbl_osqlpf_step[last_step_idex].uuid, uuid);
     }
+    last_step_idex = **iq_step_ix;
+
+    /* payload follows the rqid or the (larger) uuid header, as in the block processor */
+    uint8_t *p_dt = (uint8_t *)rpl + (rqid == OSQL_RQID_USE_UUID ? sizeof(osql_uuid_rpl_t) : sizeof(osql_rpl_t));
 
     switch (rpl_op.type) {
     case OSQL_USEDB: {
         osql_usedb_t dt = {0};
-        p_buf = (uint8_t *)&((osql_usedb_rpl_t *)rpl)->dt;
+        p_buf = p_dt;
         const char *tablename;
         struct dbtable *db;
 
@@ -608,9 +606,11 @@ int osql_page_prefault(char *rpl, int rplen, struct dbtable **last_db,
     case OSQL_DELREC:
     case OSQL_DELETE: {
         osql_del_t dt = {0};
-        p_buf = (uint8_t *)&((osql_del_rpl_t *)rpl)->dt;
+        p_buf = p_dt;
         p_buf = (uint8_t *)osqlcomm_del_type_get(&dt, p_buf, p_buf_end,
                                                  rpl_op.type == OSQL_DELETE);
+        if (p_buf == NULL || *last_db == NULL)
+            break;
         enque_osqlpfault_olddata_oldkeys(*last_db, dt.genid, last_step_idex,
                                          rqid, uuid, seq);
     } break;
@@ -618,19 +618,23 @@ int osql_page_prefault(char *rpl, int rplen, struct dbtable **last_db,
     case OSQL_INSERT: {
         osql_ins_t dt;
         unsigned char *pData = NULL;
-        uint8_t *p_buf = (uint8_t *)&((osql_ins_rpl_t *)rpl)->dt;
+        uint8_t *p_buf = p_dt;
         pData = (uint8_t *)osqlcomm_ins_type_get(&dt, p_buf, p_buf_end,
                                                  rpl_op.type == OSQL_INSREC);
+        if (pData == NULL || *last_db == NULL || dt.nData <= 0 || dt.nData > p_buf_end - pData)
+            break;
         enque_osqlpfault_newdata_newkeys(*last_db, pData, dt.nData,
                                          last_step_idex, rqid, uuid, seq);
     } break;
     case OSQL_UPDREC:
     case OSQL_UPDATE: {
         osql_upd_t dt;
-        uint8_t *p_buf = (uint8_t *)&((osql_upd_rpl_t *)rpl)->dt;
+        uint8_t *p_buf = p_dt;
         unsigned char *pData;
         pData = (uint8_t *)osqlcomm_upd_type_get(&dt, p_buf, p_buf_end,
                                                  rpl_op.type == OSQL_UPDATE);
+        if (pData == NULL || *last_db == NULL || dt.nData <= 0 || dt.nData > p_buf_end - pData)
+            break;
         enque_osqlpfault_olddata_oldkeys_newkeys(*last_db, dt.genid, pData,
                                                  dt.nData, last_step_idex, rqid,
                                                  uuid, seq);
@@ -639,4 +643,33 @@ int osql_page_prefault(char *rpl, int rplen, struct dbtable **last_db,
         return 0;
     }
     return 0;
+}
+
+/* Block processor (tunable osqlpf_bp_keys): before it changes a row's index
+ * entries one after another, look up its old and new keys in the prefault pool
+ * so that their leaf pages are read in parallel.  Index 0 is left out: the
+ * block processor works on it first. */
+int gbl_osqlpf_bp_keys = 0;
+void osqlpf_bp_keys(struct dbtable *db, const void *oldrec, const void *newrec)
+{
+    uuid_t nouuid = {0};
+    char ko[MAXKEYLEN + 1], kn[MAXKEYLEN + 1];
+    int ix, ksz, o, n;
+
+    if (!gbl_osqlpf_bp_keys || !gbl_osqlpfault_thdpool || !db)
+        return;
+    /* only with spare capacity: behind a backlog the lookups would come after the block processor's own reads */
+    if (thdpool_get_queue_depth(gbl_osqlpfault_thdpool) > 0)
+        return;
+    for (ix = 1; ix < db->nix; ix++) {
+        ksz = getkeysize(db, ix);
+        if (ksz <= 0 || ksz > MAXKEYLEN)
+            continue;
+        o = oldrec && stag_ondisk_to_ix(db, ix, (char *)oldrec, ko) != -1;
+        n = newrec && stag_ondisk_to_ix(db, ix, (char *)newrec, kn) != -1;
+        if (o)
+            enque_osqlpfault_oldkey(db, ko, ksz, ix, -1, 0, nouuid, 0);
+        if (n && !(o && memcmp(ko, kn, ksz) == 0))
+            enque_osqlpfault_newkey(db, kn, ksz, ix, -1, 0, nouuid, 0);
+    }
 }
