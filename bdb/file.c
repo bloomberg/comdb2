@@ -1727,6 +1727,60 @@ int bdb_flush_noforce(bdb_state_type *bdb_state, int *bdberr)
     return rc;
 }
 
+static int64_t monotonic_ms(void);
+
+/* Wait until no transaction can hold a checkpoint's recovery LSN below file:offset,
+ * then take one.  Returns 0 once the last checkpoint's recovery LSN is at or past
+ * it, the nonzero return of stop() if it asks to stop first, -2 if still waiting
+ * after timeoutms (0: no limit), or -1 on failure. */
+int bdb_checkpoint_past_lsn(bdb_state_type *bdb_state, unsigned int file, unsigned int offset, int timeoutms,
+                            int (*stop)(void *), void *arg)
+{
+    DB_LSN lsn = {.file = file, .offset = offset};
+    DB_LSN floor;
+    DB_TXN_STAT *stats = NULL;
+    int64_t start = monotonic_ms();
+    int rc, polls = 0;
+
+    if (bdb_state->parent)
+        bdb_state = bdb_state->parent;
+
+    for (;;) {
+        if ((rc = stop(arg)) != 0)
+            return rc;
+        __log_txn_lsn(bdb_state->dbenv, &floor, NULL, NULL);
+        __txn_checkpoint_floor(bdb_state->dbenv, &floor);
+        if (log_compare(&floor, &lsn) >= 0)
+            break;
+        if (timeoutms > 0 && monotonic_ms() - start >= timeoutms)
+            return -2;
+        if (polls++ % 100 == 0) {
+            logmsg(LOGMSG_WARN, "%s: transaction begun at %u:%u holds the checkpoint below %u:%u\n", __func__,
+                   floor.file, floor.offset, lsn.file, lsn.offset);
+        }
+        poll(NULL, 0, 100);
+    }
+
+    BDB_READLOCK(__func__);
+    if ((rc = stop(arg)) != 0) {
+        BDB_RELLOCK();
+        return rc;
+    }
+    if ((rc = ll_checkpoint(bdb_state, 1)) == 0)
+        rc = bdb_state->dbenv->txn_stat(bdb_state->dbenv, &stats, 0);
+    BDB_RELLOCK();
+    if (rc == 0 && log_compare(&stats->st_ckp_lsn, &lsn) < 0)
+        rc = -1;
+    logmsg(rc ? LOGMSG_ERROR : LOGMSG_INFO, "%s: rc %d checkpoint %u:%u recovery lsn %u:%u, need %u:%u\n", __func__, rc,
+           stats ? stats->st_last_ckp.file : 0, stats ? stats->st_last_ckp.offset : 0,
+           stats ? stats->st_ckp_lsn.file : 0, stats ? stats->st_ckp_lsn.offset : 0, lsn.file, lsn.offset);
+    free(stats);
+    if (rc)
+        return -1;
+    /* a downgrade sets stopsc before it waits for the bdb lock held above */
+    return stop(arg);
+}
+
 static int bdb_lock_children_lock(bdb_state_type *bdb_state)
 {
     if (bdb_state->parent)
@@ -1754,6 +1808,14 @@ static int bdb_unlock_children_lock(bdb_state_type *bdb_state)
         cheap_stack_trace();
     }
     return 0;
+}
+
+/* Snapshots read the flag under the children lock (bdb_osql_cache_table_versions) */
+void bdb_set_sc_commit_map_skip(bdb_state_type *bdb_state, int skip)
+{
+    bdb_lock_children_lock(bdb_state);
+    bdb_state->sc_commit_map_skip = skip;
+    bdb_unlock_children_lock(bdb_state);
 }
 
 void bdb_prepare_close(bdb_state_type *bdb_state)
@@ -8810,9 +8872,15 @@ retry:
     }
     if (!retry) {
         for (int i = 0; i < tablecount; i++) {
-            if (bdb_state->children[i])
-                bdb_state->children[i]->version_num =
-                    cache->entries[i];
+            bdb_state_type *child = bdb_state->children[i];
+            if (!child)
+                continue;
+            child->version_num = cache->entries[i];
+            /* An unpublished replacement whose converter commits are not in the
+             * commit LSN map: if it is published while this transaction runs,
+             * fail the transaction instead of reading it */
+            if (child->sc_commit_map_skip && child->origname && strcasecmp(child->name, child->origname) != 0)
+                cache->entries[i] = 0;
         }
     }
     bdb_unlock_children_lock(bdb_state);

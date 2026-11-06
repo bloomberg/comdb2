@@ -145,6 +145,7 @@ extern pthread_cond_t bdb_asof_current_lsn_cond;
 extern int __txn_commit_map_delete_logfile_txns(DB_ENV *env, int del_log);
 #ifdef COMDB2_TEST
 extern int __txn_commit_map_selftest(void);
+extern int __txn_commit_map_skip_selftest(DB_ENV *dbenv);
 #endif
 
 static int bdb_switch_stripe(bdb_cursor_impl_t *cur, int dtafile, int *bdberr);
@@ -755,9 +756,9 @@ int delete_logfile_txns_commit_lsn_map(bdb_state_type *bdb_state, int file)
 }
 
 #ifdef COMDB2_TEST
-int commit_lsn_map_selftest(void)
+int commit_lsn_map_selftest(bdb_state_type *bdb_state)
 {
-    return __txn_commit_map_selftest();
+    return __txn_commit_map_selftest() || __txn_commit_map_skip_selftest(bdb_state->dbenv);
 }
 #endif
 

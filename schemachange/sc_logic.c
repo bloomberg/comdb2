@@ -465,6 +465,102 @@ static int check_table_version(struct ireq *iq, struct schema_change_type *sc)
     return 0;
 }
 
+int gbl_sc_commit_map_checkpoint_timeout_ms = 10 * 60 * 1000;
+int gbl_debug_sc_commit_map_checkpoint_hold = 0;
+int gbl_debug_sc_commit_map_checkpoint_fail = 0;
+
+struct sc_commit_map_checkpoint_arg {
+    struct ireq *iq;
+    struct schema_change_type *s;
+};
+
+static int sc_commit_map_checkpoint_stop(void *p)
+{
+    struct sc_commit_map_checkpoint_arg *arg = p;
+    if (get_stopsc(__func__, __LINE__))
+        return SC_MASTER_DOWNGRADE;
+    if (gbl_sc_abort || (arg->s->db && arg->s->db->sc_abort) || arg->iq->sc_should_abort)
+        return SC_ABORTED;
+    return 0;
+}
+
+/* bdb_downgrade waits for schema changes to stop, so not on the schema change thread */
+static void *sc_commit_map_transfer_master(void *unused)
+{
+    comdb2_name_thread(__func__);
+    bdb_thread_event(thedb->bdb_env, BDBTHR_EVENT_START);
+    bdb_transfermaster(thedb->bdb_env);
+    bdb_thread_event(thedb->bdb_env, BDBTHR_EVENT_DONE);
+    return NULL;
+}
+
+/* The converter left its commits out of the commit LSN map.  Before the
+ * replacement is published, wait for a checkpoint whose recovery LSN is past
+ * all of them, so no snapshot that can read the replacement needs them.  Not
+ * under the schema lock: the transactions holding the checkpoint back may need
+ * it.  If they still do after sc_commit_map_checkpoint_timeout_ms, hand
+ * mastership over (a downgrade aborts them) or, with nobody to hand it to, fail.
+ * Returns 0, SC_MASTER_DOWNGRADE if the schema change is left for the next
+ * master, SC_ABORTED, or -1. */
+int sc_commit_map_checkpoint(struct ireq *iq, struct schema_change_type *s)
+{
+    struct sc_commit_map_checkpoint_arg arg = {.iq = iq, .s = s};
+    int rc;
+
+    if (!s->sc_skip_commit_map)
+        return 0;
+
+    if (iq->sc_locked) {
+        sc_errf(s, "Cannot wait for the commit LSN map checkpoint under the schema lock\n");
+        return -1;
+    }
+
+    if (gbl_debug_sc_commit_map_checkpoint_hold)
+        sc_printf(s, "[%s] holding before the commit LSN map checkpoint\n", s->tablename);
+    while (gbl_debug_sc_commit_map_checkpoint_hold && sc_commit_map_checkpoint_stop(&arg) == 0)
+        poll(NULL, 0, 100);
+
+    rc = bdb_checkpoint_past_lsn(thedb->bdb_env, s->sc_commit_map_lsn_file, s->sc_commit_map_lsn_offset,
+                                 gbl_sc_commit_map_checkpoint_timeout_ms, sc_commit_map_checkpoint_stop, &arg);
+    if (rc == -2) {
+        if (bdb_is_an_unconnected_master(thedb->bdb_env)) {
+            sc_errf(s, "Commit LSN map checkpoint blocked for %d ms, no node to hand mastership to\n",
+                    gbl_sc_commit_map_checkpoint_timeout_ms);
+            rc = -1;
+        } else {
+            /* the downgrade stops the wait below; the new master resumes the schema change */
+            sc_errf(s, "Commit LSN map checkpoint blocked for %d ms, transferring mastership\n",
+                    gbl_sc_commit_map_checkpoint_timeout_ms);
+            pthread_t tid;
+            Pthread_create(&tid, &gbl_pthread_attr_detached, sc_commit_map_transfer_master, NULL);
+            rc = bdb_checkpoint_past_lsn(thedb->bdb_env, s->sc_commit_map_lsn_file, s->sc_commit_map_lsn_offset, 0,
+                                         sc_commit_map_checkpoint_stop, &arg);
+        }
+    }
+    if (rc == 0 && gbl_debug_sc_commit_map_checkpoint_fail)
+        rc = -1;
+
+    if (rc == SC_MASTER_DOWNGRADE) {
+        sc_errf(s, "Master downgrading before the commit LSN map checkpoint\n");
+    } else if (rc) {
+        if (rc == SC_ABORTED)
+            sc_errf(s, "Schema change aborted before the commit LSN map checkpoint\n");
+        else
+            sc_errf(s, "Failed to checkpoint past the converter commits\n");
+        /* as after a failed conversion; the callers then mark it aborted */
+        struct ireq fiq;
+        init_fake_ireq(thedb, &fiq);
+        fiq.sc = s;
+        if (backout_converted_alter(&fiq, s))
+            sc_errf(s, "Failed to remove the replacement of %s; its files are left for unused file cleanup\n",
+                    s->tablename);
+    } else {
+        sc_printf(s, "[%s] checkpoint is past the converter commits at %u:%u\n", s->tablename,
+                  s->sc_commit_map_lsn_file, s->sc_commit_map_lsn_offset);
+    }
+    return rc;
+}
+
 static int do_ddl(ddl_t pre, ddl_t post, struct ireq *iq,
                   struct schema_change_type *s, tran_type *tran)
 {
@@ -499,6 +595,8 @@ static int do_ddl(ddl_t pre, ddl_t post, struct ireq *iq,
     }
 
     rc = pre(iq, s, NULL);                            // non-tran ??
+    if (rc == 0 && s->finalize && s->preempted != SC_ACTION_RESUME && s->kind != SC_ALTERTABLE_PENDING)
+        rc = sc_commit_map_checkpoint(iq, s);
     if (s->done_type == alter && master_downgrading(s)) {
         s->sc_rc = SC_MASTER_DOWNGRADE;
         errstat_set_strf(
