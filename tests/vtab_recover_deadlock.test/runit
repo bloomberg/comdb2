@@ -1,0 +1,31 @@
+#!/usr/bin/env bash
+bash -n "$0" || exit 1
+
+# A failed recover_deadlock in a vtable-only query (no real tables locked)
+# must fail the query, not crash the db on a NULL statement pointer.
+dbnm=$1
+
+sql() { cdb2sql ${CDB2_OPTIONS} $dbnm default "$@"; }
+
+sql "create table t(a int)" || exit 1
+sql "insert into t values(1)" || exit 1
+master=$(sql --tabs "select host from comdb2_cluster where is_master='Y'")
+msql() { cdb2sql ${CDB2_OPTIONS} --host $master $dbnm "$@"; }
+
+msql "put tunable random_get_curtran_failures 3" || exit 1
+# Blocking tranlog reads tick in a loop; each tick may run recover_deadlock.
+for i in $(seq 1 20); do
+    timeout 5 cdb2sql ${CDB2_OPTIONS} --host $master $dbnm \
+        "select * from comdb2_transaction_logs(NULL, NULL, 1)" > /dev/null 2>&1
+done
+msql "put tunable random_get_curtran_failures 0"
+
+for i in $(seq 1 10); do
+    msql "select 1" > /dev/null 2>&1 && break
+    sleep 1
+done
+if ! msql "select count(*) from t" ; then
+    echo "FAILED: master $master is down"
+    exit 1
+fi
+echo "Success"
