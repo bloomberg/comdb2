@@ -6651,6 +6651,8 @@ retry_tran:
 
     gbl_watcher_thread_ran = comdb2_time_epoch();
     unlock_schema_lk();
+    /* requeue partition rollouts now that the reloaded tables are open */
+    XCHANGE32(gbl_trigger_timepart, 1);
     logmsg(LOGMSG_INFO, "%s complete [%d:%d]\n", __func__, *file, *offset);
 
     gbl_comdb2_reload_schemas = 0;
