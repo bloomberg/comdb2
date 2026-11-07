@@ -8810,8 +8810,12 @@ static int sqlite3LockStmtTables_int(sqlite3_stmt *pStmt, int after_recovery)
         }
     }
 
-    if (nTables == 0)
+    if (nTables == 0) {
+        /* vtable-only statements still need pStmt for a failed recover_deadlock */
+        if (!after_recovery)
+            clnt->dbtran.pStmt = pStmt;
         return 0;
+    }
 
     /* sort and dedup */
     qsort(tbls, nTables, sizeof(Table *), tablenamecompare);
