@@ -81,6 +81,8 @@ int osql_send_fingerprint(const char *host, unsigned long long rqid, uuid_t uuid
 int osql_send_clientinfo(const char *host, unsigned long long rqid, uuid_t uuid, const char *taskname, int pid,
                          int type);
 
+int osql_send_trace(const char *host, unsigned long long rqid, uuid_t uuid, const void *payload, int len, int type);
+
 /**
  * Send INDEX op
  * It handles remote/local connectivity

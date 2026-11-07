@@ -710,6 +710,11 @@ BB_COMPILE_TIME_ASSERT(bdb_fingerprint_rtstats_roles, BDB_FP_ROLE_NONE == BB_BER
                                                           BDB_FP_ROLE_WRITE == BB_BERKDB_FP_ROLE_WRITE &&
                                                           BDB_FP_ROLE_APPLY == BB_BERKDB_FP_ROLE_APPLY);
 
+void bdb_thread_pagein_counts(uint64_t *pagein, uint64_t *pagein_io)
+{
+    bb_berkdb_thread_pagein_counts(pagein, pagein_io);
+}
+
 void bdb_fingerprint_rtstats_set(const unsigned char *fingerprint, size_t fplen, int has_main_entry)
 {
     bb_berkdb_fingerprint_rtstats_set(fingerprint, fplen, has_main_entry);

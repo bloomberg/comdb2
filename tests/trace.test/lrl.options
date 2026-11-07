@@ -1,0 +1,3 @@
+tracetest 1
+setattr SYNCTRANSACTIONS 1
+setattr CHECKPOINTTIME 999999

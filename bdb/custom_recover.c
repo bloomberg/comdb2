@@ -90,6 +90,7 @@ int bdb_apprec(DB_ENV *dbenv, DBT *log_rec, DB_LSN *lsn, db_recops op)
 
     llog_fingerprint_args *fingerprint;
     llog_clientinfo_args *clientinfo;
+    llog_trace_args *trace;
 
     int rc;
     bdb_state_type *bdb_state;
@@ -294,6 +295,14 @@ int bdb_apprec(DB_ENV *dbenv, DBT *log_rec, DB_LSN *lsn, db_recops op)
             return rc;
         logp = clientinfo;
         rc = handle_clientinfo(dbenv, rectype, clientinfo, lsn, op);
+        break;
+
+    case DB_llog_trace:
+        rc = llog_trace_read(dbenv, log_rec->data, &trace);
+        if (rc)
+            return rc;
+        logp = trace;
+        rc = handle_trace(dbenv, rectype, trace, lsn, op);
         break;
 
     default:

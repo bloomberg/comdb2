@@ -1159,6 +1159,8 @@ int bdb_apprec(DB_ENV *dbenv, DBT *log_rec, DB_LSN *lsn, db_recops op);
 /* Read a DB_llog_fingerprint payload; 1 on success. berkdb's apply paths
  * declare this extern rather than including this header. */
 int bdb_fingerprint_from_logrec(DB_ENV *dbenv, void *logrec, unsigned char *fingerprint, size_t fplen);
+/* similar to bdb_fingerprint_from_logrec, but for trace. */
+void *bdb_trace_from_logrec(DB_ENV *dbenv, void *logrec);
 
 /* berkdb holds the decoded clientinfo as an opaque handle -- see bdb_clientinfo.c */
 void *bdb_clientinfo_from_logrec(DB_ENV *dbenv, void *logrec);
