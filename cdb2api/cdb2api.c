@@ -24,6 +24,7 @@
 #include <sys/time.h>
 #include <sys/poll.h>
 #include <sys/socket.h>
+#include <stddef.h>
 #include <stdio.h>
 #include <string.h>
 #include <strings.h>
@@ -7098,15 +7099,19 @@ const char *cdb2_errstr(cdb2_hndl_tp *hndl)
     return ret;
 }
 
+static int header_column_type(cdb2_hndl_tp *hndl, int col)
+{
+    CDB2SQLRESPONSE *firstresponse = hndl->firstresponse;
+    if (firstresponse == NULL || firstresponse->value == NULL || col < 0 || col >= firstresponse->n_value)
+        return 0;
+    return firstresponse->value[col]->type;
+}
+
 int cdb2_column_type(cdb2_hndl_tp *hndl, int col)
 {
-    int ret;
     if (hndl->fdb_hndl)
         hndl = hndl->fdb_hndl;
-    if ((hndl->firstresponse == NULL) || (hndl->firstresponse->value == NULL))
-        ret = 0;
-    else
-        ret = hndl->firstresponse->value[col]->type;
+    int ret = header_column_type(hndl, col);
     LOG_CALL("cdb2_column_type(%p, %d) = %s\n", hndl, col, cdb2_type_str(ret));
     return ret;
 }
@@ -7114,6 +7119,16 @@ int cdb2_column_type(cdb2_hndl_tp *hndl, int col)
 static int col_values_flattened(CDB2SQLRESPONSE *resp)
 {
     return (resp->has_flat_col_vals && resp->flat_col_vals);
+}
+
+/* cdb2_column_value returns "" for these */
+static int empty_nonnull_value(CDB2SQLRESPONSE *resp, int col)
+{
+    if (resp->value != NULL)
+        return resp->value[col]->value.len == 0 && resp->value[col]->has_isnull != 1 && resp->value[col]->isnull != 1;
+    if (resp->has_sqlite_row)
+        return 0;
+    return col_values_flattened(resp) && resp->values[col].len == 0 && !resp->isnulls[col];
 }
 
 int cdb2_column_size(cdb2_hndl_tp *hndl, int col)
@@ -7126,6 +7141,9 @@ int cdb2_column_size(cdb2_hndl_tp *hndl, int col)
     /* sanity check. just in case. */
     if (lastresponse == NULL)
         return -1;
+    /* callers expect a cstring's size to count its NUL; an empty blob really is 0 */
+    if (empty_nonnull_value(lastresponse, col) && header_column_type(hndl, col) == CDB2_CSTRING)
+        return 1;
     /* data came back in the child column structure */
     if (lastresponse->value != NULL)
         return lastresponse->value[col]->value.len;
@@ -7134,6 +7152,31 @@ int cdb2_column_size(cdb2_hndl_tp *hndl, int col)
         return lastresponse->sqlite_row.len;
     /* data came back in the parent CDB2SQLRESPONSE structure */
     return (col_values_flattened(lastresponse)) ? lastresponse->values[col].len : -1;
+}
+
+static int is_datetime_type(int type)
+{
+    return type == CDB2_DATETIME || type == CDB2_DATETIMEUS;
+}
+
+/* callers read the whole struct and print tzname (raw wire bytes) with %s */
+static void *checked_datetime(int type, void *val, size_t len)
+{
+    size_t end;
+    switch (type) {
+    case CDB2_DATETIME:
+        end = offsetof(cdb2_client_datetime_t, tzname) + CDB2_MAX_TZNAME;
+        break;
+    case CDB2_DATETIMEUS:
+        end = offsetof(cdb2_client_datetimeus_t, tzname) + CDB2_MAX_TZNAME;
+        break;
+    default:
+        return val;
+    }
+    if (val == NULL || len < end)
+        return NULL;
+    ((char *)val)[end - 1] = '\0';
+    return val;
 }
 
 void *cdb2_column_value(cdb2_hndl_tp *hndl, int col)
@@ -7147,24 +7190,19 @@ void *cdb2_column_value(cdb2_hndl_tp *hndl, int col)
     /* sanity check. just in case. */
     if (lastresponse == NULL)
         return NULL;
+    int type = header_column_type(hndl, col);
+    if (empty_nonnull_value(lastresponse, col) && !is_datetime_type(type))
+        return (void *)"";
     /* data came back in the child column structure */
     if (lastresponse->value != NULL) {
-        /* handle empty values */
-        if (lastresponse->value[col]->value.len == 0 && lastresponse->value[col]->has_isnull != 1 &&
-            lastresponse->value[col]->isnull != 1) {
-            return (void *)"";
-        }
-        return lastresponse->value[col]->value.data;
+        return checked_datetime(type, lastresponse->value[col]->value.data, lastresponse->value[col]->value.len);
     }
     /* sqlite row */
     if (hndl->lastresponse->has_sqlite_row)
         return lastresponse->sqlite_row.data;
     /* data came back in the parent CDB2SQLRESPONSE structure */
     if (col_values_flattened(lastresponse)) {
-        /* handle empty values */
-        if (lastresponse->values[col].len == 0 && !lastresponse->isnulls[col])
-            return (void *)"";
-        return lastresponse->values[col].data;
+        return checked_datetime(type, lastresponse->values[col].data, lastresponse->values[col].len);
     }
     return NULL;
 }

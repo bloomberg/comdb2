@@ -475,6 +475,173 @@ void test_cdb2_string_escape()
 }
 
 
+enum { TZ_DT, TZ_DTUS, TZ_DT_SHORT, TZ_CSTRING, TZ_DT_UTC, TZ_DT_EMPTY, TZ_NCOLS };
+
+static void check_tzname_columns(cdb2_hndl_tp *hndl, uint8_t **bufs)
+{
+    cdb2_client_datetime_t *dt = cdb2_column_value(hndl, TZ_DT);
+    assert((uint8_t *)dt == bufs[TZ_DT]);
+    assert(dt->tzname[CDB2_MAX_TZNAME - 1] == '\0');
+    assert(strlen(dt->tzname) == CDB2_MAX_TZNAME - 1);
+
+    cdb2_client_datetimeus_t *dtus = cdb2_column_value(hndl, TZ_DTUS);
+    assert((uint8_t *)dtus == bufs[TZ_DTUS]);
+    assert(dtus->tzname[CDB2_MAX_TZNAME - 1] == '\0');
+    assert(strlen(dtus->tzname) == CDB2_MAX_TZNAME - 1);
+
+    /* too short to read as a struct: not returned, and not written to */
+    assert(cdb2_column_value(hndl, TZ_DT_SHORT) == NULL);
+    for (size_t i = 0; i < sizeof(cdb2_client_datetime_t) - 1; ++i)
+        assert(bufs[TZ_DT_SHORT][i] == 'x');
+
+    assert(cdb2_column_value(hndl, TZ_DT_EMPTY) == NULL);
+
+    uint8_t *cstr = cdb2_column_value(hndl, TZ_CSTRING);
+    for (size_t i = 0; i < sizeof(cdb2_client_datetime_t); ++i)
+        assert(cstr[i] == 'x');
+
+    cdb2_client_datetime_t *utc = cdb2_column_value(hndl, TZ_DT_UTC);
+    assert(strcmp(utc->tzname, "UTC") == 0);
+    assert(utc->msec == 123);
+}
+
+void test_cdb2_column_value_terminates_tzname()
+{
+    int types[TZ_NCOLS] = {CDB2_DATETIME, CDB2_DATETIMEUS, CDB2_DATETIME, CDB2_CSTRING, CDB2_DATETIME, CDB2_DATETIME};
+    size_t lens[TZ_NCOLS] = {sizeof(cdb2_client_datetime_t), sizeof(cdb2_client_datetimeus_t),
+                             sizeof(cdb2_client_datetime_t) - 1, sizeof(cdb2_client_datetime_t),
+                             sizeof(cdb2_client_datetime_t), 0};
+    CDB2SQLRESPONSE__Column hdr[TZ_NCOLS], *hdrp[TZ_NCOLS];
+    CDB2SQLRESPONSE__Column col[TZ_NCOLS], *colp[TZ_NCOLS];
+    ProtobufCBinaryData flat[TZ_NCOLS];
+    protobuf_c_boolean isnulls[TZ_NCOLS] = {0};
+    uint8_t *bufs[TZ_NCOLS];
+
+    CDB2SQLRESPONSE first, last;
+    cdb2__sqlresponse__init(&first);
+    first.n_value = TZ_NCOLS;
+    first.value = hdrp;
+
+    cdb2_hndl_tp *hndl = calloc(1, sizeof(*hndl));
+    hndl->firstresponse = &first;
+    hndl->lastresponse = &last;
+
+    for (int pass = 0; pass < 2; ++pass) {
+        for (int i = 0; i < TZ_NCOLS; ++i) {
+            bufs[i] = malloc(lens[i]);
+            memset(bufs[i], 'x', lens[i]);
+            cdb2__sqlresponse__column__init(&hdr[i]);
+            hdr[i].has_type = 1;
+            hdr[i].type = types[i];
+            hdrp[i] = &hdr[i];
+            cdb2__sqlresponse__column__init(&col[i]);
+            col[i].value.len = lens[i];
+            col[i].value.data = bufs[i];
+            colp[i] = &col[i];
+            flat[i] = col[i].value;
+        }
+        cdb2_client_datetime_t *utc = (cdb2_client_datetime_t *)bufs[TZ_DT_UTC];
+        utc->msec = 123;
+        strcpy(utc->tzname, "UTC");
+
+        cdb2__sqlresponse__init(&last);
+        if (pass == 0) {
+            last.n_value = TZ_NCOLS;
+            last.value = colp;
+        } else {
+            last.has_flat_col_vals = 1;
+            last.flat_col_vals = 1;
+            last.n_values = last.n_isnulls = TZ_NCOLS;
+            last.values = flat;
+            last.isnulls = isnulls;
+        }
+        check_tzname_columns(hndl, bufs);
+        for (int i = 0; i < TZ_NCOLS; ++i)
+            free(bufs[i]);
+    }
+
+    /* no column metadata: value is returned untouched */
+    hndl->firstresponse = NULL;
+    uint8_t raw[sizeof(cdb2_client_datetime_t)];
+    memset(raw, 'x', sizeof(raw));
+    cdb2__sqlresponse__init(&last);
+    cdb2__sqlresponse__column__init(&col[0]);
+    col[0].value.len = sizeof(raw);
+    col[0].value.data = raw;
+    colp[0] = &col[0];
+    last.n_value = 1;
+    last.value = colp;
+    assert(cdb2_column_value(hndl, 0) == raw);
+    assert(raw[sizeof(raw) - 1] == 'x');
+
+    free(hndl);
+}
+
+enum { EV_CSTRING, EV_BLOB, EV_NULL_CSTRING, EV_HELLO, EV_NCOLS };
+
+void test_cdb2_column_size_empty_values()
+{
+    int types[EV_NCOLS] = {CDB2_CSTRING, CDB2_BLOB, CDB2_CSTRING, CDB2_CSTRING};
+    CDB2SQLRESPONSE__Column hdr[EV_NCOLS], *hdrp[EV_NCOLS];
+    CDB2SQLRESPONSE__Column col[EV_NCOLS], *colp[EV_NCOLS];
+    ProtobufCBinaryData flat[EV_NCOLS];
+    protobuf_c_boolean isnulls[EV_NCOLS] = {0};
+    char hello[] = "hello";
+
+    CDB2SQLRESPONSE first, last;
+    cdb2__sqlresponse__init(&first);
+    first.n_value = EV_NCOLS;
+    first.value = hdrp;
+    for (int i = 0; i < EV_NCOLS; ++i) {
+        cdb2__sqlresponse__column__init(&hdr[i]);
+        hdr[i].has_type = 1;
+        hdr[i].type = types[i];
+        hdrp[i] = &hdr[i];
+        cdb2__sqlresponse__column__init(&col[i]);
+        colp[i] = &col[i];
+    }
+    col[EV_NULL_CSTRING].has_isnull = 1;
+    col[EV_NULL_CSTRING].isnull = 1;
+    isnulls[EV_NULL_CSTRING] = 1;
+    col[EV_HELLO].value.len = sizeof(hello);
+    col[EV_HELLO].value.data = (uint8_t *)hello;
+    for (int i = 0; i < EV_NCOLS; ++i)
+        flat[i] = col[i].value;
+
+    cdb2_hndl_tp *hndl = calloc(1, sizeof(*hndl));
+    hndl->firstresponse = &first;
+    hndl->lastresponse = &last;
+
+    for (int pass = 0; pass < 2; ++pass) {
+        cdb2__sqlresponse__init(&last);
+        if (pass == 0) {
+            last.n_value = EV_NCOLS;
+            last.value = colp;
+        } else {
+            last.has_flat_col_vals = 1;
+            last.flat_col_vals = 1;
+            last.n_values = last.n_isnulls = EV_NCOLS;
+            last.values = flat;
+            last.isnulls = isnulls;
+        }
+
+        /* a crafted empty non-null cstring must still look like "" with its NUL */
+        assert(strcmp(cdb2_column_value(hndl, EV_CSTRING), "") == 0);
+        assert(cdb2_column_size(hndl, EV_CSTRING) == 1);
+
+        assert(cdb2_column_value(hndl, EV_BLOB) != NULL);
+        assert(cdb2_column_size(hndl, EV_BLOB) == 0);
+
+        assert(cdb2_column_value(hndl, EV_NULL_CSTRING) == NULL);
+        assert(cdb2_column_size(hndl, EV_NULL_CSTRING) == 0);
+
+        assert(strcmp(cdb2_column_value(hndl, EV_HELLO), "hello") == 0);
+        assert(cdb2_column_size(hndl, EV_HELLO) == sizeof(hello));
+    }
+
+    free(hndl);
+}
+
 int main(int argc, char *argv[])
 {
     int rc = 0;
@@ -504,6 +671,9 @@ int main(int argc, char *argv[])
     test_get_config_file();
 
     test_cdb2_string_escape();
+
+    test_cdb2_column_value_terminates_tzname();
+    test_cdb2_column_size_empty_values();
 
     printf("finished succesfully\n");
     return rc;
