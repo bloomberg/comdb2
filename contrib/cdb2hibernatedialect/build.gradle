@@ -21,11 +21,11 @@ plugins {
 }
 
 group = "com.bloomberg.comdb2"
-version = "0.2.0-M2"
+version = "0.3.0-M1"
 
 java {
     toolchain {
-        languageVersion = JavaLanguageVersion.of(11)
+        languageVersion = JavaLanguageVersion.of(17)
     }
 }
 
@@ -34,7 +34,7 @@ repositories {
 }
 
 dependencies {
-    implementation(platform("org.hibernate.orm:hibernate-platform:6.4.4.Final"))
+    implementation(platform("org.hibernate.orm:hibernate-platform:6.6.53.Final"))
     implementation("org.hibernate.orm:hibernate-core")
 }
 
