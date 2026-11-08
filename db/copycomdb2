@@ -373,7 +373,9 @@ fi
 # Determine mode (PUSH or PULL or LOCAL).  First normalise the hostname
 # (so that sdv5 doesn't look different to sundev5, for example).  Also
 # determine if we should strip or preserve cluster node information.
-if [ "$srcmach" = "$HOSTNAME" -a "$destmach" != "$HOSTNAME" ]; then
+if [ $restoremode = yes -o $backupmode = yes ]; then
+    copy_mode=LOCAL
+elif [ "$srcmach" = "$HOSTNAME" -a "$destmach" != "$HOSTNAME" ]; then
     copy_mode=PUSH
     # need valid lz4 in destination
     [ -z $comdb2ar_rmt ] && die "comdb2ar_rmt not set"
