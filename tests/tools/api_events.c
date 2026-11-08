@@ -64,6 +64,22 @@ static void *my_dbtype_hook(cdb2_hndl_tp *hndl, void *user_arg, int argc, void *
     return NULL;
 }
 
+static void *my_event_hook(cdb2_hndl_tp *hndl, void *user_arg, int argc, void **argv)
+{
+    switch ((cdb2_event_type)(intptr_t)argv[0]) {
+    case CDB2_AT_ENTER_RUN_STATEMENT:
+        puts("EVENT is CDB2_AT_ENTER_RUN_STATEMENT");
+        break;
+    case CDB2_AT_EXIT_RUN_STATEMENT:
+        puts("EVENT is CDB2_AT_EXIT_RUN_STATEMENT");
+        break;
+    default:
+        printf("EVENT is %d\n", (int)(intptr_t)argv[0]);
+        break;
+    }
+    return NULL;
+}
+
 static cdb2_event *init_once_event;
 
 static void register_once(void)
@@ -270,6 +286,21 @@ static int TEST_dbtype_arg(const char *db, const char *tier)
     return 0;
 }
 
+static int TEST_event_arg(const char *db, const char *tier)
+{
+    cdb2_hndl_tp *h;
+    cdb2_event *e;
+    cdb2_open(&h, db, tier, 0);
+    e = cdb2_register_event(h, CDB2_AT_ENTER_RUN_STATEMENT | CDB2_AT_EXIT_RUN_STATEMENT, 0, my_event_hook, NULL, 1,
+                            CDB2_EVENT);
+    cdb2_run_statement(h, "SELECT 1");
+    while (cdb2_next_record(h) == CDB2_OK)
+        ;
+    cdb2_unregister_event(h, e);
+    cdb2_close(h);
+    return 0;
+}
+
 int main(int argc, char **argv)
 {
     char *conf = getenv("CDB2_CONFIG");
@@ -322,6 +353,11 @@ int main(int argc, char **argv)
 
     puts("====== VERIFYING DBTYPE ARG ======");
     rc = TEST_dbtype_arg(db, tier);
+    if (rc != 0)
+        return rc;
+
+    puts("====== VERIFYING EVENT ARG ======");
+    rc = TEST_event_arg(db, tier);
     if (rc != 0)
         return rc;
 
