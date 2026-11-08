@@ -2219,11 +2219,12 @@ static char *opstr(db_recops op)
     }
 }
 
+/* db_printlog-only scratch buffers, sized for the largest odh2 record plus header. */
 static char *printmemarg1(void)
 {
     static char *u = NULL;
     if (!u)
-        u = malloc(MAXBLOBLENGTH + 7);
+        u = malloc((size_t)MAXBLOBLENGTH2 + ODH_SIZE_RESERVE);
     return u;
 }
 
@@ -2231,7 +2232,7 @@ static char *printmemarg2(void)
 {
     static char *u = NULL;
     if (!u)
-        u = malloc(MAXBLOBLENGTH + 7);
+        u = malloc((size_t)MAXBLOBLENGTH2 + ODH_SIZE_RESERVE);
     return u;
 }
 
@@ -2306,9 +2307,8 @@ int handle_undo_add_dta(DB_ENV *dbenv, u_int32_t rectype,
 
             if (!llldta)
                 llldta = printmemarg1();
-            bdb_reconstruct_add(bdb_state, &lll, &lllgenid,
-                                sizeof(unsigned long long), llldta,
-                                MAXBLOBLENGTH + 7, &lllout, NULL);
+            bdb_reconstruct_add(bdb_state, &lll, &lllgenid, sizeof(unsigned long long), llldta,
+                                MAXBLOBLENGTH2 + ODH_SIZE_RESERVE, &lllout, NULL);
 
             printf(" --genid %16llx\n", lllgenid);
             printf(" --dta [%d]  ", lllout);
@@ -2400,9 +2400,8 @@ int handle_undo_add_dta_lk(DB_ENV *dbenv, u_int32_t rectype,
              * db_printlog. */
             if (!llldta)
                 llldta = printmemarg1();
-            bdb_reconstruct_add(bdb_state, &lll, &lllgenid,
-                                sizeof(unsigned long long), llldta,
-                                MAXBLOBLENGTH + 7, &lllout, NULL);
+            bdb_reconstruct_add(bdb_state, &lll, &lllgenid, sizeof(unsigned long long), llldta,
+                                MAXBLOBLENGTH2 + ODH_SIZE_RESERVE, &lllout, NULL);
 
             printf(" --genid %16llx\n", lllgenid);
             printf(" --dta [%d]  ", lllout);
