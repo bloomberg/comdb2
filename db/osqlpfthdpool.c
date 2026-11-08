@@ -15,6 +15,7 @@
  */
 
 #include "comdb2.h"
+#include "sc_util.h"
 
 struct thdpool *gbl_osqlpfault_thdpool = NULL;
 
@@ -37,7 +38,20 @@ typedef struct osqlpf_rq {
     unsigned long long rqid;
     unsigned long long seq;
     uuid_t uuid;
+    /* the table as it was when the request was queued: a schema change can
+       drop it or replace its handle before a worker runs the request */
+    char tablename[MAXTABLELEN];
+    void *handle;
+    unsigned long long tableversion;
 } osqlpf_rq_t;
+
+static void osqlpf_set_table(osqlpf_rq_t *req, struct dbtable *db)
+{
+    req->db = db;
+    strncpy0(req->tablename, db->tablename, sizeof(req->tablename));
+    req->handle = db->handle;
+    req->tableversion = db->tableversion;
+}
 
 /* osql request io prefault, code stolen from prefault.c */
 
@@ -100,7 +114,7 @@ int enque_osqlpfault_oldkey(struct dbtable *db, void *key, int keylen, int ixnum
     qdata->type = OSQLPFRQ_OLDKEY;
     qdata->len = keylen;
     qdata->index = ixnum;
-    qdata->db = db;
+    osqlpf_set_table(qdata, db);
     qdata->genid = -1;
     qdata->i = i;
     qdata->seq = seq;
@@ -135,7 +149,7 @@ int enque_osqlpfault_newkey(struct dbtable *db, void *key, int keylen, int ixnum
     qdata->type = OSQLPFRQ_NEWKEY;
     qdata->len = keylen;
     qdata->index = ixnum;
-    qdata->db = db;
+    osqlpf_set_table(qdata, db);
     qdata->genid = -1;
     qdata->i = i;
     qdata->seq = seq;
@@ -174,7 +188,7 @@ int enque_osqlpfault_olddata_oldkeys(struct dbtable *db,
 
     qdata->type = OSQLPFRQ_OLDDATA_OLDKEYS;
     qdata->index = -1;
-    qdata->db = db;
+    osqlpf_set_table(qdata, db);
     qdata->genid = genid;
     qdata->i = i;
     qdata->seq = seq;
@@ -209,7 +223,7 @@ int enque_osqlpfault_newdata_newkeys(struct dbtable *db, void *record,
 
     qdata->type = OSQLPFRQ_NEWDATA_NEWKEYS;
     qdata->index = -1;
-    qdata->db = db;
+    osqlpf_set_table(qdata, db);
     qdata->genid = -1;
     qdata->record = malloc(reclen);
     memcpy(qdata->record, record, reclen);
@@ -253,7 +267,7 @@ int enque_osqlpfault_olddata_oldkeys_newkeys(
 
     qdata->type = OSQLPFRQ_OLDDATA_OLDKEYS_NEWKEYS;
     qdata->index = -1;
-    qdata->db = db;
+    osqlpf_set_table(qdata, db);
     qdata->genid = genid;
     qdata->record = malloc(reclen);
     memcpy(qdata->record, record, reclen);
@@ -279,6 +293,7 @@ static void osqlpfault_do_work(struct thdpool *pool, void *work, void *thddata)
     struct ireq iq;
     unsigned long long step;
     osqlpf_rq_t *req = (osqlpf_rq_t *)work;
+    int schema_locked = 0;
     init_fake_ireq(thedb, &iq);
     bdb_thread_event(thedb->bdb_env, BDBTHR_EVENT_START);
     if (gbl_prefault_udp)
@@ -292,6 +307,16 @@ static void osqlpfault_do_work(struct thdpool *pool, void *work, void *thddata)
         goto done;
     }
     if (req->i >= 0 && req->rqid == OSQL_RQID_USE_UUID && comdb2uuidcmp(req->uuid, gbl_osqlpf_step[req->i].uuid))
+        goto done;
+
+    /* A schema change closes or replaces table handles under the schema
+       write lock: skip the work while one runs, and use the table only if it
+       is still the one the request was queued for */
+    if (get_schema_change_in_progress(__func__, __LINE__) || tryrdlock_schema_lk() != 0)
+        goto done;
+    schema_locked = 1;
+    if (get_dbtable_by_name(req->tablename) != req->db || req->db->handle != req->handle ||
+        req->db->tableversion != req->tableversion)
         goto done;
 
     step = req->seq << 7;
@@ -541,6 +566,8 @@ static void osqlpfault_do_work(struct thdpool *pool, void *work, void *thddata)
     }
 
 done:
+    if (schema_locked)
+        unlock_schema_lk();
     bdb_thread_event(thedb->bdb_env, BDBTHR_EVENT_DONE);
     send_prefault_udp = 0;
 }
@@ -649,14 +676,14 @@ int osql_page_prefault(char *rpl, int rplen, struct dbtable **last_db,
  * entries one after another, look up its old and new keys in the prefault pool
  * so that their leaf pages are read in parallel.  Index 0 is left out: the
  * block processor works on it first. */
-int gbl_osqlpf_bp_keys = 0;
+int gbl_osqlpf_bp_keys = 1;
 void osqlpf_bp_keys(struct dbtable *db, const void *oldrec, const void *newrec)
 {
     uuid_t nouuid = {0};
     char ko[MAXKEYLEN + 1], kn[MAXKEYLEN + 1];
     int ix, ksz, o, n;
 
-    if (!gbl_osqlpf_bp_keys || !gbl_osqlpfault_thdpool || !db)
+    if (!gbl_osqlpf_bp_keys || !gbl_osqlpfault_threads || !gbl_osqlpfault_thdpool || !db)
         return;
     /* only with spare capacity: behind a backlog the lookups would come after the block processor's own reads */
     if (thdpool_get_queue_depth(gbl_osqlpfault_thdpool) > 0)
