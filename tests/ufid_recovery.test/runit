@@ -52,5 +52,5 @@ sleep 5
 # it could take quite a while for a cluster to fully sync.
 set -x
 for node in $CLUSTER ; do
-    ssh -o StrictHostKeyChecking=no $node "/opt/bb/bin/cdb2sql --admin $dbnm --host $node 'SELECT 1'"
+    ssh -o StrictHostKeyChecking=no $node "${CDB2SQL_EXE} --admin $dbnm --host $node 'SELECT 1'"
 done

@@ -1,0 +1,93 @@
+#!/usr/bin/env bash
+bash -n "$0" || exit 1
+
+[ -z "${CLUSTER}" ] && { echo "Test requires a cluster"; exit 0; }
+
+dbnm=$1
+
+# Btree files retired by TRUNCATE stay open in the ufid hash, so delfiles
+# fails with DB_FILEOPEN on the master or replicants keep the unlinked files
+# open, and the space isn't freed until the process restarts.
+#
+# The instant alter makes replicants close t1's apply handles (CLR_UFID) while
+# the files stay live; later writes reopen them through __ufid_open. After the
+# master swing, TRUNCATE's __db_clear_ufid_hash misses two kinds of handles:
+#  - on the new master, the __ufid_open handle it took as a replicant, dropped
+#    from the ufid hash by __ufid_add_dbp when it registered its own handles
+#  - on the other nodes, handles verify-match recovery opened via dbreg
+# Without the swing (NOSWING=1) the old files are released.
+#
+# Fails if any pre-truncate t1 file is still on disk or open after delfiles.
+
+getmaster() {
+    cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select host from comdb2_cluster where is_master='Y'"
+}
+
+master=`getmaster`
+echo "master is $master"
+
+cdb2sql ${CDB2_OPTIONS} $dbnm default "CREATE TABLE t1 (i INT, b BLOB)"
+cdb2sql ${CDB2_OPTIONS} $dbnm default "INSERT INTO t1 VALUES(1, x'CDB2BABE')"
+cdb2sql ${CDB2_OPTIONS} $dbnm default "ALTER TABLE t1 ADD COLUMN j INT NULL"
+cdb2sql ${CDB2_OPTIONS} $dbnm default "INSERT INTO t1(i, b) VALUES(2, x'CDB2BABE')"
+sleep 2
+
+if [[ "$NOSWING" != "1" ]]; then
+    cdb2sql $dbnm --host $master "EXEC PROCEDURE sys.cmd.send('downgrade')"
+    for i in $(seq 1 30); do
+        newmaster=`getmaster`
+        [[ -n "$newmaster" && "$newmaster" != "$master" ]] && break
+        sleep 1
+    done
+    master=$newmaster
+    echo "new master is $master"
+    for node in $CLUSTER ; do
+        for i in $(seq 1 60); do
+            cdb2sql --admin $dbnm --host $node 'SELECT 1' >/dev/null 2>&1 && break
+            sleep 1
+        done
+    done
+fi
+
+cdb2sql ${CDB2_OPTIONS} $dbnm default "INSERT INTO t1(i, b) VALUES(3, x'CDB2BABE')"
+sleep 2
+
+oldfiles=`ssh -o StrictHostKeyChecking=no $master "ls $DBDIR" | grep "^t1_"`
+echo "pre-truncate files:" $oldfiles
+
+cdb2sql ${CDB2_OPTIONS} $dbnm default "TRUNCATE TABLE t1"
+sleep 2
+
+for node in $CLUSTER ; do
+    echo "--- open pre-truncate t1 handles on $node"
+    opendbs=`cdb2sql ${CDB2_OPTIONS} -s --tabs $dbnm --host $node 'EXEC PROCEDURE sys.cmd.send("bdb dumpopendbs")'`
+    for f in $oldfiles; do
+        echo "$opendbs" | grep -F "[XXX.$f]"
+    done
+done
+
+cdb2sql $dbnm --host $master "EXEC PROCEDURE sys.cmd.send('delfiles t1')"
+sleep 5
+
+leaked=0
+for host in $CLUSTER; do
+    dbpid=`ssh -o StrictHostKeyChecking=no $host 'pgrep -a comdb2' | grep "$dbnm" | awk '{print $1}'`
+    ondisk=`ssh -o StrictHostKeyChecking=no $host "ls $DBDIR"`
+    fds=`ssh -o StrictHostKeyChecking=no $host "ls -l /proc/$dbpid/fd"`
+    for f in $oldfiles; do
+        if echo "$ondisk" | grep -qx "$f"; then
+            echo "$host: $f not deleted"
+            leaked=1
+        fi
+        if echo "$fds" | grep -q "/$f"; then
+            echo "$host (pid $dbpid): $f still open"
+            leaked=1
+        fi
+    done
+done
+
+if [[ $leaked -ne 0 ]]; then
+    echo "Failed: pre-truncate btree files still on disk or held open after delfiles"
+    exit 1
+fi
+echo "Success"

@@ -85,5 +85,5 @@ cdb2sql ${CDB2_OPTIONS} $dbnm default 'INSERT INTO t1 VALUES(1)'
 # make sure that all nodes are accessible. we use --admin mode because on a busy box
 # it could take quite a while for a cluster to fully sync.
 for node in $CLUSTER ; do
-    ssh -o StrictHostKeyChecking=no $node "/opt/bb/bin/cdb2sql --admin $dbnm --host $node 'SELECT 1'"
+    ssh -o StrictHostKeyChecking=no $node "${CDB2SQL_EXE} --admin $dbnm --host $node 'SELECT 1'"
 done
