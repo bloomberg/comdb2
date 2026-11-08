@@ -1,0 +1,2 @@
+table t1 t1.csc2
+osql_verify_retry_max 1000
