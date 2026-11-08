@@ -35,7 +35,7 @@ BB_COMPILE_TIME_ASSERT(db_info2_req_size,
                        sizeof(struct db_info2_req) == DB_INFO2_STRUCT_LEN);
 
 enum {
-    DB_INFO2_RESP_NO_HDR_NO_DATA_LEN = 4 + 4 + 4 + 4 + 4 + (4 * 8),
+    DB_INFO2_RESP_NO_HDR_NO_DATA_LEN = 4 + 4 + 4 + 4 + 4 + 4 + 4 + (4 * 6),
     DB_INFO2_RESP_STRUCT_LEN =
         REQ_HDR_LEN + DB_INFO2_RESP_NO_HDR_NO_DATA_LEN + DBINFOPC_STRUCT_LEN
 };
@@ -321,6 +321,8 @@ db_info2_resp_no_hdr_no_data_put(const struct db_info2_resp *p_db_info2_resp,
                     p_buf, p_buf_end);
     p_buf = buf_put(&(p_db_info2_resp->moreflags),
                     sizeof(p_db_info2_resp->moreflags), p_buf, p_buf_end);
+    p_buf = buf_put(&(p_db_info2_resp->physrep_src_dbnum),
+                    sizeof(p_db_info2_resp->physrep_src_dbnum), p_buf, p_buf_end);
     p_buf = buf_put(&(p_db_info2_resp->fluff), sizeof(p_db_info2_resp->fluff),
                     p_buf, p_buf_end);
 
