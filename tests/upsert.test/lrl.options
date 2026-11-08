@@ -1,2 +1,3 @@
 osql_verify_retry_max 1000
 legacy_tpt_partition 1
+enable_serial_isolation

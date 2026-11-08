@@ -1,0 +1,30 @@
+(TEST='serializable read-set is still validated for ignored upserts')
+done
+done
+done
+(rows inserted=1)
+done
+(rows inserted=1)
+done
+done
+done
+(a=2, b=2)
+done
+done
+(rows updated=1)
+done
+[COMMIT] failed with rc 230 transaction is not serializable
+done
+(a=1, b=1)
+(a=2, b=20)
+done
+(TEST='serializable ignored upsert without conflicting writes commits')
+done
+done
+(a=2, b=20)
+done
+done
+done
+(a=1, b=1)
+(a=2, b=20)
+done
