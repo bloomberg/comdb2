@@ -47,6 +47,7 @@ static const char revid[] =
 
 #include "logmsg.h"
 #include "sys_wrap.h"
+#include <poll.h>
 #include "trigger_sub_status.h"
 #include "debug_switches.h"
 
@@ -1393,6 +1394,7 @@ __dbenv_lock_or_unlock_a_trigger_subscription(void *obj, void *action)
 	intptr_t pause_it = (intptr_t)action;
 	struct __db_trigger_subscription *t = obj;
 	Pthread_mutex_lock(&t->lock);
+	t->paused = pause_it;
 	if (pause_it && t->status == TRIGGER_SUBSCRIPTION_OPEN) {
 		/* pause it if not already paused */
 		t->status = TRIGGER_SUBSCRIPTION_PAUSED;
@@ -1506,12 +1508,35 @@ __dbenv_trigger_open(dbenv, fname)
 	if (debug_switch_test_trigger_deadlock()) {
 		logmsg(LOGMSG_WARN, "%s: acquired t->lock\n", __func__);
 	}
-	DB_ASSERT(t->status == TRIGGER_SUBSCRIPTION_CLOSED);
-	t->status = TRIGGER_SUBSCRIPTION_OPEN;
-	Pthread_cond_signal(&t->cond);
+	if (t->paused) {
+		/*
+		 * Recovery is reopening the queue while its consumers are paused.
+		 * Keep them paused: an open consumer would hold this lock while
+		 * waiting for the recovery lock, and recovery wants this lock to
+		 * open the next file. Unpausing will open it.
+		 */
+		t->status = TRIGGER_SUBSCRIPTION_PAUSED;
+		t->was_open = 1;
+	} else {
+		DB_ASSERT(t->status == TRIGGER_SUBSCRIPTION_CLOSED);
+		t->status = TRIGGER_SUBSCRIPTION_OPEN;
+		Pthread_cond_signal(&t->cond);
+	}
+	int active = t->active;
 	Pthread_mutex_unlock(&t->lock);
 	if (debug_switch_test_trigger_deadlock()) {
 		logmsg(LOGMSG_WARN, "%s: released t->lock\n", __func__);
+	}
+	if (debug_switch_test_trigger_reopen() && active) {
+		/*
+		 * Give a woken consumer time to take t->lock, then take it again
+		 * the way the next reopen of this queue during recovery would.
+		 */
+		logmsg(LOGMSG_WARN, "%s: reopened %s\n", __func__, fname);
+		poll(NULL, 0, 1000);
+		Pthread_mutex_lock(&t->lock);
+		Pthread_mutex_unlock(&t->lock);
+		logmsg(LOGMSG_WARN, "%s: retook t->lock for %s\n", __func__, fname);
 	}
 	return 0;
 }

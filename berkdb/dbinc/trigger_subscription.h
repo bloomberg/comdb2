@@ -7,6 +7,7 @@
 struct __db_trigger_subscription {
 	char *name;
 	int was_open; /* 1 if recovery should change it back to open */
+	int paused; /* 1 between trigger_pause_all and trigger_unpause_all */
 	int active;
 	uint8_t status;
 	pthread_cond_t cond;
