@@ -744,6 +744,7 @@ static struct temp_table *bdb_temp_table_create_type(bdb_state_type *bdb_state,
         }
         if (rc) {
             logmsg(LOGMSG_ERROR, "comdb2_objpool_borrow (or forcedborrow) returns rc %d %s\n", rc, db_strerror(rc));
+            abort();
             *bdberr = BDBERR_MISC;
         } else if (!table) {
             logmsg(LOGMSG_ERROR, "comdb2_objpool_borrow (or forcedborrow) returns NULL table object\n");
