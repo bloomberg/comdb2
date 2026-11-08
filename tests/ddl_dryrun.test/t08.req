@@ -1,0 +1,4 @@
+drop table if exists t08
+create table t08 { tag ondisk {int i int j} tag "t1" {int i} }$$
+dryrun alter table t08 { tag ondisk {int i int j} tag "t1" {int i int j} }
+dryrun alter table t08 { tag ondisk {int i int j} }
