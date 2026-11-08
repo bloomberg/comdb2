@@ -1,0 +1,103 @@
+#!/usr/bin/env bash
+bash -n "$0" || exit 1
+
+# Downgrade the master while an alter runs, and check that the new master
+# resumes the alter.  Run once with multitable_ddl on and once with it off.
+
+. ${TESTSROOTDIR}/tools/cluster_utils.sh
+
+[[ -z "$CLUSTER" ]] && { echo "This test requires a cluster"; exit 1; }
+
+export nrecs=${nrecs:-10000000}
+export resume_timeout=${resume_timeout:-180}
+
+cdb2="$CDB2SQL_EXE --tabs $CDB2_OPTIONS $DBNAME"
+
+function set_multitable_ddl
+{
+    for node in $CLUSTER; do
+        $cdb2 --host $node "put tunable 'multitable_ddl' $1" || return 1
+        echo "$node multitable_ddl=$($cdb2 --host $node "select value from comdb2_tunables where name='multitable_ddl'")"
+    done
+}
+
+function load
+{
+    typeset tbl=$1
+    $cdb2 default "drop table if exists $tbl"
+    $cdb2 default "create table $tbl(a int, b int)" || return 1
+    echo "loading $nrecs records into $tbl"
+    (
+        echo "set transaction chunk 10000"
+        echo "begin"
+        echo "insert into $tbl select value, value from generate_series(1, $nrecs)"
+        echo "commit"
+    ) | $cdb2 default > /dev/null || return 1
+    echo "loaded $($cdb2 default "select count(*) from $tbl") records"
+}
+
+function converted
+{
+    $cdb2 --host $1 "select converted from comdb2_sc_status where name='$2' and status='RUNNING'" 2>/dev/null
+}
+
+function run_case
+{
+    typeset mode=$1
+    typeset tbl=t$mode
+    echo "===== multitable_ddl $mode ====="
+    set_multitable_ddl $mode || return 1
+    load $tbl || return 1
+
+    typeset master=$(get_master)
+    echo "master is $master, starting alter"
+    $cdb2 default "alter table $tbl add index ib (b)" > alter.$mode.out 2>&1 &
+    typeset alterpid=$!
+
+    # Let the alter convert some records before the downgrade
+    typeset before=0
+    while [[ -z "$before" || "$before" -lt 200000 ]]; do
+        sleep 1
+        before=$(converted $master $tbl)
+        ! kill -0 $alterpid 2>/dev/null && { echo "alter finished before the downgrade"; cat alter.$mode.out; return 1; }
+    done
+    echo "alter converted $before records, downgrading $master"
+    $cdb2 --host $master "exec procedure sys.cmd.send('downgrade')"
+
+    wait $alterpid
+    echo "alter client returned rc $?: $(cat alter.$mode.out)"
+
+    typeset newmaster=$(get_master)
+    while [[ -z "$newmaster" || "$newmaster" == "$master" ]]; do
+        sleep 1
+        newmaster=$(get_master)
+    done
+    echo "new master is $newmaster"
+
+    # The status record in llmeta stays RUNNING after a downgrade, so only a
+    # growing converted count shows that the new master resumed the alter.
+    # A restarted alter starts again at 0, a resumed one past the old count.
+    typeset first=$(converted $newmaster $tbl)
+    typeset deadline=$(( $(date +%s) + resume_timeout ))
+    typeset now
+    while [[ $(date +%s) -lt $deadline ]]; do
+        sleep 10
+        now=$(converted $newmaster $tbl)
+        echo "converted on $newmaster: at downgrade $before, first seen ${first:-none}, now ${now:-none}"
+        if [[ -n "$now" && -n "$first" && "$now" -gt "$first" ]]; then
+            echo "RESULT multitable_ddl=$mode: RESUMED on $newmaster"
+            return 0
+        fi
+    done
+    echo "RESULT multitable_ddl=$mode: NOT RESUMED in ${resume_timeout}s"
+    $cdb2 --host $newmaster "select * from comdb2_sc_status where name='$tbl'"
+    return 1
+}
+
+run_case 1
+r1=$?
+run_case 0
+r0=$?
+
+echo "multitable_ddl=1 rc $r1, multitable_ddl=0 rc $r0"
+echo "Success"
