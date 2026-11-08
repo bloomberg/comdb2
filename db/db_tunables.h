@@ -1002,11 +1002,13 @@ REGISTER_TUNABLE("osql_bkoff_netsend", NULL, TUNABLE_INTEGER,
                  &gbl_osql_bkoff_netsend, READONLY, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("osql_bkoff_netsend_lmt", NULL, TUNABLE_INTEGER,
                  &gbl_osql_bkoff_netsend_lmt, READONLY, NULL, NULL, NULL, NULL);
-REGISTER_TUNABLE("osqlprefaultthreads", "If set, send prefaulting hints to nodes. (Default: 0)", TUNABLE_INTEGER,
-                 &gbl_osqlpfault_threads, READONLY, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("osqlprefaultthreads",
+                 "Number of master threads that read the pages of osql ops as they arrive, before the block "
+                 "processor applies them; 0 disables. (Default: 16)",
+                 TUNABLE_INTEGER, &gbl_osqlpfault_threads, READONLY, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("osqlpf_bp_keys",
                  "With osqlprefaultthreads, the block processor looks up the old and new keys of each row it changes "
-                 "in the prefault pool, so that their leaf pages are read in parallel. (Default: off)",
+                 "in the prefault pool, so that their leaf pages are read in parallel. (Default: on)",
                  TUNABLE_BOOLEAN, &gbl_osqlpf_bp_keys, EXPERIMENTAL, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("osql_verify_ext_chk",
                  "For block transaction mode only - after this many verify "
