@@ -885,7 +885,7 @@ These options are toggle-able at runtime.
 |notimeout | not set | Turns off SQL timeouts
 |nowatch | not set | Disable watchdog.  Watchdog aborts the database if basic things like creating threads, allocating memory, etc. doesn't work.
 |nullfkey                         | Constraints are enforced for all key values|Do not enforce foreign key constraints for null keys.
-|num_record_converts | 100 | During schema changes, pack this many records into a transaction.
+|num_record_converts | 100 | During schema changes, wait for replication after this many records per convert thread.
 |on/off | | Enable/disable various switches - see [switches](#switches)
 |osql_verify_ext_chk | 1 | For block transaction mode only - after this many verify errors, see if transaction is non-commitable - see [default isolation level](transaction_model.html#default-isolation-level)
 |osql_verify_retry_max | 499 | Retry a transaction on a verify error this many times - see [optimistic concurrency control](transaction_model.html#optimistic-concurrency-control)
