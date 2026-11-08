@@ -389,7 +389,8 @@ struct udppf_hint {
     uint32_t pgno;
 };
 
-/* Send n (UFID, pgno) pairs in one packet; n > 1 only with udp_prefault_async_batch */
+/* Send n (UFID, pgno) pairs in one packet; n > 1 only with udp_prefault_async_batch.
+ * Returns 1 if the packet was sent, 0 if not. */
 static int send_prefault(bdb_state_type *bdb_state, const char *tohost, const struct udppf_hint *h, int n)
 {
     ack_info *info;
@@ -410,10 +411,10 @@ static int send_prefault(bdb_state_type *bdb_state, const char *tohost, const st
     info->type = USER_TYPE_UDP_PREFAULT_UFID;
     info->len = n * UDP_PREFAULT_UFID_LEN;
 
-    if (udp_send(bdb_state, info, tohost) > 0)
-        __atomic_add_fetch(&pf_ufid_sent, n, __ATOMIC_RELAXED);
-
-    return 0;
+    if (udp_send(bdb_state, info, tohost) <= 0)
+        return 0;
+    __atomic_add_fetch(&pf_ufid_sent, n, __ATOMIC_RELAXED);
+    return 1;
 }
 
 /*
@@ -471,8 +472,8 @@ static void udppf_async_send(bdb_state_type *bdb_state, const struct udppf_hint 
     for (i = 0; i < n; i += batch) {
         k = n - i < batch ? n - i : batch;
         for (j = 0; j < nhosts; j++) {
-            send_prefault(bdb_state, hosts[j], h + i, k);
-            ATOMIC_ADD64(udppf_async_packets, 1);
+            if (send_prefault(bdb_state, hosts[j], h + i, k))
+                ATOMIC_ADD64(udppf_async_packets, 1);
         }
     }
 }
