@@ -446,6 +446,96 @@ static void test_p(void)
     cson_output_FILE(outer, stdout);
     cson_value_free(outer);
 }
+static void same_output(cson_value *a, cson_value *b, const char *what)
+{
+    cson_buffer ba, bb;
+    cson_output_buffer(a, &ba);
+    cson_output_buffer(b, &bb);
+    printf("%.*s\n", bb.used, (char *)bb.mem);
+    if (ba.used != bb.used || memcmp(ba.mem, bb.mem, ba.used) != 0) {
+        printf("%s: cson_object_append output differs from cson_object_set\n%.*s\n", what, ba.used,
+               (char *)ba.mem);
+        exit(1);
+    }
+}
+static cson_value *q_inner(int append)
+{
+    cson_value *v = cson_value_new_object();
+    cson_object *o = cson_value_get_object(v);
+    if (append) {
+        cson_object_append_string(o, "table", "t1", 2);
+        cson_object_append_int(o, "find", 3);
+    } else {
+        cson_object_set(o, "table", cson_value_new_string("t1", 2));
+        cson_object_set(o, "find", cson_new_int(3));
+    }
+    return v;
+}
+/* cson_object_append*() must produce the same text as cson_object_set() */
+static void test_q(void)
+{
+    puts(__func__);
+    const char *s = "a \"quoted\" \\ string\twith\ncontrol \x01 bytes";
+    cson_value *v[2];
+    for (int append = 0; append < 2; ++append) {
+        v[append] = cson_value_new_object();
+        cson_object *o = cson_value_get_object(v[append]);
+        cson_value *arr = cson_value_new_array();
+        cson_array_append(cson_value_get_array(arr), q_inner(append));
+        cson_array_append(cson_value_get_array(arr), cson_new_int(2));
+        if (append) {
+            cson_object_append_int(o, "i", -42);
+            cson_object_append_string(o, "s", s, strlen(s));
+            cson_object_append(o, "d", cson_new_double(1.5, 1));
+            cson_object_append(o, "n", cson_value_null());
+            cson_object_append(o, "b", cson_value_new_bool(1));
+            cson_object_append(o, "o", q_inner(append));
+            cson_object_append(o, "a", arr);
+            cson_object_append(o, "e", cson_value_new_array());
+        } else {
+            cson_object_set(o, "i", cson_new_int(-42));
+            cson_object_set(o, "s", cson_value_new_string(s, strlen(s)));
+            cson_object_set(o, "d", cson_new_double(1.5, 1));
+            cson_object_set(o, "n", cson_value_null());
+            cson_object_set(o, "b", cson_value_new_bool(1));
+            cson_object_set(o, "o", q_inner(append));
+            cson_object_set(o, "a", arr);
+            cson_object_set(o, "e", cson_value_new_array());
+        }
+    }
+    cson_object *o0 = cson_value_get_object(v[0]), *o1 = cson_value_get_object(v[1]);
+    same_output(v[0], v[1], "build");
+    same_output(v[0], v[1], "output again");
+
+    /* set and unset after appends */
+    cson_object_set(o0, "after", cson_new_int(7));
+    cson_object_set(o1, "after", cson_new_int(7));
+    same_output(v[0], v[1], "set after append");
+    cson_object_unset(o0, "s");
+    cson_object_unset(o1, "s");
+    same_output(v[0], v[1], "unset after append");
+
+    /* get and iterate after appends */
+    cson_object_append_int(o1, "last", 1);
+    cson_value *g = cson_object_get(o1, "i");
+    if (!g || cson_value_get_integer(g) != -42) {
+        puts("get after append failed");
+        exit(1);
+    }
+    cson_object_append_int(o1, "end", 2);
+    int n = 0;
+    cson_object_iterator it;
+    cson_object_iter_init(o1, &it);
+    while (cson_object_iter_next(&it) != NULL)
+        ++n;
+    if (n != 10) {
+        printf("iterate after append: %d keys, expected 10\n", n);
+        exit(1);
+    }
+    cson_value_free(v[0]);
+    cson_value_free(v[1]);
+}
+
 int main()
 {
     puts(__func__);
@@ -465,5 +555,6 @@ int main()
     test_n();
     test_o();
     test_p();
+    test_q();
     return 0;
 }

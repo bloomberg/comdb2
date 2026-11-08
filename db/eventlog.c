@@ -207,9 +207,9 @@ static inline void eventlog_append_value(cson_array *arr, const char *name,
 {
     cson_value *binding = cson_value_new_object();
     cson_object *bobj = cson_value_get_object(binding);
-    cson_object_set(bobj, "name", cson_value_new_string(name, strlen(name)));
-    cson_object_set(bobj, "type", cson_value_new_string(type, strlen(type)));
-    cson_object_set(bobj, "value", value);
+    cson_object_append_string(bobj, "name", name, strlen(name));
+    cson_object_append_string(bobj, "type", type, strlen(type));
+    cson_object_append(bobj, "value", value);
     cson_array_append(arr, binding);
 }
 
@@ -369,7 +369,7 @@ void eventlog_tables(cson_object *obj, const struct reqlogger *logger)
         cson_array_append(arr, v);
     }
 
-    cson_object_set(obj, "tables", tables);
+    cson_object_append(obj, "tables", tables);
 }
 
 void eventlog_perfdata(cson_object *obj, const struct reqlogger *logger)
@@ -379,38 +379,31 @@ void eventlog_perfdata(cson_object *obj, const struct reqlogger *logger)
     cson_value *perfval = cson_value_new_object();
     cson_object *perfobj = cson_value_get_object(perfval);
 
-    cson_object_set(perfobj, "tottime", cson_new_int(logger->durationus));
-    cson_object_set(perfobj, "processingtime",
-                    cson_new_int(logger->durationus - logger->queuetimeus));
+    cson_object_append_int(perfobj, "tottime", logger->durationus);
+    cson_object_append_int(perfobj, "processingtime", logger->durationus - logger->queuetimeus);
     if (logger->netwaitus)
-        cson_object_set(perfobj, "netwaitus", cson_new_int(logger->netwaitus));
+        cson_object_append_int(perfobj, "netwaitus", logger->netwaitus);
     if (logger->queuetimeus)
-        cson_object_set(perfobj, "qtime", cson_new_int(logger->queuetimeus));
+        cson_object_append_int(perfobj, "qtime", logger->queuetimeus);
 
     if (thread_stats->n_lock_waits || thread_stats->n_preads ||
         thread_stats->n_pwrites || thread_stats->pread_time_us ||
         thread_stats->pwrite_time_us || thread_stats->lock_wait_time_us) {
         if (thread_stats->n_lock_waits) {
             // NB: lockwaits/lockwaittime accumulate over deadlock/retries
-            cson_object_set(perfobj, "lockwaits",
-                            cson_new_int(thread_stats->n_lock_waits));
-            cson_object_set(perfobj, "lockwaittime",
-                            cson_new_int(thread_stats->lock_wait_time_us));
+            cson_object_append_int(perfobj, "lockwaits", thread_stats->n_lock_waits);
+            cson_object_append_int(perfobj, "lockwaittime", thread_stats->lock_wait_time_us);
         }
         if (thread_stats->n_preads) {
-            cson_object_set(perfobj, "reads",
-                            cson_new_int(thread_stats->n_preads));
-            cson_object_set(perfobj, "readtime",
-                            cson_new_int(thread_stats->pread_time_us));
+            cson_object_append_int(perfobj, "reads", thread_stats->n_preads);
+            cson_object_append_int(perfobj, "readtime", thread_stats->pread_time_us);
         }
         if (thread_stats->n_pwrites) {
-            cson_object_set(perfobj, "writes",
-                            cson_new_int(thread_stats->n_pwrites));
-            cson_object_set(perfobj, "writetime",
-                            cson_new_int(thread_stats->pwrite_time_us));
+            cson_object_append_int(perfobj, "writes", thread_stats->n_pwrites);
+            cson_object_append_int(perfobj, "writetime", thread_stats->pwrite_time_us);
         }
     }
-    cson_object_set(obj, "perf", perfval);
+    cson_object_append(obj, "perf", perfval);
 }
 
 static int write_json(void *state, const void *src, unsigned int n)
@@ -430,7 +423,7 @@ static void eventlog_context(cson_object *obj, const struct reqlogger *logger)
                                                   strlen(logger->context[i]));
             cson_array_append(arr, v);
         }
-        cson_object_set(obj, "context", contexts);
+        cson_object_append(obj, "context", contexts);
     }
 }
 
@@ -451,19 +444,18 @@ static void eventlog_path(cson_object *obj, const struct reqlogger *logger)
         struct client_query_path_component *c;
         c = &logger->path->path_stats[i];
         if (c->table[0])
-            cson_object_set(lobj, "table",
-                            cson_value_new_string(c->table, strlen(c->table)));
+            cson_object_append_string(lobj, "table", c->table, strlen(c->table));
         if (c->ix != -1)
-            cson_object_set(lobj, "index", cson_new_int(c->ix));
+            cson_object_append_int(lobj, "index", c->ix);
         if (c->nfind)
-            cson_object_set(lobj, "find", cson_new_int(c->nfind));
+            cson_object_append_int(lobj, "find", c->nfind);
         if (c->nnext)
-            cson_object_set(lobj, "next", cson_new_int(c->nnext));
+            cson_object_append_int(lobj, "next", c->nnext);
         if (c->nwrite)
-            cson_object_set(lobj, "write", cson_new_int(c->nwrite));
+            cson_object_append_int(lobj, "write", c->nwrite);
         cson_array_append(arr, component);
     }
-    cson_object_set(obj, "path", components);
+    cson_object_append(obj, "path", components);
 }
 
 /* add never seen before "newsql" query, also print it to log */
@@ -480,19 +472,16 @@ static void eventlog_add_newsql(const struct reqlogger *logger)
     newval = cson_value_new_object();
     newobj = cson_value_get_object(newval);
 
-    cson_object_set(newobj, "time", cson_new_int(logger->startus));
-    cson_object_set(newobj, "type",
-            cson_value_new_string("newsql", strlen("newsql")));
+    cson_object_append_int(newobj, "time", logger->startus);
+    cson_object_append_string(newobj, "type", "newsql", strlen("newsql"));
 
     if (logger->sql_ref != NULL) {
-        cson_object_set(newobj, "sql", cson_value_new_string(string_ref_cstr(logger->sql_ref),
-                                                             string_ref_len(logger->sql_ref)));
+        cson_object_append_string(newobj, "sql", string_ref_cstr(logger->sql_ref), string_ref_len(logger->sql_ref));
     }
 
     char expanded_fp[2 * FINGERPRINTSZ + 1];
     util_tohex(expanded_fp, logger->fingerprint, FINGERPRINTSZ);
-    cson_object_set(newobj, "fingerprint",
-            cson_value_new_string(expanded_fp, FINGERPRINTSZ * 2));
+    cson_object_append_string(newobj, "fingerprint", expanded_fp, FINGERPRINTSZ * 2);
 
     /* yes, this can spill the file to beyond the configured size - we need
        this event to be in the same file as the event its being logged for */
@@ -512,27 +501,25 @@ static inline void cson_snap_info_key(cson_object *obj, snap_uid_t *snap_info)
         char cnonce[2 * snap_info->keylen + 1];
         /* util_tohex() takes care of null-terminating the resulting string. */
         util_tohex(cnonce, snap_info->key, snap_info->keylen);
-        cson_object_set(obj, "cnonce",
-                        cson_value_new_string(cnonce, snap_info->keylen * 2));
+        cson_object_append_string(obj, "cnonce", cnonce, snap_info->keylen * 2);
     } else {
-        cson_object_set(obj, "cnonce",
-                        cson_value_new_string(snap_info->key, snap_info->keylen));
+        cson_object_append_string(obj, "cnonce", snap_info->key, snap_info->keylen);
     }
 }
 
 
 static void populate_obj(cson_object *obj, const struct reqlogger *logger)
 {
-    cson_object_set(obj, "time", cson_new_int(logger->startus));
+    cson_object_append_int(obj, "time", logger->startus);
     if (logger->event_type != EV_UNSET) {
         const char *str = ev_str[logger->event_type];
-        cson_object_set(obj, "type", cson_value_new_string(str, strlen(str)));
+        cson_object_append_string(obj, "type", str, strlen(str));
     }
 
     if (logger->sql_ref && eventlog_detailed) {
-        cson_object_set(obj, "sql", cson_value_new_string(string_ref_cstr(logger->sql_ref),
-                                                          string_ref_len(logger->sql_ref)));
-        cson_object_set(obj, "bound_parameters", logger->bound_param_cson);
+        cson_object_append_string(obj, "sql", string_ref_cstr(logger->sql_ref), string_ref_len(logger->sql_ref));
+        if (logger->bound_param_cson)
+            cson_object_append(obj, "bound_parameters", logger->bound_param_cson);
     }
 
     snap_uid_t snap, *p = NULL;
@@ -543,52 +530,51 @@ static void populate_obj(cson_object *obj, const struct reqlogger *logger)
     cson_snap_info_key(obj, p);
 
     if (logger->have_id)
-        cson_object_set(obj, "id", cson_value_new_string(logger->id, strlen(logger->id)));
+        cson_object_append_string(obj, "id", logger->id, strlen(logger->id));
     if (logger->sqlcost)
-        cson_object_set(obj, "cost", cson_new_double(logger->sqlcost, 1));
+        cson_object_append(obj, "cost", cson_new_double(logger->sqlcost, 1));
     if (logger->sqlrows)
-        cson_object_set(obj, "rows", cson_new_int(logger->sqlrows));
+        cson_object_append_int(obj, "rows", logger->sqlrows);
     if (logger->vreplays)
-        cson_object_set(obj, "replays", cson_new_int(logger->vreplays));
+        cson_object_append_int(obj, "replays", logger->vreplays);
 
     if (logger->error) {
-        cson_object_set(obj, "rc", cson_new_int(logger->rc));
-        cson_object_set(obj, "error_code", cson_new_int(logger->error_code));
-        cson_object_set(obj, "error", cson_value_new_string(logger->error, strlen(logger->error)));
+        cson_object_append_int(obj, "rc", logger->rc);
+        cson_object_append_int(obj, "error_code", logger->error_code);
+        cson_object_append_string(obj, "error", logger->error, strlen(logger->error));
 
         if (logger->iq && logger->iq->retries > 0)
-            cson_object_set(obj, "deadlockretries", cson_new_int(logger->iq->retries));
+            cson_object_append_int(obj, "deadlockretries", logger->iq->retries);
     }
 
-    cson_object_set(obj, "host", cson_value_new_string(logger->origin, strlen(logger->origin)));
+    cson_object_append_string(obj, "host", logger->origin, strlen(logger->origin));
 
     if (logger->have_fingerprint) {
         char expanded_fp[2 * FINGERPRINTSZ + 1];
         util_tohex(expanded_fp, logger->fingerprint, FINGERPRINTSZ);
-        cson_object_set(obj, "fingerprint", cson_value_new_string(expanded_fp, FINGERPRINTSZ * 2));
+        cson_object_append_string(obj, "fingerprint", expanded_fp, FINGERPRINTSZ * 2);
     }
 
     if (logger->clnt) {
         uint64_t clientstarttime = get_client_starttime(logger->clnt);
         if (clientstarttime && logger->startus > clientstarttime)
-            cson_object_set(obj, "startlag", /* in microseconds */
-                            cson_new_int(logger->startus - clientstarttime));
+            cson_object_append_int(obj, "startlag", /* in microseconds */
+                                   logger->startus - clientstarttime);
         int clientretries = get_client_retries(logger->clnt);
         if (clientretries > 0)
-            cson_object_set(obj, "clientretries", cson_new_int(clientretries));
+            cson_object_append_int(obj, "clientretries", clientretries);
 
-        cson_object_set(obj, "connid", cson_new_int(logger->clnt->connid));
-        cson_object_set(obj, "pid", cson_new_int(logger->clnt->last_pid));
+        cson_object_append_int(obj, "connid", logger->clnt->connid);
+        cson_object_append_int(obj, "pid", logger->clnt->last_pid);
         if (logger->clnt->argv0)
-            cson_object_set(obj, "client",
-                            cson_value_new_string(logger->clnt->argv0, strlen(logger->clnt->argv0)));
+            cson_object_append_string(obj, "client", logger->clnt->argv0, strlen(logger->clnt->argv0));
     }
 
     if (logger->nwrites > 0) {
-        cson_object_set(obj, "nwrites", cson_new_int(logger->nwrites));
+        cson_object_append_int(obj, "nwrites", logger->nwrites);
     }
     if (logger->cascaded_nwrites > 0) {
-        cson_object_set(obj, "casc_nwrites", cson_new_int(logger->cascaded_nwrites));
+        cson_object_append_int(obj, "casc_nwrites", logger->cascaded_nwrites);
     }
    
     eventlog_context(obj, logger);
@@ -884,9 +870,9 @@ void eventlog_debug(char *fmt, ...) {
         return;
     va_end(args);
 
-    cson_object_set(obj, "type", cson_value_new_string("debug", 5));
-    cson_object_set(obj, "time", cson_new_int(comdb2_time_epochus()));
-    cson_object_set(obj, "debug", cson_value_new_string(s, strlen(s)));
+    cson_object_append_string(obj, "type", "debug", 5);
+    cson_object_append_int(obj, "time", comdb2_time_epochus());
+    cson_object_append_string(obj, "debug", s, strlen(s));
     os_free(s);
 
     Pthread_mutex_lock(&eventlog_lk);
@@ -915,10 +901,10 @@ void eventlog_deadlock_cycle(locker_info *idmap, u_int32_t *deadmap,
         cson_snap_info_key(vobj, idmap[j].snap_info);
         char hex[11];
         sprintf(hex, "0x%x", idmap[j].id);
-        cson_object_set(vobj, "lid", cson_value_new_string(hex, strlen(hex)));
-        cson_object_set(vobj, "lcount", cson_value_new_integer(idmap[j].lcount));
+        cson_object_append_string(vobj, "lid", hex, strlen(hex));
+        cson_object_append_int(vobj, "lcount", idmap[j].lcount);
         if (j == victim)
-            cson_object_set(vobj, "victim", cson_value_new_bool(1));
+            cson_object_append(vobj, "victim", cson_value_new_bool(1));
         cson_array_append(arr, lobj);
     }
     logmsg(LOGMSG_USER, "\n");
@@ -927,9 +913,9 @@ void eventlog_deadlock_cycle(locker_info *idmap, u_int32_t *deadmap,
     cson_value *host = cson_value_new_string(gbl_myhostname, strlen(gbl_myhostname));
     cson_value *dval = cson_value_new_object();
     cson_object *obj = cson_value_get_object(dval);
-    cson_object_set(obj, "time", cson_new_int(startus));
-    cson_object_set(obj, "host", host);
-    cson_object_set(obj, "deadlock_cycle", dd_list);
+    cson_object_append_int(obj, "time", startus);
+    cson_object_append(obj, "host", host);
+    cson_object_append(obj, "deadlock_cycle", dd_list);
     Pthread_mutex_lock(&eventlog_lk);
     if (eventlog_enabled && eventlog != NULL)
         cson_output(dval, write_json, eventlog);

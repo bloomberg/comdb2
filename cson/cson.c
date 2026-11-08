@@ -130,6 +130,7 @@ struct cson_object {
     cson_value *value;
     struct key_list key_list;
     struct get_list get_list;
+    JsonString str; /* "key":value pairs from cson_object_append*(), not yet in parse */
 };
 struct cson_value {
     int sql_type;
@@ -287,6 +288,7 @@ static void cson__reset(cson_value *val)
             LIST_REMOVE(key, entry);
             free(key);
         }
+        jsonReset(&obj->str);
     } else if (type == JSON_ARRAY) {
         cson__free_get_list(&val->u.arr.get_list);
         jsonReset(&val->u.arr.str);
@@ -325,6 +327,7 @@ static cson_value *cson__parse(cson_value *val, const char *json_in, int n)
        break;
     case JSON_OBJECT:
        val->u.obj.value = val;
+       jsonInit(&val->u.obj.str, NULL);
        break;
     }
     return val;
@@ -382,6 +385,14 @@ static void cson__output(cson_value *val)
         jsonAppendRaw(&val->output, suffix->zBuf, suffix->nUsed);
         jsonAppendChar(&val->output, ']');
         jsonReset(suffix);
+    }
+    if (cson__type(val) == JSON_OBJECT && val->u.obj.str.nUsed) {
+        // process appended keys; kept, so the object can be output again
+        JsonString *suffix = &val->u.obj.str;
+        --val->output.nUsed; // remove trailing }
+        jsonAppendSeparator(&val->output);
+        jsonAppendRaw(&val->output, suffix->zBuf, suffix->nUsed);
+        jsonAppendChar(&val->output, '}');
     }
 }
 static void cson__render(cson_value *val)
@@ -457,11 +468,54 @@ cson_value *cson_object_value(cson_object *s)
 }
 int cson_object_set(cson_object *obj, char const *key, cson_value *v)
 {
-    size_t key_len = strlen(key) + 3;
-    struct cson_key *cson_key = malloc(sizeof(struct cson_key) + key_len);
-    sprintf(cson_key->buf, "$.%s", key);
+    if (obj->str.nUsed) {
+        cson__render(obj->value); // merge appended keys into the tree
+    }
+    size_t key_len = strlen(key);
+    struct cson_key *cson_key = malloc(sizeof(struct cson_key) + key_len + 3);
+    cson_key->buf[0] = '$';
+    cson_key->buf[1] = '.';
+    memcpy(cson_key->buf + 2, key, key_len + 1);
     LIST_INSERT_HEAD(&obj->key_list, cson_key, entry);
     return cson__set(obj->value, cson_key->buf, v);
+}
+static void cson__append_key(cson_object *obj, char const *key)
+{
+    obj->value->modified = 1;
+    jsonAppendSeparator(&obj->str);
+    jsonAppendString(&obj->str, key, strlen(key));
+    jsonAppendChar(&obj->str, ':');
+}
+/* append v as JSON text; v is about to be freed, so it is not re-parsed */
+static void cson__append_value(JsonString *s, cson_value *v)
+{
+    if (v->sub_type && v->modified) {
+        cson__output(v);
+        jsonAppendRaw(s, v->output.zBuf, v->output.nUsed);
+    } else {
+        jsonAppendValue(s, v);
+    }
+}
+int cson_object_append(cson_object *obj, char const *key, cson_value *v)
+{
+    cson__append_key(obj, key);
+    cson__append_value(&obj->str, v);
+    cson_value_free(v);
+    return 0;
+}
+int cson_object_append_int(cson_object *obj, char const *key, cson_int_t v)
+{
+    char buf[24];
+    int n = snprintf(buf, sizeof(buf), "%" PRId64, v);
+    cson__append_key(obj, key);
+    jsonAppendRaw(&obj->str, buf, n);
+    return 0;
+}
+int cson_object_append_string(cson_object *obj, char const *key, char const *str, unsigned int n)
+{
+    cson__append_key(obj, key);
+    jsonAppendString(&obj->str, str, n);
+    return 0;
 }
 int cson_object_unset(cson_object *obj, char const *key)
 {
@@ -529,11 +583,8 @@ unsigned int cson_array_length_get(cson_array const *ar)
 int cson_array_append(cson_array *ar, cson_value *v)
 {
     ar->value->modified = 1;
-    if (v->sub_type) {
-        cson__render(v);
-    }
     jsonAppendSeparator(&ar->str);
-    jsonAppendValue(&ar->str, v);
+    cson__append_value(&ar->str, v);
     cson_value_free(v);
     return 0;
 }
