@@ -34,7 +34,7 @@ struct limit_t {
 } limits[] = {
     {"max_blob_fields", "Maximum number of blob/vutf8 fields per table",
      MAXBLOBS},
-    {"max_blob_length", "Maximum blob length", MAXBLOBLENGTH},
+    {"max_blob_length", "Maximum blob length (odh2 tables)", MAXBLOBLENGTH2},
     {"max_bounded_parameters",
      "Maximum number of bounded parameters per prepared statement",
      MAXDYNTAGCOLUMNS},

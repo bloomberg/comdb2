@@ -630,13 +630,18 @@ int do_alter_table(struct ireq *iq, struct schema_change_type *s,
         datacopy_odh = 1;
     }
 
+    /* Preserve the old table's odh2 setting across the alter (there is no
+     * per-table odh2 schema option yet).  odh2 requires the ondisk header. */
+    get_db_odh2_tran(db, &newdb->odh2, tran);
+    if (!s->headers)
+        newdb->odh2 = 0;
+
     /* we set compression /odh options in bdb only here.
        for full operation they also need to be set in the meta tables.
        however the new db gets its meta table assigned further down,
        so we can't set meta options until we're there. */
-    set_bdb_option_flags(newdb, s->headers, s->ip_updates,
-                         newdb->instant_schema_change, newdb->schema_version,
-                         s->compress, s->compress_blobs, datacopy_odh);
+    set_bdb_option_flags(newdb, s->headers, s->ip_updates, newdb->instant_schema_change, newdb->schema_version,
+                         s->compress, s->compress_blobs, datacopy_odh, newdb->odh2);
 
     /* We are resuming, but there was no temp btree to reopen and we created a
      * fresh one.  Nothing was ever converted into it, so any sc_genids still
