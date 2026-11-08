@@ -62,6 +62,7 @@ CATCHUP_CLIENTS=${CATCHUP_CLIENTS:-64}
 CATCHUP_DOWN=${CATCHUP_DOWN:-30}
 # seconds the catch-up runs load for (default DUR); the replica is watched only while they do
 CATCHUP_DUR=${CATCHUP_DUR:-$DUR}
+CATCHUP_WAITERS=${CATCHUP_WAITERS:-0 1}
 # SQL threads per node; at least one per client a node serves, or commits queue for a thread instead
 SQLTHREADS=${SQLTHREADS:-}
 
@@ -271,7 +272,7 @@ for b in $BENCH; do
             ((lost == 0)) || fail "kill: $lost acked inserts are missing"
         done; done ;;
     catchup)
-        for cc in $CATCHUP_CLIENTS; do for adc in 0 1; do
+        for cc in $CATCHUP_CLIENTS; do for adc in $CATCHUP_WAITERS; do
             configure $adc
             tables "$cc"
             m=$(master)
@@ -298,7 +299,9 @@ for b in $BENCH; do
             parked=$(send "$v" "bdb repstat" | grep -o 'st_log_queued_total: [0-9]*' | grep -o '[0-9]*$')
             repdb=$(send "$v" "bdb cachestatall" | gawk '/Pool file \[/ { f = ($0 ~ /__db\.rep\./) }
                 f && /st_pagesize/ { ps = $NF } f && /st_page_out/ { o += $NF } f && /st_page_in / { i += $NF }
-                END { printf "repdb_written=%dMB repdb_read=%dMB", o * ps / 1048576, i * ps / 1048576 }')
+                f && /st_cache_hit / { h += $NF } f && /st_cache_miss/ { m += $NF }
+                END { printf "repdb_written=%dMB repdb_read=%dMB repdb_cache_hits=%s", o * ps / 1048576, i * ps / 1048576,
+                      h + m ? sprintf("%.1f%%", 100 * h / (h + m)) : "?" }')
             wait $lp
             echo "RESULT catchup clients=$cc waiter=$adc down=${CATCHUP_DOWN}s max_lag=${maxlag}MB coherent_after_restart=${back:-not within the run}s closed=${speed}MB/s parked=${parked:-?} $repdb inserts/s=$(persec catchup $ts "$CATCHUP_DUR")"
             rm -f "$out"/catchup.c*
