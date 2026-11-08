@@ -48,6 +48,11 @@ struct berkdb_thread_stats {
 
     uint64_t rep_lock_time_us;
     uint64_t rep_deadlock_retries;
+    /* lock-list attempts, and time from the first attempt to holding all the
+       locks summed over transactions (rep_lock_time_us counts only the time
+       spent inside the attempts) */
+    uint64_t rep_lock_attempts;
+    uint64_t rep_lock_txn_time_us;
 
     uint64_t rep_log_cnt;
     uint64_t rep_log_bytes;
