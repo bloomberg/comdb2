@@ -5548,6 +5548,7 @@ TYPES_INLINE int CLIENT_BYTEARRAY_to_SERVER_BLOB2(
 
     if (isnull) {
         set_null(out, outlen);
+        return 0;
     }
 
 /* validate the string and get its length (not including any NUL), does
