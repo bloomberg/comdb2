@@ -845,7 +845,8 @@ static void udp_reader(int fd, short what, void *arg)
         p_buf_end = (uint8_t *)data + info->len;
         for (p_buf = data; p_buf < p_buf_end; p_buf += UDP_PREFAULT_UFID_LEN) {
             buf_get(&pgno, sizeof(pgno), p_buf + DB_FILE_ID_LEN, p_buf_end);
-            enque_udppfault_ufid(bdb_state, p_buf, pgno);
+            if (enque_udppfault_ufid(bdb_state, p_buf, pgno) != 0)
+                ++pf_ufid_dropped;
         }
         break;
     }
