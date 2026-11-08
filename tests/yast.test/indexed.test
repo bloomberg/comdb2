@@ -1,0 +1,20 @@
+set testdir [file dirname $argv0]
+source $testdir/tester.tcl
+
+do_test indexed-setup {
+  execsql {
+    CREATE TABLE t1 { schema { int a  int b } keys { "a" = a  "b" = b" } }
+  }
+  for {set i 1} {$i<=100} {incr i} {
+    execsql "INSERT INTO t1 VALUES($i,0)"
+  }
+  execsql "ANALYZE"
+} {}
+
+do_test where-1 {
+  execsql {EXPLAIN QUERY PLAN SELECT a, b FROM T1 where a=1 and b=2}
+} {}
+
+do_test where-2 {
+  execsql {EXPLAIN QUERY PLAN SELECT a, b FROM T1 where a=1 and b=2 INDEXED BY b}
+} {}
