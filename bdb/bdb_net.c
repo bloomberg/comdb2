@@ -976,6 +976,8 @@ void udp_reset(netinfo_type *netinfo)
     if (!netinfo) return;
     rect_udp = recl_udp = fail_udp = sent_udp = recd_udp = 0;
     pf_ufid_sent = pf_ufid_recd = pf_ufid_dropped = udp_pf_ufid_pinned = udp_pf_ufid_skipped = pf_dbreg_recd = 0;
+    udppf_async_queued = udppf_async_full = udppf_async_notmaster = udppf_async_wakeups = udppf_async_packets = 0;
+    udppf_async_rwh_queued = udppf_async_rwh_full = udppf_async_rwh_nomaster = 0;
     net_reset_udp_stat(netinfo);
 }
 
