@@ -6465,6 +6465,11 @@ int comdb2_replicated_truncate(void *dbenv, void *inlsn, uint32_t flags)
 
     logmsg(LOGMSG_INFO, "%s starting for [%d:%d] as %s\n", __func__, *file,
            *offset, is_master ? "MASTER" : "REPLICANT");
+
+    /* The cached commit lsn may point into the truncated log */
+    if (thedb->bdb_env)
+        bdb_truncate_commit_lsn(thedb->bdb_env, inlsn);
+
     if (is_master && !gbl_is_physical_replicant) {
         /* We've asked the replicants to truncate their log files.  The master
          * incremented it's generation number before truncating.  The newmaster

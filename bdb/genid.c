@@ -1058,6 +1058,25 @@ void bdb_set_commit_lsn_gen(bdb_state_type *bdb_state, const void *inlsn, uint32
     Pthread_mutex_unlock(&(bdb_state->gblcontext_lock));
 }
 
+/* Forget a commit lsn that a log truncation removed; readers then fall back
+   to the current lsn.  commit_genid can't move back, so it isn't reset. */
+void bdb_truncate_commit_lsn(bdb_state_type *bdb_state, const void *intrunclsn)
+{
+    const DB_LSN *trunclsn = (const DB_LSN *)intrunclsn;
+
+    if (bdb_state->parent)
+        bdb_state = bdb_state->parent;
+
+    Pthread_mutex_lock(&(bdb_state->gblcontext_lock));
+    if (log_compare(&commit_lsn, trunclsn) >= 0) {
+        logmsg(LOGMSG_INFO, "%s: clearing commit lsn %u:%u, truncated to %u:%u\n", __func__, commit_lsn.file,
+               commit_lsn.offset, trunclsn->file, trunclsn->offset);
+        commit_lsn.file = 0;
+        commit_lsn.offset = 0;
+    }
+    Pthread_mutex_unlock(&(bdb_state->gblcontext_lock));
+}
+
 unsigned long long bdb_get_commit_genid(bdb_state_type *bdb_state, void *plsn)
 {
     return bdb_get_commit_genid_generation(bdb_state, plsn, NULL);
