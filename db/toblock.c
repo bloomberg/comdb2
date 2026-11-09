@@ -1621,7 +1621,7 @@ static int process_long_trn(struct ireq *iq, longblk_trans_type *blklong_trans, 
                     Pthread_mutex_unlock(&delay_lock);
                 }
 
-                n_retries++;
+                ATOMIC_ADD64(n_retries, 1);
                 poll(0, 0, (rand() % 25 + 1));
                 goto retrylong;
             }
@@ -1646,7 +1646,7 @@ static int process_long_trn(struct ireq *iq, longblk_trans_type *blklong_trans, 
         block_state_free(blkstate);
 
         free(p_rawdata);
-        iq->dbenv->long_trn_stats.ltrn_fulltrans++;
+        ATOMIC_ADD32(iq->dbenv->long_trn_stats.ltrn_fulltrans, 1);
         if (iq->dbenv->long_trn_stats.ltrn_maxnseg < trnsegs)
             iq->dbenv->long_trn_stats.ltrn_maxnseg = trnsegs;
         if ((iq->dbenv->long_trn_stats.ltrn_minnseg > trnsegs) || iq->dbenv->long_trn_stats.ltrn_minnseg == 0)
@@ -1851,7 +1851,7 @@ int tolongblock(struct ireq *iq)
                   longblock_rsp_put(&rsp, iq->p_buf_out, iq->p_buf_out_end)))
             return ERR_INTERNAL;
 
-        iq->dbenv->long_trn_stats.ltrn_fulltrans++;
+        ATOMIC_ADD32(iq->dbenv->long_trn_stats.ltrn_fulltrans, 1);
 
 /* run through block, dump it */
 #if 0
@@ -1927,7 +1927,7 @@ int tolongblock(struct ireq *iq)
                     Pthread_mutex_unlock(&delay_lock);
                 }
 
-                n_retries++;
+                ATOMIC_ADD64(n_retries, 1);
                 poll(0, 0, (rand() % 25 + 1));
                 goto retrysingle;
             } else {
@@ -1947,7 +1947,7 @@ int tolongblock(struct ireq *iq)
         block_state_free(&blkstate);
 
         /* some stats */
-        iq->dbenv->long_trn_stats.ltrn_fulltrans++;
+        ATOMIC_ADD32(iq->dbenv->long_trn_stats.ltrn_fulltrans, 1);
         if (iq->dbenv->long_trn_stats.ltrn_maxnseg < 1)
             iq->dbenv->long_trn_stats.ltrn_maxnseg = 1;
         if (iq->dbenv->long_trn_stats.ltrn_minnseg > 1 ||
@@ -3388,13 +3388,13 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle, stru
         if (iq->retries == 0) {
             if ((unsigned)hdr.opcode < BLOCK_MAXOPCODE) {
                 opcode_counts[gbl_blockop_count_xrefs[hdr.opcode]]++;
-                iq->usedb->blocktypcnt[hdr.opcode]++;
+                ATOMIC_ADD64(iq->usedb->blocktypcnt[hdr.opcode], 1);
                 if (iq->rawnodestats)
                     iq->rawnodestats
                         ->blockop_counts[gbl_blockop_count_xrefs[hdr.opcode]]++;
             } else {
                 opcode_counts[0]++; /* unknown opcode */
-                iq->usedb->blocktypcnt[0]++;
+                ATOMIC_ADD64(iq->usedb->blocktypcnt[0], 1);
                 if (iq->rawnodestats)
                     iq->rawnodestats->blockop_counts[0]++;
             }
@@ -6436,14 +6436,14 @@ add_blkseq:
     if (outrc == 0) {
         /* Committed new sqlite_stat1 statistics from analyze - reload sqlite
          * engines */
-        iq->dbenv->txns_committed++;
+        ATOMIC_ADD64(iq->dbenv->txns_committed, 1);
         if (iq->dbglog_file) {
             dbglog_dump_write_stats(iq);
             cdb2buf_close(iq->dbglog_file);
             iq->dbglog_file = NULL;
         }
     } else {
-        iq->dbenv->txns_aborted++;
+        ATOMIC_ADD64(iq->dbenv->txns_aborted, 1);
     }
     reqlog_set_nwrites(iq->reqlogger, iq->written_row_count, iq->cascaded_row_count);
 
@@ -6452,13 +6452,13 @@ add_blkseq:
     if (iq->total_txnsize > iq->dbenv->biggest_txn)
         iq->dbenv->biggest_txn = iq->total_txnsize;
     iq->dbenv->total_txn_sz = iq->total_txnsize;
-    iq->dbenv->num_txns++;
+    ATOMIC_ADD32(iq->dbenv->num_txns, 1);
     if (iq->timeoutms > iq->dbenv->max_timeout_ms)
         iq->dbenv->max_timeout_ms = iq->timeoutms;
-    iq->dbenv->total_timeouts_ms += iq->timeoutms;
+    ATOMIC_ADD32(iq->dbenv->total_timeouts_ms, iq->timeoutms);
     if (iq->reptimems > iq->dbenv->max_reptime_ms)
         iq->dbenv->max_reptime_ms = iq->reptimems;
-    iq->dbenv->total_reptime_ms += iq->reptimems;
+    ATOMIC_ADD32(iq->dbenv->total_reptime_ms, iq->reptimems);
 
     if (iq->debug) {
         uint64_t rate;

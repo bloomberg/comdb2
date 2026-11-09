@@ -1598,7 +1598,7 @@ retry:
         if (bdberr == BDBERR_DEADLOCK) {
             iq->retries++;
             if (++retries < gbl_maxretries) {
-                n_retries++;
+                ATOMIC_ADD64(n_retries, 1);
                 goto retry;
             }
             logmsg(LOGMSG_ERROR, "*ERROR* bdb_fetch_lastdupe_recnum too much contention %d "
@@ -1639,7 +1639,7 @@ retry:
         if (bdberr == BDBERR_DEADLOCK) {
             iq->retries++;
             if (++retries < gbl_maxretries) {
-                n_retries++;
+                ATOMIC_ADD64(n_retries, 1);
                 goto retry;
             }
             logmsg(LOGMSG_ERROR, "*ERROR* %s too much contention %d count %d\n", req, bdberr,
@@ -1680,7 +1680,7 @@ retry:
         if (bdberr == BDBERR_DEADLOCK) {
             iq->retries++;
             if (++retries < gbl_maxretries) {
-                n_retries++;
+                ATOMIC_ADD64(n_retries, 1);
                 goto retry;
             }
             logmsg(LOGMSG_ERROR, "*ERROR* %s too much contention %d count %d\n", req, bdberr,
@@ -1823,7 +1823,7 @@ retry:
             if (!dirty) {
                 iq->retries++;
                 if (++(*retries) < gbl_maxretries) {
-                    n_retries++;
+                    ATOMIC_ADD64(n_retries, 1);
                     goto retry;
                 }
                 logmsg(LOGMSG_ERROR, "*ERROR* %s too much contention %d count %d\n", req,
@@ -2002,7 +2002,7 @@ retry:
         if (bdberr == BDBERR_DEADLOCK) {
             iq->retries++;
             if (++retries < gbl_maxretries) {
-                n_retries++;
+                ATOMIC_ADD64(n_retries, 1);
                 goto retry;
             }
             logmsg(LOGMSG_ERROR, "*ERROR* %s too much contention %d count %d\n", req, bdberr,
@@ -2041,7 +2041,7 @@ retry:
         if (bdberr == BDBERR_DEADLOCK) {
             iq->retries++;
             if (++retries < gbl_maxretries) {
-                n_retries++;
+                ATOMIC_ADD64(n_retries, 1);
                 goto retry;
             }
             logmsg(LOGMSG_ERROR, "*ERROR* %s too much contention %d count %d\n", req, bdberr,
@@ -2150,7 +2150,7 @@ retry:
                 return RC_INTERNAL_RETRY;
             iq->retries++;
             if (++retries < gbl_maxretries) {
-                n_retries++;
+                ATOMIC_ADD64(n_retries, 1);
                 goto retry;
             }
             logmsg(LOGMSG_ERROR, "*ERROR* %s too much contention %d count %d\n", req, bdberr,
@@ -2210,7 +2210,7 @@ retry:
         if (bdberr == BDBERR_DEADLOCK) {
             iq->retries++;
             if (++retries < gbl_maxretries) {
-                n_retries++;
+                ATOMIC_ADD64(n_retries, 1);
                 goto retry;
             }
             logmsg(LOGMSG_ERROR, "*ERROR* %s too much contention %d count %d\n", req, bdberr,
@@ -2403,7 +2403,7 @@ retry:
                 return RC_INTERNAL_RETRY;
             iq->retries++;
             if (++retries < gbl_maxretries) {
-                n_retries++;
+                ATOMIC_ADD64(n_retries, 1);
                 goto retry;
             }
             logmsg(LOGMSG_ERROR, "*ERROR* %s too much contention %d count %d\n", req, bdberr,
@@ -2454,7 +2454,7 @@ retry:
                 return RC_INTERNAL_RETRY;
             iq->retries++;
             if (++retries < gbl_maxretries) {
-                n_retries++;
+                ATOMIC_ADD64(n_retries, 1);
                 goto retry;
             }
             logmsg(LOGMSG_ERROR, "*ERROR* %s too much contention %d count %d\n", req, bdberr,
@@ -2568,7 +2568,7 @@ retry:
 
             iq->retries++;
             if (++(*retries) < gbl_maxretries) {
-                n_retries++;
+                ATOMIC_ADD64(n_retries, 1);
                 goto retry;
             }
             logmsg(LOGMSG_ERROR, "*ERROR* %s too much contention %d count %d\n", req, bdberr,
@@ -2809,7 +2809,7 @@ retry:
         if (bdberr == BDBERR_DEADLOCK) {
             iq->retries++;
             if (++(*retries) < gbl_maxretries) {
-                n_retries++;
+                ATOMIC_ADD64(n_retries, 1);
                 goto retry;
             }
             logmsg(LOGMSG_ERROR, "*ERROR* %s too much contention %d count %d\n", req, bdberr,
@@ -2947,7 +2947,7 @@ retry:
         if (bdberr == BDBERR_DEADLOCK) {
             iq->retries++;
             if (++retries < gbl_maxretries) {
-                n_retries++;
+                ATOMIC_ADD64(n_retries, 1);
                 goto retry;
             }
             logmsg(LOGMSG_ERROR, "*ERROR* %s too much contention %d count %d\n", req, bdberr,
@@ -2990,7 +2990,7 @@ retry:
         if (trans)
             return RC_INTERNAL_RETRY;
         if (++retries < gbl_maxretries) {
-            n_retries++;
+            ATOMIC_ADD64(n_retries, 1);
             goto retry;
         }
         logmsg(LOGMSG_ERROR, "*ERROR* bdb_fetch_next_dtastripe_record too much contention %d "
@@ -4645,7 +4645,7 @@ retry:
         if (bdberr == BDBERR_DEADLOCK) {
             iq->retries++;
             if (++retries < gbl_maxretries) {
-                n_retries++;
+                ATOMIC_ADD64(n_retries, 1);
                 goto retry;
             }
             logmsg(LOGMSG_ERROR, "*ERROR* %s too much contention %d count %d\n", req, bdberr,
@@ -5277,7 +5277,7 @@ retry:
         if (bdberr == BDBERR_DEADLOCK) {
             iq->retries++;
             if (++retries < gbl_maxretries) {
-                n_retries++;
+                ATOMIC_ADD64(n_retries, 1);
                 goto retry;
             }
             logmsg(LOGMSG_ERROR, "*ERROR* bdb_lite_exact_fetch too much contention %d count "
@@ -5317,7 +5317,7 @@ retry:
         if (bdberr == BDBERR_DEADLOCK) {
             iq->retries++;
             if (++retries < gbl_maxretries) {
-                n_retries++;
+                ATOMIC_ADD64(n_retries, 1);
                 goto retry;
             }
             logmsg(LOGMSG_ERROR, "*ERROR* bdb_lite_exact_fetch too much contention %d count "
@@ -5357,7 +5357,7 @@ retry:
         if (bdberr == BDBERR_DEADLOCK) {
             iq->retries++;
             if (++retries < gbl_maxretries) {
-                n_retries++;
+                ATOMIC_ADD64(n_retries, 1);
                 goto retry;
             }
             logmsg(LOGMSG_ERROR, "*ERROR* bdb_lite_fetch_keys_fwd too much contention %d "
@@ -5525,7 +5525,7 @@ retry:
                 return RC_INTERNAL_RETRY;
             iq->retries++;
             if (++retries < gbl_maxretries) {
-                n_retries++;
+                ATOMIC_ADD64(n_retries, 1);
                 goto retry;
             }
             logmsg(LOGMSG_ERROR, "*ERROR* bdb_queue_check_goose too much contention %d count "
@@ -5638,7 +5638,7 @@ retry:
         if (bdberr == BDBERR_DEADLOCK) {
             iq->retries++;
             if (++retries < gbl_maxretries && !lockid) {
-                n_retries++;
+                ATOMIC_ADD64(n_retries, 1);
                 poll(0, 0, (rand() % 500 + 10));
                 bdb_tran_abort(bdb_handle, tran, &bdberr);
                 goto retry;
@@ -5725,7 +5725,7 @@ retry:
         if (bdberr == BDBERR_DEADLOCK) {
             iq->retries++;
             if (++retries < gbl_maxretries) {
-                n_retries++;
+                ATOMIC_ADD64(n_retries, 1);
                 goto retry;
             }
             logmsg(LOGMSG_ERROR,
@@ -5773,7 +5773,7 @@ done:
         if (bdberr == BDBERR_DEADLOCK) {
             iq->retries++;
             if (++retries < gbl_maxretries) {
-                n_retries++;
+                ATOMIC_ADD64(n_retries, 1);
                 flags |= BDB_QUEUE_WALK_RESTART;
                 goto retry;
             }

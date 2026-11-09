@@ -38,6 +38,7 @@
 #include "comdb2_plugin.h"
 #include "comdb2_opcode.h"
 #include "sc_util.h"
+#include "comdb2_atomic.h"
 
 static void pack_tail(struct ireq *iq);
 extern int glblroute_get_buffer_capacity(int *bf);
@@ -220,8 +221,8 @@ retry:
             }
             iq->usedb = iq->origdb;
 
-            n_retries++;
-            
+            ATOMIC_ADD64(n_retries, 1);
+
             /* avg_tolock_us is updated without a lock; make sure it stays in [0..25msec]
              * re:177309919
              */
@@ -415,7 +416,7 @@ int handle_ireq(struct ireq *iq)
         // usage counters for those
         /*this should be under lock, but its just a counter?*/
         if (tablename_implicit(iq->opcode))
-            iq->usedb->typcnt[iq->opcode]++;
+            ATOMIC_ADD64(iq->usedb->typcnt[iq->opcode], 1);
     }
 
     /* clear errstr */

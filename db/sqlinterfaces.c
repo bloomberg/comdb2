@@ -7102,7 +7102,7 @@ int get_max_appsocks_limit(void)
 
 int check_appsock_limit(int is_admin)
 {
-    ++total_appsock_conns;
+    ATOMIC_ADD64(total_appsock_conns, 1);
     int max = bdb_attr_get(thedb->bdb_attr, BDB_ATTR_MAXAPPSOCKSLIMIT);
     int warn = bdb_attr_get(thedb->bdb_attr, BDB_ATTR_APPSOCKSLIMIT);
     int current = ATOMIC_ADD32(active_appsock_conns, 1);
@@ -7113,7 +7113,7 @@ int check_appsock_limit(int is_admin)
     if (current > max) {
         if (close_lru_evbuffer(NULL) == 0) return 0;
         ATOMIC_ADD32(active_appsock_conns, -1);
-        ++gbl_denied_appsock_connection_count;
+        ATOMIC_ADD64(gbl_denied_appsock_connection_count, 1);
         static time_t last = 0;
         time_t now = time(NULL);
         if (now != last) {
