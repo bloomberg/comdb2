@@ -35,6 +35,7 @@
 typedef struct {
     sqlite3_vtab_cursor base; /* Base class - must be first */
     sqlite3_int64 rowid;      /* Row ID */
+    void *snap;               /* Private copy of the metric values */
 } systbl_metrics_cursor;
 
 /* Column numbers (always keep the below table definition in sync). */
@@ -92,7 +93,15 @@ static int systblMetricsOpen(sqlite3_vtab *p, sqlite3_vtab_cursor **ppCursor)
     rc = refresh_metrics();
     if (rc) {
         logmsg(LOGMSG_ERROR, "%s refresh_metrics error %d\n", __func__, rc);
+        sqlite3_free(cur);
         return SQLITE_INTERNAL;
+    }
+
+    /* Read a consistent set: concurrent refreshes cannot change it. */
+    cur->snap = metrics_snapshot();
+    if (cur->snap == NULL) {
+        sqlite3_free(cur);
+        return SQLITE_NOMEM;
     }
 
     *ppCursor = &cur->base;
@@ -101,6 +110,7 @@ static int systblMetricsOpen(sqlite3_vtab *p, sqlite3_vtab_cursor **ppCursor)
 
 static int systblMetricsClose(sqlite3_vtab_cursor *cur)
 {
+    free(((systbl_metrics_cursor *)cur)->snap);
     sqlite3_free(cur);
     return SQLITE_OK;
 }
@@ -131,6 +141,7 @@ static int systblMetricsColumn(sqlite3_vtab_cursor *cur, sqlite3_context *ctx,
 {
     systbl_metrics_cursor *pCur = (systbl_metrics_cursor *)cur;
     comdb2_metric *stat = &gbl_metrics[pCur->rowid];
+    const void *val = metric_snapshot_value(pCur->snap, stat);
 
     switch (pos) {
         case COLUMN_NAME:
@@ -145,10 +156,10 @@ static int systblMetricsColumn(sqlite3_vtab_cursor *cur, sqlite3_context *ctx,
         case COLUMN_VALUE:
             switch (stat->type) {
                 case STATISTIC_INTEGER:
-                    sqlite3_result_int64(ctx, *(int64_t *)stat->var);
+                    sqlite3_result_int64(ctx, *(const int64_t *)val);
                     break;
                 case STATISTIC_DOUBLE:
-                    sqlite3_result_double(ctx, *(double *)stat->var);
+                    sqlite3_result_double(ctx, *(const double *)val);
                     break;
             }
             break;
