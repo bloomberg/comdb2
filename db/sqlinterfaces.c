@@ -3054,6 +3054,9 @@ void query_stats_setup(struct sqlthdstate *thd, struct sqlclntstate *clnt)
 
     if (clnt->rawnodestats) {
         clnt->rawnodestats->sql_queries++;
+#ifdef COMDB2_TEST
+        ATOMIC_ADD64(clnt->rawnodestats->sql_queries_exact, 1);
+#endif
         const char *api = clnt->plugin.api_type(clnt);
         if (strcmp(api, "comdb2api") == 0)
             clnt->rawnodestats->sql_queries_comdb2api++;

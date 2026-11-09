@@ -2163,6 +2163,9 @@ clipper_usage:
         const char *clstr = mach_class_class2name(mclass);
         logmsg(LOGMSG_USER, "machine_class for %s is %s\n", hostname, clstr);
 #ifdef COMDB2_TEST
+    } else if (tokcmp(tok, ltok, "clientstats_exact") == 0) {
+        extern void clientstats_print_exact(void);
+        clientstats_print_exact();
     } else if (tokcmp(tok, ltok, "test_allowed_class") == 0) {
         char *physrep_host = NULL;
         char *source_host = NULL;
