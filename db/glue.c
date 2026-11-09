@@ -5834,34 +5834,45 @@ void end_backend_request(struct dbenv *env) { bdb_end_request(env->bdb_env); }
 uint64_t calc_table_size_tran(tran_type *tran, struct dbtable *db, int skip_blobs)
 {
     int ii;
+    /* Sum into locals: concurrent callers (metrics, comdb2_tablesizes,
+     * analyze, ...) must not accumulate into the shared db fields. Each
+     * field is published with a single relaxed atomic store, so readers see
+     * a complete value from some call, never a partial sum or a torn word. */
+    uint64_t total = 0;
     uint64_t size_without_blobs = 0;
-    db->totalsize = 0;
 
     if (db->dbtype == DBTYPE_TAGGED_TABLE) {
         for (ii = 0; ii < db->nix; ii++) {
-            db->ixsizes[ii] = bdb_index_size(db->handle, ii);
-            db->totalsize += db->ixsizes[ii];
+            uint64_t ixsize = bdb_index_size(db->handle, ii);
+            __atomic_store_n(&db->ixsizes[ii], ixsize, __ATOMIC_RELAXED);
+            total += ixsize;
         }
 
-        db->dtasize = bdb_data_size(db->handle, 0);
-        db->totalsize += db->dtasize;
-        size_without_blobs = db->totalsize;
+        uint64_t dtasize = bdb_data_size(db->handle, 0);
+        __atomic_store_n(&db->dtasize, dtasize, __ATOMIC_RELAXED);
+        total += dtasize;
+        size_without_blobs = total;
 
         for (ii = 0; ii < db->numblobs; ii++) {
-            db->blobsizes[ii] = bdb_data_size(db->handle, ii + 1);
-            db->totalsize += db->blobsizes[ii];
+            uint64_t blobsize = bdb_data_size(db->handle, ii + 1);
+            __atomic_store_n(&db->blobsizes[ii], blobsize, __ATOMIC_RELAXED);
+            total += blobsize;
         }
     } else if (db->dbtype == DBTYPE_QUEUE || db->dbtype == DBTYPE_QUEUEDB) {
-        db->totalsize = bdb_queue_size(db->handle, &db->numextents);
+        unsigned numextents = 0;
+        total = bdb_queue_size(db->handle, &numextents);
+        __atomic_store_n(&db->numextents, numextents, __ATOMIC_RELAXED);
     } else {
         logmsg(LOGMSG_ERROR, "%s: db->dbtype=%d (what the heck is this?)\n",
                 __func__, db->dbtype);
     }
 
+    __atomic_store_n(&db->totalsize, total, __ATOMIC_RELAXED);
+
     if (skip_blobs)
         return size_without_blobs;
     else
-        return db->totalsize;
+        return total;
 }
 
 uint64_t calc_table_size(struct dbtable *db, int skip_blobs)
