@@ -30,7 +30,7 @@
 # use a generated variant: the .testopts files here append to lrl.options, e.g.
 #   ... BENCH=catchup make async_dist_commit_bench_logput_window_generated
 # Each client inserts single rows (autocommit) into its own table, one commit in
-# flight per client, and talks only to replicants.  The rates count the inserts acked to
+# flight per client, and talks only to replicants (kill and catchup: any node the client library picks).  The rates count the inserts acked to
 # clients.  The database runs with a 128 MB cache (lrl.options), as the PR numbers do.  It fails only on errors
 # (and on acked inserts going missing), never on the numbers.
 bash -n "$0" || exit 1
@@ -278,7 +278,8 @@ for b in $BENCH; do
             m=$(master)
             v=$(replicants | tail -1)
             ts=$(date +%s)
-            load "$cc" "$CATCHUP_DUR" catchup &
+            # unpinned, as in the kill section: a client pinned to the restarted replica would be stuck on it
+            load "$cc" "$CATCHUP_DUR" catchup unpinned &
             lp=$!
             sleep $((CATCHUP_DUR / 3))
             # stops it, sleeps CATCHUP_DOWN, starts it again
