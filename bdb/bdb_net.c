@@ -45,6 +45,7 @@
 #include "crc32c.h"
 #include <timer_util.h>
 #include <hostname_support.h>
+#include <thrman.h>
 
 #undef UDP_DEBUG
 #undef UDP_TRACE
@@ -485,13 +486,19 @@ static void *udppf_async_thd(void *arg)
     bdb_state_type *bdb_state;
     unsigned i, n, rn;
 
+    /* a generic thread, so that a clean exit waits for it to stop before freeing what it uses */
+    thrman_register(THRTYPE_GENERIC);
     comdb2_name_thread("udppf_sender");
     while (!db_is_exiting()) {
         Pthread_mutex_lock(&udppf_async.lk);
-        while (udppf_async.n == 0 && udppf_async.rn == 0 && gbl_udp_prefault_async_poll_us <= 0) {
+        while (udppf_async.n == 0 && udppf_async.rn == 0 && gbl_udp_prefault_async_poll_us <= 0 && !db_is_exiting()) {
+            struct timespec ts;
             udppf_async.sleeping = 1;
-            Pthread_cond_wait(&udppf_async.cd, &udppf_async.lk);
-            ATOMIC_ADD64(udppf_async_wakeups, 1);
+            /* wake up at least once a second to notice a clean exit */
+            clock_gettime(CLOCK_REALTIME, &ts);
+            ts.tv_sec += 1;
+            if (pthread_cond_timedwait(&udppf_async.cd, &udppf_async.lk, &ts) != ETIMEDOUT)
+                ATOMIC_ADD64(udppf_async_wakeups, 1);
         }
         n = udppf_async.n < UDPPF_ASYNC_TAKE ? udppf_async.n : UDPPF_ASYNC_TAKE;
         for (i = 0; i < n; i++)
@@ -524,7 +531,7 @@ static void udppf_async_kick(bdb_state_type *bdb_state)
 
     wake = udppf_async.sleeping;
     udppf_async.sleeping = 0;
-    start = !udppf_async.started;
+    start = !udppf_async.started && !db_is_exiting();
     if (start) {
         udppf_async.started = 1;
         udppf_async.bdb_state = bdb_state;
