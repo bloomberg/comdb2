@@ -4816,7 +4816,7 @@ void *statthd(void *p)
     int64_t last_vreplays = 0;
 
     int count = 0;
-    int last_report_nqtrap = n_qtrap;
+    int last_report_nqtrap = n_qtrap + gbl_legacy_requests_all;
     int last_report_nfstrap = n_fstrap;
     int64_t last_report_nsql = gbl_nsql;
     long long last_report_nsql_steps = gbl_nsql_steps;
@@ -4871,7 +4871,8 @@ void *statthd(void *p)
     reqlog_diffstat_init(statlogger);
 
     while (!db_is_exiting()) {
-        nqtrap = n_qtrap;
+        /* tagged requests may arrive over cdb2api rather than bbipc */
+        nqtrap = n_qtrap + gbl_legacy_requests_all;
         nfstrap = n_fstrap;
         ncommits = n_commits;
         ncommit_time = n_commit_time;
