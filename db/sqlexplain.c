@@ -43,11 +43,13 @@
 #include "views.h"
 #include "logmsg.h"
 #include "fdb_fend.h"
+#include <poll.h>
 
 static char hex[] = {'0', '1', '2', '3', '4', '5', '6', '7',
                      '8', '9', 'a', 'b', 'c', 'd', 'e', 'f'};
 
 int all_opcodes = 0;
+int gbl_debug_sleep_in_cursor_description = 0; /* ms, testing only */
 
 static char *entity_type(struct cursor_info *cinfo)
 {
@@ -202,6 +204,8 @@ int print_cursor_description(struct sqlclntstate *clnt, strbuf *out, struct curs
                 snprintf(scname, sizeof(scname), ".ONDISK_ix_%d", cinfo->ix);
                 sc = find_tag_schema(db, scname);
             }
+            if (gbl_debug_sleep_in_cursor_description)
+                poll(NULL, 0, gbl_debug_sleep_in_cursor_description);
             strbuf_appendf(out, "index \"%s\" of ",
                            sc ? (sc->csctag ? sc->csctag : sc->tag) : "???");
             is_index = 1;

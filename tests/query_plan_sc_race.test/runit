@@ -1,0 +1,73 @@
+#!/usr/bin/env bash
+bash -n "$0" || exit 1
+
+set -x
+
+a_dbn=$1
+rt="cdb2sql -s ${CDB2_OPTIONS} $a_dbn default"
+
+function failexit
+{
+    echo "FAILURE: $1"
+    exit 1
+}
+
+nodes=$($rt --tabs "select host from comdb2_cluster")
+[[ -z "$nodes" ]] && failexit "could not get the cluster nodes"
+
+for node in $nodes; do
+    # COMDB2_TEST builds only, so best effort
+    cdb2sql -s -n ${node} ${CDB2_OPTIONS} $a_dbn default "put tunable debug.poison_freed_schemas 1"
+done
+
+$rt "insert into t select value, 0 from generate_series(1, 100)" || failexit "could not populate t"
+
+sleep_ms=5000
+
+for node in $nodes; do
+    rn="cdb2sql -s -n ${node} ${CDB2_OPTIONS} $a_dbn default"
+
+    for sql in "update t set b = b + 1 where a = 1" "select b from t where a = 1"; do
+        $rn "put tunable debug_sleep_in_cursor_description ${sleep_ms}" || failexit "could not set sleep on $node"
+
+        $rn "$sql" > /dev/null &
+        pid=$!
+
+        # Land the rebuild while $node sleeps with the old index schema in hand
+        sleep 1
+        $rt "rebuild t" || failexit "rebuild failed racing '$sql' on $node"
+        wait $pid || failexit "'$sql' failed on $node"
+
+        # The plan may be formed after the client is answered: outlast it
+        sleep $(( sleep_ms / 1000 ))
+
+        $rn "put tunable debug_sleep_in_cursor_description 0" || failexit "$node did not survive racing '$sql'"
+    done
+done
+
+# A read keeps its table locks until the statement is done.  If forming its
+# plan there took the schema lock, it would deadlock with a finalize that holds
+# the schema lock and waits for the table lock.  Finalize runs on the master.
+master=$($rt --tabs 'exec procedure sys.cmd.send("bdb cluster")' | grep MASTER | awk '{print $1}' | cut -d':' -f1)
+[[ -z "$master" ]] && failexit "could not find the master"
+rmst="cdb2sql -s -n ${master} ${CDB2_OPTIONS} $a_dbn default"
+
+$rmst "put tunable debug_sleep_before_fingerprint ${sleep_ms}" || failexit "could not set sleep on $master"
+
+timeout 60 $rmst "select b from t where a = 1" > /dev/null &
+pid=$!
+
+# Finalize takes the schema lock, then waits on the select's table lock
+sleep 1
+timeout 60 $rt "rebuild t"
+rc=$?
+[[ $rc -eq 124 ]] && failexit "rebuild hung: deadlocked with the select on $master"
+[[ $rc -ne 0 ]] && failexit "rebuild failed racing the select on $master"
+wait $pid || failexit "select failed or hung on $master"
+
+$rmst "put tunable debug_sleep_before_fingerprint 0" || failexit "could not reset sleep on $master"
+
+cnt=$($rt --tabs "select count(*) from t where b = 0")
+[[ "$cnt" != "99" ]] && failexit "expected 99 untouched rows, got $cnt"
+
+echo "Testcase passed."
