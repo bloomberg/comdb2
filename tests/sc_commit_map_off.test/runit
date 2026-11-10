@@ -1,0 +1,55 @@
+#!/usr/bin/env bash
+bash -n "$0" || exit 1
+
+# Without a commit LSN map (utxnid_log off, or snapshot isolation off in the
+# nosnap variant) there is nothing to leave out: a rebuild with
+# sc_commit_map_skip on behaves as without it.  No skip, no mark on the
+# replacement, no checkpoint before publishing.
+
+source ${TESTSROOTDIR}/tools/runit_common.sh
+set -o pipefail
+
+dbnm=$1
+N=${SC_COMMIT_MAP_ROWS:-5000}
+# in a cluster ask the nodes themselves: getmaster goes through the client's
+# default route, which has answered with a host outside the cluster
+master=""
+if [[ -n "$CLUSTER" ]]; then
+	for _ in $(seq 1 60); do
+		for node in $CLUSTER; do
+			m=$(cdb2sql --tabs ${CDB2_OPTIONS} --host $node "$dbnm" "select host from comdb2_cluster where is_master='Y'" 2>/dev/null)
+			[[ -n "$m" && " $CLUSTER " == *" $m "* ]] && { master=$m; break 2; }
+		done
+		sleep 1
+	done
+else
+	master=$(getmaster)
+fi
+[[ -n "$master" ]] || { echo "FAIL: could not find master"; exit 1; }
+if [[ -n "$CLUSTER" ]]; then
+	log=$TESTDIR/logs/$dbnm.$master.db
+else
+	log=$TESTDIR/logs/$dbnm.db
+fi
+run() { cdb2sql --tabs ${CDB2_OPTIONS} --host "$master" "$dbnm" "$@"; }
+fail() { echo "FAIL: $*"; exit 1; }
+tunable() { run "select value from comdb2_tunables where name='$1'"; }
+
+utxnid=$(tunable utxnid_log)
+snap=$(tunable enable_snapshot_isolation)
+echo "utxnid_log $utxnid, enable_snapshot_isolation $snap, sc_commit_map_skip $(tunable sc_commit_map_skip)"
+[[ "$utxnid" == "OFF" || "$snap" == "OFF" ]] || fail "the commit LSN map is on: this test needs it off"
+
+run "create table t(i int, j int)" >/dev/null
+run "create index t_j on t(j)" >/dev/null
+run "insert into t select value, value from generate_series(1, $N)" >/dev/null
+goes=$(grep -c "converter commits go into the commit LSN map" "$log")
+start=$(date +%s%N)
+run "rebuild t" >/dev/null || fail "rebuild"
+echo "rebuild took $(( ($(date +%s%N) - start) / 1000000 )) ms"
+(( $(grep -c "converter commits go into the commit LSN map" "$log") > goes )) || fail "the rebuild did not run its converter normally"
+grep -q "converter commits skip the commit LSN map" "$log" && fail "the rebuild skipped without a commit LSN map"
+grep -q "bdb_checkpoint_past_lsn\|checkpoint is past the converter commits" "$log" && fail "the rebuild checkpointed for the commit LSN map"
+[[ "$(run "select count(*), sum(j) from t")" == "$N	$((N * (N + 1) / 2))" ]] || fail "t changed"
+do_verify t
+echo "Passed test"

@@ -1,0 +1,171 @@
+#!/usr/bin/env bash
+bash -n "$0" || exit 1
+
+# A physical replicant applies the flagged converter commits of a skipping
+# rebuild as commits but leaves them, and their committed children, out of its
+# commit LSN map; unflagged ones (sc_commit_map_skip_replicants 0) go in.  After
+# a crash and restart it rebuilds its map from the log the same way, and the
+# table stays right throughout.
+
+source ${TESTSROOTDIR}/tools/runit_common.sh
+
+export COPYCOMDB2_EXE=${BUILDDIR}/db/copycomdb2
+export DESTDB=${TESTCASE}dest${TESTID}
+export DEST_DBDIR=${DBDIR}/$DESTDB
+export replog=$DEST_DBDIR/$DESTDB.log
+N=${SC_COMMIT_MAP_ROWS:-5000}
+SLACK=${SC_COMMIT_MAP_SLACK:-200}
+SUM=$((N * (N + 1) / 2))
+
+function failexit
+{
+    echo "Failed: $1"
+    [[ -f $DEST_DBDIR/${DESTDB}.pid ]] && kill -9 $(cat $DEST_DBDIR/${DESTDB}.pid) 2>/dev/null
+    exit 1
+}
+# every source-side call goes to the master: map counts taken on different nodes
+# cannot be compared, and the master writes the commit records the flag is in
+if [[ -n "$CLUSTER" ]]; then
+    src_host=""
+    for _ in $(seq 1 60); do
+        for node in $CLUSTER; do
+            m=$($CDB2SQL_EXE -s --tabs $CDB2_OPTIONS $DBNAME --host $node "select host from comdb2_cluster where is_master='Y'" 2>/dev/null)
+            [[ -n "$m" && " $CLUSTER " == *" $m "* ]] && { src_host=$m; break 2; }
+        done
+        sleep 1
+    done
+    [[ -n "$src_host" ]] || { echo "Failed: no master"; exit 1; }
+    src_target="--host $src_host"
+else
+    src_target="default"
+fi
+function src_sql { $CDB2SQL_EXE -s --tabs $CDB2_OPTIONS $DBNAME $src_target "$1" 2>&1; }
+# a tunable or command every source node must have
+function src_all
+{
+    local node
+    if [[ -z "$CLUSTER" ]]; then src_sql "$1"; return; fi
+    for node in $CLUSTER; do $CDB2SQL_EXE -s --tabs $CDB2_OPTIONS $DBNAME --host $node "$1" 2>&1; done
+}
+function dest_sql { $CDB2SQL_EXE -s --tabs $CDB2_OPTIONS $DESTDB @localhost "$1" 2>&1; }
+function src_send { src_sql "exec procedure sys.cmd.send('$1')"; }
+function dest_send { $CDB2SQL_EXE --tabs --admin $CDB2_OPTIONS --host localhost $DESTDB "exec procedure sys.cmd.send('$1')"; }
+function src_entries { src_send "bdb clminfo" | grep -oP '(?<=Entries: )[0-9]+'; }
+function dest_entries { dest_send "bdb clminfo" | grep -oP '(?<=Entries: )[0-9]+'; }
+function src_mem { src_sql "select coalesce(sum(used), 0) from comdb2_memstats where name='commit_map'"; }
+function dest_mem { dest_sql "select coalesce(sum(used), 0) from comdb2_memstats where name='commit_map'"; }
+function physrep_alive { kill -0 $(cat $DEST_DBDIR/${DESTDB}.pid) 2>/dev/null; }
+
+function start_physrep
+{
+    ( timeout $TEST_TIMEOUT $COMDB2_EXE $DESTDB -lrl $DEST_DBDIR/${DESTDB}.lrl -pidfile $DEST_DBDIR/${DESTDB}.pid >>$replog 2>&1) &
+    local j=0
+    while [[ $j -lt 60 ]]; do
+        dest_sql "select 1" >/dev/null 2>&1 && return 0
+        sleep 1
+        let j=j+1
+    done
+    failexit "physrep did not come up"
+}
+
+function create_physrep
+{
+    local cl rmt myhost=$(hostname)
+    mkdir -p $DEST_DBDIR
+    if [[ -z "$CLUSTER" ]]; then
+        cl="-y @localhost"
+        rmt=""
+    else
+        # the physrep replicates from the cluster; copy from a node unless this is one
+        cl="-y @$(echo $CLUSTER | tr ' ' ',')"
+        if [[ " $CLUSTER " == *" $myhost "* ]]; then
+            rmt=""
+        else
+            local clarray=($CLUSTER)
+            rmt="${clarray[0]}:"
+        fi
+    fi
+    ${COPYCOMDB2_EXE} -x ${COMDB2_EXE} -H $DESTDB $cl $rmt${DBDIR}/${DBNAME}.lrl $DEST_DBDIR $DEST_DBDIR
+    [[ $? -ne 0 ]] && failexit "copycomdb2 failed"
+    df $DBDIR | awk '{print $1 }' | grep "tmpfs\|nfs" && echo "setattr directio 0" >> $DEST_DBDIR/${DESTDB}.lrl
+    if [ -n "$PMUXPORT" ] ; then
+        echo "portmux_port $PMUXPORT" >> $DEST_DBDIR/${DESTDB}.lrl
+        echo "portmux_bind_path $pmux_socket" >> $DEST_DBDIR/${DESTDB}.lrl
+    fi
+    echo "physrep_debug 1" >> $DEST_DBDIR/${DESTDB}.lrl
+    echo "physrep_reconnect_penalty 0" >> $DEST_DBDIR/${DESTDB}.lrl
+    start_physrep
+}
+
+function override_physrep_sp
+{
+    ${CDB2SQL_EXE} $CDB2_OPTIONS $DBNAME $src_target "create procedure 'sys.physrep.register_replicant' version '1' { `cat ./register_replicant.lua`  }" >/dev/null
+    for sp in reset_nodes update_registry keepalive keepalive_v2; do
+        ${CDB2SQL_EXE} $CDB2_OPTIONS $DBNAME $src_target "create procedure 'sys.physrep.$sp' version '1' { local function main() end }" >/dev/null
+    done
+}
+
+# the physrep has applied everything up to a marker written now
+function wait_for_marker
+{
+    local j=0 k=$1
+    src_sql "insert into marker values($k)" >/dev/null || failexit "marker $k"
+    while [[ $j -lt 120 ]]; do
+        [[ "$(dest_sql "select count(*) from marker where k = $k")" == "1" ]] && return 0
+        sleep 1
+        let j=j+1
+    done
+    failexit "physrep never applied marker $k"
+}
+
+src_all "exec procedure sys.cmd.send('sync log-delete off 3600')" >/dev/null
+src_sql "create table t(i int, j int)" >/dev/null || failexit "create t"
+src_sql "create index t_j on t(j)" >/dev/null || failexit "create index"
+src_sql "insert into t select value, value from generate_series(1, $N)" >/dev/null || failexit "fill t"
+src_sql "create table marker(k int)" >/dev/null || failexit "create marker"
+override_physrep_sp
+create_physrep
+dest_send "sync log-delete off 3600" >/dev/null
+wait_for_marker 1
+[[ "$(dest_sql "select count(*), sum(j) from t")" == "$N	$SUM" ]] || failexit "t did not reach the physrep"
+
+echo "=== a skipping rebuild: the physrep applies its flagged commits but leaves them out"
+sb=$(src_entries); db=$(dest_entries); dmb=$(dest_mem); smb=$(src_mem)
+src_sql "rebuild t" >/dev/null || failexit "rebuild t"
+wait_for_marker 2
+sd=$(( $(src_entries) - sb )); dd=$(( $(dest_entries) - db ))
+echo "flagged rebuild of $N rows: source map +$sd ($smb -> $(src_mem) bytes), physrep map +$dd ($dmb -> $(dest_mem) bytes)"
+[[ "$(dest_sql "select count(*), sum(j) from t")" == "$N	$SUM" ]] || failexit "t is wrong on the physrep after the rebuild"
+(( sd < SLACK )) || failexit "the source map grew by $sd"
+(( dd < SLACK )) || failexit "the physrep map grew by $dd for flagged converter commits"
+
+echo "=== with sc_commit_map_skip_replicants off the physrep keeps them (control)"
+src_all "put tunable 'sc_commit_map_skip_replicants' 0" >/dev/null
+sb=$(src_entries); db=$(dest_entries); dmb=$(dest_mem)
+src_sql "rebuild t" >/dev/null || failexit "second rebuild"
+wait_for_marker 3
+sd=$(( $(src_entries) - sb )); dd=$(( $(dest_entries) - db ))
+echo "unflagged rebuild of $N rows: source map +$sd, physrep map +$dd ($dmb -> $(dest_mem) bytes)"
+src_all "put tunable 'sc_commit_map_skip_replicants' 1" >/dev/null
+(( sd < SLACK )) || failexit "the source map grew by $sd"
+(( dd >= N )) || failexit "the physrep added only $dd entries for unflagged converter commits"
+[[ "$(dest_sql "select count(*), sum(j) from t")" == "$N	$SUM" ]] || failexit "t is wrong on the physrep"
+
+echo "=== a crashed physrep rebuilds its map from the log the same way"
+kill -9 $(cat $DEST_DBDIR/${DESTDB}.pid)
+sleep 2
+start_physrep
+dest_send "sync log-delete off 3600" >/dev/null
+wait_for_marker 4
+e=$(dest_entries)
+echo "physrep after restart: $e entries, commit_map $(dest_mem) bytes"
+# the unflagged rebuild's converter commits are back, the flagged one's are not
+(( e >= N )) || failexit "physrep rebuilt only $e entries: recovery did not reach the unflagged rebuild"
+(( e < 2 * N )) || failexit "physrep rebuilt $e entries: the flagged converter commits are back"
+[[ "$(dest_sql "select count(*), sum(j) from t")" == "$N	$SUM" ]] || failexit "t is wrong on the physrep after restart"
+physrep_alive || failexit "physrep died"
+
+kill -9 $(cat $DEST_DBDIR/${DESTDB}.pid)
+src_all "exec procedure sys.cmd.send('sync log-delete on')" >/dev/null
+echo "Success"
+exit 0

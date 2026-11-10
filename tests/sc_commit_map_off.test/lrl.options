@@ -1,0 +1,3 @@
+enable_snapshot_isolation
+utxnid_log off
+sc_commit_map_skip 1

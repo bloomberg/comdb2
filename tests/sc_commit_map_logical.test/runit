@@ -1,0 +1,137 @@
+#!/usr/bin/env bash
+bash -n "$0" || exit 1
+
+# With rowlocks, an application transaction is a logical transaction that holds
+# the commit LSN map checkpoint back from its first physical commit.  When it
+# outlasts the timeout, the rebuild fails: mastership does not move, the logical
+# transaction commits, and a rebuild succeeds afterwards.
+
+source ${TESTSROOTDIR}/tools/runit_common.sh
+source ${TESTSROOTDIR}/tools/cluster_utils.sh
+set -o pipefail
+
+[ -z "${CLUSTER}" ] && { echo "Test requires a cluster"; exit 0; }
+
+dbnm=$1
+N=${SC_COMMIT_MAP_ROWS:-5000}
+SUM=$((N * (N + 1) / 2))
+WATCH=${SC_COMMIT_MAP_WATCH:-120}
+
+on() { local h=$1; shift; cdb2sql --tabs ${CDB2_OPTIONS} --host "$h" "$dbnm" "$@"; }
+# ask the cluster's own nodes: getmaster goes through the client's default route,
+# which has answered with nothing, or a host outside the cluster, under load
+master() {
+	local node m
+	for node in $CLUSTER; do
+		m=$(on $node "select host from comdb2_cluster where is_master='Y'" 2>/dev/null)
+		[[ -n "$m" && " $CLUSTER " == *" $m "* ]] && { echo $m; return 0; }
+	done
+	return 1
+}
+fail() { echo "FAIL: $*"; exit 1; }
+log() { echo $TESTDIR/logs/$dbnm.$1.db; }
+# every node logs this when it takes mastership; the node logs are the record of
+# changes of master (asking for the master in a loop can miss some or invent some)
+declare -A nm_base
+newmasters() { grep -h "I AM NEW MASTER NODE" "$(log $1)" 2>/dev/null; }
+mark_masters() { local node; for node in $CLUSTER; do nm_base[$node]=$(newmasters $node | wc -l); done; }
+# prints the changes of master since mark_masters, one line each
+masters_since_mark() {
+	local node k
+	for node in $CLUSTER; do
+		k=$(( $(newmasters $node | wc -l) - ${nm_base[$node]:-0} ))
+		(( k > 0 )) && newmasters $node | tail -$k
+	done
+	return 0
+}
+
+wait_master() {
+	local m
+	for _ in $(seq 1 120); do
+		m=$(master 2>/dev/null)
+		[[ -n "$m" ]] && on $m "select 1" >/dev/null 2>&1 && { echo $m; return 0; }
+		sleep 1
+	done
+	return 1
+}
+
+m=$(master)
+on $m "put rowlocks enable" >/dev/null || fail "put rowlocks enable"
+for node in $CLUSTER; do
+	for _ in $(seq 1 60); do
+		on $node "exec procedure sys.cmd.send('stat')" | grep -q "rowlocks is *enabled" && break
+		sleep 1
+	done
+	on $node "exec procedure sys.cmd.send('stat')" | grep -q "rowlocks is *enabled" || fail "rowlocks not enabled on $node"
+done
+echo "rowlocks enabled on every node"
+on $m "create table t(i int, j int)" >/dev/null || fail "create t"
+on $m "insert into t select value, value from generate_series(1, $N)" >/dev/null || fail "fill t"
+on $m "create table l(a int)" >/dev/null || fail "create l"
+
+echo "=== a logical transaction that outlasts the timeout blocks a rebuild"
+for node in $CLUSTER; do
+	on $node "put tunable 'sc_commit_map_checkpoint_timeout_ms' 3000" >/dev/null 2>&1
+	on $node "exec procedure sys.cmd.send('bdb setattr SC_RESTART_SEC 1')" >/dev/null 2>&1
+done
+on $m "exec procedure sys.cmd.send('bdb setattr DELAY_WRITES_IN_RECORD_C 8000')" >/dev/null
+# several writes, 8 s each: the logical transaction stays open after the first
+on $m - >/dev/null 2>&1 <<EOS &
+begin
+insert into l values(1)
+insert into l values(2)
+insert into l values(3)
+insert into l values(4)
+insert into l values(5)
+insert into l values(6)
+insert into l values(7)
+commit
+EOS
+ins_pid=$!
+# a physical transaction commits when the next write starts (8 s each), so the
+# logical transaction is registered from about 16 s on
+sleep 20
+mark_masters
+start=$SECONDS
+rbm=$m
+on $m "rebuild t" > $TMPDIR/rebuild.out 2>&1; rb_rc=$?
+echo "rebuild on $m: rc $rb_rc $(cat $TMPDIR/rebuild.out)"
+for node in $CLUSTER; do
+	on $node "exec procedure sys.cmd.send('bdb setattr DELAY_WRITES_IN_RECORD_C 0')" >/dev/null 2>&1
+done
+wait $ins_pid; ins_rc=$?
+(( SECONDS < start + WATCH )) && sleep $((start + WATCH - SECONDS))
+masters_since_mark > $TMPDIR/masters.txt
+echo "changes of master while it ran:"
+cat $TMPDIR/masters.txt
+swings=$(grep -c . $TMPDIR/masters.txt)
+echo "changes of master: $swings"
+for node in $CLUSTER; do
+	echo "$node: $(grep -c "Commit LSN map checkpoint still blocked" "$(log $node)") timeouts"
+	grep -h "holds the checkpoint below" "$(log $node)" | tail -2
+done
+for _ in $(seq 1 120); do
+	st=$(on $(wait_master) "select status from comdb2_sc_status where name='t'" | tail -1)
+	[[ "$st" == "COMMITTED" || "$st" == "ABORTED" ]] && break
+	sleep 1
+done
+echo "status of the rebuild: $st"
+m=$(wait_master)
+if [[ "$st" != "COMMITTED" ]]; then
+	on $m "rebuild t" || fail "second rebuild"
+fi
+[[ "$(on $m "select count(*), sum(j) from t")" == "$N	$SUM" ]] || fail "t is wrong after the rebuild"
+echo "logical transaction rc $ins_rc, l: $(on $m "select count(*) from l")"
+
+# the logical transaction was open while the rebuild waited (its oldest physical
+# transaction, or the logical one itself, holds the checkpoint)
+grep -q "holds the checkpoint below .*(oldest logical [1-9]" "$(log $rbm)" ||
+	fail "no logical transaction was open while the rebuild waited on $rbm"
+(( rb_rc != 0 )) || fail "the rebuild succeeded past the logical transaction"
+(( $(grep -c "Commit LSN map checkpoint still blocked" "$(log $rbm)") == 1 )) || fail "the timeout was not reported once on $rbm"
+(( swings == 0 )) || fail "mastership changed $swings times while one rebuild waited for a logical transaction"
+(( ins_rc == 0 )) || fail "the logical transaction failed"
+[[ "$(on $m "select count(*) from l")" == 7 ]] || fail "the logical transaction is not whole"
+for node in $CLUSTER; do on $node "put tunable 'sc_commit_map_checkpoint_timeout_ms' 600000" >/dev/null 2>&1; done
+do_verify t
+echo "Passed test"

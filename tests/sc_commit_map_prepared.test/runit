@@ -1,0 +1,145 @@
+#!/usr/bin/env bash
+bash -n "$0" || exit 1
+
+# A prepared transaction holds the commit LSN map checkpoint back (and would
+# survive a change of master).  The rebuild that waits for it fails after the
+# timeout, as with any other blocker; mastership does not move, and a rebuild
+# succeeds once the prepared transaction is resolved.
+
+source ${TESTSROOTDIR}/tools/runit_common.sh
+source ${TESTSROOTDIR}/tools/cluster_utils.sh
+set -o pipefail
+
+[ -z "${CLUSTER}" ] && { echo "Test requires a cluster"; exit 0; }
+
+dbnm=$1
+N=${SC_COMMIT_MAP_ROWS:-5000}
+SUM=$((N * (N + 1) / 2))
+WATCH=${SC_COMMIT_MAP_WATCH:-120}
+
+on() { local h=$1; shift; cdb2sql --tabs ${CDB2_OPTIONS} --host "$h" "$dbnm" "$@"; }
+# ask the cluster's own nodes: getmaster goes through the client's default route,
+# which has answered with nothing, or a host outside the cluster, under load
+master() {
+	local node m
+	for node in $CLUSTER; do
+		m=$(on $node "select host from comdb2_cluster where is_master='Y'" 2>/dev/null)
+		[[ -n "$m" && " $CLUSTER " == *" $m "* ]] && { echo $m; return 0; }
+	done
+	return 1
+}
+fail() { echo "FAIL: $*"; exit 1; }
+log() { echo $TESTDIR/logs/$dbnm.$1.db; }
+# every node logs this when it takes mastership; the node logs are the record of
+# changes of master (asking for the master in a loop can miss some or invent some)
+declare -A nm_base
+newmasters() { grep -h "I AM NEW MASTER NODE" "$(log $1)" 2>/dev/null; }
+mark_masters() { local node; for node in $CLUSTER; do nm_base[$node]=$(newmasters $node | wc -l); done; }
+# prints the changes of master since mark_masters, one line each
+masters_since_mark() {
+	local node k
+	for node in $CLUSTER; do
+		k=$(( $(newmasters $node | wc -l) - ${nm_base[$node]:-0} ))
+		(( k > 0 )) && newmasters $node | tail -$k
+	done
+	return 0
+}
+
+wait_master() {
+	local m
+	for _ in $(seq 1 120); do
+		m=$(master 2>/dev/null)
+		[[ -n "$m" ]] && on $m "select 1" >/dev/null 2>&1 && { echo $m; return 0; }
+		sleep 1
+	done
+	return 1
+}
+
+on $(master) "create table t(i int, j int)" >/dev/null || fail "create t"
+on $(master) "insert into t select value, value from generate_series(1, $N)" >/dev/null || fail "fill t"
+on $(master) "create table p(a int)" >/dev/null || fail "create p"
+
+echo "=== leave a prepared transaction behind"
+m=$(master)
+on $m "put tunable 'debug_all_prepare_leak' 1" >/dev/null
+# the master prepares, leaks the transaction and exits
+on $m "insert into p values(1)" >/dev/null 2>&1 &
+ins_pid=$!
+sleep 4
+kill -9 $ins_pid 2>/dev/null
+kill_restart_node $m
+m=$(wait_master) || fail "no master after the prepare"
+echo "master $m"
+dist=""
+for _ in $(seq 1 60); do
+	dist=$(on $m "select dist_txnid from comdb2_prepared" 2>/dev/null)
+	[[ -n "$dist" ]] && break
+	sleep 1
+done
+[[ -n "$dist" ]] || fail "$m did not recover the prepared transaction"
+echo "prepared transaction $dist on $m: $(on $m "select flags from comdb2_prepared")"
+
+echo "=== a rebuild blocked by it"
+for node in $CLUSTER; do
+	on $node "put tunable 'sc_commit_map_checkpoint_timeout_ms' 3000" >/dev/null 2>&1
+	on $node "exec procedure sys.cmd.send('bdb setattr SC_RESTART_SEC 1')" >/dev/null 2>&1
+done
+# the restarted node is back and every node follows the same master before we watch
+for _ in $(seq 1 120); do
+	agree=1
+	for node in $CLUSTER; do
+		[[ "$(on $node "select host from comdb2_cluster where is_master='Y'" 2>/dev/null)" == "$m" ]] || agree=0
+	done
+	(( agree )) && break
+	sleep 1
+done
+(( agree )) || fail "the nodes do not agree that $m is the master"
+mark_masters
+start=$SECONDS
+on $m "rebuild t" > $TMPDIR/rebuild.out 2>&1; rb_rc=$?
+echo "rebuild on $m: rc $rb_rc $(cat $TMPDIR/rebuild.out)"
+# watch long enough to see a change of master, if one followed
+(( SECONDS < start + WATCH )) && sleep $((start + WATCH - SECONDS))
+masters_since_mark > $TMPDIR/masters.txt
+echo "changes of master while it ran:"
+cat $TMPDIR/masters.txt
+swings=$(grep -c . $TMPDIR/masters.txt)
+echo "changes of master: $swings"
+for node in $CLUSTER; do
+	echo "$node: $(grep -c "Commit LSN map checkpoint still blocked" "$(log $node)") timeouts, $(grep -c "prepared transaction begun at" "$(log $node)") prepared-blocker reports"
+done
+st=$(on $(wait_master) "select status from comdb2_sc_status where name='t'" | tail -1)
+echo "status of the rebuild: $st"
+
+echo "=== resolve the prepared transaction; a rebuild succeeds"
+m=$(wait_master) || fail "no master"
+on $m "exec procedure sys.cmd.send('disttxn $dist commit')"
+for _ in $(seq 1 60); do
+	[[ -z "$(on $m "select dist_txnid from comdb2_prepared" 2>/dev/null)" ]] && break
+	sleep 1
+done
+for _ in $(seq 1 120); do
+	st=$(on $(wait_master) "select status from comdb2_sc_status where name='t'" | tail -1)
+	[[ "$st" == "COMMITTED" || "$st" == "ABORTED" ]] && break
+	sleep 1
+done
+echo "status after resolving: $st"
+if [[ "$st" != "COMMITTED" ]]; then
+	m=$(wait_master)
+	on $m "rebuild t" || fail "rebuild after resolving the prepared transaction"
+fi
+m=$(wait_master)
+[[ "$(on $m "select count(*), sum(j) from t")" == "$N	$SUM" ]] || fail "t is wrong after the rebuild"
+
+(( swings == 0 )) || fail "mastership changed $swings times while one rebuild waited for a prepared transaction"
+timeouts=0; prepared=0
+for node in $CLUSTER; do
+	timeouts=$(( timeouts + $(grep -c "Commit LSN map checkpoint still blocked" "$(log $node)") ))
+	prepared=$(( prepared + $(grep -c "prepared transaction begun at" "$(log $node)") ))
+done
+(( rb_rc != 0 )) || fail "the rebuild succeeded past the prepared transaction"
+(( timeouts == 1 )) || fail "$timeouts timeouts for one rebuild"
+(( prepared >= 1 )) || fail "the blocker was not reported as the prepared transaction"
+for node in $CLUSTER; do on $node "put tunable 'sc_commit_map_checkpoint_timeout_ms' 600000" >/dev/null 2>&1; done
+do_verify t
+echo "Passed test"
