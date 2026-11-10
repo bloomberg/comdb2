@@ -80,6 +80,12 @@ init:
 # Run all non-disabled tests.
 all_tests: $(ALL_TESTS)
 
+# Jepsen tests stay disabled for 'make' because each one partitions the whole
+# cluster; 'make jepsen' runs them all, one at a time.
+JEPSEN_TESTS:=$(patsubst %.test,%,$(wildcard jepsen_*.test))
+jepsen: basicops
+	+@$(MAKE) -j1 -k $(JEPSEN_TESTS)
+
 basicops_nokey: init
 	$(shell which git > /dev/null 2>&1 && git rev-parse --abbrev-ref HEAD | xargs echo "Branch" >> ${TESTDIR}/test.log)
 	$(shell which git > /dev/null 2>&1 && git rev-parse --short HEAD | xargs echo "SHA " >> ${TESTDIR}/test.log)
