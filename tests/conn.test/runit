@@ -32,7 +32,10 @@ EOF
 }
 
 function start_pmux {
-    if [[ -z $(pidof pmux) ]]; then
+    # Bloomberg hosts run the system portmux on the default port (see tools/copy_files_to_cluster.sh)
+    if [[ -z "$PMUXPORT" && -e /bb/bin/portmux.tsk ]]; then
+        echo "system portmux on this host, not starting pmux"
+    elif [[ -z $(pidof pmux) ]]; then
         echo "starting pmux"
         $PMUX_EXE
     else

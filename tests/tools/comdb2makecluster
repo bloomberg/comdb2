@@ -118,7 +118,8 @@ EOPTIONS
 
 
     pmux_port=5105
-    pmux_cmd='pmux -n'
+    # Bloomberg hosts run the system portmux on the default port: start no pmux there (see copy_files_to_cluster.sh)
+    pmux_cmd='[ -e /bb/bin/portmux.tsk ] || pmux -n'
     if [ -n "$PMUXPORT" ] ; then
         pmux_port=$PMUXPORT
         pmux_socket=/tmp/pmux.socket.$PMUXPORT

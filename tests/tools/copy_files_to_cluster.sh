@@ -39,6 +39,11 @@ fi
 
 stop_pmux="pgrep pmux > /dev/null && (exec 3<>/dev/tcp/localhost/${pmux_port} && echo exit >&3 ) || echo PMUX DOWN"
 
+# Bloomberg hosts run the system portmux on the default port: never start or stop a pmux there unless
+# PMUXPORT gives it a port of its own.  pmux fails to bind while portmux is up, and takes its place
+# while portmux restarts, which fails the host's turnaround checks.
+system_portmux="[ -z '${PMUXPORT}' ] && [ -e /bb/bin/portmux.tsk ]"
+
 SSH_OPT="-o StrictHostKeyChecking=no "
 #use connection sharing via master node
 SSH_MSTR="-o ControlPath=$TESTDIR/%r%h%p"
@@ -77,14 +82,14 @@ copy_files_to_node() {
 
     if [ -n "$RESTARTPMUX" ] ; then
         echo stop pmux on $node first before copying and starting it
-        ssh $SSH_OPT $SSH_MSTR $node "$stop_pmux" < /dev/null
+        ssh $SSH_OPT $SSH_MSTR $node "$system_portmux || { $stop_pmux; }" < /dev/null
     fi
     set +e
     if [[ "$SKIP_COPY_EXE" != "1" ]] ; then
         scp $SSH_OPT $SSH_MSTR $PMUX_EXE $node:$PMUX_EXE
     fi
     echo start pmux on $node if not running
-    ssh $SSH_OPT $SSH_MSTR $node "COMDB2_PMUX_FILE='$TESTDIR/pmux.sqlite' $pmux_cmd" < /dev/null
+    ssh $SSH_OPT $SSH_MSTR $node "$system_portmux || COMDB2_PMUX_FILE='$TESTDIR/pmux.sqlite' $pmux_cmd" < /dev/null
     ssh $SSH_OPT $SSH_MSTR -O exit $node #close master ssh session
     trap - INT EXIT  #Clear TRAP
     set -e
@@ -118,10 +123,10 @@ copy_files_to_cluster()
 
 if [ -n "$RESTARTPMUX" ] ; then
     echo stop pmux on localhost
-    eval $stop_pmux
+    eval "$system_portmux || { $stop_pmux; }"
 fi
 echo start pmux on local host if not running
-COMDB2_PMUX_FILE="$TESTDIR/pmux.sqlite" $pmux_cmd 2>&1
+eval "$system_portmux" || COMDB2_PMUX_FILE="$TESTDIR/pmux.sqlite" $pmux_cmd 2>&1
 
 # if CLUSTER is length is nonzero copy to cluster
 if [[ -n "$CLUSTER" ]] ; then 
