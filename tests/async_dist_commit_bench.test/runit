@@ -3,8 +3,8 @@
 # under each condition the PR measured.  Long-running, so "make" skips it; run it
 # by hand on a cluster of 3+ nodes and read the RESULT lines, e.g.
 #   CLUSTER="m1 m2 m3 m4" INCLUDE_LONG_RUNNING=1 BENCH="offon catchup" CLIENTS="16 64" DUR=120 make async_dist_commit_bench
-# SCALE=pr runs every section at the sizes the PR reports (hours); any variable
-# below set by hand still wins.  Every *_CLIENTS takes a list.  DUR is seconds per
+# SCALE=quick is a few-minute smoke run (offon, 64 clients, 30 s); SCALE=pr runs every
+# section at the sizes the PR reports (hours); any variable below set by hand still wins.  Every *_CLIENTS takes a list.  DUR is seconds per
 # run (default 60), REPS is runs per setting (default 1).  LOADHOSTS="h1 h2 ..." spreads the clients over
 # those hosts (ssh, same paths; default: all from this host, which caps the load near 1000 clients).
 # On the 8-node btda cluster the PR numbers come from:
@@ -31,14 +31,17 @@
 #   ... BENCH=catchup make async_dist_commit_bench_logput_window_generated
 # Each client inserts single rows (autocommit) into its own table, one commit in
 # flight per client, and talks only to replicants (kill and catchup: any node the client library picks).  The rates count the inserts acked to
-# clients.  The database runs with a 128 MB cache (lrl.options), as the PR numbers do.  It fails only on errors
+# clients.  The database runs with a 128 MB cache, as the PR numbers do, and with slow replicants marked
+# incoherent, as in production (the test harness turns that off; lrl.options turns it back on).  It fails only on errors
 # (and on acked inserts going missing), never on the numbers.
 bash -n "$0" || exit 1
 
 db=$1
 . ${TESTSROOTDIR}/tools/cluster_utils.sh
 
-if [[ ${SCALE:-} == pr ]]; then
+if [[ ${SCALE:-} == quick ]]; then
+    : ${BENCH:=offon} ${CLIENTS:=64} ${DUR:=30}
+elif [[ ${SCALE:-} == pr ]]; then
     : ${DUR:=300} ${REPS:=2} ${CLIENTS:=4 8 16 32 64 128 256 1000} ${WTHREAD_CLIENTS:=32 64 1000} ${WTHREAD_WAITERS:=0 1}
     : ${ACK_DELAYS:=0 1 2 3 4 5} ${CAPS:=128 256 512 1024 2048} ${CAP_CLIENTS:=500 1000} ${DURABLE_CLIENTS:=32 128}
     : ${KILL_CLIENTS:=500 1000} ${CATCHUP_CLIENTS:=1000} ${CATCHUP_DOWN:=60} ${CATCHUP_DUR:=900} ${SQLTHREADS:=141}
@@ -46,6 +49,8 @@ fi
 BENCH=${BENCH:-offon wthreads lateack slowrep cap durable kill catchup}
 DUR=${DUR:-60}
 REPS=${REPS:-1}
+# seconds of load before a run starts counting; the RESULT line also gives the warm-up's own rate
+WARMUP=${WARMUP:-0}
 CLIENTS=${CLIENTS:-16 64}
 WTHREADS=${WTHREADS:-8 16 32}
 WTHREAD_CLIENTS=${WTHREAD_CLIENTS:-64}
@@ -60,6 +65,8 @@ DURABLE_CLIENTS=${DURABLE_CLIENTS:-32}
 KILL_CLIENTS=${KILL_CLIENTS:-64}
 CATCHUP_CLIENTS=${CATCHUP_CLIENTS:-64}
 CATCHUP_DOWN=${CATCHUP_DOWN:-30}
+# how the replica is stopped: term (SIGTERM and a clean exit, as a planned restart does) or kill (kill -9, a crash)
+CATCHUP_STOP=${CATCHUP_STOP:-term}
 # seconds the catch-up runs load for (default DUR); the replica is watched only while they do
 CATCHUP_DUR=${CATCHUP_DUR:-$DUR}
 CATCHUP_WAITERS=${CATCHUP_WAITERS:-0 1}
@@ -183,9 +190,11 @@ run() {
         tables "$clients"
         local m=$(master) t0=$(date +%s) c0 c1
         c0=$(cputicks "$m")
-        load "$clients" "$DUR" "$name"
+        load "$clients" $((WARMUP + DUR)) "$name"
         c1=$(cputicks "$m")
-        echo "RESULT $name clients=$clients waiter=$adc $* rep=$r inserts/s=$(persec "$name" $t0 "$DUR") master_cpu=$(cores "$c0" "$c1" $(($(date +%s) - t0)))"
+        local warm=
+        ((WARMUP > 0)) && warm=" warmup_inserts/s=$(persec "$name" $t0 "$WARMUP")"
+        echo "RESULT $name clients=$clients waiter=$adc $* rep=$r inserts/s=$(persec "$name" $((t0 + WARMUP)) "$DUR")$warm master_cpu=$(cores "$c0" "$c1" $(($(date +%s) - t0)))"
         rm -f "$out/$name".c*
     done
 }
@@ -282,7 +291,8 @@ for b in $BENCH; do
             load "$cc" "$CATCHUP_DUR" catchup unpinned &
             lp=$!
             sleep $((CATCHUP_DUR / 3))
-            # stops it, sleeps CATCHUP_DOWN, starts it again
+            # stops it (CATCHUP_STOP=term: SIGTERM, then wait for it to exit cleanly), sleeps CATCHUP_DOWN, starts it again
+            [[ $CATCHUP_STOP == term ]] && ssh -n -o StrictHostKeyChecking=no "$v" "pkill -TERM -f 'comdb2 $db '; for i in \$(seq 120); do pgrep -f 'comdb2 $db ' > /dev/null || exit 0; sleep 1; done"
             kill_restart_node "$v" "$CATCHUP_DOWN" 0 >/dev/null 2>&1
             t0=$(date +%s)
             back="" ; : > "$out/catchup.lag"
