@@ -298,10 +298,20 @@ void sqlite3DequoteExpr(Expr *p){
  */
 int sqlite3IsCorrectlyQuoted(const char *z){
   char quote = z[0];
-  int i = 1;
+  int i;
   if( !sqlite3Isquote(quote) ) return 1;
-  while( z[i]!='\0' ) i++;
-  if( i>1 ) return z[i-1]==quote;
+  if( quote=='[' ) quote = ']';
+  /* Walk the same way sqlite3Dequote() does: a doubled quote is an escape, so
+  ** only checking the last character accepts unterminated input like 'a'' */
+  for(i=1; z[i]; i++){
+    if( z[i]==quote ){
+      if( z[i+1]==quote ){
+        i++;
+      }else{
+        return z[i+1]=='\0';
+      }
+    }
+  }
   return 0;
 }
 int sqlite3IsCorrectlyBraced(const char *z){

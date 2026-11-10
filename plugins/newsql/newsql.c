@@ -1906,9 +1906,7 @@ int process_set_commands(struct sqlclntstate *clnt, CDB2SQLQUERY *sql_query)
                 sqlstr += 8;
                 sqlstr = skipws(sqlstr);
                 if (!sqlite3IsCorrectlyQuoted(sqlstr)) {
-                    snprintf(err, sizeof(err),
-                             "set user: '%s' is an incorrectly quoted string",
-                             sqlstr);
+                    snprintf(err, sizeof(err), "set password: incorrectly quoted string");
                     rc = ii + 1;
                 } else {
                     sqlite3Dequote(sqlstr);
@@ -1948,7 +1946,10 @@ int process_set_commands(struct sqlclntstate *clnt, CDB2SQLQUERY *sql_query)
                 sqlstr = skipws(sqlstr);
                 int ver = strtol(sqlstr, &endp, 10);
                 if (*sqlstr == '\'' || *sqlstr == '"') { // looks like a str
-                    if (strlen(sqlstr) < MAX_SPVERSION_LEN) {
+                    if (!sqlite3IsCorrectlyQuoted(sqlstr)) {
+                        snprintf(err, sizeof(err), "set spversion: '%s' is an incorrectly quoted string", sqlstr);
+                        rc = ii + 1;
+                    } else if (strlen(sqlstr) < MAX_SPVERSION_LEN) {
                         clnt->spversion.version_str = strdup(sqlstr);
                         sqlite3Dequote(clnt->spversion.version_str);
                     } else {
