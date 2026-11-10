@@ -38,6 +38,12 @@ function checkforerrors
         exit 1
     fi
 
+    # Jepsen prints this only when every checker passed; without it nothing was checked
+    if ! egrep "Everything looks good!" $outfile >/dev/null 2>&1; then
+        echo "JEPSEN REACHED NO VERDICT !!!"
+        exit 1
+    fi
+
     egrep "XXX JEPSEN ERROR Lein test returns $r" $outfile >/dev/null 2>&1
     if [[ $? == 0 ]]; then
         echo "JEPSEN ANALYSIS INVALID: LEIN TEST ERROR!!!" 
