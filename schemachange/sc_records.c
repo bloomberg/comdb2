@@ -1471,6 +1471,7 @@ static void stop_sc_redo_wait(bdb_state_type *bdb_state,
 
 int gbl_sc_pause_at_end = 0;
 int gbl_sc_is_at_end = 0;
+int gbl_sc_commit_map_skip = 1;
 
 int convert_all_records(struct dbtable *from, struct dbtable *to,
                         unsigned long long *sc_genids,
@@ -1508,6 +1509,12 @@ int convert_all_records(struct dbtable *from, struct dbtable *to,
     data.iq.usedb = data.from;
     data.iq.opcode = OP_REBUILD;
     data.iq.debug = 0; /*gbl_who;*/
+
+    /* decided by do_alter_table when it opened the replacement */
+    data.iq.sc_skip_commit_map = s->sc_skip_commit_map;
+    if (gbl_sc_commit_map_skip)
+        sc_printf(s, "[%s] converter commits %s the commit LSN map\n", from->tablename,
+                  s->sc_skip_commit_map ? "skip" : "go into");
 
     /* For first cut, read all blobs.  Later we can optimise by only reading
      * the blobs that the new schema needs.
@@ -1578,6 +1585,8 @@ int convert_all_records(struct dbtable *from, struct dbtable *to,
             return -1;
         }
         *thdData = data;
+        /* redo keeps committing until finalize, past the checkpoint */
+        thdData->iq.sc_skip_commit_map = 0;
         if (s->resume) {
             /* get lsn where we left off */
             rc = bdb_get_sc_start_lsn(NULL, s->tablename, &(thdData->start_lsn),
@@ -1765,6 +1774,10 @@ int convert_all_records(struct dbtable *from, struct dbtable *to,
     while (s->logical_livesc && !s->hitLastCnt) {
         poll(NULL, 0, 200);
     }
+
+    /* every converter commit is at or below this */
+    if (outrc == 0 && s->sc_skip_commit_map)
+        bdb_get_current_lsn(thedb->bdb_env, &s->sc_commit_map_lsn_file, &s->sc_commit_map_lsn_offset);
 
     return outrc;
 }

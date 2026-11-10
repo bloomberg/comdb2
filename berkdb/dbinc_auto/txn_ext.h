@@ -23,6 +23,7 @@ int __txn_prepare __P((DB_TXN *, u_int8_t *));
 u_int32_t __txn_id __P((DB_TXN *));
 int  __txn_set_timeout __P((DB_TXN *, db_timeout_t, u_int32_t));
 int __txn_checkpoint_pp __P((DB_ENV *, u_int32_t, u_int32_t, u_int32_t));
+void __txn_checkpoint_floor __P((DB_ENV *, DB_LSN *));
 int __txn_checkpoint __P((DB_ENV *, u_int32_t, u_int32_t, u_int32_t));
 int __txn_getckp __P((DB_ENV *, DB_LSN *));
 int __txn_activekids __P((DB_ENV *, u_int32_t, DB_TXN *));

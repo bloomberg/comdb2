@@ -1661,6 +1661,10 @@ int bdb_rename_file_versioning_table(bdb_state_type *bdb_state, tran_type *tran,
                                      char *newtblname, int *bdberr);
 int bdb_reload_file_versions(bdb_state_type *bdb_state, tran_type *tran, int *bdberr);
 void bdb_remove_prefix(bdb_state_type *bdb_state);
+void bdb_set_sc_commit_map_skip(bdb_state_type *bdb_state, int skip);
+int bdb_commit_map_enabled(void);
+int bdb_checkpoint_past_lsn(bdb_state_type *bdb_state, unsigned int file, unsigned int offset, int timeoutms,
+                            int (*stop)(void *), void *arg);
 
 void *bdb_del_list_new(int *bdberr);
 int bdb_del_list_add_data(bdb_state_type *bdb_state, tran_type *tran,
@@ -2513,7 +2517,7 @@ int bdb_run_logical_recovery(bdb_state_type *bdb_state, int locks_only);
 
 int delete_logfile_txns_commit_lsn_map(bdb_state_type *bdb_state, int file);
 #ifdef COMDB2_TEST
-int commit_lsn_map_selftest(void);
+int commit_lsn_map_selftest(bdb_state_type *bdb_state);
 #endif
 
 int bdb_set_logical_live_sc(bdb_state_type *bdb_state, int lock);
@@ -2579,4 +2583,5 @@ typedef int (*collect_unused_files_f)(void *args, int lognum, char *filename);
 
 void oldfile_hash_collect(collect_unused_files_f func, void *arg);
 void bdb_tran_set_is_sc_rebuild(tran_type *tran, int is_sc_rebuild);
+void bdb_tran_set_sc_skip_commit_map(tran_type *tran, int skip);
 #endif

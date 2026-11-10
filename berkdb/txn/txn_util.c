@@ -1402,6 +1402,55 @@ done:
 	free(dbenv);
 	return ret;
 }
+
+int __db_debug_log(DB_ENV *, DB_TXN *, DB_LSN *, u_int32_t, const DBT *, int32_t, const DBT *, const DBT *, u_int32_t);
+
+/*
+ * __txn_commit_map_skip_selftest --
+ *	Commit a transaction that has a committed child, with and without
+ *	DB_TXN_SC_SKIP_COMMIT_MAP, on the live environment: the flag keeps both
+ *	out of the commit LSN map.
+ *
+ * PUBLIC: int __txn_commit_map_skip_selftest __P((DB_ENV *));
+ */
+int __txn_commit_map_skip_selftest(DB_ENV *dbenv)
+{
+	DB_TXN *parent, *child;
+	DB_LSN lsn;
+	u_int64_t putxnid, cutxnid;
+	int ret, skip, found;
+
+	if (!__txn_commit_map_enabled()) {
+		return 0;
+	}
+	for (skip = 0; skip <= 1; skip++) {
+		if ((ret = dbenv->txn_begin(dbenv, NULL, &parent, 0)) != 0) {
+			return ret;
+		}
+		if ((ret = dbenv->txn_begin(dbenv, parent, &child, 0)) != 0 ||
+		    (ret = __db_debug_log(dbenv, child, &lsn, 0, NULL, 0, NULL, NULL, 0)) != 0 ||
+		    (ret = __db_debug_log(dbenv, parent, &lsn, 0, NULL, 0, NULL, NULL, 0)) != 0) {
+			parent->abort(parent);
+			return ret;
+		}
+		putxnid = parent->utxnid;
+		cutxnid = child->utxnid;
+		if ((ret = child->commit(child, 0)) != 0) {
+			parent->abort(parent);
+			return ret;
+		}
+		if ((ret = parent->commit(parent, skip ? DB_TXN_SC_SKIP_COMMIT_MAP : 0)) != 0) {
+			return ret;
+		}
+		found = (__txn_commit_map_get(dbenv, putxnid, &lsn) == 0) + (__txn_commit_map_get(dbenv, cutxnid, &lsn) == 0);
+		if (found != (skip ? 0 : 2)) {
+			logmsg(LOGMSG_ERROR, "%s: skip %d: %d of parent %"PRIu64" and child %"PRIu64" in the map\n",
+			    __func__, skip, found, putxnid, cutxnid);
+			return 1;
+		}
+	}
+	return 0;
+}
 #endif
 
 static inline void __free_prepared_children(DB_ENV *dbenv, DB_TXN_PREPARED *p)
