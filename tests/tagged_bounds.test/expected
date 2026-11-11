@@ -2,3 +2,5 @@ sz=64 db_rc 220
 sz=1024 db_rc 220
 sz=65537 db_rc 199
 sz=131072 db_rc 199
+write rc=199 errstr="tagged api writes are disabled (disable_tagged_api_writes)"
+read rc=199 errstr="tagged api reads are disabled (disable_tagged_api)"

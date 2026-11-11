@@ -17,6 +17,10 @@ for sz in 64 1024 65537 131072; do
     ${TESTSBUILDDIR}/tagged_bounds ${DBNAME} ${master} ${sz} >> $output 2>&1
 done
 
+${CDB2SQL_EXE} ${CDB2_OPTIONS} ${DBNAME} --host ${master} "put tunable disable_tagged_api_writes 1"
+${CDB2SQL_EXE} ${CDB2_OPTIONS} ${DBNAME} --host ${master} "put tunable disable_tagged_api 1"
+${TESTSBUILDDIR}/tagged_api_errmsg ${DBNAME} ${master} >> $output 2>&1
+
 if ! diff expected $output; then
     echo "FAIL: output differs from expected"
     exit 1
