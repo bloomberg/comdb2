@@ -35,6 +35,7 @@
 #include "osqlsqlthr.h"
 #include "sqloffload.h"
 #include "eventlog.h"
+#include "osqlsession.h"
 
 
 static char *get_temp_ct_dbname(long long *);
@@ -899,6 +900,7 @@ int verify_del_constraints(struct ireq *iq, void *trans, int *errout)
                 close_constraint_table_cursor(cur);
                 return rc;
             }
+            osql_sess_count_fk_op(iq->sorese, bct->tablename, "FK_CASCADE_DELETE");
             /* here, we need to retry to verify the constraint */
             /* sub 1 to go to current constraint again */
             continue;
@@ -991,6 +993,7 @@ int verify_del_constraints(struct ireq *iq, void *trans, int *errout)
                 close_constraint_table_cursor(cur);
                 return rc;
             }
+            osql_sess_count_fk_op(iq->sorese, bct->tablename, "FK_SET_NULL");
             continue;
         } else if (upd_cascade) {
             int err = 0, idx = 0;
@@ -1076,6 +1079,7 @@ int verify_del_constraints(struct ireq *iq, void *trans, int *errout)
                 close_constraint_table_cursor(cur);
                 return rc;
             }
+            osql_sess_count_fk_op(iq->sorese, bct->tablename, "FK_CASCADE_UPDATE");
             /* here, we need to retry to verify the constraint */
             continue;
         } else { /* key was not found in parent tbl and we are not cascading */

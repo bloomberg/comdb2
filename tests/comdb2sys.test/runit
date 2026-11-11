@@ -129,6 +129,7 @@ tests=(
 "./testapihistory"
 "./testindexusage"
 "./testtransactionstate"
+"./testtransactionops"
 "./testtablemetrics"
 )
 

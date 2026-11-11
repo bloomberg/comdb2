@@ -82,6 +82,11 @@ int osql_send_clientinfo(const char *host, unsigned long long rqid, uuid_t uuid,
                          int type);
 
 /**
+ * Send OSQL_IDENTITY op: who this transaction runs as, ahead of OSQL_DONE
+ */
+int osql_send_identity(const char *host, unsigned long long rqid, uuid_t uuid, const char *identity, int type);
+
+/**
  * Send INDEX op
  * It handles remote/local connectivity
  *

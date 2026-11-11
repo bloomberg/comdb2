@@ -41,6 +41,9 @@
 
 int gbl_max_sc_lists = 10000;
 
+extern const char *get_tablename_from_rpl(int is_uuid, const char *rpl, int rpllen, int *tableversion);
+extern const char *get_identity_from_rpl(int is_uuid, const char *rpl, int rpllen);
+
 struct sess_impl {
     int clients; /* number of threads using the session */
 
@@ -48,6 +51,16 @@ struct sess_impl {
     unsigned terminate : 1;  /* Set when this session is about to be terminated */
 
     pthread_mutex_t mtx; /* dispatched/terminate/clients protection */
+
+    /* per (table, opcode) counts of what this transaction will apply, for
+     * comdb2_transaction_ops; written by the reader and the block processor,
+     * read by the systable collector. ops_table and last_op belong to the
+     * reader alone, which receives the session's ops one at a time */
+    pthread_mutex_t ops_lk;
+    hash_t *op_counts;             /* osql_sess_op_count_t, keyed by table+opcode */
+    const char *ops_table;         /* interned; table of the last OSQL_USEDB */
+    osql_sess_op_count_t *last_op; /* count of the last op saved; never a fk one */
+    char *identity;                /* from OSQL_IDENTITY; NULL if none arrived */
 };
 
 static void _destroy_session(osql_sess_t **psess);
@@ -171,6 +184,127 @@ void osql_sess_set_fingerprint(osql_sess_t *sess, const unsigned char *fingerpri
 
 static void _destroy_schema_changes(osql_sess_t *sess);
 
+static int _free_op_count(void *obj, void *arg)
+{
+    free(obj);
+    return 0;
+}
+
+/* Called under ops_lk. Counts are bumped atomically: the reader also bumps
+ * its last op's count without the lock. */
+static osql_sess_op_count_t *_count_op(sess_impl_t *impl, const char *table, const char *opcode, int fk)
+{
+    osql_sess_op_count_t key = {.table = table, .opcode = opcode};
+    osql_sess_op_count_t *c;
+
+    if (!impl->op_counts)
+        impl->op_counts = hash_init_o(offsetof(osql_sess_op_count_t, table), 2 * sizeof(const char *));
+    c = hash_find(impl->op_counts, &key);
+    if (!c) {
+        c = calloc(1, sizeof(*c));
+        c->table = table;
+        c->opcode = opcode;
+        c->fk = fk;
+        hash_add(impl->op_counts, c);
+    }
+    ATOMIC_ADD64(c->count, 1);
+    return c;
+}
+
+/* Count an op saved to the bplog, against the table of the last OSQL_USEDB */
+static void _count_saved_op(osql_sess_t *sess, int type, void *data, int datalen)
+{
+    sess_impl_t *impl = sess->impl;
+    const char *opcode = osql_reqtype_str(type);
+    osql_sess_op_count_t *c = impl->last_op;
+
+    /* A run of the same op skips the lock: the hash does not change, and a
+     * count that is not a fk one lives as long as the session */
+    if (c && c->table == impl->ops_table && c->opcode == opcode && type != OSQL_USEDB && type != OSQL_IDENTITY) {
+        ATOMIC_ADD64(c->count, 1);
+        return;
+    }
+
+    Pthread_mutex_lock(&impl->ops_lk);
+    if (type == OSQL_USEDB) {
+        const char *tblname =
+            get_tablename_from_rpl(sess->rqid == OSQL_RQID_USE_UUID, data, datalen, NULL);
+        impl->ops_table = tblname ? intern(tblname) : NULL;
+    } else if (type == OSQL_IDENTITY) {
+        const char *identity = get_identity_from_rpl(sess->rqid == OSQL_RQID_USE_UUID, data, datalen);
+        if (identity) {
+            free(impl->identity);
+            impl->identity = strdup(identity);
+        }
+    }
+    impl->last_op = _count_op(impl, impl->ops_table, opcode, 0);
+    Pthread_mutex_unlock(&impl->ops_lk);
+}
+
+void osql_sess_count_fk_op(osql_sess_t *sess, const char *table, const char *opcode)
+{
+    if (!sess)
+        return;
+    const char *tbl = intern(table);
+    Pthread_mutex_lock(&sess->impl->ops_lk);
+    _count_op(sess->impl, tbl, opcode, 1);
+    Pthread_mutex_unlock(&sess->impl->ops_lk);
+}
+
+static int _clear_fk_op_count(void *obj, void *arg)
+{
+    osql_sess_op_count_t *c = obj;
+    if (c->fk) {
+        hash_del(arg, c);
+        free(c);
+    }
+    return 0;
+}
+
+void osql_sess_clear_fk_ops(osql_sess_t *sess)
+{
+    if (!sess)
+        return;
+    Pthread_mutex_lock(&sess->impl->ops_lk);
+    if (sess->impl->op_counts)
+        hash_for(sess->impl->op_counts, _clear_fk_op_count, sess->impl->op_counts);
+    Pthread_mutex_unlock(&sess->impl->ops_lk);
+}
+
+char *osql_sess_identity_dup(osql_sess_t *sess)
+{
+    char *identity;
+    Pthread_mutex_lock(&sess->impl->ops_lk);
+    identity = sess->impl->identity ? strdup(sess->impl->identity) : NULL;
+    Pthread_mutex_unlock(&sess->impl->ops_lk);
+    return identity;
+}
+
+struct op_count_arg {
+    osql_sess_t *sess;
+    void *arg;
+    int (*func)(osql_sess_t *, const char *, const osql_sess_op_count_t *, void *);
+};
+
+static int _op_count_cb(void *obj, void *arg)
+{
+    struct op_count_arg *a = arg;
+    osql_sess_op_count_t *c = obj;
+    /* the reader may be bumping the count without the lock */
+    osql_sess_op_count_t snap = {.table = c->table, .opcode = c->opcode, .count = ATOMIC_LOAD64(c->count), .fk = c->fk};
+    return a->func(a->sess, a->sess->impl->identity, &snap, a->arg);
+}
+
+void osql_sess_for_each_op_count(osql_sess_t *sess, void *arg,
+                                 int (*func)(osql_sess_t *, const char *, const osql_sess_op_count_t *, void *))
+{
+    struct op_count_arg a = {.sess = sess, .arg = arg, .func = func};
+    Pthread_mutex_lock(&sess->impl->ops_lk);
+    if (sess->impl->op_counts)
+        hash_for(sess->impl->op_counts, _op_count_cb, &a);
+    Pthread_mutex_unlock(&sess->impl->ops_lk);
+}
+
 static void _destroy_session(osql_sess_t **psess)
 {
     osql_sess_t *sess = *psess;
@@ -181,6 +315,12 @@ static void _destroy_session(osql_sess_t **psess)
 
     Pthread_mutex_destroy(&sess->impl->mtx);
     Pthread_mutex_destroy(&sess->participant_lk);
+    if (sess->impl->op_counts) {
+        hash_for(sess->impl->op_counts, _free_op_count, NULL);
+        hash_free(sess->impl->op_counts);
+    }
+    free(sess->impl->identity);
+    Pthread_mutex_destroy(&sess->impl->ops_lk);
     if (sess->coordinator_dbname) {
         free(sess->coordinator_dbname);
         sess->coordinator_dbname = NULL;
@@ -446,6 +586,7 @@ int osql_sess_rcvop(uuid_t uuid, int type, void *data, int datalen, int *found)
         /* failed to save into bplog; discard and be done */
         goto failed_stream;
     }
+    _count_saved_op(sess, type, data, datalen);
     int dispatch = 0;
     int cancel = 0;
     if (is_msg_done) {
@@ -640,6 +781,8 @@ static osql_sess_t *_osql_sess_create(osql_sess_t *sess, char *tzname, int type,
 
     /* init participant mutex */
     Pthread_mutex_init(&sess->participant_lk, NULL);
+
+    Pthread_mutex_init(&sess->impl->ops_lk, NULL);
 
     sess->rqid = rqid;
     comdb2uuidcpy(sess->uuid, uuid);
