@@ -22,9 +22,11 @@
 #   kill     master killed with kill -9 halfway through: rates before/after,
 #            seconds until back to 90% of the rate before, retried requests,
 #            failed requests, acked inserts lost
-#   catchup  one replicant stopped a third of the way in, down CATCHUP_DOWN s,
-#            restarted: how long until it is coherent again, MB/s it closed, and
-#            what it parked in its repdb
+#   catchup  one replicant (CATCHUP_NODES: or the master, or half the cluster) stopped
+#            a third of the way in, down CATCHUP_DOWN s, restarted: rates before,
+#            while down and after, seconds until back to 90%, how long until every
+#            stopped node is coherent again, MB/s it closed, and what the first one
+#            parked in its repdb
 # Every RESULT line ends with the CPU the master's comdb2 used, in cores.
 # Each make starts a fresh database; runs within it share it but get fresh tables.  For startup settings
 # use a generated variant: the .testopts files here append to lrl.options, e.g.
@@ -65,10 +67,17 @@ DURABLE_CLIENTS=${DURABLE_CLIENTS:-32}
 KILL_CLIENTS=${KILL_CLIENTS:-64}
 CATCHUP_CLIENTS=${CATCHUP_CLIENTS:-64}
 CATCHUP_DOWN=${CATCHUP_DOWN:-30}
-# how the replica is stopped: term (SIGTERM and a clean exit, as a planned restart does) or kill (kill -9, a crash)
+# how the nodes are stopped: term (SIGTERM and a clean exit, as a planned restart does), kill (kill -9, a crash),
+# rtcpu (routed off, the process keeps running: every node is told it is down and stops waiting for its acks) or
+# fakedr (as rtcpu, but a DR test: the master still waits for its acks)
 CATCHUP_STOP=${CATCHUP_STOP:-term}
+# which nodes: replicant (one), master, half (half the nodes, all replicants) or half_master (the master and
+# replicants, half the nodes in all)
+CATCHUP_NODES=${CATCHUP_NODES:-replicant}
 # seconds the catch-up runs load for (default DUR); the replica is watched only while they do
 CATCHUP_DUR=${CATCHUP_DUR:-$DUR}
+# seconds of load before the nodes are stopped (default a third of CATCHUP_DUR)
+CATCHUP_AT=${CATCHUP_AT:-$((CATCHUP_DUR / 3))}
 CATCHUP_WAITERS=${CATCHUP_WAITERS:-0 1}
 # SQL threads per node; at least one per client a node serves, or commits queue for a thread instead
 SQLTHREADS=${SQLTHREADS:-}
@@ -199,6 +208,16 @@ run() {
     done
 }
 
+# rate <tag> <from> <to>: inserts/s acked in [from, to)
+rate() { (($3 > $2)) && echo $(($(acked "$1" $2 $3) / ($3 - $2))) || echo "?"; }
+# back90 <tag> <from> <end> <rate>: seconds from <from> until 5 seconds in a row each ack at least 90% of <rate>
+back90() {
+    cat "$out/$1".c* | gawk -v k=$2 -v e=$3 -v r="$4" '/\] rc 0$/ { n[$1]++ }
+        END { if (r !~ /^[0-9]+$/) { print "?"; exit } for (s = k; s + 4 < e; s++) { ok = 1
+              for (i = 0; i < 5; i++) if (n[s + i] < 0.9 * r) { ok = 0; break }
+              if (ok) { print s - k; exit } } print "never" }'
+}
+
 # bytes the master is ahead of <node>, and <node>'s coherent state, as the master sees them
 logsize=$(send "${nodes[0]}" "bdb attr" | grep -o 'LOGFILESIZE *= *[0-9]*' | grep -o '[0-9]*$')
 lagof() {
@@ -267,14 +286,9 @@ for b in $BENCH; do
                 ((lost += l, failed += f, failpresent += fp))
             done
             # rates from the clients' replies: from 2 s in to the kill, and from 5 s after it to the end
-            rate() { (($2 > $1)) && echo $(($(acked kill $1 $2) / ($2 - $1))) || echo "?"; }
-            before=$(rate $((t0 + 2)) $tk)
-            after=$(rate $((tk + 5)) $((t0 + DUR)))
-            # seconds from the kill until 5 seconds in a row each ack at least 90% of the rate before it
-            back90=$(cat "$out"/kill.c* | gawk -v k=$tk -v e=$((t0 + DUR)) -v r="$before" '/\] rc 0$/ { n[$1]++ }
-                END { if (r !~ /^[0-9]+$/) { print "?"; exit } for (s = k; s + 4 < e; s++) { ok = 1
-                      for (i = 0; i < 5; i++) if (n[s + i] < 0.9 * r) { ok = 0; break }
-                      if (ok) { print s - k; exit } } print "never" }')
+            before=$(rate kill $((t0 + 2)) $tk)
+            after=$(rate kill $((tk + 5)) $((t0 + DUR)))
+            back90=$(back90 kill $tk $((t0 + DUR)) "$before")
             echo "RESULT kill clients=$kc waiter=$adc before=${before}/s after=${after}/s back_to_90%=${back90}s retried=$replays failed=$failed failed_but_written=$failpresent acked_but_lost=$lost"
             rm -f "$out"/kill.c*
             kill_restart_node "$old" 0 1 >/dev/null 2>&1
@@ -285,25 +299,67 @@ for b in $BENCH; do
             configure $adc
             tables "$cc"
             m=$(master)
-            v=$(replicants | tail -1)
+            half=$((${#nodes[@]} / 2))
+            case $CATCHUP_NODES in
+            replicant) vs=($(replicants | tail -1)) ;;
+            master) vs=($m) ;;
+            half) vs=($(replicants | tail -$half)) ;;
+            half_master) vs=($m $(replicants | tail -$((half - 1)))) ;;
+            *) fail "unknown CATCHUP_NODES $CATCHUP_NODES" ;;
+            esac
+            v=${vs[0]}
             ts=$(date +%s)
             # unpinned, as in the kill section: a client pinned to the restarted replica would be stuck on it
             load "$cc" "$CATCHUP_DUR" catchup unpinned &
             lp=$!
-            sleep $((CATCHUP_DUR / 3))
-            # stops it (CATCHUP_STOP=term: SIGTERM, then wait for it to exit cleanly), sleeps CATCHUP_DOWN, starts it again
-            [[ $CATCHUP_STOP == term ]] && ssh -n -o StrictHostKeyChecking=no "$v" "pkill -TERM -f 'comdb2 $db '; for i in \$(seq 120); do pgrep -f 'comdb2 $db ' > /dev/null || exit 0; sleep 1; done"
-            kill_restart_node "$v" "$CATCHUP_DOWN" 0 >/dev/null 2>&1
+            sleep $CATCHUP_AT
+            tstop=$(date +%s)
+            # stops them (term: SIGTERM, then wait for each to exit cleanly), sleeps CATCHUP_DOWN, starts them again
+            downlag=""
+            if [[ $CATCHUP_STOP == rtcpu || $CATCHUP_STOP == fakedr ]]; then
+                # --admin: a node routed off rejects other connections, so it could not be told it is back
+                tell() { local n; for n in "${nodes[@]}"; do
+                    $CDB2SQL_EXE --admin --tabs $CDB2_OPTIONS $db --host "$n" "exec procedure sys.cmd.send('$1')"
+                done >/dev/null 2>&1; }
+                if [[ $CATCHUP_STOP == rtcpu ]]; then tell "debug tcmtest routecpu ${vs[*]}"
+                else for x in "${vs[@]}"; do tell "fakedr add $x"; done; fi
+                # how far behind the routed-off nodes fall while off
+                : > "$out/catchup.downlag"
+                while (($(date +%s) < tstop + CATCHUP_DOWN)); do
+                    for x in "${vs[@]}"; do echo "$(($(date +%s) - tstop)) $(lagof "$x") $x"; done >> "$out/catchup.downlag"
+                    sleep 5
+                done
+                if [[ $CATCHUP_STOP == rtcpu ]]; then tell "debug tcmtest routecpu"
+                else for x in "${vs[@]}"; do tell "fakedr del $x"; done; fi
+                downlag="lag_while_off=$(gawk '$2 >= 0 && $2 > m { m = $2 } END { print int(m / 1048576) }' "$out/catchup.downlag")MB"
+                downlag+=" last_state_while_off=$(tail -1 "$out/catchup.downlag" | gawk '{ print $3 }')"
+            else
+                pids=()
+                # match only the comdb2 binary: on the host running this script, the ssh sessions that started the
+                # other nodes also have "comdb2 $db" in their command lines, and killing them stops those nodes too
+                for x in "${vs[@]}"; do
+                    { [[ $CATCHUP_STOP == term ]] && ssh -n -o StrictHostKeyChecking=no "$x" "pkill -TERM -f '^[^ ]*comdb2 $db '; for i in \$(seq 120); do pgrep -f '^[^ ]*comdb2 $db ' > /dev/null || exit 0; sleep 1; done"
+                      kill_restart_node "$x" "$CATCHUP_DOWN" 0; } >/dev/null 2>&1 &
+                    pids+=($!)
+                done
+                wait "${pids[@]}"
+            fi
             t0=$(date +%s)
             back="" ; : > "$out/catchup.lag"
+            declare -A up=()
             while kill -0 $lp 2>/dev/null; do
-                read -r lag st < <(lagof "$v")
                 el=$(($(date +%s) - t0))
-                echo "$el $lag $st" >> "$out/catchup.lag"
-                # a restarting node briefly reports a bogus position: only trust a non-negative lag
-                [[ $st == coherent && -n $lag && $lag -ge 0 ]] && { back=$el; break; }
+                for x in "${vs[@]}"; do
+                    [[ -n ${up[$x]:-} ]] && continue
+                    read -r lag st < <(lagof "$x")
+                    echo "$el $lag $st $x" >> "$out/catchup.lag"
+                    # a restarting node briefly reports a bogus position: only trust a non-negative lag
+                    [[ $st == coherent && -n $lag && $lag -ge 0 ]] && up[$x]=$el
+                done
+                ((${#up[@]} == ${#vs[@]})) && { back=$el; break; }
                 sleep 1
             done
+            unset up
             maxlag=$(gawk '$2 >= 0 && $2 > m { m = $2 } END { print int(m / 1048576) }' "$out/catchup.lag")
             speed="?"; [[ -n $back ]] && ((back > 0)) && speed=$(gawk -v a=$maxlag -v b=$back 'BEGIN { printf "%.1f", a / b }')
             # what the restarted replica parked: records, and its repdb file's pages written to / read from disk
@@ -314,9 +370,13 @@ for b in $BENCH; do
                 END { printf "repdb_written=%dMB repdb_read=%dMB repdb_cache_hits=%s", o * ps / 1048576, i * ps / 1048576,
                       h + m ? sprintf("%.1f%%", 100 * h / (h + m)) : "?" }')
             wait $lp
-            echo "RESULT catchup clients=$cc waiter=$adc down=${CATCHUP_DOWN}s max_lag=${maxlag}MB coherent_after_restart=${back:-not within the run}s closed=${speed}MB/s parked=${parked:-?} $repdb inserts/s=$(persec catchup $ts "$CATCHUP_DUR")"
+            # rates from the clients' replies: before the stop, while down (from 5 s in), after the restart
+            te=$((ts + CATCHUP_DUR))
+            before=$(rate catchup $((ts + 2)) $tstop)
+            rates="before=${before}/s down=$(rate catchup $((tstop + 5)) $t0)/s after=$(rate catchup $t0 $te)/s back_to_90%=$(back90 catchup $tstop $te "$before")s"
+            echo "RESULT catchup clients=$cc waiter=$adc nodes=$CATCHUP_NODES(${vs[*]}) stop=$CATCHUP_STOP $rates down=${CATCHUP_DOWN}s $downlag max_lag=${maxlag}MB coherent_after_restart=${back:-not within the run}s closed=${speed}MB/s parked=${parked:-?} $repdb inserts/s=$(persec catchup $ts "$CATCHUP_DUR")"
             rm -f "$out"/catchup.c*
-            waitmach "$v"
+            for x in "${vs[@]}"; do waitmach "$x"; done
         done; done ;;
     *) fail "unknown section $b" ;;
     esac
