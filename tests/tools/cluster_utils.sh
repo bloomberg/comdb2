@@ -180,7 +180,9 @@ function kill_restart_node
             ${DEBUG_PREFIX} $COMDB2_EXE ${DBNAME} ${PARAMS} &> $LOGDIR/${DBNAME}.${node}.db &
         else
             PARAMS="--no-global-lrl --lrl $DBDIR/${DBNAME}.lrl --pidfile ${TMPDIR}/${DBNAME}.${node}.pid"
-            CMD="cd ${DBDIR}; source ${REP_ENV_VARS} ; ${DEBUG_PREFIX} $COMDB2_EXE ${DBNAME} ${PARAMS} 2>&1 | tee $TESTDIR/${DBNAME}.db"
+            # REP_ENV_VARS is only set by bounce_node; without it the node
+            # restarts without COMDB2_ROOT and uses the build default paths
+            CMD="cd ${DBDIR}; source ${REP_ENV_VARS:-${DBDIR}/replicant_env_vars} ; ${DEBUG_PREFIX} $COMDB2_EXE ${DBNAME} ${PARAMS} 2>&1 | tee $TESTDIR/${DBNAME}.db"
             ssh -n -o StrictHostKeyChecking=no -tt $node ${CMD} &> $LOGDIR/${DBNAME}.${node}.db &
             echo $! > ${TMPDIR}/${DBNAME}.${node}.pid
         fi

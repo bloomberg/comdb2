@@ -440,6 +440,57 @@ int mark_schemachange_over(const char *table)
     return rc;
 }
 
+/* Cancel an interrupted schema change instead of resuming it (scabort marker
+ * file, or a schema change that cannot be resumed).  Does what an abort does:
+ * clears the in-progress llmeta state (in-schema-change record, seed, start
+ * lsn), drops the btrees the schema change created and records the
+ * cancellation in the sc status and history.  Master only.
+ * No-op if the table is not marked in schema change, so it is safe to call
+ * more than once for the same table, or for names that are not tables.
+ * Returns 1 if a schema change was cancelled, 0 if none, -1 on error */
+int cancel_resume_schemachange(const char *table, const char *reason)
+{
+    void *packed_sc_data = NULL;
+    size_t packed_sc_data_len = 0;
+    unsigned long long seed = 0;
+    unsigned int host = 0;
+    int bdberr = 0;
+
+    if (bdb_get_in_schema_change(NULL, table, &packed_sc_data, &packed_sc_data_len, &bdberr) ||
+        bdberr != BDBERR_NOERROR) {
+        logmsg(LOGMSG_ERROR, "%s: failed to check whether %s is in schema change, bdberr %d\n", __func__, table,
+               bdberr);
+        return -1;
+    }
+    if (!packed_sc_data)
+        return 0;
+    free(packed_sc_data);
+
+    /* fetch the seed before mark_schemachange_over() deletes it */
+    if (bdb_get_sc_seed(thedb->bdb_env, NULL, table, &seed, &host, &bdberr))
+        seed = 0;
+
+    if (mark_schemachange_over(table)) {
+        logmsg(LOGMSG_ERROR, "%s: failed to cancel schema change for %s\n", __func__, table);
+        return -1;
+    }
+
+    /* this has to follow mark_schemachange_over(): while the table is
+     * marked in schema change, the new.<table> file versions in llmeta keep
+     * the new btrees in use (see bdb_is_new_sc_file()) */
+    struct dbtable *db = is_tablename_queue(table) ? getqueuebyname(table) : get_dbtable_by_name(table);
+    if (db)
+        sc_del_unused_files(db);
+
+    if (bdb_set_schema_change_status(NULL, table, seed, 0, NULL, 0, BDB_SC_ABORTED, reason, &bdberr) ||
+        bdberr != BDBERR_NOERROR) {
+        logmsg(LOGMSG_ERROR, "%s: failed to set schema change status for %s, bdberr %d\n", __func__, table, bdberr);
+    }
+
+    logmsg(LOGMSG_WARN, "%s: cancelled schema change for %s: %s\n", __func__, table, reason);
+    return 1;
+}
+
 int prepare_table_version_one(tran_type *tran, struct dbtable *db,
                               struct schema **version)
 {

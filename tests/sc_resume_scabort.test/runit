@@ -1,0 +1,262 @@
+#!/usr/bin/env bash
+bash -n "$0" || exit 1
+
+# Touching <dbname>.scabort before a master swing must cancel the interrupted
+# schema changes instead of resuming them, and clean up after them like an
+# abort does: sc status ABORTED, no leftover llmeta state (resume does not
+# happen again on the next master swing), the new btrees are dropped, and the
+# marker file is removed.
+#
+# Runs with and without multitable_ddl (multiddl.testopts).
+
+source ${TESTSROOTDIR}/tools/runit_common.sh
+source ${TESTSROOTDIR}/tools/cluster_utils.sh
+
+set -x
+
+dbnm=$1
+[[ -z "$dbnm" ]] && failexit "need a DB name"
+
+REASON="Cancelled by scabort marker file"
+MARKER=${TESTDIR}/tmp/cdb2/${dbnm}.scabort
+NODES=${CLUSTER:-$(hostname)}
+
+function sql
+{
+    cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "$@"
+}
+
+function sqlhost
+{
+    local host=$1
+    shift
+    cdb2sql --tabs ${CDB2_OPTIONS} --host $host $dbnm "$@"
+}
+
+function on_node
+{
+    local node=$1
+    shift
+    if [[ -z "$CLUSTER" || "$node" == "$(hostname)" ]] ; then
+        bash -c "$*"
+    else
+        ssh -n -o StrictHostKeyChecking=no $node "$*"
+    fi
+}
+
+function touch_marker
+{
+    for node in $NODES ; do
+        on_node $node "mkdir -p $(dirname $MARKER) && touch $MARKER" || failexit "cannot create $MARKER on $node"
+    done
+}
+
+function remove_marker
+{
+    for node in $NODES ; do
+        on_node $node "rm -f $MARKER"
+    done
+}
+
+function marker_exists
+{
+    on_node $1 "test -f $MARKER"
+}
+
+function wait_for_master
+{
+    local m=""
+    for i in $(seq 1 120) ; do
+        m=$(sql "select host from comdb2_cluster where is_master='Y'" 2>/dev/null)
+        if [[ -n "$m" ]] && sqlhost $m "select 1" > /dev/null 2>&1 ; then
+            echo $m
+            return 0
+        fi
+        sleep 1
+    done
+    failexit "no master after 120 seconds"
+}
+
+# tables files on a node, minus the ones queued for delayed deletion
+function live_files
+{
+    local host=$1
+    local tbl=$2
+    sqlhost $host "select filename from comdb2_filenames where filename like '${tbl}\\_%' escape '\\' except select substr(filename, 5) from comdb2_unused_files order by 1" ||
+        failexit "cannot list files of $tbl on $host"
+}
+
+function sc_status
+{
+    sqlhost $master "select status from comdb2_sc_status where name='$1'"
+}
+
+function wait_sc_running
+{
+    for tbl in "$@" ; do
+        for i in $(seq 1 60) ; do
+            [[ "$(sc_status $tbl)" == "RUNNING" ]] && break
+            sleep 1
+        done
+        [[ "$(sc_status $tbl)" == "RUNNING" ]] || failexit "schema change on $tbl did not start"
+    done
+    # let the conversion create and fill the new btrees
+    sleep 5
+}
+
+function sc_in_progress
+{
+    sqlhost $1 "exec procedure sys.cmd.send('stat')" | grep -q "Schema change in progress"
+}
+
+function force_delay_master
+{
+    sqlhost $master "exec procedure sys.cmd.send('bdb setattr SC_FORCE_DELAY 1')"
+    sqlhost $master "exec procedure sys.cmd.send('scdelay 300')"
+}
+
+function create_table
+{
+    local tbl=$1
+    sql "drop table if exists $tbl"
+    sql "create table $tbl (a int primary key, b cstring(32), c int)" || failexit "create $tbl"
+    sql "insert into $tbl select value, 'row' || value, value from generate_series(1, 2000)" || failexit "insert $tbl"
+}
+
+# start the ddl(s) on the master, interrupt them by killing the master after
+# touching the marker file on every node; the next master cancels them
+function interrupt_with_scabort
+{
+    local ddl=$1
+    shift
+    local tbls="$@"
+
+    master=$(wait_for_master)
+    for tbl in $tbls ; do
+        sqlhost $master "select csc2 from sqlite_master where name='$tbl' and type='table'" > $tbl.csc2.before
+        for node in $NODES ; do
+            live_files $node $tbl > $tbl.$node.files.before
+            [[ -s $tbl.$node.files.before ]] || failexit "no files for $tbl on $node"
+        done
+    done
+
+    force_delay_master
+    (echo "$ddl" | cdb2sql ${CDB2_OPTIONS} --host $master $dbnm - > ddl.out 2>&1) &
+    local ddlpid=$!
+
+    wait_sc_running $tbls
+
+    touch_marker
+    echo "killing master $master in the middle of the schema change"
+    kill_restart_node $master 1
+    wait $ddlpid
+
+    master=$(wait_for_master)
+    echo "master is now $master"
+}
+
+function assert_cancelled
+{
+    for tbl in "$@" ; do
+        local st=""
+        for i in $(seq 1 60) ; do
+            st=$(sc_status $tbl)
+            [[ "$st" != "RUNNING" ]] && break
+            sleep 1
+        done
+        sqlhost $master "select * from comdb2_sc_status where name='$tbl'"
+        [[ "$st" == "ABORTED" ]] || failexit "sc status of $tbl is '$st', expected ABORTED"
+        local err=$(sqlhost $master "select error from comdb2_sc_status where name='$tbl'")
+        [[ "$err" == "$REASON" ]] || failexit "sc status error of $tbl is '$err'"
+    done
+
+    sc_in_progress $master && failexit "master $master is still running a schema change"
+    marker_exists $master && failexit "master $master did not remove $MARKER"
+
+    for tbl in "$@" ; do
+        sqlhost $master "select csc2 from sqlite_master where name='$tbl' and type='table'" > $tbl.csc2.after
+        diff $tbl.csc2.before $tbl.csc2.after || failexit "schema of $tbl changed"
+        [[ "$(sql "select count(*) from $tbl")" == "2000" ]] || failexit "rows of $tbl changed"
+        do_verify $tbl
+
+        # the btrees the schema change created must be gone on the master
+        live_files $master $tbl > $tbl.$master.files.after
+        diff $tbl.$master.files.before $tbl.$master.files.after || failexit "leftover files for $tbl on $master"
+    done
+}
+
+# with the marker gone, another master swing must find nothing to resume
+function assert_nothing_resumes
+{
+    remove_marker
+    kill_restart_node $master 1
+    master=$(wait_for_master)
+    sleep 5
+    sc_in_progress $master && failexit "master $master resumed a cancelled schema change"
+    for tbl in "$@" ; do
+        [[ "$(sc_status $tbl)" == "ABORTED" ]] || failexit "sc status of $tbl changed after master swing"
+        sqlhost $master "select csc2 from sqlite_master where name='$tbl' and type='table'" > $tbl.csc2.after
+        diff $tbl.csc2.before $tbl.csc2.after || failexit "schema of $tbl changed after master swing"
+    done
+}
+
+# a new schema change on the same table must work, and succeed
+function assert_alter_works
+{
+    local tbl=$1
+    sql "alter table $tbl alter column b set data type cstring(16)" || failexit "alter $tbl after cancelled schema change"
+    [[ "$(sc_status $tbl)" == "COMMITTED" ]] || failexit "sc status of $tbl is not COMMITTED"
+    sql "select csc2 from sqlite_master where name='$tbl' and type='table'" | grep -q 'b\[16\]' || failexit "alter $tbl not applied"
+    [[ "$(sql "select count(*) from $tbl")" == "2000" ]] || failexit "alter $tbl lost rows"
+    do_verify $tbl
+}
+
+multiddl=$(sql "select value from comdb2_tunables where name='multitable_ddl'")
+echo "multitable_ddl is $multiddl"
+
+echo "TEST 1: single table alter"
+create_table t1
+interrupt_with_scabort "alter table t1 alter column b set data type cstring(16)" t1
+assert_cancelled t1
+assert_nothing_resumes t1
+assert_alter_works t1
+
+echo "TEST 2: two table alters in one transaction"
+create_table t2
+create_table t3
+interrupt_with_scabort "begin
+alter table t2 alter column b set data type cstring(16)
+\$\$
+alter table t3 alter column b set data type cstring(16)
+\$\$
+commit" t2 t3
+assert_cancelled t2 t3
+assert_nothing_resumes t2 t3
+assert_alter_works t2
+assert_alter_works t3
+
+if [[ "$multiddl" == "ON" ]] ; then
+    echo "TEST 3: create table and alter in one transaction"
+    create_table t5
+    sql "drop table if exists t4"
+    interrupt_with_scabort "begin
+create table t4 (a int)
+\$\$
+alter table t5 alter column b set data type cstring(16)
+\$\$
+commit" t5
+    # t4 was never created, check it separately
+    for i in $(seq 1 60) ; do
+        [[ "$(sc_status t4)" != "RUNNING" ]] && break
+        sleep 1
+    done
+    [[ "$(sc_status t4)" == "ABORTED" ]] || failexit "sc status of t4 is '$(sc_status t4)', expected ABORTED"
+    [[ "$(sql "select count(*) from comdb2_tables where tablename='t4'")" == "0" ]] || failexit "t4 exists"
+    assert_cancelled t5
+    assert_nothing_resumes t5
+    assert_alter_works t5
+    sql "create table t4 (a int)" || failexit "create t4 after cancelled schema change"
+fi
+
+remove_marker
+echo "Success"
