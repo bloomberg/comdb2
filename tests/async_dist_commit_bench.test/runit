@@ -5,7 +5,8 @@
 #   CLUSTER="m1 m2 m3 m4" INCLUDE_LONG_RUNNING=1 BENCH="offon catchup" CLIENTS="16 64" DUR=120 make async_dist_commit_bench
 # SCALE=quick is a few-minute smoke run (offon, 64 clients, 30 s); SCALE=pr runs every
 # section at the sizes the PR reports (hours); SCALE=sc_outage stops the master for 30 min while a 4M-row table is
-# rebuilt (run it as the logput_window_sc_onerow variant, one row per schema-change transaction); any variable below set by hand still wins.  Every *_CLIENTS takes a list.  DUR is seconds per
+# rebuilt (run it as the logput_window_sc_onerow variant, one row per schema-change transaction); SCALE=dr_outage
+# stops half the nodes (all replicants) for 30 min, as a DR test that takes a data center down; any variable below set by hand still wins.  Every *_CLIENTS takes a list.  DUR is seconds per
 # run (default 60), REPS is runs per setting (default 1).  LOADHOSTS="h1 h2 ..." spreads the clients over
 # those hosts (ssh, same paths; default: all from this host, which caps the load near 1000 clients).
 # On the 8-node btda cluster the PR numbers come from:
@@ -53,6 +54,10 @@ elif [[ ${SCALE:-} == pr ]]; then
     : ${KILL_CLIENTS:=500 1000} ${CATCHUP_CLIENTS:=1000} ${CATCHUP_DOWN:=60} ${CATCHUP_DUR:=900} ${SQLTHREADS:=141}
 elif [[ ${SCALE:-} == sc_outage ]]; then
     : ${BENCH:=catchup} ${CATCHUP_NODES:=master} ${CATCHUP_WAITERS:=1} ${CATCHUP_SC_ROWS:=4000000}
+    : ${CATCHUP_AT:=120} ${CATCHUP_DOWN:=1800} ${CATCHUP_DUR:=3720}
+elif [[ ${SCALE:-} == dr_outage ]]; then
+    # half_master instead would leave too few nodes to elect a new master: writes stop until the half is back
+    : ${BENCH:=catchup} ${CATCHUP_NODES:=half} ${CATCHUP_WAITERS:=1}
     : ${CATCHUP_AT:=120} ${CATCHUP_DOWN:=1800} ${CATCHUP_DUR:=3720}
 fi
 BENCH=${BENCH:-offon wthreads lateack slowrep cap durable kill catchup}
