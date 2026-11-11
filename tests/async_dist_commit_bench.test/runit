@@ -4,7 +4,8 @@
 # by hand on a cluster of 3+ nodes and read the RESULT lines, e.g.
 #   CLUSTER="m1 m2 m3 m4" INCLUDE_LONG_RUNNING=1 BENCH="offon catchup" CLIENTS="16 64" DUR=120 make async_dist_commit_bench
 # SCALE=quick is a few-minute smoke run (offon, 64 clients, 30 s); SCALE=pr runs every
-# section at the sizes the PR reports (hours); any variable below set by hand still wins.  Every *_CLIENTS takes a list.  DUR is seconds per
+# section at the sizes the PR reports (hours); SCALE=sc_outage stops the master for 30 min while a 4M-row table is
+# rebuilt (run it as the logput_window_sc_onerow variant, one row per schema-change transaction); any variable below set by hand still wins.  Every *_CLIENTS takes a list.  DUR is seconds per
 # run (default 60), REPS is runs per setting (default 1).  LOADHOSTS="h1 h2 ..." spreads the clients over
 # those hosts (ssh, same paths; default: all from this host, which caps the load near 1000 clients).
 # On the 8-node btda cluster the PR numbers come from:
@@ -26,7 +27,10 @@
 #            a third of the way in, down CATCHUP_DOWN s, restarted: rates before,
 #            while down and after, seconds until back to 90%, how long until every
 #            stopped node is coherent again, MB/s it closed, and what the first one
-#            parked in its repdb
+#            parked in its repdb.  CATCHUP_SC_ROWS=N also rebuilds a table of N rows
+#            (a schema change, every row copied) from the start of the load, so it runs
+#            through the outage: rows/s it copied before, while down and after, and when
+#            it committed; the logput_window_sc_onerow variant copies one row per transaction
 # Every RESULT line ends with the CPU the master's comdb2 used, in cores.
 # Each make starts a fresh database; runs within it share it but get fresh tables.  For startup settings
 # use a generated variant: the .testopts files here append to lrl.options, e.g.
@@ -47,6 +51,9 @@ elif [[ ${SCALE:-} == pr ]]; then
     : ${DUR:=300} ${REPS:=2} ${CLIENTS:=4 8 16 32 64 128 256 1000} ${WTHREAD_CLIENTS:=32 64 1000} ${WTHREAD_WAITERS:=0 1}
     : ${ACK_DELAYS:=0 1 2 3 4 5} ${CAPS:=128 256 512 1024 2048} ${CAP_CLIENTS:=500 1000} ${DURABLE_CLIENTS:=32 128}
     : ${KILL_CLIENTS:=500 1000} ${CATCHUP_CLIENTS:=1000} ${CATCHUP_DOWN:=60} ${CATCHUP_DUR:=900} ${SQLTHREADS:=141}
+elif [[ ${SCALE:-} == sc_outage ]]; then
+    : ${BENCH:=catchup} ${CATCHUP_NODES:=master} ${CATCHUP_WAITERS:=1} ${CATCHUP_SC_ROWS:=4000000}
+    : ${CATCHUP_AT:=120} ${CATCHUP_DOWN:=1800} ${CATCHUP_DUR:=3720}
 fi
 BENCH=${BENCH:-offon wthreads lateack slowrep cap durable kill catchup}
 DUR=${DUR:-60}
@@ -79,6 +86,8 @@ CATCHUP_DUR=${CATCHUP_DUR:-$DUR}
 # seconds of load before the nodes are stopped (default a third of CATCHUP_DUR)
 CATCHUP_AT=${CATCHUP_AT:-$((CATCHUP_DUR / 3))}
 CATCHUP_WAITERS=${CATCHUP_WAITERS:-0 1}
+# rows in the table the catch-up runs rebuild during the outage (0: no schema change)
+CATCHUP_SC_ROWS=${CATCHUP_SC_ROWS:-0}
 # SQL threads per node; at least one per client a node serves, or commits queue for a thread instead
 SQLTHREADS=${SQLTHREADS:-}
 
@@ -109,6 +118,24 @@ tables() {
         $CDB2SQL_EXE $CDB2_OPTIONS $db --host "$(master)" - > "$out/ddl" 2>&1
     grep -q "failed" "$out/ddl" && fail "tables $n: $(grep -m1 failed "$out/ddl")"
     ntables=$n
+}
+# sctable <rows>: scbig with <rows> rows (rounded up to 40000), for the schema change in the catch-up runs
+sctable() {
+    local n=$1 i m=$(master)
+    q "$m" "drop table if exists scbig" >/dev/null && q "$m" "create table scbig(a int, b cstring(64))" >/dev/null || fail "create scbig"
+    # 40000 rows per insert: under the 50000 rows a transaction may write
+    for ((i = 0; i < n; i += 40000)); do
+        q "$m" "insert into scbig select value, 'row ' || value from generate_series($i, $((i + 39999)))" >/dev/null &
+        (((i / 40000) % 8 == 7)) && wait
+    done
+    wait
+    echo "scbig: $(q "$m" "select count(*) from scbig") rows" >&2
+}
+# scstate: <seconds since the epoch> <status> <rows copied> of the rebuild of scbig (only the master knows the rows)
+scstate() {
+    local m r
+    m=$(master) && r=$(q "$m" "select status, converted from comdb2_sc_status where name = 'scbig'" 2>/dev/null) &&
+        [[ -n $r ]] && echo "$(date +%s) $r $m" || echo "$(date +%s) ? ? ?"
 }
 default_sqlthreads=$(q "${nodes[0]}" "select max_thds from comdb2_threadpools where name='sqlenginepool'")
 
@@ -308,10 +335,18 @@ for b in $BENCH; do
             *) fail "unknown CATCHUP_NODES $CATCHUP_NODES" ;;
             esac
             v=${vs[0]}
+            ((CATCHUP_SC_ROWS > 0)) && sctable "$CATCHUP_SC_ROWS"
             ts=$(date +%s)
             # unpinned, as in the kill section: a client pinned to the restarted replica would be stuck on it
             load "$cc" "$CATCHUP_DUR" catchup unpinned &
             lp=$!
+            if ((CATCHUP_SC_ROWS > 0)); then
+                # the client's own rc is moot (its node may be the one stopped); the new master resumes the rebuild
+                $CDB2SQL_EXE $CDB2_OPTIONS $db --host "$(replicants | head -1)" "rebuild scbig" > "$out/sc.client" 2>&1 &
+                : > "$out/sc.log"
+                (while kill -0 $lp 2>/dev/null; do scstate >> "$out/sc.log"; sleep 5; done) &
+                scp=$!
+            fi
             sleep $CATCHUP_AT
             tstop=$(date +%s)
             # stops them (term: SIGTERM, then wait for each to exit cleanly), sleeps CATCHUP_DOWN, starts them again
@@ -370,11 +405,25 @@ for b in $BENCH; do
                 END { printf "repdb_written=%dMB repdb_read=%dMB repdb_cache_hits=%s", o * ps / 1048576, i * ps / 1048576,
                       h + m ? sprintf("%.1f%%", 100 * h / (h + m)) : "?" }')
             wait $lp
+            scres=""
+            if ((CATCHUP_SC_ROWS > 0)); then
+                wait $scp
+                # copy rate in [a, b): rows copied per second between samples in it; a new master counts from 0 again,
+                # so only steps between two samples from the same master count
+                scrate() { gawk -v a=$1 -v b=$2 '$1 >= a && $1 < b && $3 ~ /^[0-9]+$/ { if (t0 == "") t0 = $1; t1 = $1
+                        if ($4 == pm && $3 >= pc) n += $3 - pc; pm = $4; pc = $3 }
+                    END { print (t1 > t0) ? int(n / (t1 - t0)) : "?" }' "$out/sc.log"; }
+                read -r _ scst scn < <(scstate)
+                # the create table left a COMMITTED status too: count only one after the rebuild was seen running
+                scdone=$(gawk -v s=$tstop '$2 == "RUNNING" { r = 1 } r && $2 == "COMMITTED" { print $1 - s; exit }' "$out/sc.log")
+                scres="sc_rows=$CATCHUP_SC_ROWS sc_copied/s_before=$(scrate $ts $tstop) sc_copied/s_down=$(scrate $((tstop + 5)) $t0) sc_copied/s_after=$(scrate $t0 $((ts + CATCHUP_DUR)))"
+                scres+=" sc_committed_after_stop=${scdone:-not within the run}s sc_state_at_end=$scst"
+            fi
             # rates from the clients' replies: before the stop, while down (from 5 s in), after the restart
             te=$((ts + CATCHUP_DUR))
             before=$(rate catchup $((ts + 2)) $tstop)
             rates="before=${before}/s down=$(rate catchup $((tstop + 5)) $t0)/s after=$(rate catchup $t0 $te)/s back_to_90%=$(back90 catchup $tstop $te "$before")s"
-            echo "RESULT catchup clients=$cc waiter=$adc nodes=$CATCHUP_NODES(${vs[*]}) stop=$CATCHUP_STOP $rates down=${CATCHUP_DOWN}s $downlag max_lag=${maxlag}MB coherent_after_restart=${back:-not within the run}s closed=${speed}MB/s parked=${parked:-?} $repdb inserts/s=$(persec catchup $ts "$CATCHUP_DUR")"
+            echo "RESULT catchup clients=$cc waiter=$adc nodes=$CATCHUP_NODES(${vs[*]}) stop=$CATCHUP_STOP $rates down=${CATCHUP_DOWN}s $downlag max_lag=${maxlag}MB coherent_after_restart=${back:-not within the run}s closed=${speed}MB/s parked=${parked:-?} $repdb $scres inserts/s=$(persec catchup $ts "$CATCHUP_DUR")"
             rm -f "$out"/catchup.c*
             for x in "${vs[@]}"; do waitmach "$x"; done
         done; done ;;
