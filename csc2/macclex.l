@@ -112,7 +112,8 @@ nonclosingbrkt [^}]*
 
                                    for ( ; ; )
                                    {
-                                     while ( (c = input()) != '*' &&  c != EOF );    /* eat up text of comment */
+                                     /* flex >= 2.6 input() returns 0 at end of input, older flex returns EOF */
+                                     while ( (c = input()) != '*' &&  c != EOF && c != 0 );    /* eat up text of comment */
                                      if ( c == '*' )
                                      {
                                        while ( (c = input()) == '*' ) ; /* eat up '*' character */
@@ -121,7 +122,7 @@ nonclosingbrkt [^}]*
                                          break;    /* found the end */
                                      }
 
-                                     if ( c == EOF )
+                                     if ( c == EOF || c == 0 )
                                      {
                                        logmsgperror( "EOF in comment" );
                                        break;
