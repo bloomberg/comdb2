@@ -1712,8 +1712,7 @@ static int run_statement_int(const char *sql, int ntypes, int *types,
         cdb2_clearbindings(cdb2h);
     }
 
-    if (rc == CDB2ERR_INCOMPLETE) {
-        assert(allow_multiline_stmts);
+    if (rc == CDB2ERR_INCOMPLETE && allow_multiline_stmts) {
         return rc;
     }
 
@@ -1856,7 +1855,7 @@ static int run_raw_statement(const char * const sql, int ntypes, int *types,
     gbl_in_stmt = 0;
     gbl_sent_cancel_cnonce = 0;
 
-    if (rc != 0 && rc != CDB2ERR_INCOMPLETE) {
+    if (rc != 0 && !(rc == CDB2ERR_INCOMPLETE && allow_multiline_stmts)) {
         error++;
     } else if (!allow_multiline_stmts && (!scriptmode) && !(printmode & DISP_NONE)) {
         printf("[%s] rc %d\n", sql, rc);
@@ -1883,12 +1882,32 @@ static int run_raw_statement(const char * const sql, int ntypes, int *types,
     return rc;
 }
 
-/* Trim whitespace at the start of the line and whitespace+semicolons at the end of the line. */
+/* Mirror the server's "set multiline on|off" (newsql.c): once on, it rejects a statement without its ';'. */
+static int multiline_on = 0;
+static void track_multiline(const char *sql)
+{
+    if (strncasecmp(sql, "set", 3) != 0 || !isspace(sql[3]))
+        return;
+    sql += 3;
+    while (isspace(*sql))
+        sql++;
+    if (strncasecmp(sql, "multiline", 9) != 0 || (sql[9] && !isspace(sql[9])))
+        return;
+    sql += 9;
+    while (isspace(*sql))
+        sql++;
+    multiline_on = strncasecmp(sql, "off", 3) != 0;
+}
+
+/* Trim whitespace at the start of the line and whitespace+semicolons at the end of the line
+ * (semicolons are kept while multiline is on). */
 static void pre_process_statement(char ** p_sql)
 {
     remove_leading_spaces(p_sql);
     remove_trailing_spaces(*p_sql);
-    remove_trailing_semicolons(*p_sql);
+    track_multiline(*p_sql);
+    if (!multiline_on)
+        remove_trailing_semicolons(*p_sql);
 }
 
 static int preprocess_and_run_statement(char *sql, int ntypes, int *types,
