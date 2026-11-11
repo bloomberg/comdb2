@@ -130,6 +130,8 @@ struct fdb_tran {
 
     int seq; /* sequencing tran begin/commit/rollback, writes, cursor open/close
                 */
+    int seq_broken; /* backend: a request gave up waiting for its turn, so the
+                       sequence has a gap that will never fill */
 
     /*
     ** Genid deduplication. Nothing fancy. It's just a temptable recording

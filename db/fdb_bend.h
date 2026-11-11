@@ -99,9 +99,18 @@ int fdb_svc_trans_get_tid(char *cid, char *tid);
  * to maintain to transaction consistency and semantics
  *
  * NOTE: this is called with dtran_mtx locked, and returns it LOCKED!
+ * Returns non-zero, without bumping the sequence, if it gives up waiting.
+ * Giving up marks the sequence broken, failing every later request at once.
  */
-void fdb_sequence_request(struct sqlclntstate *tran_clnt, fdb_tran_t *trans,
-                          int seq);
+int fdb_sequence_request(struct sqlclntstate *tran_clnt, fdb_tran_t *trans, int seq);
+
+/**
+ * Wait until it is this request's turn, without bumping the sequence.
+ * Same locking and failure rules as fdb_sequence_request.
+ */
+int fdb_sequence_wait(struct sqlclntstate *tran_clnt, fdb_tran_t *trans, int seq);
+
+extern int gbl_fdb_sequence_timeout_ms;
 
 #endif
 

@@ -1,0 +1,72 @@
+#!/usr/bin/env bash
+bash -n "$0" || exit 1
+
+rem=$DBNAME
+src=$SECONDARY_DBNAME
+REM="cdb2sql ${CDB2_OPTIONS} --tabs $rem default"
+SRC="cdb2sql ${SECONDARY_CDB2_OPTIONS} --tabs $src default"
+nodes=${CLUSTER:-localhost}
+
+function set_drop {
+    for node in $nodes; do
+        $REM --host $node "put tunable fdb_test_drop_cursor_open $1" > /dev/null || { echo "set tunable failed on $node"; exit 1; }
+    done
+}
+
+# Warm up the remote schema so the next write only opens its own cursor
+$SRC "insert into LOCAL_${rem}.t values (1)" || { echo "remote insert failed"; exit 1; }
+
+set_drop 1
+
+out_file=$(mktemp)
+start=$(date +%s)
+timeout 60 $SRC "insert into LOCAL_${rem}.t values (2)" > $out_file 2>&1 &
+writer=$!
+
+# The insert is now parked behind the dropped cursor open. Taking the bdb
+# writelock must not wait on it: it must not pin the readlock while it waits.
+sleep 2
+for node in $nodes; do
+    if ! timeout 20 $REM --host $node "exec procedure sys.cmd.send('bdb bdblocktest')" > /dev/null; then
+        echo "bdb writelock blocked on $node while the remote write waited for its turn"
+        set_drop 0
+        exit 1
+    fi
+done
+
+wait $writer
+rc=$?
+elapsed=$(( $(date +%s) - start ))
+out=$(cat $out_file)
+rm -f $out_file
+set_drop 0
+
+if [[ $rc -eq 0 ]]; then
+    echo "remote write with a missing request succeeded: '$out'"
+    exit 1
+fi
+if [[ $rc -eq 124 ]]; then
+    echo "remote write with a missing request hung"
+    exit 1
+fi
+echo "remote write failed after ${elapsed}s as expected: $out"
+
+for node in $nodes; do
+    $REM --host $node "select 1" > /dev/null || { echo "remote db died on $node"; exit 1; }
+done
+
+rows=$($REM "select id from t order by id")
+if [[ "$rows" != "1" ]]; then
+    echo "expected only the first row, got '$rows'"
+    exit 1
+fi
+
+# Only the broken transaction fails
+$SRC "insert into LOCAL_${rem}.t values (3)" || { echo "remote insert after timeout failed"; exit 1; }
+rows=$($REM "select id from t order by id" | tr '\n' ' ')
+if [[ "$rows" != "1 3 " ]]; then
+    echo "expected rows 1 and 3, got '$rows'"
+    exit 1
+fi
+
+echo "Testcase passed."
