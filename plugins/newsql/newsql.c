@@ -2280,7 +2280,7 @@ int process_set_commands(struct sqlclntstate *clnt, CDB2SQLQUERY *sql_query)
                     clnt->return_long_column_names = 1;
                 }
             } else if (strncasecmp(sqlstr, "multiline", 9) == 0) {
-                sqlstr += 10;
+                sqlstr += 9;
                 sqlstr = skipws(sqlstr);
                 if (strncasecmp(sqlstr, "off", 3) == 0) {
                     clnt->multiline = 0;
