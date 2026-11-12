@@ -81,6 +81,17 @@ SQLITE_EXTENSION_INIT1
 #define re_maxnfa  sqlite3re_maxnfa
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
+/* comdb2 rulesets keep compiled regexps across threads; sqlite's per-thread allocator can't */
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+#define re_malloc  malloc
+#define re_realloc realloc
+#define re_mfree   free
+#else
+#define re_malloc  sqlite3_malloc64
+#define re_realloc sqlite3_realloc64
+#define re_mfree   sqlite3_free
+#endif
+
 /* The end-of-input character */
 #define RE_EOF            0    /* End of input */
 #define RE_START  0xfffffff    /* Start of input - larger than an UTF-8 */
@@ -371,10 +382,10 @@ static int re_resize(ReCompiled *p, unsigned int N){
   char *aOp;
   int *aArg;
   if( N>p->mxAlloc ){ p->zErr = "REGEXP pattern too big"; return 1; }
-  aOp = sqlite3_realloc64(p->aOp, N*sizeof(p->aOp[0]));
+  aOp = re_realloc(p->aOp, N*sizeof(p->aOp[0]));
   if( aOp==0 ){ p->zErr = "out of memory"; return 1; }
   p->aOp = aOp;
-  aArg = sqlite3_realloc64(p->aArg, N*sizeof(p->aArg[0]));
+  aArg = re_realloc(p->aArg, N*sizeof(p->aArg[0]));
   if( aArg==0 ){ p->zErr = "out of memory"; return 1; }
   p->aArg = aArg;
   p->nAlloc = N;
@@ -677,9 +688,9 @@ void re_free(ReCompiled *pRe){
 static void re_free(ReCompiled *pRe){
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   if( pRe ){
-    sqlite3_free(pRe->aOp);
-    sqlite3_free(pRe->aArg);
-    sqlite3_free(pRe);
+    re_mfree(pRe->aOp);
+    re_mfree(pRe->aArg);
+    re_mfree(pRe);
   }
 }
 
@@ -713,7 +724,7 @@ static const char *re_compile(
   int i, j;
 
   *ppRe = 0;
-  pRe = sqlite3_malloc64( sizeof(*pRe) );
+  pRe = re_malloc( sizeof(*pRe) );
   if( pRe==0 ){
     return "out of memory";
   }
