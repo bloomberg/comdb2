@@ -24,3 +24,7 @@ dtastripe 1
 # Disable parallel rep for predictable behavior
 setattr REP_WORKERS 0
 setattr REP_PROCESSORS 0
+
+# The fdb watchdog pings the coordinator, which unsetup stops first; a ping
+# still retrying it stalls the shard's clean exit past exitalarmsec
+fdb_watchdog_sec 0

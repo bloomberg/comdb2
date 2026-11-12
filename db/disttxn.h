@@ -33,7 +33,9 @@ enum {
 };
 
 /* This coordinator records participant information */
-int collect_participants(const char *dist_txnid, participant_list_t *participants);
+/* is_ddl: a distributed schema change, whose local part can fail after its
+ * participants prepared */
+int collect_participants(const char *dist_txnid, participant_list_t *participants, int is_ddl);
 
 /* This coordinator asks participants to prepare */
 int dispatch_participants(const char *dist_txnid);
@@ -63,6 +65,12 @@ int coordinator_ddl_write_decision(tran_type *trans, const char *dist_txnid);
  * not write it (rc -1), or does not know whether it committed (rc
  * LOCK_DESIRED); tell participants */
 int coordinator_ddl_committed(const char *dist_txnid, int rc);
+
+/* 2pc schema change resume: this coordinator copies its participants to dist,
+ * and an aborted resume tells its participants, or its coordinator */
+struct sc_list_2pc;
+int coordinator_copy_participants(const char *dist_txnid, struct sc_list_2pc *dist);
+void disttxn_ddl_resume_aborted(struct sc_list_2pc *dist);
 
 /* This coordinator will block until participants have propogated this txn */
 int coordinator_wait_propagate(const char *dist_txnid);
@@ -101,6 +109,10 @@ int participant_wait(const char *dist_txnid, const char *coordinator_name, const
 /* This schema change participant waits for the coordinator, ignoring lock-desired */
 int participant_wait_ddl(const char *dist_txnid, const char *coordinator_name, const char *coordinator_tier,
                          const char *coordinator_master);
+
+/* A participant resuming a 2pc schema change asks the coordinator for its
+ * decision: HAS_COMMITTED, HAS_ABORTED or LOCK_DESIRED */
+int participant_wait_resumed_ddl(const char *dist_txnid, const char *coordinator_name, const char *coordinator_tier);
 
 /* This participant processes a coordinator's abort */
 int coordinator_aborted(const char *dist_txnid);

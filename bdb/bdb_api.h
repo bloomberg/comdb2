@@ -1999,6 +1999,9 @@ int bdb_add_rep_blob(bdb_state_type *bdb_state, tran_type *tran, int session,
 
 void bdb_upgrade_all_prepared(bdb_state_type *bdb_state);
 
+/* Return 1 if dist_txnid is prepared and not yet committed or aborted */
+int bdb_dist_txn_is_prepared(bdb_state_type *bdb_state, const char *dist_txnid);
+
 const char *bdb_get_tmpdir(bdb_state_type *bdb_state);
 
 int bdb_form_file_name(bdb_state_type *bdb_state, int is_data_file, int filenum,

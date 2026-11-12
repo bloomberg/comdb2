@@ -1092,15 +1092,39 @@ extern const uint8_t *osqlcomm_scl_get_key(struct sc_list *scl,
 extern const uint8_t *osqlcomm_scl_get(struct sc_list *scl,
         const uint8_t *p_buf, const uint8_t *p_buf_end);
 
-extern int resume_sc_multiddl_txn(sc_list_t *scl);
+extern int resume_sc_multiddl_txn(sc_list_t *scl, hash_t *tables);
+extern int osql_delete_sc_list_int(uuid_t uuid, tran_type *trans, const char *c, int l);
+extern void disttxn_ddl_resume_aborted(sc_list_2pc_t *dist);
+
+/* .scabort drops a pending sc_list: the participants of a 2pc schema change
+ * are told that it aborted.  A participant keeps its sc_list and resumes it:
+ * it may have prepared (the upgrade aborts that transaction) and the
+ * coordinator may have committed, so only the coordinator decides. */
+static int abort_sc_list(sc_list_t *scl, hash_t *tables)
+{
+    uuidstr_t us;
+    comdb2uuidstr(scl->uuid, us);
+    if (scl->dist) {
+        if (!scl->dist->is_coordinator) {
+            logmsg(LOGMSG_WARN, "%s: not cancelling 2pc schema change %s, its coordinator %s decides\n", __func__, us,
+                   scl->dist->coordinator_dbname);
+            return resume_sc_multiddl_txn(scl, tables);
+        }
+        disttxn_ddl_resume_aborted(scl->dist);
+    }
+    logmsg(LOGMSG_WARN, "%s: cancelling %sschema change %s\n", __func__, scl->dist ? "2pc " : "", us);
+    return osql_delete_sc_list_int(scl->uuid, NULL, __func__, __LINE__);
+}
 
 /**
  * The resume searches for existing sc_list llmeta objects, instead
- * of checking each existing table.  This allows us to naturally 
+ * of checking each existing table.  This allows us to naturally
  * cluster together sc-s that are part of the same txn
  *
+ * only_2pc: resume only the 2pc sc_lists, which are saved even without
+ * multitable_ddl, and add the tables they resume to 'tables'
  */
-int resume_sc_multiddl(int scabort)
+static int resume_sc_multiddl(int scabort, int only_2pc, hash_t *tables)
 {
     sc_list_t scl = {0};
     int rc;
@@ -1110,10 +1134,6 @@ int resume_sc_multiddl(int scabort)
     int i, num = 0;
     int bdberr = 0;
     uint8_t *p_buf, *p_buf_end, *p_buf_key, *p_buf_key_end;
-
-    if (scabort) {
-        return bdb_llmeta_rem_all_sc_lists(NULL);
-    }
 
     rc = bdb_llmeta_get_all_sc_lists(NULL, &dtas, &dtalens, &keys, &keylen,
                                      &num, &bdberr);
@@ -1126,32 +1146,57 @@ int resume_sc_multiddl(int scabort)
 
     logmsg(LOGMSG_DEBUG, "%s: found %d scl objects\n", __func__, num);
 
+    /* only_2pc: a failure stops no other 2pc sc_list, which would then be
+     * resumed one table at a time as local schema changes */
     for (i = 0; i < num; i++) {
         p_buf_key = keys[i];
         p_buf_key_end = p_buf_key + keylen;
         if (!osqlcomm_scl_get_key(&scl, p_buf_key, p_buf_key_end)) {
             rc = -1;
+            if (only_2pc)
+                continue;
             goto freetime;
         }
 
         p_buf = dtas[i];
         p_buf_end = p_buf + dtalens[i];
         if (!osqlcomm_scl_get(&scl, p_buf, p_buf_end)) {
+            sc_list_free(&scl);
+            /* .scabort drops it all the same */
+            if (scabort && !osql_delete_sc_list_int(scl.uuid, NULL, __func__, __LINE__))
+                continue;
             rc = -1;
+            if (only_2pc)
+                continue;
             goto freetime;
         }
 
+        if (scabort) {
+            int arc = abort_sc_list(&scl, tables);
+            sc_list_free(&scl);
+            if (arc)
+                rc = arc;
+            continue;
+        }
+
+        if (only_2pc && !scl.dist) {
+            sc_list_free(&scl);
+            continue;
+        }
+
         uuidstr_t us;
-        logmsg(LOGMSG_INFO, "%s Resuming schema change %s\n", __func__, comdb2uuidstr(scl.uuid, us));
+        logmsg(LOGMSG_INFO, "%s Resuming %sschema change %s\n", __func__, scl.dist ? "2pc " : "",
+               comdb2uuidstr(scl.uuid, us));
 
-        rc = resume_sc_multiddl_txn(&scl);
-        if (rc)
-            logmsg(LOGMSG_ERROR, "%s failed to resume scl %d\n", __func__, rc);
+        int rrc = resume_sc_multiddl_txn(&scl, tables);
+        if (rrc) {
+            logmsg(LOGMSG_ERROR, "%s failed to resume scl %d\n", __func__, rrc);
+            rc = rrc;
+        }
 
-        free(scl.offsets);
-        free(scl.ser_scs);
+        sc_list_free(&scl);
 
-        if (rc)
+        if (rrc && !only_2pc)
             goto freetime;
     }
 
@@ -1164,6 +1209,11 @@ freetime:
     return rc;
 }
 
+static int free_sc_2pc_table(void *obj, void *arg)
+{
+    free(obj);
+    return 0;
+}
 
 int resume_schema_change(void)
 {
@@ -1196,7 +1246,17 @@ int resume_schema_change(void)
 
     /* this path is able to handle multi table ddl in a single transaction */
     if (gbl_multitable_ddl)
-        return resume_sc_multiddl(scabort);
+        return resume_sc_multiddl(scabort, 0, NULL);
+
+    /* 2pc schema changes are saved in sc_lists without multitable_ddl too;
+     * resume them that way, and do not resume their tables one by one below */
+    hash_t *sc_2pc_tables = hash_init_strcase(0);
+    if (!sc_2pc_tables) {
+        logmsg(LOGMSG_FATAL, "%s: ran out of memory\n", __func__);
+        abort();
+    }
+    if (resume_sc_multiddl(scabort, 1, sc_2pc_tables))
+        logmsg(LOGMSG_ERROR, "%s: failed to resume 2pc schema changes\n", __func__);
 
     hash_t *tpt_sc_hash = hash_init_strcaseptr(offsetof(struct timepart_sc_resuming, viewname));
     if (!tpt_sc_hash) {
@@ -1213,6 +1273,10 @@ int resume_schema_change(void)
 
         // unset downgrading flag
         thedb->dbs[i]->sc_downgrading = 0;
+
+        /* resumed above, with its 2pc schema change */
+        if (hash_find_readonly(sc_2pc_tables, thedb->dbs[i]->tablename))
+            continue;
 
         if (bdb_get_in_schema_change(NULL /*tran*/, thedb->dbs[i]->tablename,
                                      &packed_sc_data, &packed_sc_data_len,
@@ -1394,6 +1458,9 @@ int resume_schema_change(void)
     hash_for(tpt_sc_hash, verify_sc_resumed_for_all_shards, NULL);
     hash_for(tpt_sc_hash, process_tpt_sc_hash, NULL);
     hash_free(tpt_sc_hash);
+
+    hash_for(sc_2pc_tables, free_sc_2pc_table, NULL);
+    hash_free(sc_2pc_tables);
 
     if (scabort) {
         logmsg(LOGMSG_WARN, "Cancelling schema change\n");
