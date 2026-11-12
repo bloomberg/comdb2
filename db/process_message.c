@@ -1679,6 +1679,10 @@ clipper_usage:
         backend_thread_event(thedb, COMDB2_THR_EVENT_START);
     }
 
+    else if (tokcmp(tok, ltok, "pmux_reregister") == 0) {
+        net_pmux_reregister();
+    }
+
     else if (tokcmp(tok, ltok, "nowatch") == 0) {
         logmsg(LOGMSG_USER, "disabling watcher thread\n");
         watchdog_disable();
