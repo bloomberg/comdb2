@@ -184,6 +184,7 @@ static void writecb(int, short, void *);
  * pmux (typically short lived "get"/"rte" only.) */
 static TAILQ_HEAD(, connection) accept_list = TAILQ_HEAD_INITIALIZER(accept_list);
 static int active_connections;
+static int reg_reply_delay_ms; /* testing: delay reply to unix "reg" */
 static int max_active_connections;
 static void close_oldest_active_connection(void);
 
@@ -445,6 +446,31 @@ static void routefd(int serverfd, short what, void *arg)
     delete c;
 }
 
+struct delayed_reg_reply {
+    std::string svc;
+    connection *c;
+    int port;
+};
+
+static void send_delayed_reg_reply(evutil_socket_t, short, void *arg)
+{
+    delayed_reg_reply *d = (delayed_reg_reply *)arg;
+    const auto &c = connection_map.find(d->svc);
+    if (c != connection_map.end() && c->second == d->c) { /* still the connection that registered */
+        c->second->reply("%d\n", d->port);
+    }
+    delete d;
+}
+
+/* Testing: routed fds can reach the service before its reg reply */
+static void delay_reg_reply(connection *c, const char *svc, int port)
+{
+    timeval t;
+    t.tv_sec = reg_reply_delay_ms / 1000;
+    t.tv_usec = (reg_reply_delay_ms % 1000) * 1000;
+    event_base_once(base, -1, EV_TIMEOUT, send_delayed_reg_reply, new delayed_reg_reply{svc, c, port}, &t);
+}
+
 static int check_active(const char *svc)
 {
     return connection_map.find(svc) != connection_map.end();
@@ -486,6 +512,10 @@ static int run_cmd(char *cmd, connection *c)
             c->svc = svc;
             connection_map.insert(std::make_pair(svc, c));
             TAILQ_REMOVE(&accept_list, c, entry);
+            if (reg_reply_delay_ms > 0) {
+                delay_reg_reply(c, svc, port);
+                return 0;
+            }
         }
         c->reply("%d\n", port);
     } else if (strcmp(cmd, "get") == 0) {
@@ -676,7 +706,7 @@ static int usage(FILE *out, int rc)
     fprintf(
         out,
         "Usage: pmux [-h] [-c pmuxdb cluster] [-d pmuxdb name] [-b bind path]\n"
-        "[-p listen port] [-r free ports range x:y][-l|-n][-f]\n"
+        "[-p listen port] [-r free ports range x:y][-l|-n][-f][-D ms]\n"
         "\n"
         "Options:\n"
         " -h            This help message\n"
@@ -687,7 +717,8 @@ static int usage(FILE *out, int rc)
         " -r            Range of ports to allocate for databases\n"
         " -l            Use file to persist port allocation\n"
         " -n            Do not persist port allocation (default)\n"
-        " -f            Run in foreground rather than put to background\n");
+        " -f            Run in foreground rather than put to background\n"
+        " -D            Delay reply to unix reg by ms (testing)\n");
     return rc;
 }
 
@@ -798,7 +829,7 @@ int main(int argc, char **argv)
     std::pair<int, int> custom_range;
 
     int c;
-    while ((c = getopt(argc, argv, "hc:d:b:p:s:r:lnf")) != -1) {
+    while ((c = getopt(argc, argv, "hc:d:b:p:s:r:lnfD:")) != -1) {
         switch (c) {
         case 'h':
             return usage(stdout, EXIT_SUCCESS);
@@ -836,6 +867,9 @@ int main(int argc, char **argv)
             break;
         case 'f':
             foreground_mode = true;
+            break;
+        case 'D':
+            reg_reply_delay_ms = atoi(optarg);
             break;
         }
     }
