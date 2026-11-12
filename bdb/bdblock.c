@@ -777,24 +777,24 @@ static void delete_thread_lock_info(bdb_state_type *bdb_state)
         return;
     }
 
-    if (lk->lockref != 0) {
-        logmsg(LOGMSG_FATAL, "%s: exiting thread holding lock!\n", __func__);
-        logmsg(LOGMSG_FATAL, "%s: %s %s lockref=%u\n", __func__,
-               locktype2str(lk->locktype), lk->ident ? lk->ident : "?",
-               lk->lockref);
-        abort_lk(lk);
-    }
-
     lk->callers--;
 
     if (lk->callers > 0) {
         /* if we have called bdb_thread_event nested, only
          * the last caller frees it
          * NOTE: obviously, only the first stack is saved !
+         * The lock check below waits for the last caller too: a nested
+         * caller may run while its outer caller still holds the lock.
          */
         return;
     }
 
+    if (lk->lockref != 0) {
+        logmsg(LOGMSG_FATAL, "%s: exiting thread holding lock!\n", __func__);
+        logmsg(LOGMSG_FATAL, "%s: %s %s lockref=%u\n", __func__, locktype2str(lk->locktype),
+               lk->ident ? lk->ident : "?", lk->lockref);
+        abort_lk(lk);
+    }
 
     Pthread_setspecific(lock_key, NULL);
 
