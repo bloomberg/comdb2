@@ -68,7 +68,7 @@ int get_connections(void **data, int *num_points) {
                 info[i].state = !info[i].is_canceled ? "queued" : "queued_canceled";
                 break;
             case CONNECTION_RUNNING:
-                info[i].state = !info[i].is_canceled ? "running" : " running_canceled";
+                info[i].state = !info[i].is_canceled ? "running" : "running_canceled";
                 break;
             case CONNECTION_RETRY_WAIT:
                 info[i].state = !info[i].is_canceled ? "waiting_to_retry" : "waiting_to_retry_canceled";
