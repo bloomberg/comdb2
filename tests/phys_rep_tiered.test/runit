@@ -2722,7 +2722,7 @@ function physrep_cksum_anchor_check
 function physrep_cksum_anchor_test
 {
     echo "== physrep_cksum_anchor_test =="
-    local name node cnt x firstNode clus_master
+    local name node cnt x clus_master
     local stopfile=$TESTDIR/ckcksumanchor.stop.$$
 
     $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "create table if not exists ckcksumanchor(a int, b blob)"
@@ -2745,8 +2745,9 @@ function physrep_cksum_anchor_test
     # Large multi-record transactions back to back: nearly every end-of-log
     # is a page-level record inside one of them.
     rm -f $stopfile
+    # $$ is runit's pid here too: stop if runit dies so a failure can't leak the writer
     (
-        while [[ ! -f $stopfile ]]; do
+        while [[ ! -f $stopfile ]] && kill -0 $$ 2>/dev/null; do
             $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default \
                 "insert into ckcksumanchor select value, randomblob(2048) from generate_series(1, 4000)" >/dev/null 2>&1
         done
@@ -2759,8 +2760,16 @@ function physrep_cksum_anchor_test
         physrep_cksum_anchor_check $name $node "$TESTDIR/logs/${name}.log"
     done
 
-    firstNode=$(echo $CLUSTER | awk '{print $1}')
-    clus_master=$($CDB2SQL_EXE --tabs ${CDB2_OPTIONS} $REPL_CLUS_DBNAME --host $firstNode "select host from comdb2_cluster where is_master='Y'")
+    # A clus node can stay incoherent for a while replaying rewound logs: ask every node
+    clus_master=""
+    for ((cnt = 0; cnt < 120; cnt++)); do
+        for node in $CLUSTER ; do
+            clus_master=$($CDB2SQL_EXE --tabs ${CDB2_OPTIONS} $REPL_CLUS_DBNAME --host $node "select host from comdb2_cluster where is_master='Y'" 2>/dev/null)
+            [[ -n "$clus_master" ]] && break
+        done
+        [[ -n "$clus_master" ]] && break
+        sleep 1
+    done
     [[ -z "$clus_master" ]] && cleanFailExit "no master for $REPL_CLUS_DBNAME"
     physrep_cksum_anchor_check $REPL_CLUS_DBNAME $clus_master "$TESTDIR/logs/${REPL_CLUS_DBNAME}.${clus_master}.log"
 
@@ -4026,6 +4035,60 @@ function physrep_no_cached_metadb_connections_test
     echo ""
 }
 
+# Every physrep log query in flight on a source must be running in physrepsqlpool
+function physrep_sql_pool_test
+{
+    echo "== Verifying physrep queries run in physrepsqlpool =="
+    local pairs=() db node
+    for node in ${CLUSTER:-$(hostname)}; do
+        pairs+=("$SOURCE_DBNAME $node" "$REPL_CLUS_DBNAME $node" "${REPL_DBNAME_PREFIX}_${node} $node")
+    done
+    # keep in sync with rule 5 in plugins/builtin_ruleset/system.ruleset
+    local where="sql like 'select * from comdb2_transaction_logs%' or sql like 'select generation from comdb2_transaction_logs%' or sql like 'select * from (select lsn from comdb2_transaction_logs%'"
+    local inpool=0 elsewhere=0 hits=0 pair out pool cnt h i
+
+    $CDB2SQL_EXE ${CDB2_OPTIONS} $SOURCE_DBNAME default "create table if not exists physreppool(a int)" >/dev/null
+    for i in $(seq 1 10); do
+        $CDB2SQL_EXE ${CDB2_OPTIONS} $SOURCE_DBNAME default "insert into physreppool select * from generate_series(1, 100)" >/dev/null
+        for pair in "${pairs[@]}"; do
+            read db node <<< "$pair"
+            out=$($CDB2SQL_EXE --tabs ${CDB2_OPTIONS} $db --host $node "select coalesce(pool, 'default'), count(*) from comdb2_connections where $where group by 1" 2>/dev/null)
+            while read pool cnt; do
+                [[ -z "$pool" ]] && continue
+                echo "  $db@$node: $cnt physrep queries in $pool"
+                if [[ "$pool" == "physrepsqlpool" ]]; then
+                    inpool=$((inpool + cnt))
+                else
+                    elsewhere=$((elsewhere + cnt))
+                fi
+            done <<< "$out"
+        done
+        sleep 1
+    done
+
+    for pair in "${pairs[@]}"; do
+        read db node <<< "$pair"
+        h=$($CDB2SQL_EXE --tabs ${CDB2_OPTIONS} $db --host $node "select hits from comdb2_ruleset where pool = 'physrepsqlpool'" 2>/dev/null)
+        echo "  $db@$node: physrepsqlpool rule hits ${h:-0}"
+        [[ -n "$h" ]] && hits=$((hits + h))
+    done
+
+    echo "in physrepsqlpool: $inpool, elsewhere: $elsewhere, rule hits: $hits"
+    if [[ $elsewhere -ne 0 ]]; then
+        cleanFailExit "FAILED: $elsewhere physrep queries ran outside physrepsqlpool"
+    fi
+    if [[ $hits -eq 0 ]]; then
+        cleanFailExit "FAILED: no physrep query was routed to physrepsqlpool"
+    fi
+    # only blocking streams stay in flight long enough to be sampled reliably
+    read db node <<< "${pairs[1]}"
+    local blocking=$($CDB2SQL_EXE --tabs ${CDB2_OPTIONS} $db --host $node "select value from comdb2_tunables where name = 'blocking_physrep'" 2>/dev/null)
+    if [[ "$blocking" == "ON" && $inpool -eq 0 ]]; then
+        cleanFailExit "FAILED: never saw a blocking physrep query in physrepsqlpool"
+    fi
+    echo "SUCCESS: all physrep queries ran in physrepsqlpool"
+}
+
 function announce
 {
     typeset text=$1
@@ -4064,6 +4127,11 @@ function run_tests
     testcase="require_recent_heartbeat"
     testcase_preamble $testcase
     require_recent_heartbeat
+    testcase_finish $testcase
+
+    testcase="physrep_sql_pool"
+    testcase_preamble $testcase
+    physrep_sql_pool_test
     testcase_finish $testcase
 
     testcase="physrep_delfiles"
