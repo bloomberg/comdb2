@@ -429,6 +429,21 @@ typedef struct llog_scdone {
 
 #define SESS_SC_LIST_VER 1
 
+/* The 2pc configuration of a distributed schema change, saved with its
+ * schema changes so that a new master that resumes them knows that it is a
+ * coordinator or a participant, and whom to tell the outcome */
+typedef struct sc_list_2pc {
+    int is_coordinator;
+    char *dist_txnid;
+    /* participant: its coordinator */
+    char *coordinator_dbname;
+    char *coordinator_tier;
+    /* coordinator: its participants */
+    int nparticipants;
+    char **participant_names;
+    char **participant_tiers;
+} sc_list_2pc_t;
+
 struct sc_list {
     uuid_t uuid; /* part of the key */
     int version; /* rest fields payload */
@@ -436,6 +451,7 @@ struct sc_list {
     int ser_scs_len;
     int *offsets;
     char *ser_scs;
+    sc_list_2pc_t *dist; /* set for a 2pc schema change */
 };
 typedef struct sc_list sc_list_t;
 
@@ -443,6 +459,15 @@ typedef struct sc_list sc_list_t;
  * pointer fields are malloced
  */
 int sc_list_create(sc_list_t *scl, void *vscs, uuid_t uuid);
+
+/* make scl a sclist2pc; a participant passes its coordinator, a coordinator
+ * adds its participants after */
+int sc_list_2pc_create(sc_list_t *scl, int is_coordinator, const char *dist_txnid, const char *coordinator_dbname,
+                       const char *coordinator_tier);
+
+/* free the malloced fields of scl */
+void sc_list_free(sc_list_t *scl);
+void sc_list_2pc_free(sc_list_2pc_t *dist);
 
 /* Returns 1 if schema changes of this kind run through do_ddl(), which is the
  * only path that marks the schema change in llmeta and, on completion, calls

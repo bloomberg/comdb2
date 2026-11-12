@@ -1478,9 +1478,9 @@ static int __upgrade_prepared_txn(DB_ENV *dbenv, DB_LOGC *logc, DB_TXN_PREPARED 
 	/* Halt replays in the block-processor */
 	osql_blkseq_register_cnonce(p->blkseq_key.data, p->blkseq_key.size);
 
+	/* a schema change is aborted by __txn_upgrade_all_prepared */
 	if (prepare->lflags & DB_TXN_SCHEMA_LOCK) {
-		wrlock_schema_lk(); 
-		F_SET(p, DB_DIST_SCHEMA_LK);
+		F_SET(p, DB_DIST_SCHEMA_ABORT);
 	}
 
 	if (prepare->lflags & DB_TXN_DIST_UPD_SHADOWS) {
@@ -1630,6 +1630,28 @@ int __txn_is_dist_committed(dbenv, dist_txnid)
 	DB_TXN_PREPARED *p;
 	Pthread_mutex_lock(&dbenv->prepared_txn_lk);
 	if ((p = hash_find(dbenv->prepared_txn_hash, &dist_txnid)) && F_ISSET(p, DB_DIST_COMMITTED))
+		ret = 1;
+	Pthread_mutex_unlock(&dbenv->prepared_txn_lk);
+	return ret;
+}
+
+/*
+ * __txn_is_prepared_unresolved --
+ *
+ * Return 1 if dist_txnid is a prepared transaction that has not been
+ * committed or aborted.
+ *
+ * PUBLIC: int __txn_is_prepared_unresolved __P((DB_ENV *, const char *dist_txnid));
+ */
+int __txn_is_prepared_unresolved(dbenv, dist_txnid)
+	DB_ENV *dbenv;
+	const char *dist_txnid;
+{
+	int ret = 0;
+	DB_TXN_PREPARED *p;
+	Pthread_mutex_lock(&dbenv->prepared_txn_lk);
+	if ((p = hash_find(dbenv->prepared_txn_hash, &dist_txnid)) &&
+		!F_ISSET(p, DB_DIST_COMMITTED | DB_DIST_ABORTED))
 		ret = 1;
 	Pthread_mutex_unlock(&dbenv->prepared_txn_lk);
 	return ret;
@@ -2169,6 +2191,33 @@ int __txn_upgrade_all_prepared(dbenv)
 	Pthread_mutex_unlock(&dbenv->prepared_txn_lk);
 	logc->close(logc, 0);
 	__txn_recycle_after_upgrade_prepared(dbenv);
+
+	/* A prepared schema change holds llmeta locks that startup and resume
+	 * need: abort it, which restores its sc_list.  Resuming that asks the
+	 * coordinator and redoes the schema change if it committed. */
+	for (;;) {
+		DB_TXN_PREPARED *p;
+		void *ent;
+		unsigned int bkt;
+		char *dist_txnid = NULL;
+		Pthread_mutex_lock(&dbenv->prepared_txn_lk);
+		for (p = hash_first(dbenv->prepared_txn_hash, &ent, &bkt); p;
+			p = hash_next(dbenv->prepared_txn_hash, &ent, &bkt)) {
+			if (F_ISSET(p, DB_DIST_SCHEMA_ABORT)) {
+				F_CLR(p, DB_DIST_SCHEMA_ABORT);
+				dist_txnid = strdup(p->dist_txnid);
+				break;
+			}
+		}
+		Pthread_mutex_unlock(&dbenv->prepared_txn_lk);
+		if (dist_txnid == NULL)
+			break;
+		logmsg(LOGMSG_WARN, "%s aborting prepared schema change %s, resume redoes it if committed\n",
+			__func__, dist_txnid);
+		if (__txn_abort_recovered(dbenv, dist_txnid) != 0)
+			logmsg(LOGMSG_ERROR, "%s failed to abort prepared schema change %s\n", __func__, dist_txnid);
+		free(dist_txnid);
+	}
 	return 0;
 }
 
