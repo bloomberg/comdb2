@@ -349,6 +349,7 @@
 (name='memptrickle')
 (name='osqlpfaultpool')
 (name='pgcompactpool')
+(name='physrepsqlpool')
 (name='recovery_processors')
 (name='recovery_workers')
 (name='sqlenginepool')

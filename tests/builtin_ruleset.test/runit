@@ -37,6 +37,9 @@ timeout 5 cdb2sql $dbname local - >>out 2>&1 <<EOF
 SELECT value FROM comdb2_tunables WHERE name=@a
 EOF
 
+# physrep queries against a source run in their own pool
+timeout 5 cdb2sql $dbname local "select * from comdb2_transaction_logs limit 1" >/dev/null 2>&1 && echo physrep ok >>out || echo physrep query failed >>out
+
 # wait for the thread pool blockers to finish so we can use the database normally again
 wait
 
