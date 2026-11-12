@@ -1,0 +1,147 @@
+#!/usr/bin/env bash
+
+# Remote writes pushed to the remote db that read tables of the source db;
+# unqualified table names must resolve to the source db, even when the
+# remote db has a table with the same name.
+#
+# DBNAME is the remote db, SECONDARY_DBNAME is the source db
+
+vars="DBNAME CDB2_CONFIG SECONDARY_DBNAME SECONDARY_CDB2_CONFIG"
+for required in $vars; do
+    if [[ -z "${!required}" ]]; then
+        echo "$required not set" >&2
+        exit 1
+    fi
+done
+
+REM="${CDB2SQL_EXE} --tabs --cdb2cfg ${CDB2_CONFIG} ${DBNAME}"
+SRC="${CDB2SQL_EXE} --tabs --cdb2cfg ${SECONDARY_CDB2_CONFIG} ${SECONDARY_DBNAME}"
+RDB="LOCAL_${DBNAME}"
+RTBL="${RDB}.t"
+
+failexit()
+{
+    echo "Failed: $1"
+    exit 1
+}
+
+# run sql (stdin) on source db, fail on any statement error
+# $1: name
+run()
+{
+    local out rc
+    echo "== $1"
+    out=$($SRC default - 2>&1)
+    rc=$?
+    echo "$out"
+    if [[ $rc -ne 0 ]] || echo "$out" | grep -q "failed with rc"; then
+        failexit "$1: sql failed"
+    fi
+}
+
+# $1: name, $2: expected ids in remote t
+expect_remote()
+{
+    local got
+    got=$($REM default "select id from t order by id" | xargs)
+    [[ "$got" != "$2" ]] && failexit "$1: remote t is '$got', expected '$2'"
+}
+
+pushw=$($SRC default "select value from comdb2_tunables where name='foreign_db_push_remote_writes'")
+[[ "$pushw" != "ON" ]] && failexit "foreign_db_push_remote_writes is '$pushw', expected ON"
+
+$REM default "create table t(id int)" || failexit "create remote t"
+# lt exists only on the source
+$SRC default "create table lt(id int)" || failexit "create lt"
+$SRC default "insert into lt select value from generate_series(1, 3)" || failexit "populate lt"
+# t2 exists on both dbs, with different rows
+$SRC default "create table t2(id int)" || failexit "create source t2"
+$SRC default "insert into t2 select value from generate_series(1001, 1003)" || failexit "populate source t2"
+$REM default "create table t2(id int)" || failexit "create remote t2"
+$REM default "insert into t2 select value from generate_series(2001, 2003)" || failexit "populate remote t2"
+
+# the remote db is known after first access
+$SRC default "select count(*) from ${RTBL}" > /dev/null || failexit "remote select"
+
+run "insert into remote, select from a source-only table" <<EOF
+insert into ${RTBL} select * from lt
+EOF
+expect_remote "source-only table" "1 2 3"
+
+run "insert into remote, select from a table on both dbs" <<EOF
+insert into ${RTBL} select id from t2
+EOF
+expect_remote "table on both dbs" "1 2 3 1001 1002 1003"
+
+run "update remote, subquery on a table on both dbs" <<EOF
+update ${RTBL} set id=id+10000 where id in (select id from t2)
+EOF
+expect_remote "update subquery" "1 2 3 11001 11002 11003"
+
+run "delete remote, subquery on a source-only table" <<EOF
+delete from ${RTBL} where id in (select id from lt)
+EOF
+expect_remote "delete subquery" "11001 11002 11003"
+
+# a qualified remote table still resolves to the remote db
+run "insert into remote, select from a qualified remote table" <<EOF
+insert into ${RTBL} select id from ${RDB}.t2
+EOF
+expect_remote "qualified remote table" "2001 2002 2003 11001 11002 11003"
+
+run "client transaction, insert into remote, select from a source table" <<EOF
+begin
+insert into ${RTBL} select id from t2 where id = 1001
+insert into ${RTBL} select id + 4000 from lt where id = 1
+commit
+EOF
+expect_remote "client transaction" "1001 2001 2002 2003 4001 11001 11002 11003"
+
+# remote cursors of the client transaction came back to this source node
+# with its txnid; the source accepts them only for an active transaction
+# registered on the node, so a wrong node or txnid fails the statements above
+if ! cat ${TESTDIR}/logs/${SECONDARY_DBNAME}*.db 2>/dev/null | grep -q "remsql cursor reads for source transaction"; then
+    failexit "no remote cursor read for the source transaction"
+fi
+
+# a pushed statement names its source node; it must be a node of the source db
+rnode=$($REM default "select host from comdb2_cluster" | head -1)
+REMNODE="${CDB2SQL_EXE} --tabs --cdb2cfg ${CDB2_CONFIG} --host ${rnode} ${DBNAME}"
+
+echo "== source node is a node of the source db"
+out=$($REMNODE - 2>&1 <<EOF
+set rempush_name ${SECONDARY_DBNAME}
+set rempush_tier default
+set rempush_node ${rnode}
+select count(*) from lt
+EOF
+)
+echo "$out"
+# drop the "[statement] rc" lines
+res=$(echo "$out" | grep -v "^\[")
+[[ "$res" != "3" ]] && failexit "valid source node: expected 3 rows from source lt, got '$res'"
+
+echo "== source node is not a node of the source db"
+out=$($REMNODE - 2>&1 <<EOF
+set rempush_name ${SECONDARY_DBNAME}
+set rempush_tier default
+set rempush_node bogusnode
+select count(*) from lt
+EOF
+)
+echo "$out"
+echo "$out" | grep -q "rempush node bogusnode is not a node of" || failexit "bogus source node was not rejected"
+
+# a remote cursor naming a source transaction that is not active is rejected
+echo "== unknown source transaction"
+out=$($SRC default - 2>&1 <<EOF
+set remsql_version 10
+set remsql_srcdbname ${DBNAME}
+set remsql_srctxn 00000000-1111-2222-3333-444444444444
+select 1
+EOF
+)
+echo "$out"
+echo "$out" | grep -q "unknown source transaction" || failexit "unknown source transaction was not rejected"
+
+echo "SUCCESS"
