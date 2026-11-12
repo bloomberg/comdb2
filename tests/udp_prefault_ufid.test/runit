@@ -1,0 +1,310 @@
+#!/usr/bin/env bash
+bash -n "$0" || exit 1
+
+# UDP prefault hints from the master to the replicants (enable_prefault_udp).
+#
+# While the master applies a transaction it sends every replicant a UDP hint
+# (USER_TYPE_UDP_PREFAULT_UFID: the file's UFID and a page number) for each
+# btree leaf page it has to read from disk.  A replicant looks the UFID up in
+# its ufid hash, pins the open handle, touches the page with DB_MPOOL_PFGET and
+# unpins, so the page is cached before replication apply needs it.
+#
+# Roles: the master is whatever node is master when the test starts and must
+# stay master; R_origin is the first replicant, where the SQL runs; R_passive is
+# the other replicant, which only applies replication.
+#
+# Phases, run separately against a table with a primary key, a payload and four
+# secondary indexes, much larger than the cache (cold leaf pages):
+#   INSERT, UPDATE (indexed columns change), DELETE, and UPDATE after a
+#   'create index' (the schema change reopens the table's files on the
+#   replicants).
+# For every phase the test asserts ("udp stat", per-file "bdb cachestatall")
+#   - master: it read pages from disk (the precondition for hints) and its
+#     "udp prefault ufid hints sent" grew;
+#   - every replicant: "ufid hints received" and "ufid hints pinned" grew and
+#     "dbreg hints received" did not (a master that went back to dbreg ids
+#     fails here), it queued udppfaultpool work, and it touched pages with
+#     DB_MPOOL_PFGET (st_page_pf_in + st_page_pf_in_late grew);
+#   - per file, on every replicant: prefault touches landed only on t's files
+#     (t_*.datasN / t_*.index), in the UPDATE phase on t's data and on every
+#     one of t's five index files (primary key + 4 secondaries), and after the
+#     create index on the new index's file, which did not exist before;
+#   - the master did not change, and all nodes hold the same, expected data
+#     (row count, column sums, a count through every index, phase-specific
+#     queries).
+# Skipped / dropped UFID hints are printed, not asserted: hints are advisory.
+# No timing or performance thresholds: every check is "grew", "0" or "equal".
+
+DBNAME=$1
+[[ -z "$DBNAME" ]] && { echo "Usage: $0 <dbname>"; exit 1; }
+[[ -z "$CLUSTER" ]] && { echo "Test only suitable for a clustered setup"; exit 0; }
+
+NROWS=200000      # rows loaded before the phases (several times the cache)
+NOPS=1000         # statements per phase
+NOPS_SC=500       # statements in the phase after create index
+
+function fail
+{
+    echo "FAIL: $*"
+    exit 1
+}
+
+# sqlh <host> <sql> : one statement on one node
+function sqlh
+{
+    local h=$1
+    shift
+    ${CDB2SQL_EXE} ${CDB2_OPTIONS} --tabs --host $h ${DBNAME} "$@"
+}
+
+function send
+{
+    sqlh $1 "exec procedure sys.cmd.send('$2')"
+}
+
+function current_master
+{
+    sqlh $1 "select host from comdb2_cluster where is_master='Y'"
+}
+
+# counters <host> : the counters this test reads, one "name value" per line
+function counters
+{
+    local h=$1
+    send $h "udp stat" | sed -n -e 's/^udp packets \(sent\|received\): \([0-9]*\)$/udp_\1 \2/p' \
+        -e 's/^udp prefault \(ufid\|dbreg\) hints \([a-z]*\)[^:]*: \([0-9]*\)$/\1_\2 \3/p'
+    send $h "bdb cachestat" | sed -n 's/^\(st_page_pf_in\|st_page_pf_in_late\|st_page_in\): \([0-9]*\)$/\1 \2/p'
+    echo "pool_dispatched $(sqlh $h "select num_passed + num_enqueued from comdb2_threadpools where name = 'udppfaultpool'")"
+}
+
+# files <host> : "<file> <st_page_in> <st_page_pf_in> <st_page_pf_in_late>" per bufferpool file
+function files
+{
+    send $1 "bdb cachestatall" | awk '
+        /^Pool file \[/ { f = $3; sub(/^\[/, "", f); sub(/\]:-$/, "", f); next }
+        f != "" && $1 == "st_page_in" { pin[f] = $3 }
+        f != "" && $1 == "st_page_pf_in" { pf[f] = $3 }
+        f != "" && $1 == "st_page_pf_in_late:" { late[f] = $2 }
+        END { for (f in pin) print f, pin[f], pf[f] + 0, late[f] + 0 }'
+}
+
+# snap <phase> <when> : counters of every node into files
+function snap
+{
+    local n
+    for n in ${nodes}; do
+        counters $n > ${TMPDIR:-/tmp}/udppf.$1.$2.$n || fail "could not read counters on $n"
+        files $n > ${TMPDIR:-/tmp}/udppf.$1.$2.$n.files || fail "could not read per-file counters on $n"
+        grep -q "^ufid_pinned " ${TMPDIR:-/tmp}/udppf.$1.$2.$n || fail "'udp stat' on $n has no udp prefault counters"
+    done
+}
+
+# fdelta <phase> <host> : "<file> <page_in> <prefault touches>" for files whose counters moved
+function fdelta
+{
+    awk 'NR == FNR { b[$1] = $2; bt[$1] = $3 + $4; next }
+         { d = $2 - b[$1]; t = $3 + $4 - bt[$1]; if (d || t) print $1, d, t }' \
+        ${TMPDIR:-/tmp}/udppf.$1.before.$2.files ${TMPDIR:-/tmp}/udppf.$1.after.$2.files
+}
+
+# delta <phase> <host> <name>
+function delta
+{
+    local b a
+    b=$(awk -v k=$3 '$1 == k {print $2}' ${TMPDIR:-/tmp}/udppf.$1.before.$2)
+    a=$(awk -v k=$3 '$1 == k {print $2}' ${TMPDIR:-/tmp}/udppf.$1.after.$2)
+    [[ -n "$b" && -n "$a" ]] || fail "counter $3 missing on $2"
+    echo $((a - b))
+}
+
+# Poll until both replicants have applied everything the master has logged
+function wait_caught_up
+{
+    local i out
+    for ((i = 0; i < 600; i++)); do
+        out=$(sqlh ${master} "select count(*) from comdb2_cluster c, comdb2_cluster m where m.is_master = 'Y' and (c.logfile != m.logfile or c.logoffset != m.logoffset)")
+        [[ "$out" == "0" ]] && return 0
+        sleep 0.5
+    done
+    fail "replicants did not catch up with the master"
+}
+
+function check_master
+{
+    local n m
+    for n in ${nodes}; do
+        m=$(current_master $n)
+        [[ "$m" == "${master}" ]] || fail "$n reports master '$m', expected ${master} (election during the test)"
+    done
+}
+
+# check_data <expected rows> : identical data on every node, and the expected row count
+function check_data
+{
+    local n v ref="" ix
+    wait_caught_up
+    for n in ${nodes}; do
+        v=$(sqlh $n "select count(*), sum(id), sum(a), sum(b), sum(c), sum(d), sum(length(pad)) from t") || fail "query failed on $n"
+        ix=$(sqlh $n "select (select count(*) from t where id >= 0), (select count(*) from t where a >= -2147483648), (select count(*) from t where b >= 0), (select count(*) from t where c >= 0), (select count(*) from t where d >= 0)") || fail "index query failed on $n"
+        echo "data $n: $v | via indexes: $ix"
+        [[ -z "$ref" ]] && ref="$v"
+        [[ "$v" == "$ref" ]] || fail "data on $n differs: '$v' vs '$ref'"
+        [[ "$(echo $v | cut -d' ' -f1)" == "$1" ]] || fail "$n has $(echo $v | cut -d' ' -f1) rows, expected $1"
+        [[ "$(echo $ix | tr ' ' '\n' | sort -u)" == "$1" ]] || fail "$n: an index count differs from $1 rows: $ix"
+    done
+}
+
+# check_hints <phase> [all-files] [snapshot before a create index] : the master
+# sent UFID hints and every replicant received them, pinned the right files and
+# prefaulted
+function check_hints
+{
+    local p=$1 n d k bad nix
+    echo "=== $p: counter deltas per node"
+    for n in ${nodes}; do
+        echo -n "$p $n $(role $n):"
+        for k in udp_sent udp_received ufid_sent ufid_received ufid_pinned ufid_skipped ufid_dropped dbreg_received \
+                 pool_dispatched st_page_in st_page_pf_in st_page_pf_in_late; do
+            echo -n " $k=$(delta $p $n $k)"
+        done
+        echo
+        fdelta $p $n | sort | sed "s/^/$p $n $(role $n) file (page_in prefault_touches): /"
+    done
+    [[ $(delta $p ${master} st_page_in) -gt 0 ]] || fail "$p: the master read no page from disk, so it had nothing to hint (cache too large for the table?)"
+    [[ $(delta $p ${master} ufid_sent) -gt 0 ]] || fail "$p: the master sent no UFID prefault hint"
+    for n in ${replicants}; do
+        [[ $(delta $p $n ufid_received) -gt 0 ]] || fail "$p: $(role $n) $n received no UFID hint"
+        [[ $(delta $p $n ufid_pinned) -gt 0 ]] || fail "$p: $(role $n) $n pinned no file for a UFID hint"
+        [[ $(delta $p $n dbreg_received) -eq 0 ]] || fail "$p: $(role $n) $n received legacy dbreg-id hints"
+        [[ $(delta $p $n pool_dispatched) -gt 0 ]] || fail "$p: $(role $n) $n queued no udp prefault work"
+        d=$(($(delta $p $n st_page_pf_in) + $(delta $p $n st_page_pf_in_late)))
+        [[ $d -gt 0 ]] || fail "$p: $(role $n) $n prefaulted no page"
+        bad=$(fdelta $p $n | awk '$3 > 0 && $1 !~ /(^|[.\/])t_[0-9a-f]+\.(datas[0-9]+|index)$/ {print $1}')
+        [[ -z "$bad" ]] || fail "$p: $(role $n) $n prefaulted files that are not t's: $bad"
+        if [[ -n "$2" ]]; then
+            fdelta $p $n | awk '$3 > 0' | grep -q -E '\.datas[0-9]+ ' || fail "$p: $(role $n) $n prefaulted no data page of t"
+            nix=$(fdelta $p $n | awk '$3 > 0 && $1 ~ /\.index$/' | wc -l)
+            [[ $nix -eq 5 ]] || fail "$p: $(role $n) $n prefaulted $nix of t's 5 index files"
+        fi
+        if [[ -n "$3" ]]; then
+            # $3: a per-file snapshot taken before the create index
+            nix=$(fdelta $p $n | awk 'NR == FNR { old[$1] = 1; next } $3 > 0 && $1 ~ /\.index$/ && !($1 in old)' \
+                  ${TMPDIR:-/tmp}/udppf.$3.$n.files - | wc -l)
+            [[ $nix -ge 1 ]] || fail "$p: $(role $n) $n prefaulted no page of the new index's file"
+        fi
+    done
+}
+
+function role
+{
+    case $1 in
+    ${master}) echo M ;;
+    ${origin}) echo R_origin ;;
+    *) echo R_passive ;;
+    esac
+}
+
+# run_phase <name> <file with one statement per line> [all-files] [snapshot
+# before a create index] : the statements run one by one (autocommit) on R_origin
+function run_phase
+{
+    local p=$1 f=$2 out
+    echo "=== phase $p: $(wc -l < $f) statements on R_origin ${origin}, master ${master}"
+    check_master
+    wait_caught_up
+    snap $p before
+    out=$(${CDB2SQL_EXE} ${CDB2_OPTIONS} -s --host ${origin} ${DBNAME} - < $f 2>&1) || fail "$p: statements failed on ${origin}: $(echo "$out" | tail -3)"
+    echo "$out" | grep -i -E "error|fail" && fail "$p: statement errors on ${origin}"
+    wait_caught_up
+    snap $p after
+    check_master
+    check_hints $p "$3" "$4"
+}
+
+# h <n> <salt> : deterministic, spread over the loaded key range of every index
+function h
+{
+    echo $(( (($1 * 2654435761) + $2 * 40503) % (NROWS * 7) ))
+}
+
+nodes=$(echo ${CLUSTER} | tr ' ' '\n' | sort | xargs)
+first=$(echo ${nodes} | cut -d' ' -f1)
+master=$(current_master ${first})
+[[ -n "${master}" ]] || fail "no master"
+replicants=$(for n in ${nodes}; do [[ $n != ${master} ]] && echo $n; done | xargs)
+origin=$(echo ${replicants} | cut -d' ' -f1)
+[[ -n "${origin}" ]] || fail "need at least one replicant"
+echo "master ${master}, R_origin ${origin}, R_passive $(echo ${replicants} | cut -d' ' -s -f2-)"
+
+for n in ${nodes}; do
+    for tn in enable_prefault_udp udp_prefault_async rep_write_hints; do
+        v=$(sqlh $n "select value from comdb2_tunables where name = '$tn'")
+        [[ "$v" == "ON" ]] || fail "$tn is '$v' on $n (lrl.options turns it on)"
+    done
+done
+
+sqlh ${master} "drop table if exists t"
+sqlh ${master} "create table t(id int primary key, a int, b int, c int, d int, pad cstring(64))" || fail "create table"
+for c in a b c d; do
+    sqlh ${master} "create index ix_$c on t($c)" || fail "create index ix_$c"
+done
+B=50000
+for ((s = 1; s <= NROWS; s += B)); do
+    # ascending secondary keys keep the load cheap with a small cache; the
+    # phases then use keys spread over these ranges, i.e. cold leaf pages
+    sqlh ${master} "insert into t select value, value * 7, value * 11, value * 13, value * 17, printf('%060d', value) from generate_series($s, $((s + B - 1)))" || fail "load at $s"
+done
+check_data ${NROWS}
+
+W=${TMPDIR:-/tmp}/udppf.$$
+mkdir -p $W
+
+# INSERT: new keys above the loaded range, random secondary keys
+for ((i = 0; i < NOPS; i++)); do
+    k=$((1000000 + i))
+    echo "insert into t values($k, $(h $k 1), $(h $k 2), $(h $k 3), $(h $k 4), printf('%060d', $k))"
+done > $W/insert.sql
+run_phase INSERT $W/insert.sql
+check_data $((NROWS + NOPS))
+[[ $(sqlh ${origin} "select count(*) from t where id >= 1000000") == ${NOPS} ]] || fail "INSERT: inserted rows not found"
+
+# UPDATE: distinct existing rows (7919 is coprime with NROWS); every indexed column
+# changes, a becomes negative so the rows are found through ix_a afterwards
+for ((i = 0; i < NOPS; i++)); do
+    k=$((1 + (i * 7919) % NROWS))
+    echo "update t set a = -$k, b = $(h $k 5), c = $(h $k 6), d = $(h $k 7) where id = $k"
+done > $W/update.sql
+run_phase UPDATE $W/update.sql all-files
+check_data $((NROWS + NOPS))
+for n in ${nodes}; do
+    [[ $(sqlh $n "select count(*) from t where a < 0") == ${NOPS} ]] || fail "UPDATE: $n finds a wrong number of updated rows through ix_a"
+done
+
+# DELETE: distinct existing rows (104729 is coprime with NROWS)
+for ((i = 0; i < NOPS; i++)); do
+    echo "delete from t where id = $((1 + (i * 104729) % NROWS))"
+done > $W/delete.sql
+run_phase DELETE $W/delete.sql
+check_data ${NROWS}
+for n in ${nodes}; do
+    [[ $(sqlh $n "select count(*) from t where id in ($(for i in 0 1 2 3 4 5 6 7; do echo -n "$((1 + (i * 104729) % NROWS)),"; done)0)") == 0 ]] || fail "DELETE: deleted rows still visible on $n"
+done
+
+# UPDATE after a schema change: the replicants apply the new index's btree and
+# switch to the new table version; hints must keep working for the table's files
+sqlh ${master} "create index ix_ad on t(a, d)" || fail "create index ix_ad"
+check_data ${NROWS}
+for ((i = 0; i < NOPS_SC; i++)); do
+    k=$((1 + (i * 15485863) % NROWS))
+    echo "update t set a = $(h $k 8), d = $(h $k 9) where id = $k"
+done > $W/update_sc.sql
+run_phase UPDATE_AFTER_CREATE_INDEX $W/update_sc.sql "" DELETE.after
+check_data ${NROWS}
+for n in ${nodes}; do
+    [[ $(sqlh $n "select count(*) from comdb2_keys where tablename = 't'") == 6 ]] || fail "$n does not have the 6 indexes of t"
+done
+
+sqlh ${master} "drop table t" || fail "drop table"
+rm -rf $W ${TMPDIR:-/tmp}/udppf.*
+echo "Success"
+exit 0

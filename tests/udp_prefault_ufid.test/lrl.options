@@ -1,0 +1,9 @@
+# The master hints only leaf pages it reads from disk: keep the cache much
+# smaller than the table so every phase reads cold pages (the default minimum
+# cache is 64 MB)
+cachekbmin 8192
+cache 8 mb
+# The UDP prefault features are off by default: this test needs them on
+enable_prefault_udp
+udp_prefault_async 1
+rep_write_hints 1
