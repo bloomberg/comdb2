@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 bash -n "$0" || exit 1
 
-# active_connections in comdb2_metrics counts client connections that are
-# queued, running, or idle inside a client transaction.
+# active_connections in comdb2_metrics counts client connections the server
+# cannot close: new (still in new_connection_grace_ms), queued, running, or
+# idle inside a client transaction.
 
 dbnm=$1
 export CDB2_DISABLE_SOCKPOOL=1
@@ -84,6 +85,21 @@ echo "select 'txn_done'" >&4
 wait_output txn_done $txnout
 wait_active 1
 
-exec 3>&- 4>&-
+# A connection that has not sent a request yet: counted while the server cannot
+# close it (new_connection_grace_ms, 3s in lrl.options), then it is plain idle
+connhost=${host:-localhost}
+port=$($admin "select port from comdb2_cluster where host='$host'")
+[[ -n "$port" ]] || port=$($admin "select port from comdb2_cluster limit 1")
+exec 5<>/dev/tcp/$connhost/$port || failexit "cannot connect to $connhost:$port"
+printf 'newsql\n' >&5
+wait_active 2
+id=$($admin "select connection_id from comdb2_connections where state='new'")
+[[ "$id" =~ ^[0-9]+$ ]] || failexit "expected 1 new connection, got '$id'"
+# Same connection, still open, now idle and no longer counted
+wait_active 1
+s=$($admin "select state from comdb2_connections where connection_id=$id")
+[[ "$s" == "idle" ]] || failexit "connection $id is '$s' after its grace period, expected idle"
+
+exec 3>&- 4>&- 5>&-
 wait
 echo "Success"

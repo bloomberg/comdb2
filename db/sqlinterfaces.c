@@ -6396,15 +6396,16 @@ static const char* connstate_str(enum connection_state s) {
     }
 }
 
-/* Client connections that are queued, running, or idle inside a client transaction */
+/* Client connections the server cannot close: new (still in new_connection_grace_ms), queued, running,
+ * waiting to retry, or idle inside a client transaction */
 static int32_t active_connections = 0;
 
 /* Call with state_lk held */
 static void update_active_connection(struct sqlclntstate *clnt)
 {
-    int active = clnt->in_sql_evbuffers &&
-                 (clnt->state == CONNECTION_QUEUED || clnt->state == CONNECTION_RUNNING ||
-                  clnt->state == CONNECTION_RETRY_WAIT || (clnt->state == CONNECTION_IDLE && in_client_trans(clnt)));
+    int active = clnt->in_sql_evbuffers && (clnt->state == CONNECTION_NEW || clnt->state == CONNECTION_QUEUED ||
+                                            clnt->state == CONNECTION_RUNNING || clnt->state == CONNECTION_RETRY_WAIT ||
+                                            (clnt->state == CONNECTION_IDLE && in_client_trans(clnt)));
     if (active != clnt->in_active_count) {
         ATOMIC_ADD32(active_connections, active ? 1 : -1);
         clnt->in_active_count = active;
@@ -7048,6 +7049,10 @@ void add_lru_evbuffer(struct sqlclntstate *clnt)
         TAILQ_INSERT_HEAD(&lru_evbuffers, clnt, lru_entry);
     }
     Pthread_mutex_unlock(&lru_evbuffers_mtx);
+    /* The server may close it now, so it is no longer new (and no longer counted as active) */
+    if (clnt->state == CONNECTION_NEW) {
+        clnt_change_state(clnt, CONNECTION_IDLE);
+    }
 }
 
 static void rem_lru_evbuffer_int(struct sqlclntstate *clnt)
