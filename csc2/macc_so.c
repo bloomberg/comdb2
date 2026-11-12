@@ -975,9 +975,9 @@ void key_setpartialdatakey(void)
     }
 
     // check for decimal columns (currently not supported)
-    struct table *tbl = &macc_globals->tables[macc_globals->ntables - 1];
+    struct table *tbl = macc_globals->ntables ? &macc_globals->tables[macc_globals->ntables - 1] : NULL;
     int type;
-    for (int i = 0; i < tbl->nsym; i++) {
+    for (int i = 0; tbl && i < tbl->nsym; i++) {
         type = tbl->sym[i].type;
         if (type == T_DECIMAL32 || type == T_DECIMAL64 || type == T_DECIMAL128) {
             csc2_error("Error at line %3d: CURRENTLY CANNOT HAVE PARTIAL DATACOPY WITH DECIMAL COLUMNS.\n",
@@ -1978,10 +1978,13 @@ void start_table(char *tag, int preset)
 
 void end_table()
 {
-    if (any_errors == 0)
+    /* start_table() may have rejected the tag without claiming the slot */
+    if (any_errors == 0) {
         if (compute_all_data(macc_globals->ntables) != 0)
             ++any_errors;
-    macc_globals->ntables++;
+        else
+            macc_globals->ntables++;
+    }
     unionflag = 0;
     macc_globals->current_union = 0;
     macc_globals->union_index = -1;
