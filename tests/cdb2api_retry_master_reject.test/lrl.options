@@ -1,0 +1,2 @@
+forbid_remote_admin 0
+setattr MASTER_REJECT_REQUESTS 1

@@ -5441,6 +5441,8 @@ static int retry_queries(cdb2_hndl_tp *hndl, int num_retry, int run_last)
             bzero(hndl->hosts_connected, sizeof(hndl->hosts_connected));
             hndl->connected_host = -1;
         }
+        /* Retry on the chosen host, not another pooled connection to this node */
+        hndl->is_rejected = 1;
         debugprint("type=%d returning 1\n", type);
 
         /* Clear cached SSL sessions - Hosts may have changed. */
@@ -6475,6 +6477,9 @@ read_record:
                 /* direct cpu should not do anything with dbinfo, just retry */
                 GOTO_RETRY_QUERIES();
             }
+            /* Retry on the chosen host, not another pooled connection to this node. Set this before
+             * newsql_disconnect so the master's connection isn't donated back to sockpool. */
+            hndl->is_rejected = 1;
             /* We got back info about nodes that might be coherent. */
             CDB2DBINFORESPONSE *dbinfo_response = cdb2__dbinforesponse__unpack(NULL, len, hndl->first_buf);
             if (dbinfo_response) {
