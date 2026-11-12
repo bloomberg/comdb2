@@ -95,6 +95,9 @@ printf 'newsql\n' >&5
 wait_active 2
 id=$($admin "select connection_id from comdb2_connections where state='new'")
 [[ "$id" =~ ^[0-9]+$ ]] || failexit "expected 1 new connection, got '$id'"
+# The db is older than 5s by now (sleep(5) + sleep(1) above), so a time_in_state since db start would fail this
+n=$($admin "select count(*) from comdb2_connections where state='new' and time_in_state < cast(5 as seconds)")
+[[ "$n" == "1" ]] || failexit "time_in_state of the new connection is not since it connected"
 # Same connection, still open, now idle and no longer counted
 wait_active 1
 s=$($admin "select state from comdb2_connections where connection_id=$id")
