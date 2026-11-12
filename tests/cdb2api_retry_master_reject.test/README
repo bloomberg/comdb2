@@ -1,0 +1,5 @@
+Verify that a query rejected by the master (which replies with dbinfo) is
+retried on a replicant rather than on another pooled connection to the master.
+Sockpool is filled with connections to the master, and a query must succeed on
+a replicant within a few attempts instead of failing with "Maximum number of
+retries done".

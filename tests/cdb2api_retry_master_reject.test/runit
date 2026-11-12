@@ -1,0 +1,26 @@
+#!/usr/bin/env bash
+bash -n "$0" || exit 1
+
+source ${TESTSROOTDIR}/tools/runit_common.sh
+
+[[ -z "$CLUSTER" ]] && failexit "This test requires a CLUSTER"
+
+function sockpool_set
+{
+    timeout 5 bash -c "echo 'set $1 $2' > /tmp/msgtrap.sockpool"
+}
+
+pgrep cdb2sockpool >/dev/null
+if [[ $? -ne 0 ]]; then
+    ${BUILDDIR}/tools/cdb2sockpool/cdb2sockpool
+    sleep 1
+    pgrep cdb2sockpool >/dev/null || failexit "Couldn't bring up sockpool"
+fi
+
+sockpool_set pool_max_fds_per_db 0 || failexit "Couldn't configure sockpool"
+trap "sockpool_set pool_max_fds_per_db 4" EXIT
+sleep 2
+
+${TESTSBUILDDIR}/cdb2api_retry_master_reject $DBNAME || failexit "cdb2api_retry_master_reject failed"
+
+echo "Success!"
