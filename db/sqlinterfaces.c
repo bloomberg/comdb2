@@ -7013,6 +7013,7 @@ void reqlog_long_running_sql_statements(void)
 void add_sql_evbuffer(struct sqlclntstate *clnt)
 {
     clnt->state = CONNECTION_NEW;
+    clnt->state_start_time = comdb2_time_epochms();
     clnt->connect_time = comdb2_time_epoch();
     clnt->connid = ATOMIC_ADD64(connid, 1);
     Pthread_mutex_lock(&lru_evbuffers_mtx);
