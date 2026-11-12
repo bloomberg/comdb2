@@ -1,0 +1,442 @@
+#!/usr/bin/env bash
+bash -n "$0" || exit 1
+
+# Replica write hints (rep_write_hints).
+#
+# While a SQL statement runs on a replica, the replica records the distinct
+# btree leaf pages it reads (at most 32).  If the statement shipped a write to
+# the master, the replica sends those pages to the master in one lossy UDP
+# packet (USER_TYPE_REP_WRITE_HINTS) at the end of the statement; with
+# udp_prefault_async the packet goes through the sender thread.  The master
+# prefetches the pages in its udppfaultpool, so its block processor finds them
+# cached.
+#
+# Roles: the master is whatever node is master when the test starts; R is the
+# first replicant, where the SQL runs; P is the other replicant.
+#
+# What is counted ("udp stat", "bdb cachestat"):
+#   - R, packets: "udp prefault async write-hint packets queued", plus the ones
+#     dropped (queue full / no master).  This counts packets, not UDP
+#     delivery, so it is exact.
+#   - master, pages: "udp prefault ufid hints pinned + skipped + dropped".  On
+#     the master only replica write hints feed these counters (it never
+#     receives master-to-replica hints: its "ufid hints received" must stay
+#     0).  UDP is lossy, so the master side is only checked as "grew" or
+#     "at most".
+#
+# Cases (every one ends with identical data on every node and the expected
+# sums):
+#   A  read-only statements send nothing
+#   B  single-row UPDATEs: one packet per statement, the master prefetches
+#      (reads pages from disk with a cache much smaller than the table)
+#   C  a multi-statement transaction: one packet per write statement
+#   D  an UPDATE that reads more than 32 leaf pages: one packet, at most 32
+#      pages
+#   E  a SELECT that reads many pages, then an UPDATE of a small table, in
+#      one transaction: only the UPDATE's pages are sent
+#   F  a write that changes no row, and a write that fails on the replica,
+#      send nothing, and nothing carries over to the next statement
+#   G  ROLLBACK leaves the data unchanged everywhere
+#   H  runtime toggles: rep_write_hints off on R (nothing sent), off on the
+#      master (sent, not used), udp_prefault_async off on R (sent directly)
+#   I  master change under load: identical data afterwards, and the hints go
+#      to the new master
+# No timing or performance thresholds.
+
+DBNAME=$1
+[[ -z "$DBNAME" ]] && { echo "Usage: $0 <dbname>"; exit 1; }
+[[ -z "$CLUSTER" ]] && { echo "Test only suitable for a clustered setup"; exit 0; }
+
+NROWS=200000     # rows in t, several times the cache
+NTB=100          # rows in tb (fits in one leaf page per file)
+NUPD=200         # statements in case B
+W=${TMPDIR:-/tmp}/rwh.$$
+mkdir -p $W
+
+function fail
+{
+    echo "FAIL: $*"
+    exit 1
+}
+
+# sqlh <host> <sql> : one statement on one node
+function sqlh
+{
+    local h=$1
+    shift
+    ${CDB2SQL_EXE} ${CDB2_OPTIONS} --tabs --host $h ${DBNAME} "$@"
+}
+
+function send
+{
+    sqlh $1 "exec procedure sys.cmd.send('$2')"
+}
+
+function current_master
+{
+    sqlh $1 "select host from comdb2_cluster where is_master='Y'"
+}
+
+function put_tunable
+{
+    sqlh $1 "put tunable $2 $3" > /dev/null || fail "put tunable $2 $3 on $1"
+    [[ "$(sqlh $1 "select value from comdb2_tunables where name = '$2'")" == "$4" ]] || fail "$2 is not $4 on $1"
+}
+
+# counters <host> : "name value" per line.  The async sender starts on first
+# use, so its lines may be missing: delta() treats a missing counter as 0.
+function counters
+{
+    send $1 "udp stat" | awk -F': ' '
+        $1 == "udp prefault ufid hints received" { print "ufid_received", $2 }
+        $1 == "udp prefault ufid hints sent" { print "ufid_sent", $2 }
+        $1 == "udp prefault ufid hints pinned" { print "ufid_pinned", $2 }
+        $1 == "udp prefault ufid hints skipped (file not open)" { print "ufid_skipped", $2 }
+        $1 == "udp prefault ufid hints dropped (queue full)" { print "ufid_dropped", $2 }
+        $1 == "udp prefault async write-hint packets queued" { print "wh_queued", $2 }
+        $1 == "udp prefault async write-hint packets dropped (queue full)" { print "wh_full", $2 }
+        $1 == "udp prefault async write-hint packets dropped (no master)" { print "wh_nomaster", $2 }'
+    send $1 "bdb cachestat" | sed -n 's/^\(st_page_pf_in\|st_page_pf_in_late\|st_page_in\): \([0-9]*\)$/\1 \2/p'
+}
+
+# snap <tag> : counters of every node
+function snap
+{
+    local n
+    for n in ${nodes}; do
+        counters $n > $W/$1.$n || fail "could not read counters on $n"
+        grep -q "^ufid_pinned " $W/$1.$n || fail "'udp stat' on $n has no udp prefault counters"
+    done
+}
+
+# delta <case> <host> <name> : after - before, a missing counter is 0
+function delta
+{
+    local b a
+    b=$(awk -v k=$3 '$1 == k {print $2}' $W/$1.before.$2)
+    a=$(awk -v k=$3 '$1 == k {print $2}' $W/$1.after.$2)
+    echo $((${a:-0} - ${b:-0}))
+}
+
+# packets <case> : write-hint packets R produced (queued + dropped)
+function packets
+{
+    echo $(($(delta $1 ${origin} wh_queued) + $(delta $1 ${origin} wh_full) + $(delta $1 ${origin} wh_nomaster)))
+}
+
+# pages <case> : write-hint pages that reached the master's prefetch pool
+function pages
+{
+    echo $(($(delta $1 ${master} ufid_pinned) + $(delta $1 ${master} ufid_skipped) + $(delta $1 ${master} ufid_dropped)))
+}
+
+# Poll until every replicant has applied everything the master has logged
+function wait_caught_up
+{
+    local i out
+    for ((i = 0; i < 600; i++)); do
+        out=$(sqlh ${master} "select count(*) from comdb2_cluster c, comdb2_cluster m where m.is_master = 'Y' and (c.logfile != m.logfile or c.logoffset != m.logoffset)")
+        [[ "$out" == "0" ]] && return 0
+        sleep 0.5
+    done
+    fail "replicants did not catch up with the master"
+}
+
+# Wait until the master's prefetch pool has stopped taking hints
+function settle
+{
+    local i last="" now
+    wait_caught_up
+    for ((i = 0; i < 40; i++)); do
+        now=$(send ${master} "udp stat" | grep -E "^udp prefault ufid hints (pinned|skipped|dropped)" | xargs)
+        [[ -n "$last" && "$now" == "$last" ]] && return 0
+        last="$now"
+        sleep 0.5
+    done
+}
+
+function check_master
+{
+    local n m
+    for n in ${nodes}; do
+        m=$(current_master $n)
+        [[ "$m" == "${master}" ]] || fail "$n reports master '$m', expected ${master} (election during the test)"
+    done
+}
+
+# check_data : identical data on every node, and the expected sums
+function check_data
+{
+    local n v ref=""
+    wait_caught_up
+    for n in ${nodes}; do
+        v=$(sqlh $n "select (select count(*) || ' ' || sum(id) || ' ' || sum(v) || ' ' || sum(length(pad)) from t), (select count(*) || ' ' || sum(v) from tb)") || fail "query failed on $n"
+        v=$(echo $v)
+        [[ -z "$ref" ]] && ref="$v"
+        [[ "$v" == "$ref" ]] || fail "data on $n differs: '$v' vs '$ref'"
+    done
+    echo "data on every node: $ref"
+    [[ "$ref" == "${EXPECT}" ]] || fail "data '$ref', expected '${EXPECT}'"
+}
+
+function expect
+{
+    EXPECT="$1 $(( $1 * ($1 + 1) / 2 )) $2 $(( $1 * 64 )) ${NTB} $3"
+}
+
+# run_case <case> <file with statements> [expected error] : the statements run
+# in one session on R; prints the counter deltas
+function run_case
+{
+    local c=$1 f=$2 out rc
+    echo "=== case $c on R ${origin}, master ${master}:"
+    sed 's/^/    /' $f | head -12
+    check_master
+    settle
+    snap $c.before
+    out=$(${CDB2SQL_EXE} ${CDB2_OPTIONS} -s --host ${origin} ${DBNAME} - < $f 2>&1)
+    rc=$?
+    if [[ -n "$3" ]]; then
+        echo "$out" | grep -q -i -- "$3" || fail "$c: expected an error matching '$3', got: $(echo "$out" | tail -3)"
+    else
+        [[ $rc -eq 0 ]] || fail "$c: statements failed on ${origin}: $(echo "$out" | tail -3)"
+        echo "$out" | grep -i -E "error|fail" && fail "$c: statement errors on ${origin}"
+    fi
+    settle
+    snap $c.after
+    check_master
+    echo "$c: R write-hint packets $(packets $c) (dropped: queue full $(delta $c ${origin} wh_full), no master $(delta $c ${origin} wh_nomaster));" \
+         "master: hint pages $(pages $c) (skipped $(delta $c ${master} ufid_skipped), dropped $(delta $c ${master} ufid_dropped))," \
+         "prefetch reads $(( $(delta $c ${master} st_page_pf_in) + $(delta $c ${master} st_page_pf_in_late) )), page-ins $(delta $c ${master} st_page_in)"
+    [[ $(delta $c ${master} ufid_received) -eq 0 ]] || fail "$c: the master received master-to-replica hints"
+}
+
+# Every key below is spread over t with a step coprime with NROWS
+function key
+{
+    echo $(( 1 + ($1 * 7919) % NROWS ))
+}
+
+nodes=$(echo ${CLUSTER} | tr ' ' '\n' | sort | xargs)
+first=$(echo ${nodes} | cut -d' ' -f1)
+master=$(current_master ${first})
+[[ -n "${master}" ]] || fail "no master"
+replicants=$(for n in ${nodes}; do [[ $n != ${master} ]] && echo $n; done | xargs)
+origin=$(echo ${replicants} | cut -d' ' -f1)
+[[ -n "${origin}" ]] || fail "need at least one replicant"
+echo "master ${master}, R ${origin}, P $(echo ${replicants} | cut -d' ' -s -f2-)"
+
+for n in ${nodes}; do
+    for tn in rep_write_hints udp_prefault_async; do
+        v=$(sqlh $n "select value from comdb2_tunables where name = '$tn'")
+        [[ "$v" == "ON" ]] || fail "$tn is '$v' on $n"
+    done
+done
+
+sqlh ${master} "drop table if exists t"
+sqlh ${master} "drop table if exists tb"
+sqlh ${master} "create table t(id int primary key, v int, pad cstring(65))" || fail "create table t"
+sqlh ${master} "create table tb(id int primary key, v int)" || fail "create table tb"
+B=50000
+for ((s = 1; s <= NROWS; s += B)); do
+    sqlh ${master} "insert into t select value, 0, printf('%064d', value) from generate_series($s, $((s + B - 1)))" || fail "load at $s"
+done
+sqlh ${master} "insert into tb select value, 0 from generate_series(1, ${NTB})" || fail "load tb"
+VT=0    # expected sum(v) of t
+VTB=0   # expected sum(v) of tb
+expect ${NROWS} ${VT} ${VTB}
+check_data
+
+# A: read-only statements on R record pages but send nothing
+{
+    for ((i = 0; i < 100; i++)); do echo "select v from t where id = $(key $i)"; done
+    echo "select count(*), sum(v) from t where id between 1 and 20000"
+    echo "select count(*) from tb"
+} > $W/a.sql
+run_case A $W/a.sql
+[[ $(packets A) -eq 0 ]] || fail "A: read-only statements produced $(packets A) write-hint packets"
+[[ $(pages A) -eq 0 ]] || fail "A: the master got $(pages A) hint pages for read-only statements"
+check_data
+
+# B: single-row UPDATEs (autocommit), keys spread over t: one packet each,
+# and the master prefetches pages it did not have
+for ((i = 0; i < NUPD; i++)); do echo "update t set v = v + 1 where id = $(key $((1000 + i)))"; done > $W/b.sql
+run_case B $W/b.sql
+VT=$((VT + NUPD))
+[[ $(packets B) -eq ${NUPD} ]] || fail "B: $(packets B) write-hint packets for ${NUPD} UPDATEs"
+[[ $(pages B) -gt 0 ]] || fail "B: no write-hint page reached the master"
+[[ $(pages B) -le $((32 * NUPD)) ]] || fail "B: $(pages B) pages for ${NUPD} packets of at most 32"
+[[ $(( $(delta B ${master} st_page_pf_in) + $(delta B ${master} st_page_pf_in_late) )) -gt 0 ]] || fail "B: the master prefetched no page from disk (cache too large for the table?)"
+expect ${NROWS} ${VT} ${VTB}
+check_data
+
+# C: one transaction of 10 UPDATEs: one packet per write statement
+{
+    echo "begin"
+    for ((i = 0; i < 10; i++)); do echo "update t set v = v + 1 where id = $(key $((2000 + i)))"; done
+    echo "commit"
+} > $W/c.sql
+run_case C $W/c.sql
+VT=$((VT + 10))
+[[ $(packets C) -eq 10 ]] || fail "C: $(packets C) write-hint packets for 10 UPDATEs in one transaction"
+[[ $(pages C) -gt 0 ]] || fail "C: no write-hint page reached the master"
+expect ${NROWS} ${VT} ${VTB}
+check_data
+
+# D: UPDATEs of 5000 consecutive rows each read far more than 32 leaf pages:
+# one packet per statement, at most 32 pages each
+{
+    echo "update t set v = v + 1 where id between 50001 and 55000"
+    echo "update t set v = v + 1 where id between 150001 and 155000"
+} > $W/d.sql
+run_case D $W/d.sql
+VT=$((VT + 10000))
+[[ $(packets D) -eq 2 ]] || fail "D: $(packets D) write-hint packets for 2 UPDATEs"
+[[ $(pages D) -gt 0 && $(pages D) -le 64 ]] || fail "D: $(pages D) hint pages for 2 packets of at most 32"
+expect ${NROWS} ${VT} ${VTB}
+check_data
+
+# E: in one transaction, a SELECT that reads many pages of t, then an UPDATE
+# of tb (one leaf page per file): only tb's pages are sent
+{
+    for ((i = 1; i <= 5; i++)); do
+        echo "begin"
+        echo "select count(*), sum(v) from t where id between $((i * 20000)) and $((i * 20000 + 20000))"
+        echo "update tb set v = v + 1 where id = $i"
+        echo "commit"
+    done
+} > $W/e.sql
+run_case E $W/e.sql
+VTB=$((VTB + 5))
+[[ $(packets E) -eq 5 ]] || fail "E: $(packets E) write-hint packets for 5 UPDATEs"
+[[ $(pages E) -gt 0 ]] || fail "E: no write-hint page reached the master"
+[[ $(pages E) -le 20 ]] || fail "E: $(pages E) hint pages for 5 single-row UPDATEs of tb: the SELECTs' pages were sent"
+expect ${NROWS} ${VT} ${VTB}
+check_data
+
+# F: a write that changes no row and a write that fails on the replica send
+# nothing; the next statement sends only its own pages
+{
+    echo "update t set v = v + 1 where id = -5"
+    echo "update t set v = v + 1 where id between -100 and -1"
+} > $W/f1.sql
+run_case F1 $W/f1.sql
+[[ $(packets F1) -eq 0 ]] || fail "F1: $(packets F1) write-hint packets for UPDATEs that change no row"
+{
+    echo "select count(*), sum(v) from t where id between 1 and 20000"
+    echo "update t set pad = printf('%0200d', 1) where id = 77"
+} > $W/f2.sql
+run_case F2 $W/f2.sql "incompatible\|error\|fail"
+[[ $(packets F2) -eq 0 ]] || fail "F2: $(packets F2) write-hint packets for an UPDATE that failed on the replica"
+expect ${NROWS} ${VT} ${VTB}
+check_data
+{
+    echo "select count(*), sum(v) from t where id between 1 and 20000"
+    echo "update t set pad = printf('%0200d', 1) where id = 78"
+    echo "update tb set v = v + 1 where id = 10"
+} > $W/f3.sql
+run_case F3 $W/f3.sql "incompatible\|error\|fail"
+VTB=$((VTB + 1))
+[[ $(packets F3) -eq 1 ]] || fail "F3: $(packets F3) write-hint packets, expected 1 (the tb UPDATE)"
+[[ $(pages F3) -le 4 ]] || fail "F3: $(pages F3) hint pages for a single-row UPDATE of tb: earlier pages carried over"
+expect ${NROWS} ${VT} ${VTB}
+check_data
+
+# G: ROLLBACK leaves the data unchanged everywhere.  The UPDATEs' packets
+# have already left at the end of each statement: printed, not checked.
+{
+    echo "begin"
+    for ((i = 0; i < 5; i++)); do echo "update t set v = v + 100 where id = $(key $((3000 + i)))"; done
+    echo "update tb set v = v + 100 where id = 20"
+    echo "rollback"
+} > $W/g.sql
+run_case G $W/g.sql
+echo "G: write-hint packets sent before the ROLLBACK: $(packets G)"
+expect ${NROWS} ${VT} ${VTB}
+check_data
+for n in ${nodes}; do
+    [[ $(sqlh $n "select count(*) from t where v >= 100") == 0 ]] || fail "G: rolled-back UPDATEs visible on $n"
+    [[ $(sqlh $n "select v from tb where id = 20") == 0 ]] || fail "G: rolled-back tb UPDATE visible on $n"
+done
+
+# H: runtime toggles
+for ((i = 0; i < 20; i++)); do echo "update t set v = v + 1 where id = $(key $((4000 + i)))"; done > $W/h1.sql
+put_tunable ${origin} rep_write_hints 0 OFF
+run_case H_R_OFF $W/h1.sql
+VT=$((VT + 20))
+[[ $(packets H_R_OFF) -eq 0 ]] || fail "H: R sent $(packets H_R_OFF) write-hint packets with rep_write_hints off"
+[[ $(pages H_R_OFF) -eq 0 ]] || fail "H: the master got $(pages H_R_OFF) hint pages with rep_write_hints off on R"
+put_tunable ${origin} rep_write_hints 1 ON
+
+for ((i = 0; i < 20; i++)); do echo "update t set v = v + 1 where id = $(key $((5000 + i)))"; done > $W/h2.sql
+put_tunable ${master} rep_write_hints 0 OFF
+run_case H_M_OFF $W/h2.sql
+VT=$((VT + 20))
+[[ $(packets H_M_OFF) -eq 20 ]] || fail "H: R sent $(packets H_M_OFF) write-hint packets for 20 UPDATEs"
+[[ $(pages H_M_OFF) -eq 0 ]] || fail "H: the master used $(pages H_M_OFF) hint pages with rep_write_hints off"
+put_tunable ${master} rep_write_hints 1 ON
+
+for ((i = 0; i < 20; i++)); do echo "update t set v = v + 1 where id = $(key $((6000 + i)))"; done > $W/h3.sql
+put_tunable ${origin} udp_prefault_async 0 OFF
+run_case H_SYNC $W/h3.sql
+VT=$((VT + 20))
+[[ $(packets H_SYNC) -eq 0 ]] || fail "H: the sender thread queued $(packets H_SYNC) packets with udp_prefault_async off"
+[[ $(pages H_SYNC) -gt 0 ]] || fail "H: no write-hint page reached the master with udp_prefault_async off on R"
+put_tunable ${origin} udp_prefault_async 1 ON
+
+for ((i = 0; i < 20; i++)); do echo "update t set v = v + 1 where id = $(key $((7000 + i)))"; done > $W/h4.sql
+run_case H_ON $W/h4.sql
+VT=$((VT + 20))
+[[ $(packets H_ON) -eq 20 ]] || fail "H: R sent $(packets H_ON) write-hint packets after the toggles"
+[[ $(pages H_ON) -gt 0 ]] || fail "H: no write-hint page reached the master after the toggles"
+expect ${NROWS} ${VT} ${VTB}
+check_data
+
+# I: master change under load.  Writers insert into tb through R while the
+# master downgrades; then every node must hold the same data, and a replica
+# must send its hints to the new master.
+echo "=== case I: downgrade ${master} under load"
+for ((w = 0; w < 4; w++)); do
+    for ((i = 1; i <= 5000; i++)); do echo "insert into tb values($((1000000 + w * 100000 + i)), 1)"; done > $W/i.$w.sql
+    ${CDB2SQL_EXE} ${CDB2_OPTIONS} -s --host ${origin} ${DBNAME} - < $W/i.$w.sql > $W/i.$w.out 2>&1 &
+done
+sleep 3
+old=${master}
+send ${old} "downgrade" > /dev/null
+for ((i = 0; i < 120; i++)); do
+    m=$(current_master ${origin} 2>/dev/null)
+    [[ -n "$m" && "$m" != "${old}" ]] && break
+    sleep 0.5
+done
+wait
+[[ -n "$m" && "$m" != "${old}" ]] || fail "I: no new master after downgrading ${old}"
+master=$m
+for ((i = 0; i < 120; i++)); do
+    ok=1
+    for n in ${nodes}; do [[ "$(current_master $n 2>/dev/null)" == "${master}" ]] || ok=0; done
+    [[ $ok -eq 1 ]] && break
+    sleep 0.5
+done
+[[ $ok -eq 1 ]] || fail "I: the nodes do not agree on the new master ${master}"
+echo "I: new master ${master}; client errors during the downgrade: $(cat $W/i.*.out | grep -c -i -E 'error|fail')"
+wait_caught_up
+ntb=$(sqlh ${master} "select count(*) from tb")
+VTB=$(sqlh ${master} "select sum(v) from tb")
+NTB=${ntb}
+expect ${NROWS} ${VT} ${VTB}
+check_data
+replicants=$(for n in ${nodes}; do [[ $n != ${master} ]] && echo $n; done | xargs)
+origin=$(echo ${replicants} | cut -d' ' -f1)
+for ((i = 0; i < 20; i++)); do echo "update t set v = v + 1 where id = $(key $((8000 + i)))"; done > $W/i.sql
+run_case I_AFTER $W/i.sql
+VT=$((VT + 20))
+[[ $(packets I_AFTER) -eq 20 ]] || fail "I: R ${origin} sent $(packets I_AFTER) write-hint packets after the master change"
+[[ $(pages I_AFTER) -gt 0 ]] || fail "I: no write-hint page reached the new master ${master}"
+expect ${NROWS} ${VT} ${VTB}
+check_data
+
+sqlh ${master} "drop table t" || fail "drop table t"
+sqlh ${master} "drop table tb" || fail "drop table tb"
+rm -rf $W
+echo "Success"
+exit 0

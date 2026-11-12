@@ -1,0 +1,159 @@
+#!/usr/bin/env bash
+bash -n "$0" || exit 1
+
+# UDP prefault hints, off vs on: a small benchmark with a cold cache.
+#
+# Writers update random rows of a table much larger than the cache, through
+# one replicant (R).  Rounds alternate between
+#   off: enable_prefault_udp, rep_write_hints and udp_prefault_async off on
+#        every node (the defaults)
+#   on : all three on
+# and every round updates rows no earlier round touched.
+#
+# Printed per round: rows/s, and per node and per row the pages read from disk
+# on demand (st_page_in - st_page_pf_in), the pages prefetched from disk
+# (st_page_pf_in) and the prefetches that found the page already cached
+# (st_page_pf_in_late).
+#
+# Only one thing is checked, and it is a counter, not a time: with hints on,
+# the passive replicant (P, which only applies replication) reads fewer pages
+# on demand per row than with hints off.  Throughput is printed only: this
+# test usually shares its host with other tests.
+
+DBNAME=$1
+[[ -z "$DBNAME" ]] && { echo "Usage: $0 <dbname>"; exit 1; }
+[[ -z "$CLUSTER" ]] && { echo "Test only suitable for a clustered setup"; exit 0; }
+
+NROWS=200000     # rows, several times the cache
+WRITERS=8
+NSTMT=750        # statements per writer per round
+ARMS="off on off on"
+W=${TMPDIR:-/tmp}/udppfb.$$
+mkdir -p $W
+
+function fail
+{
+    echo "FAIL: $*"
+    exit 1
+}
+
+function sqlh
+{
+    local h=$1
+    shift
+    ${CDB2SQL_EXE} ${CDB2_OPTIONS} --tabs --host $h ${DBNAME} "$@"
+}
+
+function current_master
+{
+    sqlh $1 "select host from comdb2_cluster where is_master='Y'"
+}
+
+# pagestat <host> : st_page_in st_page_pf_in st_page_pf_in_late
+function pagestat
+{
+    sqlh $1 "exec procedure sys.cmd.send('bdb cachestat')" | awk -F': ' '
+        $1 == "st_page_in" { i = $2 } $1 == "st_page_pf_in" { p = $2 } $1 == "st_page_pf_in_late" { l = $2 }
+        END { print i + 0, p + 0, l + 0 }'
+}
+
+function wait_caught_up
+{
+    local i out
+    for ((i = 0; i < 1200; i++)); do
+        out=$(sqlh ${master} "select count(*) from comdb2_cluster c, comdb2_cluster m where m.is_master = 'Y' and (c.logfile != m.logfile or c.logoffset != m.logoffset)")
+        [[ "$out" == "0" ]] && return 0
+        sleep 0.5
+    done
+    fail "replicants did not catch up with the master"
+}
+
+# arm <off|on> : set the hints on every node
+function arm
+{
+    local n v=$([[ $1 == on ]] && echo ON || echo OFF) x=$([[ $1 == on ]] && echo 1 || echo 0)
+    for n in ${nodes}; do
+        for tn in enable_prefault_udp rep_write_hints udp_prefault_async; do
+            sqlh $n "put tunable $tn $x" > /dev/null || fail "put tunable $tn $x on $n"
+            [[ "$(sqlh $n "select value from comdb2_tunables where name = '$tn'")" == "$v" ]] || fail "$tn is not $v on $n"
+        done
+    done
+}
+
+function h
+{
+    echo $(( (($1 * 2654435761) + $2 * 40503) % (NROWS * 7) ))
+}
+
+nodes=$(echo ${CLUSTER} | tr ' ' '\n' | sort | xargs)
+first=$(echo ${nodes} | cut -d' ' -f1)
+master=$(current_master ${first})
+[[ -n "${master}" ]] || fail "no master"
+replicants=$(for n in ${nodes}; do [[ $n != ${master} ]] && echo $n; done | xargs)
+origin=$(echo ${replicants} | cut -d' ' -f1)
+passive=$(echo ${replicants} | cut -d' ' -s -f2)
+[[ -n "${passive}" ]] || fail "need two replicants"
+echo "master ${master}, R ${origin}, P ${passive}"
+
+sqlh ${master} "drop table if exists t"
+sqlh ${master} "create table t(id int primary key, a int, b int, c int, d int, pad cstring(65))" || fail "create table"
+for c in a b c d; do
+    sqlh ${master} "create index ix_$c on t($c)" || fail "create index ix_$c"
+done
+B=50000
+for ((s = 1; s <= NROWS; s += B)); do
+    sqlh ${master} "insert into t select value, value * 7, value * 11, value * 13, value * 17, printf('%064d', value) from generate_series($s, $((s + B - 1)))" > /dev/null || fail "load at $s"
+done
+wait_caught_up
+
+r=0
+printf "%-5s %3s %8s | %-28s | %-12s | %-28s\n" arm rnd rows/s "master demand/pf/late" "R demand" "P demand/pf/late" > $W/table
+for a in ${ARMS}; do
+    arm $a
+    # statements: distinct rows in every round (7919 is coprime with NROWS)
+    for ((w = 0; w < WRITERS; w++)); do
+        for ((i = 0; i < NSTMT; i++)); do
+            k=$(( 1 + (((r * WRITERS + w) * NSTMT + i) * 7919) % NROWS ))
+            echo "update t set a = $(h $k $((r + 1))), b = $(h $k $((r + 5))), c = $(h $k $((r + 9))), d = $(h $k $((r + 13))) where id = $k"
+        done > $W/r$r.w$w.sql
+    done
+    wait_caught_up
+    for n in ${nodes}; do pagestat $n > $W/r$r.before.$n; done
+    t0=$(date +%s%N)
+    for ((w = 0; w < WRITERS; w++)); do
+        ${CDB2SQL_EXE} ${CDB2_OPTIONS} -s --host ${origin} ${DBNAME} - < $W/r$r.w$w.sql > $W/r$r.w$w.out 2>&1 &
+    done
+    wait
+    t1=$(date +%s%N)
+    cat $W/r$r.w*.out | grep -i -E "error|fail" | head -3 | grep . && fail "round $r: statement errors"
+    wait_caught_up
+    for n in ${nodes}; do pagestat $n > $W/r$r.after.$n; done
+    rows=$((WRITERS * NSTMT))
+    # per node: demand pf late (totals for the round)
+    for n in ${nodes}; do
+        read bi bp bl < $W/r$r.before.$n
+        read ai ap al < $W/r$r.after.$n
+        echo "$a $r $n $(( (ai - bi) - (ap - bp) )) $((ap - bp)) $((al - bl))" >> $W/counts
+    done
+    pr() { awk -v a=$a -v r=$r -v n=$1 -v rows=$rows '$1 == a && $2 == r && $3 == n { printf "%.2f/%.2f/%.2f", $4 / rows, $5 / rows, $6 / rows }' $W/counts; }
+    printf "%-5s %3d %8d | %-28s | %-12s | %-28s\n" $a $r $(( rows * 1000000000 / (t1 - t0) )) "$(pr ${master})" \
+        "$(pr ${origin} | cut -d/ -f1)" "$(pr ${passive})" >> $W/table
+    r=$((r + 1))
+done
+arm off
+
+echo "=== per row (demand = pages read from disk on demand, pf = prefetched from disk, late = prefetch found it cached)"
+cat $W/table
+off=$(awk -v n=${passive} '$1 == "off" && $3 == n { s += $4; c += 1 } END { print s + 0 }' $W/counts)
+on=$(awk -v n=${passive} '$1 == "on" && $3 == n { s += $4; c += 1 } END { print s + 0 }' $W/counts)
+nrows=$((WRITERS * NSTMT * 2))
+echo "P demand reads per row: off $(awk -v x=$off -v n=$nrows 'BEGIN { printf "%.3f", x / n }'), on $(awk -v x=$on -v n=$nrows 'BEGIN { printf "%.3f", x / n }')"
+
+# precondition: with hints off the passive replicant reads pages on demand
+[[ $off -ge $((nrows / 2)) ]] || fail "P read only $off pages on demand for $nrows rows with hints off: the cache is not cold"
+[[ $((on * 10)) -lt $((off * 7)) ]] || fail "P read $on pages on demand with hints on vs $off off: hints did not reduce replay reads"
+
+sqlh ${master} "drop table t" || fail "drop table"
+rm -rf $W
+echo "Success"
+exit 0
