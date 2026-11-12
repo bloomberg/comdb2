@@ -1,0 +1,108 @@
+#!/usr/bin/env bash
+bash -n "$0" || exit 1
+
+# A slow pmux reply to "reg" lets routed connections reach the db before the
+# reply. The db must accept them and still finish registering, or every routed
+# connection to it fails until it restarts.
+
+dbnm=pmuxreg
+for pport in $(seq 5110 5199); do
+    (echo >/dev/tcp/127.0.0.1/$pport) 2>/dev/null || break
+done
+sock=/tmp/pmux.regroute.$pport.socket
+log=$TESTDIR/${dbnm}.log
+cfg=$TESTDIR/regroute.cfg
+iterations=10
+export CDB2_DISABLE_SOCKPOOL=1
+
+failexit() {
+    echo "FAILED: $1"
+    exit 1
+}
+
+cleanup() {
+    [[ -n "$clients" ]] && kill $clients >/dev/null 2>&1
+    [[ -n "$dbpid" ]] && kill -9 $dbpid >/dev/null 2>&1
+    [[ -n "$pmuxpid" ]] && kill -9 $pmuxpid >/dev/null 2>&1
+    rm -f $sock
+}
+trap cleanup EXIT
+
+# Our own pmux, which delays its reply to "reg" by 500ms
+${PMUX_EXE} -f -b $sock -p $pport -r 20004:20005 -D 500 &
+pmuxpid=$!
+
+${COMDB2_EXE} ${dbnm} --create --dir $TESTDIR/${dbnm} --tunable "portmux_bind_path $sock" --tunable "portmux_port $pport" >/dev/null 2>&1
+${COMDB2_EXE} ${dbnm} --lrl $TESTDIR/${dbnm}/${dbnm}.lrl >$log 2>&1 &
+dbpid=$!
+
+cp $DBDIR/comdb2db.cfg $cfg
+echo 'comdb2_config:allow_pmux_route:true' >>$cfg
+echo "comdb2_config:portmuxport=$pport" >>$cfg
+
+sql() {
+    timeout 10 cdb2sql --cdb2cfg $cfg $dbnm --host localhost "$@"
+}
+
+# Wait until routed connections work
+wait_routed() {
+    local i
+    for ((i = 0; i < 60; i++)); do
+        sql "select 1" >/dev/null 2>&1 && return 0
+        sleep 1
+    done
+    return 1
+}
+
+# Wait for replication to have registered with pmux $1 times
+wait_registered() {
+    local i
+    for ((i = 0; i < 30; i++)); do
+        [[ $(grep -c "process_reg_reply: svc:replication accepting" $log) -ge $1 ]] && return 0
+        sleep 1
+    done
+    return 1
+}
+
+wait_routed || failexit "db not reachable through pmux route"
+wait_registered 1 || failexit "db never registered with pmux"
+
+# Raw routed connections keep arriving while the db re-registers
+client() {
+    while :; do
+        sleep 0.05
+        exec 3<>/dev/tcp/127.0.0.1/$pport 2>/dev/null || continue
+        echo "rte comdb2/replication/$dbnm" >&3
+        read -t 1 -u 3 reply
+        exec 3>&-
+    done
+}
+for i in 1 2 3 4; do
+    client &
+    clients="$clients $!"
+done
+
+for ((i = 0; i < iterations; i++)); do
+    for ((try = 0; try < 30; try++)); do
+        sql "exec procedure sys.cmd.send('pmux_reregister')" >/dev/null 2>&1 && break
+        sleep 1
+    done
+    [[ $try -lt 30 ]] || failexit "routed connections fail after re-register $i"
+    wait_registered $((i + 2)) || failexit "re-register $i did not complete"
+done
+
+kill $clients >/dev/null 2>&1
+wait $clients 2>/dev/null
+clients=""
+
+wait_routed || failexit "routed connections fail after re-registering"
+
+n=$(sed -n '/do_pmux_reregister/,$p' $log | grep -c "routed fd:.* before reg reply")
+[[ $n -gt 0 ]] || failexit "no connection was routed before a reg reply"
+grep "bad pmux reply" $log && failexit "db misread a routed fd as the reg reply"
+n=$(grep -c "do_pmux_reregister: svc:replication" $log)
+[[ $n -ge $iterations ]] || failexit "re-registered only $n times"
+n=$(grep -c "process_reg_reply: svc:replication accepting" $log)
+[[ $n -gt $iterations ]] || failexit "replication registered only $n times"
+
+echo "Success"
