@@ -67,7 +67,65 @@ wait $pid || failexit "select failed or hung on $master"
 
 $rmst "put tunable debug_sleep_before_fingerprint 0" || failexit "could not reset sleep on $master"
 
+function on_all
+{
+    typeset node
+    for node in $nodes; do
+        cdb2sql -s -n ${node} ${CDB2_OPTIONS} $a_dbn default "$1" || return 1
+    done
+}
+
+function logfile
+{
+    if [[ -z "$CLUSTER" ]]; then
+        echo ${TESTDIR}/logs/${a_dbn}.db
+    else
+        echo ${TESTDIR}/logs/${a_dbn}.$1.db
+    fi
+}
+
+# A commit can finish after recover_deadlock failed to reacquire its locks,
+# leaving the statement without a curtran or its table locks.  The plan sleep
+# holds the update there until the schema change below has invalidated t's old
+# ixschema and is sleeping before replacing it.
+on_all "put tunable 'debug_query_plan_no_curtran_sleep_ms' = 3000" || failexit "could not set plan sleep"
+on_all "put tunable 'debug_sc_invalidate_ixschema_sleep_ms' = 5000" || failexit "could not set sc sleep"
+
+# Arm the replay only where the update runs: a DDL that hits it reports a master downgrade
+unode=$master
+for node in $nodes; do
+    [[ $node != $master ]] && unode=$node && break
+done
+run="cdb2sql -s -n ${unode} ${CDB2_OPTIONS} $a_dbn default"
+
+for i in 1 2 3; do
+    $run "put tunable 'debug_fail_commit_restart' = 1" || failexit "could not arm replay"
+    $run "update t set b = b + 1 where a = 1$i" > update.$i.out 2>&1 &
+    pid=$!
+    sleep 1
+    if [[ $(( i % 2 )) == 1 ]]; then
+        $rt "rebuild t" || failexit "rebuild $i failed"
+    else
+        $rt "alter table t add column c$i int" || failexit "alter $i failed"
+    fi
+    wait $pid || failexit "update $i failed: $(cat update.$i.out)"
+    on_all "select 1" > /dev/null || failexit "a node died on iteration $i"
+    $run "put tunable 'debug_fail_commit_restart' = 0" || failexit "could not disarm replay"
+done
+
+hit=0
+for node in $nodes; do
+    f=$(logfile $node)
+    if grep -q "add_fingerprint: no curtran, sleeping" $f && grep -q "freedb_int: invalidated ixschema of t," $f; then
+        hit=1
+    fi
+done
+[[ $hit == 1 ]] || failexit "the lost curtran race window was never exercised"
+
+on_all "put tunable 'debug_query_plan_no_curtran_sleep_ms' = 0"
+on_all "put tunable 'debug_sc_invalidate_ixschema_sleep_ms' = 0"
+
 cnt=$($rt --tabs "select count(*) from t where b = 0")
-[[ "$cnt" != "99" ]] && failexit "expected 99 untouched rows, got $cnt"
+[[ "$cnt" != "96" ]] && failexit "expected 96 untouched rows, got $cnt"
 
 echo "Testcase passed."
