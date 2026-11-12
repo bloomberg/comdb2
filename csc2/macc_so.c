@@ -211,13 +211,29 @@ void add_constraint(char *tbl, char *key)
 
 void add_check_constraint(char *expr)
 {
+    /* Don't increment: set_constraint_name() writes to the current slot next. */
+    if (macc_globals->n_check_constraints + 1 >= MAXCNSTRTS) {
+        csc2_syntax_error("ERROR: TOO MANY CHECK CONSTRAINTS SPECIFIED. MAX %d\n",
+                          MAXCNSTRTS);
+        any_errors++;
+        return;
+    }
+
+    /* Increment even on error: set_constraint_name() writes to this slot next. */
+    ++macc_globals->n_check_constraints;
+
     if (gbl_check_constraint_feature == 0 && comdb2_iam_master()) {
         csc2_syntax_error("ERROR: CHECK CONSTRAINT support not enabled\n");
         any_errors++;
         return;
     }
 
-    ++macc_globals->n_check_constraints;
+    /* An absent where clause arrives as blankchar, too short to skip "where". */
+    if (*expr == '\0') {
+        csc2_syntax_error("ERROR: CHECK CONSTRAINT has no expression\n");
+        any_errors++;
+        return;
+    }
     /* We have to move past "where" and subsequent spaces. */
     expr += sizeof("where");
     while (*expr && isspace(*expr)) {
