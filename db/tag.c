@@ -69,6 +69,7 @@ const int gbl_ondisk_ver_len = sizeof ".ONDISK.VER.255xx";
 int _dbg_tags = 0;
 int gbl_debug_alter_sequences_sleep = 0;
 int gbl_debug_poison_freed_schemas = 0;
+int gbl_debug_sc_invalidate_ixschema_sleep_ms = 0;
 
 #define TAGLOCK_RW_LOCK
 #ifdef TAGLOCK_RW_LOCK
@@ -6168,6 +6169,15 @@ void freedb_int(dbtable *db, dbtable *replace)
         columns[i] = db->columns[i];
 
     dbs_idx = db->dbs_idx;
+
+    if (replace && gbl_debug_sc_invalidate_ixschema_sleep_ms > 0 && db->ixschema) {
+        /* Before anything is freed, so a stale reader still finds the table by name and reliably crashes on the
+         * garbage rather than on whatever the allocator recycled */
+        memset(db->ixschema, 0xa5, db->nix * sizeof(db->ixschema[0]));
+        logmsg(LOGMSG_USER, "%s: invalidated ixschema of %s, sleeping %dms\n", __func__, db->tablename,
+               gbl_debug_sc_invalidate_ixschema_sleep_ms);
+        poll(NULL, 0, gbl_debug_sc_invalidate_ixschema_sleep_ms);
+    }
 
     if (!replace) {
         free(sqlaliasname);

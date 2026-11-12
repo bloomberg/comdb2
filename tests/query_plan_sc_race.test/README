@@ -8,10 +8,17 @@ under the schema lock.
 
 Taking the schema lock after the statement ran is not an option: a read still
 holds its table locks there, and finalize takes the schema lock before the
-table lock, so the two deadlock.  The last scenario checks for that.
+table lock, so the two deadlock.  The deadlock scenario checks for that.
 
 debug_sleep_in_cursor_description widens the window between picking the
 index schema and reading it.  debug_sleep_before_fingerprint holds a statement
 with its table locks between running and recording its fingerprint.
 debug.poison_freed_schemas (COMDB2_TEST builds only) makes a read of a freed
 schema crash instead of passing unnoticed.
+
+A statement can also succeed after recover_deadlock failed to reacquire its
+locks, leaving it without a curtran or its table locks.  Its plan, formed at
+prepare, must not need them.  The last scenario checks for that: debug_fail_commit_restart makes
+recover_deadlock fail, debug_query_plan_no_curtran_sleep_ms holds the statement
+there, and debug_sc_invalidate_ixschema_sleep_ms fills the old ixschema with
+garbage and holds the schema change before it frees it.
