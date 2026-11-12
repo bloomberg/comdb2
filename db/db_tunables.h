@@ -2631,6 +2631,18 @@ REGISTER_TUNABLE(
     "Test only: replay this many commits twice, failing recover_deadlock on the first restart.  (Default: 0)",
     TUNABLE_INTEGER, &gbl_debug_fail_commit_restart, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 
+REGISTER_TUNABLE("debug_query_plan_no_curtran_sleep_ms",
+                 "Test only: sleep this long before recording the query plan of a statement that lost its curtran.  "
+                 "(Default: 0)",
+                 TUNABLE_INTEGER, &gbl_debug_query_plan_no_curtran_sleep_ms, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL,
+                 NULL);
+
+REGISTER_TUNABLE("debug_sc_invalidate_ixschema_sleep_ms",
+                 "Test only: fill a schema-changed table's old ixschema with garbage and sleep this long before "
+                 "freeing the old table and installing the new one.  (Default: 0)",
+                 TUNABLE_INTEGER, &gbl_debug_sc_invalidate_ixschema_sleep_ms, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL,
+                 NULL);
+
 REGISTER_TUNABLE("not_durable_retries",
                  "Have a node retry a non-durable transaction this many times before giving up.  (Default: 100)",
                  TUNABLE_INTEGER, &gbl_not_durable_retries, 0, NULL, NULL, NULL, NULL);

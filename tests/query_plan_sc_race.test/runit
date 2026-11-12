@@ -1,0 +1,78 @@
+#!/usr/bin/env bash
+bash -n "$0" || exit 1
+
+. ${TESTSROOTDIR}/tools/runit_common.sh
+
+export debug=1
+[[ $debug == "1" ]] && set -x
+
+nodes=(${CLUSTER:-$(hostname)})
+
+function sql
+{
+    $CDB2SQL_EXE $CDB2_OPTIONS --tabs $DBNAME default "$@"
+}
+
+function on_all
+{
+    typeset n
+    for n in ${nodes[@]}; do
+        if [[ -z "$CLUSTER" ]]; then
+            sql "$1" || return 1
+        else
+            $CDB2SQL_EXE $CDB2_OPTIONS --tabs $DBNAME --host $n "$1" || return 1
+        fi
+    done
+}
+
+function logfile
+{
+    if [[ -z "$CLUSTER" ]]; then
+        echo ${TESTDIR}/logs/${DBNAME}.db
+    else
+        echo ${TESTDIR}/logs/${DBNAME}.$1.db
+    fi
+}
+
+sql "create table t1(a int, b int)" || failexit "create table"
+sql "create index ia on t1(a)" || failexit "create index"
+sql "insert into t1 select value, value from generate_series(1, 1000)" || failexit "insert"
+
+# The plan sleep holds the update past its failed recover_deadlock, with no table locks, until the schema change
+# below has invalidated t1's old ixschema and is sleeping before replacing it
+on_all "put tunable 'debug_query_plan_no_curtran_sleep_ms' = 3000" || failexit "set plan sleep"
+on_all "put tunable 'debug_sc_invalidate_ixschema_sleep_ms' = 5000" || failexit "set sc sleep"
+
+for i in 1 2 3; do
+    on_all "put tunable 'debug_fail_commit_restart' = 1" || failexit "arm replay"
+    sql "update t1 set b=b+1 where a=$i" > update.$i.out 2>&1 &
+    upd=$!
+    sleep 1
+    if [[ $(( i % 2 )) == 1 ]]; then
+        sql "rebuild t1" || failexit "rebuild $i"
+    else
+        sql "alter table t1 add column c$i int" || failexit "alter $i"
+    fi
+    wait $upd || failexit "update $i failed: $(cat update.$i.out)"
+    on_all "select 1" > /dev/null || failexit "a node died on iteration $i"
+    on_all "put tunable 'debug_fail_commit_restart' = 0" || failexit "disarm replay"
+done
+
+# Make sure the race was set up: some node recorded a plan without curtran and invalidated ixschema during the run
+hit=0
+for n in ${nodes[@]}; do
+    f=$(logfile $n)
+    if grep -q "add_fingerprint: no curtran, sleeping" $f && grep -q "freedb_int: invalidated ixschema of t1" $f; then
+        hit=1
+    fi
+done
+[[ $hit == 1 ]] || failexit "race window was never exercised"
+
+on_all "put tunable 'debug_query_plan_no_curtran_sleep_ms' = 0"
+on_all "put tunable 'debug_sc_invalidate_ixschema_sleep_ms' = 0"
+
+x=$(sql "select count(*) from t1 where b = a + 1")
+[[ "$x" == "3" ]] || failexit "expected 3 updated rows, got '$x'"
+
+echo "Success"
+exit 0
