@@ -1,0 +1,37 @@
+#!/usr/bin/env bash
+bash -n "$0" || exit 1
+
+# Purging a time partition from SQL (sys.cmd.send) runs inside a SQL thread
+# that already holds the bdb lock.  The purge's nested thread start/done must
+# not trip the "exiting thread holding lock" check and abort the server,
+# whether or not the partition exists.  The command runs on the node that
+# receives it, and only the master would drop a shard, so send it there.
+
+source ${TESTSROOTDIR}/tools/runit_common.sh
+
+DBNAME=$1
+master=$($CDB2SQL_EXE --tabs ${CDB2_OPTIONS} $DBNAME default "select host from comdb2_cluster where is_master='Y'")
+
+purge() {
+    $CDB2SQL_EXE ${CDB2_OPTIONS} $DBNAME --host $master \
+        "exec procedure sys.cmd.send('partitions purge $1')"
+    if ! $CDB2SQL_EXE ${CDB2_OPTIONS} $DBNAME --host $master "select 1" >/dev/null; then
+        echo "Failed: master $master died after purging partition $1"
+        exit 1
+    fi
+}
+
+purge no_such_view
+
+$CDB2SQL_EXE ${CDB2_OPTIONS} $DBNAME default "create table t (a int)" || exit 1
+$CDB2SQL_EXE ${CDB2_OPTIONS} $DBNAME default \
+    "create time partition on t as tv period 'daily' retention 2 start '2030-01-01T00:00:00 UTC'" || exit 1
+purge tv
+
+# tv has no shards beyond retention, so the purge must leave its only shard
+if ! $CDB2SQL_EXE ${CDB2_OPTIONS} $DBNAME default "select * from tv" >/dev/null; then
+    echo "Failed: purge dropped a shard still in use by tv"
+    exit 1
+fi
+
+echo "Success"

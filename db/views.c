@@ -748,6 +748,14 @@ done:
 int views_purge(timepart_views_t *views, timepart_view_t *view,
                 struct errstat *err)
 {
+    /* the oldest shard is still part of the view unless we are over
+     * retention; dropping it would leave the view pointing at a dropped
+     * table */
+    if (view->nshards <= view->retention) {
+        errstat_set_rcstrf(err, VIEW_ERR_PURGE, "partition %s has no shards beyond retention", view->name);
+        return VIEW_ERR_PURGE;
+    }
+
     return _views_rollout_phase3(view->shards[view->nshards - 1].tblname, err);
 }
 
@@ -775,6 +783,8 @@ int views_do_purge(timepart_views_t *views, const char *name)
     rdlock_schema_lk();
 
     rc = _views_do_op(views, name, views_purge, &xerr);
+    if (rc != VIEW_NOERR)
+        logmsg(LOGMSG_ERROR, "partitions purge %s failed: %s\n", name, xerr.errstr);
 
     unlock_schema_lk();
 
