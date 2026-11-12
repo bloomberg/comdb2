@@ -1669,14 +1669,12 @@ clipper_usage:
         dump_all_constraints(dbenv);
     } else if (tokcmp(tok, ltok, "checkcsc2") == 0) {
         int rc;
-        backend_thread_event(thedb, COMDB2_THR_EVENT_DONE);
         backend_thread_event(thedb, COMDB2_THR_EVENT_START);
         logmsg(LOGMSG_USER, "checking schemas...\n");
         rc = check_current_schemas();
         logmsg(LOGMSG_USER, "checked schemas, this database is %s\n",
                rc == 0 ? "good" : "bad");
         backend_thread_event(thedb, COMDB2_THR_EVENT_DONE);
-        backend_thread_event(thedb, COMDB2_THR_EVENT_START);
     }
 
     else if (tokcmp(tok, ltok, "nowatch") == 0) {
