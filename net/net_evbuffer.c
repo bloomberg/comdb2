@@ -20,6 +20,7 @@
 
 #include <alloca.h>
 #include <arpa/inet.h>
+#include <ctype.h>
 #include <fcntl.h>
 #include <limits.h>
 #include <netinet/tcp.h>
@@ -3437,18 +3438,8 @@ static int recvfd(int pmux_fd, int *secure, int *pmuv)
     return newfd;
 }
 
-static void do_recvfd(int pmux_fd, short what, void *data)
+static void accept_routed_fd(struct net_info *n, int newfd, int secure, int pmuv)
 {
-    check_base_thd();
-    struct net_info *n = data;
-    int secure;
-    int pmuv;
-    int newfd = recvfd(pmux_fd, &secure, &pmuv);
-    if (newfd == 0) return;
-    if (newfd < 0) {
-        reopen_unix(pmux_fd, n);
-        return;
-    }
     make_server_socket(newfd);
     ssize_t rc;
     if (pmuv) {
@@ -3474,10 +3465,27 @@ static void do_recvfd(int pmux_fd, short what, void *data)
         accept_cb(NULL, newfd, addr, addrlen, n);
 }
 
+static void do_recvfd(int pmux_fd, short what, void *data)
+{
+    check_base_thd();
+    struct net_info *n = data;
+    int secure;
+    int pmuv;
+    int newfd = recvfd(pmux_fd, &secure, &pmuv);
+    if (newfd == 0)
+        return;
+    if (newfd < 0) {
+        reopen_unix(pmux_fd, n);
+        return;
+    }
+    accept_routed_fd(n, newfd, secure, pmuv);
+}
+
 static int process_reg_reply(char *res, struct net_info *n, int unix_fd)
 {
     int port;
-    if (sscanf(res, "%d", &port) != 1) {
+    /* portmux replies <0 on error, 0 for no port (routed connections only), else the port */
+    if (sscanf(res, "%d", &port) != 1 || port < 0) {
         return -1;
     }
 
@@ -3494,7 +3502,7 @@ static int process_reg_reply(char *res, struct net_info *n, int unix_fd)
     event_add(n->unix_ev, NULL);
 
     /* Accept connection on new port */
-    if (gbl_libevent_rte_only) {
+    if (gbl_libevent_rte_only || port == 0) {
         logmsg(LOGMSG_WARN, "%s: svc:%s rte-mode only\n", __func__, n->service);
         n->port = port;
         return 0;
@@ -3528,6 +3536,56 @@ static int process_reg_reply(char *res, struct net_info *n, int unix_fd)
     return 0;
 }
 
+/* portmux publishes the route before it replies, so routed fds can come first;
+ * remove once a portmux that replies before routing is deployed everywhere.
+ * Returns 1 if the reply is next, 0 to wait for more, -1 on error. */
+static int accept_fds_before_reply(int fd, struct net_info *n)
+{
+    char c;
+    ssize_t rc;
+    while ((rc = recv(fd, &c, 1, MSG_PEEK)) == 1) {
+        if (isdigit((unsigned char)c) || c == '-')
+            return 1;
+        int secure, pmuv;
+        int newfd = recvfd(fd, &secure, &pmuv);
+        if (newfd <= 0)
+            return newfd;
+        logmsg(LOGMSG_WARN, "%s: svc:%s routed fd:%d before reg reply\n", __func__, n->service, newfd);
+        accept_routed_fd(n, newfd, secure, pmuv);
+    }
+    if (rc < 0 && (errno == EAGAIN || errno == EWOULDBLOCK))
+        return 0;
+    logmsg(LOGMSG_ERROR, "%s: svc:%s recv rc:%zd (%s)\n", __func__, n->service, rc, rc ? strerror(errno) : "eof");
+    return -1;
+}
+
+/* Read the reply a byte at a time, so a routed fd queued behind it stays in the socket.
+ * Returns 1 with *res set, 0 to wait for more, -1 on error. */
+static int read_reg_reply(int fd, struct net_info *n, char **res)
+{
+    struct evbuffer *buf = n->unix_buf;
+    while (1) {
+        int rc;
+        if (evbuffer_get_length(buf) == 0 && (rc = accept_fds_before_reply(fd, n)) <= 0)
+            return rc;
+        errno = 0;
+        if ((rc = evbuffer_read(buf, fd, 1)) != 1) {
+            if (rc < 0 && (errno == EAGAIN || errno == EWOULDBLOCK))
+                return 0;
+            logmsg(LOGMSG_ERROR, "%s: svc:%s read rc:%d (%s)\n", __func__, n->service, rc,
+                   rc ? strerror(errno) : "eof");
+            return -1;
+        }
+        size_t len;
+        if ((*res = evbuffer_readln(buf, &len, EVBUFFER_EOL_ANY)) != NULL)
+            return 1;
+        if ((len = evbuffer_get_length(buf)) > sizeof("65535")) {
+            logmsg(LOGMSG_ERROR, "%s: bad pmux reply len:%zu max-expected:6\n", __func__, len);
+            return -1;
+        }
+    }
+}
+
 static void unix_reg_reply(int fd, short what, void *data)
 {
     check_base_thd();
@@ -3545,35 +3603,17 @@ static void unix_reg_reply(int fd, short what, void *data)
         reopen_unix(fd, n);
         return;
     }
-    struct evbuffer *buf = n->unix_buf;
-    int rc;
-    size_t len;
     char *res = NULL;
-    errno = 0;
-    while ((rc = evbuffer_read(buf, fd, 1)) == 1) {
-        if ((res = evbuffer_readln(buf, &len, EVBUFFER_EOL_ANY)) != NULL)
-            break;
-        if ((len = evbuffer_get_length(buf)) > sizeof("65535")) {
-            logmsg(LOGMSG_ERROR, "%s: bad pmux reply len:%zu max-expected:6\n",
-                   __func__, len);
-            reopen_unix(fd, n);
-            return;
-        }
-    }
-    if (res == NULL) {
-        if (rc <= 0) {
-            if (errno != EAGAIN && errno != EWOULDBLOCK) {
-                logmsgperror("unix_reg_reply:evbuffer_read");
-                reopen_unix(fd, n);
-            }
-        }
+    int rc = read_reg_reply(fd, n, &res);
+    if (rc == 0) {
+        /* partial reply: wait for the rest; the timeout reopens if it never arrives */
+        event_base_once(base, fd, EV_READ | EV_TIMEOUT, unix_reg_reply, n, &one_sec);
         return;
     }
-    if (process_reg_reply(res, n, fd) != 0) {
+    if (rc < 0 || process_reg_reply(res, n, fd) != 0) {
         reopen_unix(fd, n);
     }
     free(res);
-    return;
 }
 
 static void unix_reg(int fd, short what, void *data)
@@ -3600,6 +3640,8 @@ static void unix_reg(int fd, short what, void *data)
         if (errno != EAGAIN && errno != EWOULDBLOCK) {
             logmsgperror("unix_reg:evbuffer_write");
             reopen_unix(fd, n);
+        } else {
+            event_base_once(base, fd, EV_WRITE | EV_TIMEOUT, unix_reg, n, &one_sec);
         }
         return;
     }
@@ -3635,6 +3677,29 @@ static void unix_connect(int dummyfd, short what, void *data)
     n->unix_buf = evbuffer_new();
     evbuffer_add_printf(n->unix_buf, "reg %s/%s/%s\n", n->app, n->service, n->instance);
     event_base_once(base, fd, EV_WRITE | EV_TIMEOUT, unix_reg, n, &one_sec);
+}
+
+/* Re-register nets that completed registration; one still registering has a pending
+ * callback that owns its fd, so it is left alone. */
+static void do_pmux_reregister(int dummyfd, short what, void *data)
+{
+    check_base_thd();
+    struct net_info *n;
+    for (n = LIST_FIRST(&net_list); n; n = LIST_NEXT(n, entry)) {
+        if (n->unix_buf) {
+            logmsg(LOGMSG_USER, "%s: svc:%s registration in progress, skipping\n", __func__, n->service);
+            continue;
+        }
+        if (!n->unix_ev)
+            continue; /* this net doesn't register with pmux */
+        logmsg(LOGMSG_USER, "%s: svc:%s\n", __func__, n->service);
+        reopen_unix(event_get_fd(n->unix_ev), n);
+    }
+}
+
+void net_pmux_reregister(void)
+{
+    evtimer_once(base, do_pmux_reregister, NULL);
 }
 
 static void net_accept(netinfo_type *netinfo_ptr)

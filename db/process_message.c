@@ -1682,6 +1682,10 @@ clipper_usage:
         backend_thread_event(thedb, COMDB2_THR_EVENT_DONE);
     }
 
+    else if (tokcmp(tok, ltok, "pmux_reregister") == 0) {
+        net_pmux_reregister();
+    }
+
     else if (tokcmp(tok, ltok, "nowatch") == 0) {
         logmsg(LOGMSG_USER, "disabling watcher thread\n");
         watchdog_disable();
@@ -2058,8 +2062,7 @@ clipper_usage:
         }
     } else if (tokcmp(tok, ltok, "reql") == 0) {
         reqlog_process_message(line, st, lline);
-    } else if (tokcmp(tok, ltok, "debg") == 0 ||
-               tokcmp(tok, ltok, "who") == 0) {
+    } else if (tokcmp(tok, ltok, "debg") == 0 || tokcmp(tok, ltok, "who") == 0) {
         int nsecs;
         tok = segtok(line, lline, &st, &ltok);
         /* generate debug trace for this many seconds */

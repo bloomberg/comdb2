@@ -335,6 +335,7 @@ int net_get_nodes_info(netinfo_type *netinfo_ptr, int max_nodes,
                        struct host_node_info *out_nodes);
 
 void net_cmd(netinfo_type *netinfo_ptr, char *line, int lline, int st, int op1);
+void net_pmux_reregister(void);
 
 int net_get_host_network_usage(netinfo_type *netinfo_ptr, const char *host,
                                unsigned long long *written,
