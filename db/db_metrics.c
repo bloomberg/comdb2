@@ -204,8 +204,10 @@ static struct comdb2_metrics_store stats;
   Please keep'em sorted.
 */
 comdb2_metric gbl_metrics[] = {
-    {"active_connections", "Number of client connections queued, running, or idle in a transaction", STATISTIC_INTEGER,
-     STATISTIC_COLLECTION_TYPE_LATEST, &stats.active_connections, NULL},
+    {"active_connections",
+     "Number of client connections the server cannot close (new, queued, running, waiting to retry, or idle in a "
+     "transaction)",
+     STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_LATEST, &stats.active_connections, NULL},
     {"cache_hits", "Buffer pool hits", STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_CUMULATIVE, &stats.cache_hits,
      NULL},
     {"cache_misses", "Buffer pool misses", STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_CUMULATIVE, &stats.cache_misses,

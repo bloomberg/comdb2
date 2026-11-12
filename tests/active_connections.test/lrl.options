@@ -1,2 +1,4 @@
 # One SQL thread, so a second query has to queue
 sqlenginepool maxt 1
+# Keep a silent new connection unclosable long enough to see it counted
+new_connection_grace_ms 3000
