@@ -273,6 +273,10 @@ REGISTER_TUNABLE("enable_2pc_ddl",
                  "Make schema changes on generic-shard partitions 2pc distributed transactions; requires "
                  "enable_2pc.  (Default: off)",
                  TUNABLE_BOOLEAN, &gbl_2pc_ddl, READONLY | NOARG, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("disttxn_ddl_timeout_ms",
+                 "A 2pc schema change waits at most this many ms for the schema lock, then aborts, so that schema "
+                 "changes cannot wait on each other's schema locks forever; 0 waits forever.  (Default: 120000)",
+                 TUNABLE_INTEGER, &gbl_disttxn_ddl_timeout_ms, 0, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("allow_coordinator",
                  "Set of dbname/tiers which can act as coordinator for this participant.  (Default: none)",
                  TUNABLE_STRING, &gbl_allowed_coordinators, READONLY, NULL, NULL, disttxn_allow_coordinator_set, NULL);
@@ -317,6 +321,14 @@ REGISTER_TUNABLE("debug_disable_waitdie_deadlock_detection", "Disable waitdie de
                  NULL, NULL);
 REGISTER_TUNABLE("debug_fail_ddl_prepare", "Participant fails to prepare a 2pc schema change.  (Default: off)",
                  TUNABLE_BOOLEAN, &gbl_debug_fail_ddl_prepare, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("debug_sleep_ddl_before_lock_ms",
+                 "A 2pc schema change coordinator sleeps this many ms, and a participant twice as many, before it "
+                 "takes the schema lock to finalize.  (Default: 0)",
+                 TUNABLE_INTEGER, &gbl_debug_sleep_ddl_before_lock_ms, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("debug_exit_participant_before_ddl_prepare",
+                 "Participant exits after finalizing a 2pc schema change, before it prepares.  (Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_debug_exit_participant_before_ddl_prepare, EXPERIMENTAL | INTERNAL, NULL, NULL,
+                 NULL, NULL);
 REGISTER_TUNABLE("debug_exit_participant_after_prepare", "Participant exits after successful prepare.  (Default: off)",
                  TUNABLE_BOOLEAN, &gbl_debug_exit_participant_after_prepare, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL,
                  NULL);

@@ -1599,6 +1599,51 @@ const char *schema_change_kind(struct schema_change_type *s)
     return "UNKNOWN";
 }
 
+void sc_list_2pc_free(sc_list_2pc_t *dist)
+{
+    if (!dist)
+        return;
+    free(dist->dist_txnid);
+    free(dist->coordinator_dbname);
+    free(dist->coordinator_tier);
+    for (int i = 0; i < dist->nparticipants; i++) {
+        if (dist->participant_names)
+            free(dist->participant_names[i]);
+        if (dist->participant_tiers)
+            free(dist->participant_tiers[i]);
+    }
+    free(dist->participant_names);
+    free(dist->participant_tiers);
+    free(dist);
+}
+
+int sc_list_2pc_create(sc_list_t *scl, int is_coordinator, const char *dist_txnid, const char *coordinator_dbname,
+                       const char *coordinator_tier)
+{
+    sc_list_2pc_t *dist = scl->dist = calloc(1, sizeof(sc_list_2pc_t));
+    if (!dist)
+        return -1;
+    dist->is_coordinator = is_coordinator;
+    dist->dist_txnid = strdup(dist_txnid);
+    if (!is_coordinator) {
+        dist->coordinator_dbname = coordinator_dbname ? strdup(coordinator_dbname) : NULL;
+        dist->coordinator_tier = coordinator_tier ? strdup(coordinator_tier) : NULL;
+        if (!dist->coordinator_dbname || !dist->coordinator_tier)
+            return -1;
+    }
+    return dist->dist_txnid ? 0 : -1;
+}
+
+void sc_list_free(sc_list_t *scl)
+{
+    free(scl->offsets);
+    scl->offsets = NULL;
+    free(scl->ser_scs);
+    scl->ser_scs = NULL;
+    sc_list_2pc_free(scl->dist);
+    scl->dist = NULL;
+}
+
 /* all scs part of the same txn -> in a sc_list object;
  * pointer fields are malloced
  */

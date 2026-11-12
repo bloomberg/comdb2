@@ -97,6 +97,7 @@ extern int gbl_ignore_final_non_durable_retry;
 extern int gbl_enable_berkdb_retry_deadlock_bias;
 extern int gbl_debug_disttxn_trace;
 extern int gbl_debug_fail_ddl_prepare;
+extern int gbl_debug_exit_participant_before_ddl_prepare;
 extern int gbl_coordinator_block_until_durable;
 
 /* For testing 2pc: disable verify but we still want to wait as if verify were enabled.
@@ -2933,6 +2934,9 @@ __thread int waitdie_deadlock;
 
 void abort_disttxn(struct ireq *iq, int rc, int outrc)
 {
+    if (iq->disttxn_failed)
+        return;
+    iq->disttxn_failed = 1;
     if (iq->sorese->is_coordinator) {
         if (gbl_debug_disttxn_trace) {
             logmsg(LOGMSG_USER, "%s DISTTXN %s coord failing disttxn rc=%d outrc=%d\n", __func__,
@@ -2962,6 +2966,11 @@ static int disttxn_ddl_vote(struct ireq *iq, tran_type *parent_trans, void *bske
     int bdberr, rc;
 
     if (iq->sorese->is_participant) {
+        if (gbl_debug_exit_participant_before_ddl_prepare) {
+            logmsg(LOGMSG_FATAL, "%s exiting participant before preparing schema change %s on debug tunable\n",
+                   __func__, dist_txnid);
+            _exit(1);
+        }
         if (gbl_debug_fail_ddl_prepare) {
             logmsg(LOGMSG_USER, "%s failing prepare of schema change %s on debug tunable\n", __func__, dist_txnid);
             participant_has_failed(dist_txnid, iq->sorese->coordinator_dbname, iq->sorese->coordinator_master,
@@ -3010,16 +3019,24 @@ static int disttxn_ddl_vote(struct ireq *iq, tran_type *parent_trans, void *bske
     return -1;
 }
 
-/* The coordinator of a 2pc schema change committed its decision: make it
- * durable and tell the participants.  If the commit failed or is not durable
- * the outcome is unknown here, so participants learn it from the disttxn
- * table. */
-static void disttxn_ddl_coordinator_committed(struct ireq *iq, int commit_rc)
+/* The coordinator of a 2pc schema change committed its local transaction,
+ * which holds the decision: tell the participants.  Returns 0 if it committed,
+ * -1 if the decision was not written (it aborted), or LOCK_DESIRED if the
+ * outcome is unknown.
+ *
+ * trans_commit_int fills the commit lsn only once the commit is logged, and
+ * then waits for replicants (the schema lock is released by then), so a
+ * nonzero commit_rc with a commit lsn is a written decision whose wait failed.
+ * A written decision is committed once it is durable; if this node loses
+ * mastership first the outcome is unknown here, and the participants are
+ * answered from comdb2_distributed_transactions by the next master. */
+static int disttxn_ddl_coordinator_committed(struct ireq *iq, int commit_rc)
 {
     char *dist_txnid = iq->sorese->dist_txnid;
-    int rc = commit_rc ? LOCK_DESIRED : 0;
+    int written = (commit_rc == 0 || iq->commit_file > 0);
+    int rc = written ? 0 : -1;
 
-    if (!rc && gbl_coordinator_block_until_durable) {
+    if (written && (commit_rc || gbl_coordinator_block_until_durable)) {
         DB_LSN commit_lsn = {.file = iq->commit_file, .offset = iq->commit_offset};
         if (bdb_block_durable(thedb->bdb_env, &commit_lsn))
             rc = LOCK_DESIRED;
@@ -3031,6 +3048,7 @@ static void disttxn_ddl_coordinator_committed(struct ireq *iq, int commit_rc)
             coordinator_resolve(dist_txnid);
         }
     }
+    return rc;
 }
 
 #define LOG_LEGACY_REQUEST() \
@@ -6068,11 +6086,16 @@ add_blkseq:
                                                    0, NULL, 0);
                         if (dist_ddl && !backed_out) {
                             if (iq->sorese->is_coordinator) {
-                                disttxn_ddl_coordinator_committed(iq, irc);
-                                /* A schema change commit does not wait for
-                                 * replicants, so a failed commit did not write
-                                 * the decision: the participants abort */
-                                if (irc) {
+                                /* Only a commit that did not write the
+                                 * decision is an abort; a written one may
+                                 * commit on the participants */
+                                int crc = disttxn_ddl_coordinator_committed(iq, irc);
+                                if (crc == LOCK_DESIRED) {
+                                    outrc = ERR_NOT_DURABLE;
+                                    iq->sorese->rcout = outrc;
+                                    snprintf(iq->errstat.errstr, ERRSTAT_STR_SZ,
+                                             "distributed schema change outcome unknown: decision not durable");
+                                } else if (crc) {
                                     err.errcode = ERR_DIST_ABORT;
                                     outrc = ERR_BLOCK_FAILED;
                                     iq->sorese->rcout = outrc + err.errcode;

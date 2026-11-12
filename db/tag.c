@@ -6167,6 +6167,10 @@ void freedb_int(dbtable *db, dbtable *replace)
     for (i=0; i < db->numcols; i++)
         columns[i] = db->columns[i];
 
+    /* generic shard map; a table rebuilt from its csc2 has none */
+    uint32_t numdbs = db->numdbs, numcols = db->numcols;
+    char **dbnames_arr = db->dbnames, **columns_arr = db->columns, **shardnames = db->shardnames;
+
     dbs_idx = db->dbs_idx;
 
     if (!replace) {
@@ -6260,10 +6264,30 @@ void freedb_int(dbtable *db, dbtable *replace)
         db->dbs_idx = dbs_idx;
         db->sqlaliasname = sqlaliasname;
         db->timepartition_name = timepartition_name;
-        for (i = 0; i < db->numdbs; i++)
-            db->dbnames[i] = dbnames[i];
-        for (i = 0; i < db->numcols; i++)
-            db->columns[i] = columns[i];
+        /* keep the shard map if replace, rebuilt from csc2, has none: losing it
+         * leaves a generic shard (e.g. one whose drop was backed out) with
+         * sqlaliasname set but no dbnames.  A map of its own replaces it. */
+        if (numdbs && !db->numdbs) {
+            db->numdbs = numdbs;
+            db->dbnames = dbnames_arr;
+            db->shardnames = shardnames;
+        } else if (db->dbnames != dbnames_arr) {
+            for (i = 0; i < numdbs; i++) {
+                free(dbnames[i]);
+                if (shardnames)
+                    free(shardnames[i]);
+            }
+            free(dbnames_arr);
+            free(shardnames);
+        }
+        if (numcols && !db->numcols) {
+            db->numcols = numcols;
+            db->columns = columns_arr;
+        } else if (db->columns != columns_arr) {
+            for (i = 0; i < numcols; i++)
+                free(columns[i]);
+            free(columns_arr);
+        }
     }
 }
 

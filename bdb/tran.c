@@ -2880,6 +2880,15 @@ int bdb_get_modsnap_start_state(bdb_state_type *bdb_state,
     return 0;
 }
 
+extern int __txn_is_prepared_unresolved(DB_ENV *, const char *);
+
+int bdb_dist_txn_is_prepared(bdb_state_type *bdb_state, const char *dist_txnid)
+{
+    if (bdb_state->parent)
+        bdb_state = bdb_state->parent;
+    return __txn_is_prepared_unresolved(bdb_state->dbenv, dist_txnid);
+}
+
 void bdb_upgrade_all_prepared(bdb_state_type *bdb_state)
 {
     if (bdb_state->parent)
