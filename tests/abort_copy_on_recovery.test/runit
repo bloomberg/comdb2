@@ -11,7 +11,8 @@ export archiveout=./archive.out.$$
 # Pin the node we operate on up front.  The copy connects here and the rewind and
 # the unblock all target this same node.
 export MASTER=$(getmaster)
-export MASTERLOG=${TESTDIR}/logs/${DBNAME}.${MASTER}.db
+# single-node logs have no host suffix
+[[ -n "$CLUSTER" ]] && export MASTERLOG=${TESTDIR}/logs/${DBNAME}.${MASTER}.db || export MASTERLOG=${TESTDIR}/logs/${DBNAME}.db
 
 # Create a table with some data and force a checkpoint so there is log history to
 # rewind to.
@@ -172,6 +173,63 @@ function run_hardfail_on_stalled_v4_scenario
     echo "online_recovery=$online: stalled v4 handshake correctly failed the archive (rc=$rc)"
 }
 
+# Scenario: a copy survives its source being downgraded.  The downgrade waits on the
+# copy's bdb read lock, so the copy yields; the node then rejoins as a replicant and
+# rep_verify_match takes the skip-recovery path (log-only truncate).  The copy must
+# succeed and the archive must restore.
+function run_survive_downgrade_scenario
+{
+    echo "=== survive downgrade ==="
+    local src=$(getmaster)
+    local srclog=${TESTDIR}/logs/${DBNAME}.${src}.db
+    local archive=${TESTDIR}/archive.downgrade.$$
+    local restoredir=${TESTDIR}/restore.downgrade.$$
+
+    for node in $CLUSTER; do
+        $CDB2SQL_EXE ${CDB2_OPTIONS} $DBNAME --host $node "put tunable rep_skip_recovery 1" >/dev/null
+    done
+
+    # Only look at log lines written by this scenario; earlier ones aborted on purpose.
+    local logstart=$(( $(wc -l < $srclog) + 1 ))
+    local base=$(egrep -c "blocking comdb2ar for testcase" "$srclog" 2>/dev/null)
+    base=${base:-0}
+    $CDB2SQL_EXE ${CDB2_OPTIONS} $DBNAME --host $src "put tunable debug_block_comdb2ar 1"
+    rm -f $archiveout $archive
+    ssh $src "$COMDB2AR_EXE c ${DBDIR}/${DBNAME}.lrl" > $archive 2> $archiveout </dev/null &
+    archivepid=$!
+
+    local cnt=0
+    while [[ "$(egrep -c "blocking comdb2ar for testcase" "$srclog" 2>/dev/null)" -le "$base" ]]; do
+        let cnt=cnt+1
+        [[ $cnt -gt 20 ]] && failexit "downgrade: timed out waiting for the copy to take the hold"
+        sleep 1
+    done
+
+    # Downgrade parks on the copy's bdb read lock until the copy is released.
+    ( $CDB2SQL_EXE ${CDB2_OPTIONS} $DBNAME --host $src "exec procedure sys.cmd.send('downgrade')" ) >/dev/null 2>&1 &
+    local dgpid=$!
+    sleep 3
+    $CDB2SQL_EXE ${CDB2_OPTIONS} $DBNAME --host $src "put tunable debug_block_comdb2ar 0"
+
+    wait $archivepid
+    local rc=$?
+    wait $dgpid 2>/dev/null
+    cat $archiveout
+    [[ $rc -ne 0 ]] && failexit "downgrade: archive failed (rc=$rc) across a downgrade"
+
+    local newlog=$(tail -n +$logstart $srclog)
+    if echo "$newlog" | egrep -q "copy aborted|full recovery ran"; then
+        echo "$newlog" | egrep "copy aborted|full recovery ran|skip-recovery cannot skip"
+        failexit "downgrade: source ran a full recovery during the copy"
+    fi
+    echo "$newlog" | egrep "releasing copy locks|re-acquired copy locks|skip-recovery truncate"
+
+    mkdir -p $restoredir
+    $COMDB2AR_EXE x -x $COMDB2_EXE $restoredir $restoredir < $archive || failexit "downgrade: restore failed"
+    echo "downgrade: archive survived the downgrade and restored"
+    rm -rf $archive $restoredir
+}
+
 function run_test
 {
     setup_data
@@ -182,6 +240,10 @@ function run_test
     run_success_scenario 0
     # A stalled v4 handshake must fail the copy, not silently downgrade.
     run_hardfail_on_stalled_v4_scenario 0
+    # Last: these move the master.  An upgrade/downgrade alone must not fail a copy.
+    if [[ -n "$CLUSTER" ]]; then
+        run_survive_downgrade_scenario
+    fi
 }
 
 run_test
