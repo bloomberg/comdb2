@@ -1669,6 +1669,9 @@ int coordinator_copy_participants(const char *dist_txnid, sc_list_2pc_t *dist)
 void disttxn_ddl_resume_aborted(sc_list_2pc_t *dist)
 {
     logmsg(LOGMSG_INFO, "%s resumed 2pc schema change %s aborted\n", __func__, dist->dist_txnid);
+    /* only a participant that never voted yes: the coordinator cannot be past
+     * collecting votes, so a failure is safe to send */
+    assert(dist->is_coordinator || !dist->may_vote);
     if (!dist->is_coordinator)
         send_2pc_message_find_master(dist->dist_txnid, dist->coordinator_dbname, dist->coordinator_tier,
                                      CDB2_DIST__FAILED_PREPARE, ERR_DIST_ABORT, ERR_BLOCK_FAILED,

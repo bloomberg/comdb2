@@ -1652,6 +1652,28 @@ int bplog_schemachange_wait(struct ireq *iq, int rc)
         }
     }
 
+    /* A participant that may vote marks its sc_list first: after its schema
+     * changes validated, before it finalizes (once prepared, its txn locks the
+     * sc_list it deleted).  A resume that finds the mark unset knows that this
+     * participant never voted yes.  It marks holding the schema lock: a schema
+     * change waiting for votes, or prepared, holds the llmeta pages of its own
+     * sc_list until it resolves, and holds the schema lock as long. */
+    if (!rc && iq->sorese && iq->sorese->dist_txnid && iq->sorese->is_participant) {
+        if (!locked) {
+            wrlock_schema_lk();
+            locked = 1;
+        }
+        if (osql_sc_list_may_vote(iq->scs_uuid)) {
+            /* fail as a lock timeout does: back out without the lock */
+            unlock_schema_lk();
+            locked = 0;
+            rc = ERR_SC;
+            errstat_set_rcstrf(&iq->errstat, rc, "failed to save distributed schema change");
+            logmsg(LOGMSG_ERROR, "%s: %s %s\n", __func__, iq->sorese->dist_txnid, iq->errstat.errstr);
+            abort_disttxn(iq, ERR_DIST_ABORT, ERR_BLOCK_FAILED);
+        }
+    }
+
     if (rc) {
         /* IFF the schema changes are NOT aborted, clean in-mem structures but
          * leave persistent and replicated changes (llmeta, new btree-s) so
@@ -2152,7 +2174,18 @@ static void *resume_2pc_participant_thd(void *arg)
     backend_thread_event(thedb, COMDB2_THR_EVENT_START);
     comdb2uuidstr(scl->uuid, us);
 
-    int rc = participant_wait_resumed_ddl(dist->dist_txnid, dist->coordinator_dbname, dist->coordinator_tier);
+    int rc;
+    if (!dist->may_vote) {
+        /* It stopped before it could vote, so the coordinator cannot have
+         * committed: abort, and tell the coordinator, which may still be
+         * waiting for this vote.  Asking it with a PREPARED would be a yes
+         * vote from a participant that never prepared. */
+        logmsg(LOGMSG_WARN, "%s: 2pc schema change %s never voted, aborting it\n", __func__, dist->dist_txnid);
+        disttxn_ddl_resume_aborted(dist);
+        rc = HAS_ABORTED;
+    } else {
+        rc = participant_wait_resumed_ddl(dist->dist_txnid, dist->coordinator_dbname, dist->coordinator_tier);
+    }
     if (rc == HAS_COMMITTED) {
         /* the redo takes dist; a failure keeps the sc_list */
         dist->coordinator_committed = 1;

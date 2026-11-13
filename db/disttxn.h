@@ -68,7 +68,8 @@ int coordinator_ddl_write_decision(tran_type *trans, const char *dist_txnid);
 int coordinator_ddl_committed(const char *dist_txnid, int rc);
 
 /* 2pc schema change resume: this coordinator copies its participants to dist,
- * and an aborted resume tells its participants, or its coordinator */
+ * and an aborted resume tells its participants, or, for a participant that
+ * never voted yes, its coordinator */
 struct sc_list_2pc;
 int coordinator_copy_participants(const char *dist_txnid, struct sc_list_2pc *dist);
 void disttxn_ddl_resume_aborted(struct sc_list_2pc *dist);

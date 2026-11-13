@@ -438,6 +438,9 @@ typedef struct llog_scdone {
  * coordinator or a participant, and whom to tell the outcome */
 typedef struct sc_list_2pc {
     int is_coordinator;
+    /* participant: set before it can vote, so a resume that finds it unset
+     * knows that it never voted yes and can abort on its own */
+    int may_vote;
     char *dist_txnid;
     /* participant: its coordinator */
     char *coordinator_dbname;

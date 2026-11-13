@@ -33,6 +33,8 @@ set -x
 # 20. A participant whose redo of a committed drop fails once retries it
 # 21. A resumed participant that sees lock-desired while it stays master still
 #     applies the committed drop
+# 22. A participant killed before it can vote and restarted while the
+#     coordinator still waits for votes aborts, rather than count as a yes vote
 ################################################################################
 
 # Validate required environment variables
@@ -870,8 +872,9 @@ function test_participant_resume_aborts
 
     $C_SQL "create table t(a int unique, b int) partitioned by columns(a) on (${shards})" 2>&1
     local rc=$?
-    # on a cluster the participant's new master can resume, finalize and vote
-    # before the coordinator gives up: then every shard commits
+    # it exits after it may vote: if its restart (its new master, on a cluster)
+    # asks the coordinator before the coordinator gives up, that counts as its
+    # yes vote and every shard commits
     if (( rc == 0 )) && [[ -z "$CLUSTER" ]]; then
         fail_exit "test_participant_resume_aborts: create should have failed"
         return
@@ -1510,6 +1513,82 @@ function test_resumed_participant_lock_desired_once
 }
 
 ########################################
+# TEST 22: A participant that never voted does not count as a yes vote
+# The quaternary is killed while its part of a create waits to take the schema
+# lock, before it can vote, and is restarted at once, while the coordinator
+# still waits for votes.  Its resume must abort the create and tell the
+# coordinator, not ask it with a PREPARED, which the coordinator would count as
+# a yes vote: the create must fail on every shard.
+########################################
+function kill_db_master
+{
+    local db=$1 opts=$2 master
+    if [[ -z "$CLUSTER" ]]; then
+        kill -9 $(cat ${TMPDIR}/${db}.pid)
+    else
+        master=$($CDB2SQL_EXE --tabs $opts $db default "select host from comdb2_cluster where is_master='Y'")
+        ssh -n -o StrictHostKeyChecking=no $master "pkill -9 -f 'comdb2 $db '"
+    fi
+}
+
+function test_unprepared_participant_cannot_vote
+{
+    echo "=== TEST: test_unprepared_participant_cannot_vote ==="
+
+    setup_outcome_ddl create
+    [[ -f $stopfile ]] && return
+
+    local slept=$(quaternary_log_count "before taking the schema lock on debug tunable")
+    local aborted=$(quaternary_log_count "never voted, aborting it")
+    # the quaternary, a participant, sleeps twice this long before the lock
+    set_tunable $QUATERNARY_DBNAME "$QUATERNARY_CDB2_OPTIONS" debug_sleep_ddl_before_lock_ms 3000
+
+    local out=$TMPDIR/unprepared_vote.out
+    rm -f $out $out.rc
+    ( $C_SQL "create table t(a int unique, b int) partitioned by columns(a) on (${shards})" > $out 2>&1
+      echo $? > $out.rc ) &
+    local cpid=$!
+
+    if ! wait_quaternary_log "before taking the schema lock on debug tunable" 30 $slept; then
+        fail_exit "test_unprepared_participant_cannot_vote: ${QUATERNARY_DBNAME} did not reach the schema lock"
+        return
+    fi
+    kill_db_master $QUATERNARY_DBNAME "$QUATERNARY_CDB2_OPTIONS"
+    local t0=$SECONDS
+    # restart it while the coordinator is still waiting for its vote
+    restart_db $QUATERNARY_DBNAME $QUATERNARY_DBDIR "$QUATERNARY_CDB2_OPTIONS"
+    [[ -f $stopfile ]] && return
+    echo "restarted ${QUATERNARY_DBNAME} in $((SECONDS - t0))s"
+
+    wait $cpid
+    local rc=$(cat $out.rc)
+    cat $out
+    echo "create rc $rc"
+
+    if (( rc == 0 )); then
+        fail_exit "test_unprepared_participant_cannot_vote: create committed although ${QUATERNARY_DBNAME} never voted"
+        return
+    fi
+    if ! wait_quaternary_log "never voted, aborting it" 30 $aborted; then
+        fail_exit "test_unprepared_participant_cannot_vote: ${QUATERNARY_DBNAME} did not abort its resumed create"
+        return
+    fi
+    verify_ddl_outcome create 0
+    [[ -f $stopfile ]] && return
+
+    # nothing is left behind: the create works now
+    $P_SQL "create table t(a int unique, b int) partitioned by columns(a) on (${shards})"
+    if (( $? != 0 )); then
+        fail_exit "test_unprepared_participant_cannot_vote: could not create t after the resumed abort"
+        return
+    fi
+    verify_table t
+    [[ -f $stopfile ]] && return
+
+    echo "test_unprepared_participant_cannot_vote PASSED"
+}
+
+########################################
 # Main
 ########################################
 
@@ -1666,7 +1745,8 @@ for testcase in test_coordinator_decides_abort test_replicant_hides_prepare test
                 test_coordinator_resume_aborts test_participant_gives_up_then_commits \
                 test_participant_gives_up_then_commits_create test_participant_gives_up_then_aborts \
                 test_commit_during_participant_upgrade test_coordinator_not_a_shard test_coordinator_table_exists \
-                test_participant_redo_finalize_fails_once test_resumed_participant_lock_desired_once; do
+                test_participant_redo_finalize_fails_once test_resumed_participant_lock_desired_once \
+                test_unprepared_participant_cannot_vote; do
     run_testcase $testcase
     clear_debug_tunables
     [[ -f $stopfile ]] && fail_with_timings

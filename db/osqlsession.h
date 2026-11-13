@@ -105,6 +105,10 @@ int osql_sess_save_sc(osql_sess_t *sess, char *rpl, int rplen);
  */
 int osql_sess_save_sc_list(osql_sess_t *sess);
 
+/* A 2pc participant marks its saved sc_list before it can vote: a resume of an
+ * unmarked one knows that the participant never voted yes */
+int osql_sc_list_may_vote(uuid_t uuid);
+
 /**
  * Remove sc list from llmeta
  *

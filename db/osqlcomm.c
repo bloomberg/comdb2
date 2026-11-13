@@ -10011,7 +10011,7 @@ uint8_t *osqlcomm_scl_put_key(struct sc_list *scl, uint8_t *p_buf,
 }
 
 /* The 2pc configuration follows the schema changes of a 2pc sc_list, which
- * has version SESS_SC_LIST_2PC_VER: magic, role, strings (length with
+ * has version SESS_SC_LIST_2PC_VER: magic, role, may_vote, strings (length with
  * terminator, 0 for NULL, then bytes), participants. */
 #define SCL_2PC_MAGIC 0x32504353 /* "2PCS" */
 #define SCL_STR_SIZE(str) (sizeof(int) + ((str) ? strlen(str) + 1 : 0))
@@ -10039,7 +10039,7 @@ int osqlcomm_scl_2pc_size(struct sc_list *scl)
     sc_list_2pc_t *d = scl->dist;
     if (!d)
         return 0;
-    int size = 3 * sizeof(int) + SCL_STR_SIZE(d->dist_txnid) + SCL_STR_SIZE(d->coordinator_dbname) +
+    int size = 4 * sizeof(int) + SCL_STR_SIZE(d->dist_txnid) + SCL_STR_SIZE(d->coordinator_dbname) +
                SCL_STR_SIZE(d->coordinator_tier);
     for (int i = 0; i < d->nparticipants; i++)
         size += SCL_STR_SIZE(d->participant_names[i]) + SCL_STR_SIZE(d->participant_tiers[i]);
@@ -10051,6 +10051,7 @@ static uint8_t *scl_2pc_put(sc_list_2pc_t *d, uint8_t *p_buf, const uint8_t *p_b
     int magic = SCL_2PC_MAGIC;
     PUTI(magic);
     PUTI(d->is_coordinator);
+    PUTI(d->may_vote);
     PUTS(d->dist_txnid);
     PUTS(d->coordinator_dbname);
     PUTS(d->coordinator_tier);
@@ -10075,6 +10076,7 @@ static const uint8_t *scl_2pc_get(sc_list_2pc_t **pd, const uint8_t *p_buf, cons
     if (!d)
         return NULL;
     GETI(d->is_coordinator);
+    GETI(d->may_vote);
     GETS(d->dist_txnid);
     GETS(d->coordinator_dbname);
     GETS(d->coordinator_tier);

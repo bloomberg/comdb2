@@ -816,3 +816,40 @@ done:
     sc_list_free(&scl);
     return rc;
 }
+
+int osql_sc_list_may_vote(uuid_t uuid)
+{
+    sc_list_t scl = {0};
+    void **dtas = NULL, **keys = NULL;
+    int *dtalens = NULL;
+    int keylen = 0, num = 0, bdberr = 0, rc = -1;
+
+    /* the schema changes have left the session by now: rewrite the saved
+     * sc_list rather than build it again */
+    if (bdb_llmeta_get_all_sc_lists(NULL, &dtas, &dtalens, &keys, &keylen, &num, &bdberr)) {
+        logmsg(LOGMSG_ERROR, "%s: failed to retrieve sc lists, bdberr %d\n", __func__, bdberr);
+        return -1;
+    }
+    for (int i = 0; i < num && rc == -1; i++) {
+        if (!osqlcomm_scl_get_key(&scl, keys[i], (uint8_t *)keys[i] + keylen) || comdb2uuidcmp(scl.uuid, uuid))
+            continue;
+        if (osqlcomm_scl_get(&scl, dtas[i], (uint8_t *)dtas[i] + dtalens[i]) && scl.dist) {
+            scl.dist->may_vote = 1;
+            rc = _write_sc_list(&scl);
+        }
+        sc_list_free(&scl);
+        break;
+    }
+    for (int i = 0; i < num; i++) {
+        free(dtas[i]);
+        free(keys[i]);
+    }
+    free(dtas);
+    free(keys);
+    free(dtalens);
+    if (rc) {
+        uuidstr_t us;
+        logmsg(LOGMSG_ERROR, "%s: failed to mark 2pc sc list %s\n", __func__, comdb2uuidstr(uuid, us));
+    }
+    return rc;
+}
