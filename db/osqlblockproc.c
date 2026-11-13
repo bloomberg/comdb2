@@ -1600,6 +1600,14 @@ int bplog_schemachange_wait(struct ireq *iq, int rc)
         sc = iq->sc;
     }
 
+    if (rc == 0) {
+        int crc = sc_commit_map_checkpoint_pending(iq);
+        if (crc == SC_MASTER_DOWNGRADE)
+            rc = ERR_NOMASTER;
+        else if (crc)
+            rc = ERR_SC;
+    }
+
     if (rc) {
         /* IFF the schema changes are NOT aborted, clean in-mem structures but
          * leave persistent and replicated changes (llmeta, new btree-s) so
@@ -1738,6 +1746,14 @@ static int _resume_sc_multiddl_txn_finalize(struct ireq *iq, int downgraded)
     iq->sc_locked = 0;
     iq->sc_tran = NULL;
     iq->sc_logical_tran = NULL;
+
+    if (!downgraded && !error && !iq->errstat.errval) {
+        int crc = sc_commit_map_checkpoint_pending(iq);
+        if (crc == SC_MASTER_DOWNGRADE)
+            downgraded = 1;
+        else if (crc)
+            error = 1;
+    }
 
     if (downgraded) {
         /* a downgrade is resumable: release the rest like bplog_schemachange_wait

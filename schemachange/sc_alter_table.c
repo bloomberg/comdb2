@@ -295,6 +295,35 @@ static void backout(struct dbtable *db)
     live_sc_off(db);
 }
 
+extern int gbl_sc_commit_map_skip;
+
+/* fastinit and a plan that rebuilds nothing do not run convert_all_records */
+static int sc_converts_records(struct dbtable *newdb, int changed)
+{
+    return !newdb->plan || newdb->plan->plan_convert || changed == SC_CONSTRAINT_CHANGE;
+}
+
+/* Converter commits can stay out of the commit LSN map only while they write
+ * this schema change's own replacement, which no reader can see before it is
+ * published, and only if there is a map and a converter at all.  A table
+ * merged into it (the other shards of a partition collapse, the table of an
+ * "alter ... merge") takes this decision, see
+ * start_schema_change_tran_wrapper_merge().  A sharding function (retroactive
+ * partitioning) sends rows to other tables.
+ * A resumed conversion may follow converter commits that an earlier master left
+ * out (and flagged for replicants), so it skips, and checkpoints before
+ * publishing, whatever this node's sc_commit_map_skip.  Decided, and the
+ * replacement marked, under the schema lock that opened it: a snapshot that
+ * caches the replacement's version afterwards finds the mark. */
+static void set_sc_commit_map_skip(struct schema_change_type *s, struct dbtable *db, struct dbtable *newdb, int changed)
+{
+    s->sc_skip_commit_map = (gbl_sc_commit_map_skip || s->resume) && bdb_commit_map_enabled() &&
+                            sc_converts_records(newdb, changed) && !db->sharding_func &&
+                            get_dbtable_by_name(newdb->tablename) != newdb;
+    if (s->sc_skip_commit_map)
+        bdb_set_sc_commit_map_skip(newdb->handle, 1);
+}
+
 static inline int wait_to_resume(struct schema_change_type *s)
 {
     if (s->resume) {
@@ -479,6 +508,7 @@ int do_alter_table(struct ireq *iq, struct schema_change_type *s,
     gbl_sc_last_writer_time = 0;
 
     if (s->resume == SC_PREEMPT_RESUME) {
+        /* the same schema change: its commit LSN map decision stands */
         newdb = db->sc_to;
         changed = s->schema_change;
         goto convert_records;
@@ -613,6 +643,8 @@ int do_alter_table(struct ireq *iq, struct schema_change_type *s,
             unlock_schema_lk();
         clean_exit();
     }
+
+    set_sc_commit_map_skip(s, db, newdb, changed);
 
     if (local_lock)
         unlock_schema_lk();
@@ -768,8 +800,7 @@ convert_records:
 
     /* skip converting records for fastinit and planned schema change
      * that doesn't require rebuilding anything. */
-    if ((!newdb->plan || newdb->plan->plan_convert) ||
-        changed == SC_CONSTRAINT_CHANGE) {
+    if (sc_converts_records(newdb, changed)) {
         if (!s->live)
             gbl_readonly_sc = 1;
         rc = convert_all_records(db, newdb, db->sc_genids, s);
@@ -801,6 +832,12 @@ convert_records:
         sleep(s->convert_sleep);
         sc_printf(s, "[%s] ...slept for %d\n", db->tablename, s->convert_sleep);
     }
+
+    /* finalized on its own: checkpoint past the converter commits before
+     * publishing (schema changes finalized together do it in one go, see
+     * sc_commit_map_checkpoint_pending()).  A failure backs out as below. */
+    if (rc == 0 && s->finalize && s->preempted != SC_ACTION_RESUME && s->kind != SC_ALTERTABLE_PENDING)
+        rc = sc_commit_map_checkpoint(iq, s);
 
 errout:
     if (rc && rc != SC_MASTER_DOWNGRADE) {

@@ -5159,7 +5159,7 @@ clipper_usage:
         }
 #ifdef COMDB2_TEST
     } else if (tokcmp(tok, ltok, "clm_selftest") == 0) {
-        int rc = commit_lsn_map_selftest();
+        int rc = commit_lsn_map_selftest(thedb->bdb_env);
         logmsg(LOGMSG_USER, "Commit LSN map selftest %s\n", rc ? "FAILED" : "passed");
 #endif
     } else if (tokcmp(tok, ltok, "del_llmeta_comdb2_seqno") == 0) {

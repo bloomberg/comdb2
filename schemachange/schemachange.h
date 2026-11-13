@@ -300,6 +300,10 @@ struct schema_change_type {
 
     int sc_thd_failed;
     int schema_change;
+    /* converter commits left out of the commit LSN map, all at or below this lsn */
+    int sc_skip_commit_map;
+    unsigned int sc_commit_map_lsn_file;
+    unsigned int sc_commit_map_lsn_offset;
 
     /*********************** temporary fields for table upgrade
      * ************************/

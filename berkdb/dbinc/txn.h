@@ -148,6 +148,19 @@ struct __txn_logrec {
 #define	TXN_EXPECTED	6
 #define	TXN_UNEXPECTED	7
 
+/*
+ * Commit records (regop, regop_gen, regop_rowlocks) may carry flags above the
+ * opcode.  TXN_COMMIT_F_SC_SKIP_MAP: leave this commit and its committed
+ * children out of the commit LSN map.  A binary without these macros does not
+ * read a flagged record as a commit.
+ */
+#define	TXN_OPCODE_MASK		0x000000ffu
+#define	TXN_COMMIT_F_SC_SKIP_MAP	0x00000100u
+#define	TXN_OPCODE(opcode)	((opcode) & TXN_OPCODE_MASK)
+#define	TXN_COMMIT_SKIPS_MAP(opcode)	\
+	(TXN_OPCODE(opcode) == TXN_COMMIT && \
+	 ((opcode) & TXN_COMMIT_F_SC_SKIP_MAP) != 0)
+
 #include "dbinc_auto/txn_auto.h"
 #include "dbinc_auto/txn_ext.h"
 #include "dbinc_auto/xa_ext.h"

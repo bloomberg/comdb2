@@ -1,0 +1,4 @@
+utxnid_log on
+enable_snapshot_isolation
+multitable_ddl 1
+sc_commit_map_skip 1

@@ -2174,7 +2174,8 @@ __scan_logfiles_for_asof_modsnap(dbenv)
 			free_ptr = txn_gen_args;
 			/* Only build the commit-lsn (utxnid) map when snapshot isolation
 			 * needs it and utxnid logging is on. */
-			if (__txn_commit_map_enabled() && (txn_gen_args->opcode == TXN_COMMIT) &&
+			if (__txn_commit_map_enabled() && (TXN_OPCODE(txn_gen_args->opcode) == TXN_COMMIT) &&
+				!TXN_COMMIT_SKIPS_MAP(txn_gen_args->opcode) &&
 					(ret = __txn_commit_map_add(dbenv, txn_gen_args->txnid->utxnid, lsn))) {
 				logmsg(LOGMSG_ERROR, "%s: Failed to add to commit LSN map\n", __func__);
 				GOTOERR;
@@ -2187,7 +2188,8 @@ __scan_logfiles_for_asof_modsnap(dbenv)
 				GOTOERR;
 			}
 			free_ptr = txn_args;
-			if (__txn_commit_map_enabled() && (txn_args->opcode == TXN_COMMIT) &&
+			if (__txn_commit_map_enabled() && (TXN_OPCODE(txn_args->opcode) == TXN_COMMIT) &&
+				!TXN_COMMIT_SKIPS_MAP(txn_args->opcode) &&
 				(ret = __txn_commit_map_add(dbenv, txn_args->txnid->utxnid, lsn))) {
 				logmsg(LOGMSG_ERROR, "%s: Failed to add to commit LSN map\n", __func__);
 				GOTOERR;
@@ -2201,7 +2203,8 @@ __scan_logfiles_for_asof_modsnap(dbenv)
 				GOTOERR;
 			}
 			free_ptr = txn_rl_args;
-			if (__txn_commit_map_enabled() && (txn_rl_args->opcode == TXN_COMMIT) &&
+			if (__txn_commit_map_enabled() && (TXN_OPCODE(txn_rl_args->opcode) == TXN_COMMIT) &&
+				!TXN_COMMIT_SKIPS_MAP(txn_rl_args->opcode) &&
 				(ret = __txn_commit_map_add(dbenv, txn_rl_args->txnid->utxnid, lsn))) {
 				logmsg(LOGMSG_ERROR, "%s: Failed to add to commit LSN map\n", __func__);
 				GOTOERR;

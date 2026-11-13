@@ -465,6 +465,104 @@ static int check_table_version(struct ireq *iq, struct schema_change_type *sc)
     return 0;
 }
 
+int gbl_sc_commit_map_checkpoint_timeout_ms = 10 * 60 * 1000;
+int gbl_debug_sc_commit_map_checkpoint_hold = 0;
+int gbl_debug_sc_commit_map_checkpoint_fail = 0;
+
+/* the schema changes that are finalized together: a list, or just its first */
+struct sc_commit_map_barrier {
+    struct ireq *iq;
+    struct schema_change_type *list;
+    int one;
+};
+
+#define FOREACH_BARRIER_SC(b, sc) for (sc = (b)->list; sc; sc = (b)->one ? NULL : sc->sc_next)
+
+static int sc_commit_map_barrier_stop(void *p)
+{
+    struct sc_commit_map_barrier *b = p;
+    struct schema_change_type *sc;
+    if (get_stopsc(__func__, __LINE__))
+        return SC_MASTER_DOWNGRADE;
+    if (gbl_sc_abort || b->iq->sc_should_abort)
+        return SC_ABORTED;
+    FOREACH_BARRIER_SC(b, sc)
+    {
+        if (sc->db && sc->db->sc_abort)
+            return SC_ABORTED;
+    }
+    return 0;
+}
+
+/* A converter that skipped the commit LSN map left all its commits at or below
+ * the LSN its schema change captured afterwards.  Before the schema changes that
+ * are finalized together publish anything, wait for one checkpoint whose
+ * recovery LSN is past the highest of these, so no snapshot that can read a
+ * replacement needs them.  Not under the schema lock: the transactions holding
+ * the checkpoint back may need it.  If one still does after
+ * sc_commit_map_checkpoint_timeout_ms, fail.  On failure the callers back the
+ * schema changes out as after a failed conversion.
+ * Returns 0, SC_MASTER_DOWNGRADE (the next master resumes), SC_ABORTED, or -1. */
+static int sc_commit_map_barrier(struct sc_commit_map_barrier *b)
+{
+    struct schema_change_type *sc, *s = NULL;
+    int rc;
+
+    FOREACH_BARRIER_SC(b, sc)
+    {
+        if (sc->sc_skip_commit_map && (!s || sc->sc_commit_map_lsn_file > s->sc_commit_map_lsn_file ||
+                                       (sc->sc_commit_map_lsn_file == s->sc_commit_map_lsn_file &&
+                                        sc->sc_commit_map_lsn_offset > s->sc_commit_map_lsn_offset)))
+            s = sc;
+    }
+    if (!s)
+        return 0;
+
+    if (b->iq->sc_locked) {
+        sc_errf(s, "Cannot wait for the commit LSN map checkpoint under the schema lock\n");
+        return -1;
+    }
+
+    if (gbl_debug_sc_commit_map_checkpoint_hold)
+        sc_printf(s, "[%s] holding before the commit LSN map checkpoint\n", s->tablename);
+    while (gbl_debug_sc_commit_map_checkpoint_hold && sc_commit_map_barrier_stop(b) == 0)
+        poll(NULL, 0, 100);
+
+    rc = bdb_checkpoint_past_lsn(thedb->bdb_env, s->sc_commit_map_lsn_file, s->sc_commit_map_lsn_offset,
+                                 gbl_sc_commit_map_checkpoint_timeout_ms, sc_commit_map_barrier_stop, b);
+    if (rc == -2) {
+        sc_errf(s, "Commit LSN map checkpoint still blocked after %d ms\n", gbl_sc_commit_map_checkpoint_timeout_ms);
+        rc = -1;
+    }
+    if (rc == 0 && gbl_debug_sc_commit_map_checkpoint_fail)
+        rc = -1;
+
+    if (rc == SC_MASTER_DOWNGRADE)
+        sc_errf(s, "Master downgrading before the commit LSN map checkpoint\n");
+    else if (rc == SC_ABORTED)
+        sc_errf(s, "Schema change aborted before the commit LSN map checkpoint\n");
+    else if (rc)
+        sc_errf(s, "Failed to checkpoint past the converter commits\n");
+    else
+        sc_printf(s, "[%s] checkpoint is past the converter commits at %u:%u\n", s->tablename,
+                  s->sc_commit_map_lsn_file, s->sc_commit_map_lsn_offset);
+    return rc;
+}
+
+/* a schema change finalized on its own */
+int sc_commit_map_checkpoint(struct ireq *iq, struct schema_change_type *s)
+{
+    struct sc_commit_map_barrier b = {.iq = iq, .list = s, .one = 1};
+    return sc_commit_map_barrier(&b);
+}
+
+/* the schema changes in iq->sc_pending, finalized together */
+int sc_commit_map_checkpoint_pending(struct ireq *iq)
+{
+    struct sc_commit_map_barrier b = {.iq = iq, .list = iq->sc_pending, .one = 0};
+    return sc_commit_map_barrier(&b);
+}
+
 static int do_ddl(ddl_t pre, ddl_t post, struct ireq *iq,
                   struct schema_change_type *s, tran_type *tran)
 {

@@ -4849,7 +4849,7 @@ processor_thd(struct thdpool *pool, void *work, void *thddata, int op)
 
 	Pthread_mutex_lock(&dbenv->txmap->txmap_mutexp);
 	
-	if (__txn_commit_map_enabled() && (rp->lc.child_utxnids != NULL)) {
+	if (__txn_commit_map_enabled() && !rp->skip_commit_map && (rp->lc.child_utxnids != NULL)) {
 		UTXNID *elt;
 
 		LISTC_FOR_EACH(rp->lc.child_utxnids, elt, lnk) {
@@ -5054,6 +5054,7 @@ __rep_process_txn_int(dbenv, rctl, rec, ltrans, maxlsn, commit_gen, rep_gen, loc
 	int i, ret, t_ret, line = 0;
 	u_int32_t txnid = 0;
 	u_int64_t utxnid = 0;
+	int skip_commit_map = 0;
 	char *dist_txnid = NULL;
 	void *txninfo;
 	unsigned long long context = 0;
@@ -5114,10 +5115,11 @@ __rep_process_txn_int(dbenv, rctl, rec, ltrans, maxlsn, commit_gen, rep_gen, loc
 			logmsg(LOGMSG_DEBUG, "%s failed at line %d\n", __func__, __LINE__);
 			return (ret);
 		}
-		if (txn_rl_args->opcode != TXN_COMMIT) {
+		if (TXN_OPCODE(txn_rl_args->opcode) != TXN_COMMIT) {
 			__os_free(dbenv, txn_rl_args);
 			return (0);
 		}
+		skip_commit_map = TXN_COMMIT_SKIPS_MAP(txn_rl_args->opcode);
 		args = txn_rl_args;
 		context = txn_rl_args->context;
 		txnid = txn_rl_args->txnid->txnid;
@@ -5191,10 +5193,11 @@ __rep_process_txn_int(dbenv, rctl, rec, ltrans, maxlsn, commit_gen, rep_gen, loc
 			logmsg(LOGMSG_DEBUG, "%s failed at line %d\n", __func__, __LINE__);
 			return (ret);
 		}
-		if (txn_args->opcode != TXN_COMMIT) {
+		if (TXN_OPCODE(txn_args->opcode) != TXN_COMMIT) {
 			__os_free(dbenv, txn_args);
 			return (0);
 		}
+		skip_commit_map = TXN_COMMIT_SKIPS_MAP(txn_args->opcode);
 		args = txn_args;
 		context = __txn_regop_read_context(txn_args);
 		txnid = txn_args->txnid->txnid;
@@ -5217,10 +5220,11 @@ __rep_process_txn_int(dbenv, rctl, rec, ltrans, maxlsn, commit_gen, rep_gen, loc
 			logmsg(LOGMSG_DEBUG, "%s failed at line %d\n", __func__, __LINE__);
 			return (ret);
 		}
-		if (txn_gen_args->opcode != TXN_COMMIT) {
+		if (TXN_OPCODE(txn_gen_args->opcode) != TXN_COMMIT) {
 			__os_free(dbenv, txn_gen_args);
 			return (0);
 		}
+		skip_commit_map = TXN_COMMIT_SKIPS_MAP(txn_gen_args->opcode);
 		args = txn_gen_args;
 		context = txn_gen_args->context;
 		txnid = txn_gen_args->txnid->txnid;
@@ -5433,7 +5437,7 @@ __rep_process_txn_int(dbenv, rctl, rec, ltrans, maxlsn, commit_gen, rep_gen, loc
 			p->rep_lock_time_us += d;
 		}
 
-		if (__txn_commit_map_enabled()) {
+		if (__txn_commit_map_enabled() && !skip_commit_map) {
 			if ((ret = __txn_commit_map_add(dbenv,
 					utxnid, rctl->lsn)), ret != 0) {
 				line = __LINE__;
@@ -5621,7 +5625,7 @@ __rep_process_txn_int(dbenv, rctl, rec, ltrans, maxlsn, commit_gen, rep_gen, loc
 
 	Pthread_mutex_lock(&dbenv->txmap->txmap_mutexp);
 
-	if (__txn_commit_map_enabled() && (lc.child_utxnids != NULL)) {
+	if (__txn_commit_map_enabled() && !skip_commit_map && (lc.child_utxnids != NULL)) {
 		UTXNID *elt;
 
 		LISTC_FOR_EACH(lc.child_utxnids, elt, lnk) {
@@ -5964,6 +5968,7 @@ __rep_process_txn_concurrent_int(dbenv, rctl, rec, ltrans, ctrllsn, maxlsn,
 	REP *rep = NULL;
 	u_int32_t txnid = 0;
 	u_int64_t utxnid = 0;
+	int skip_commit_map = 0;
 	LTDESC *lt = NULL;
 	__txn_regop_args *txn_args = NULL;
 	__txn_regop_gen_args *txn_gen_args = NULL;
@@ -6084,10 +6089,11 @@ bad_resize:	;
 			__txn_regop_rowlocks_read(dbenv, rec->data,
 				&txn_rl_args)) != 0)
 			return (ret);
-		if (txn_rl_args->opcode != TXN_COMMIT) {
+		if (TXN_OPCODE(txn_rl_args->opcode) != TXN_COMMIT) {
 			__os_free(dbenv, txn_rl_args);
 			return (0);
 		}
+		skip_commit_map = TXN_COMMIT_SKIPS_MAP(txn_rl_args->opcode);
 
 		args = txn_rl_args;
 
@@ -6153,10 +6159,11 @@ bad_resize:	;
 		 */
 		if ((ret = __txn_regop_read(dbenv, rec->data, &txn_args)) != 0)
 			return (ret);
-		if (txn_args->opcode != TXN_COMMIT) {
+		if (TXN_OPCODE(txn_args->opcode) != TXN_COMMIT) {
 			__os_free(dbenv, txn_args);
 			return (0);
 		}
+		skip_commit_map = TXN_COMMIT_SKIPS_MAP(txn_args->opcode);
 
 		args = txn_args;
 		rp->context = __txn_regop_read_context(txn_args);
@@ -6183,10 +6190,11 @@ bad_resize:	;
 			__txn_regop_gen_read(dbenv, rec->data,
 				&txn_gen_args)) != 0)
 			return (ret);
-		if (txn_gen_args->opcode != TXN_COMMIT) {
+		if (TXN_OPCODE(txn_gen_args->opcode) != TXN_COMMIT) {
 			__os_free(dbenv, txn_gen_args);
 			return (0);
 		}
+		skip_commit_map = TXN_COMMIT_SKIPS_MAP(txn_gen_args->opcode);
 
 		args = txn_gen_args;
 		rp->context = txn_gen_args->context;
@@ -6388,7 +6396,7 @@ bad_resize:	;
 		goto err;
 	}
 
-	if (__txn_commit_map_enabled()) {
+	if (__txn_commit_map_enabled() && !skip_commit_map) {
 		if ((ret = __txn_commit_map_add(dbenv,
 				utxnid, ctrllsn)), ret != 0) {
 			logmsg(LOGMSG_ERROR, "%s failed at line %d\n", __func__, __LINE__);
@@ -6569,6 +6577,7 @@ bad_resize:	;
 
 	/* Dispatch to a processor thread. */
 	rp->utxnid = utxnid;
+	rp->skip_commit_map = skip_commit_map;
 	rp->txninfo = txninfo;
 	rp->commit_lsn = ctrllsn;
 	rp->has_logical_commit = 0;
@@ -7605,7 +7614,7 @@ restart:
 				__txn_regop_rowlocks_read(dbenv, mylog.data,
 					&txnrlrec)) != 0)
 				goto err;
-			if (txnrlrec->opcode != TXN_ABORT) {
+			if (TXN_OPCODE(txnrlrec->opcode) != TXN_ABORT) {
 				undo = 1;
 			}
 
@@ -7684,7 +7693,7 @@ restart:
 				__txn_regop_gen_read(dbenv, mylog.data,
 					&txngenrec)) != 0)
 				goto err;
-			if (txngenrec->opcode != TXN_ABORT) {
+			if (TXN_OPCODE(txngenrec->opcode) != TXN_ABORT) {
 				undo = 1;
 			}
 			if (online)
@@ -7708,7 +7717,7 @@ restart:
 				__txn_regop_read(dbenv, mylog.data,
 					&txnrec)) != 0)
 				goto err;
-			if (txnrec->opcode != TXN_ABORT) {
+			if (TXN_OPCODE(txnrec->opcode) != TXN_ABORT) {
 				undo = 1;
 			}
 			if (online)
@@ -7892,7 +7901,7 @@ get_committed_lsns(dbenv, inlsns, n_lsns, epoch, file, offset)
 					break;
 				}
 
-				if (txn_rl_args->opcode == TXN_COMMIT &&
+				if (TXN_OPCODE(txn_rl_args->opcode) == TXN_COMMIT &&
 					txn_rl_args->lflags & DB_TXN_LOGICAL_COMMIT) {
 					if (*n_lsns + 1 >= curlim) {
 						curlim = (!curlim) ? 1000 : 2 * curlim;
@@ -7962,7 +7971,7 @@ get_committed_lsns(dbenv, inlsns, n_lsns, epoch, file, offset)
 						break;
 					}
 
-					if (txn_gen_args->opcode == TXN_COMMIT) {
+					if (TXN_OPCODE(txn_gen_args->opcode) == TXN_COMMIT) {
 #if 0
 					ret = __db_txnlist_add(dbenv,
 						txninfo, txn_gen_args.txnid->txnid,
@@ -8125,7 +8134,7 @@ get_committed_lsns(dbenv, inlsns, n_lsns, epoch, file, offset)
 						break;
 					}
 
-					if (txn_args->opcode == TXN_COMMIT) {
+					if (TXN_OPCODE(txn_args->opcode) == TXN_COMMIT) {
 #if 0
 					ret = __db_txnlist_add(dbenv,
 						txninfo, txn_args.txnid->txnid,
