@@ -1,0 +1,4 @@
+# Commit-only anchors: a physrep re-registering mid-transaction rewinds to its last commit
+log_cksum_prev 0
+rep_skip_recovery 1
+setattr MIN_KEEP_LOGS 20
