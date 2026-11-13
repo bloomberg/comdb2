@@ -61,6 +61,8 @@ extern int gbl_partial_indexes;
 extern int gbl_expressions_indexes;
 extern int gbl_reorder_socksql_no_deadlock;
 void bdb_send_write_hints(bdb_state_type *bdb_state, int send);
+void __memp_rwh_mark_op(void);
+extern int gbl_rep_write_hints;
 
 /* Replica write hints (rep_write_hints): did the current statement ship an osql write? */
 static __thread int rwh_wrote;
@@ -478,6 +480,8 @@ static int osql_send_del_logic(struct BtCursor *pCur, struct sql_thread *thd)
             return rc;
         }
     }
+    if (gbl_rep_write_hints)
+        __memp_rwh_mark_op();
     rwh_wrote = 1;
     osql->replicant_numops++;
     DEBUG_PRINT_NUMOPS();
@@ -612,6 +616,8 @@ static int osql_send_ins_logic(struct BtCursor *pCur, struct sql_thread *thd,
             return rc;
         }
     }
+    if (gbl_rep_write_hints)
+        __memp_rwh_mark_op();
     rwh_wrote = 1;
     osql->replicant_numops++;
     DEBUG_PRINT_NUMOPS();
@@ -782,6 +788,8 @@ static int osql_send_upd_logic(struct BtCursor *pCur, struct sql_thread *thd,
         }
     }
 
+    if (gbl_rep_write_hints)
+        __memp_rwh_mark_op();
     rwh_wrote = 1;
     osql->replicant_numops++;
     DEBUG_PRINT_NUMOPS();

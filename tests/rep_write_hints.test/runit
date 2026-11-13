@@ -4,12 +4,13 @@ bash -n "$0" || exit 1
 # Replica write hints (rep_write_hints).
 #
 # While a SQL statement runs on a replica, the replica records the distinct
-# btree leaf pages it reads (at most 32).  If the statement shipped a write to
-# the master, the replica sends those pages to the master in one lossy UDP
-# packet (USER_TYPE_REP_WRITE_HINTS) at the end of the statement; with
-# udp_prefault_async the packet goes through the sender thread.  The master
-# prefetches the pages in its udppfaultpool, so its block processor finds them
-# cached.
+# btree leaf pages it reads (at most 32), but of the data pages only those of
+# the rows it writes (rep_write_hints_written_rows).  If the statement shipped
+# a write to the master, the replica sends those pages to the master in one
+# lossy UDP packet (USER_TYPE_REP_WRITE_HINTS) at the end of the statement;
+# with udp_prefault_async the packet goes through the sender thread.  The
+# master prefetches the pages in its udppfaultpool, so its block processor
+# finds them cached.
 #
 # Roles: the master is whatever node is master when the test starts; R is the
 # first replicant, where the SQL runs; P is the other replicant.
@@ -41,6 +42,10 @@ bash -n "$0" || exit 1
 #      master (sent, not used), udp_prefault_async off on R (sent directly)
 #   I  master change under load: identical data afterwards, and the hints go
 #      to the new master
+#   J  an UPDATE whose WHERE scans many rows through a non-selective index
+#      and writes one: only the written row's data page is sent, plus the
+#      index leaves (rep_write_hints_written_rows); with the tunable off, the
+#      scanned rows' data pages fill the packet
 # No timing or performance thresholds.
 
 DBNAME=$1
@@ -435,8 +440,34 @@ VT=$((VT + 20))
 expect ${NROWS} ${VT} ${VTB}
 check_data
 
+# J: tc has 2000 rows of about 220 bytes and 100 rows per value of c: an
+# UPDATE by c and b reads 100 rows, spread over many data pages, through the
+# index on c, and writes one.  The packet holds the written row's data page
+# and the few index leaves it read; with rep_write_hints_written_rows off, the
+# data pages of the rejected rows fill it (32 pages)
+sqlh ${master} "create table tc(id int primary key, c int, b int, v int, pad cstring(201))" || fail "create table tc"
+sqlh ${master} "create index tc_c on tc(c)" || fail "create index tc_c"
+sqlh ${master} "insert into tc select value, value % 20, value, 0, printf('%0200d', value) from generate_series(1, 2000)" || fail "load tc"
+wait_caught_up
+echo "update tc set v = v + 1 where c = 3 and b = 1003" > $W/j.sql
+run_case J $W/j.sql
+[[ $(packets J) -eq 1 ]] || fail "J: $(packets J) write-hint packets for 1 UPDATE"
+[[ $(pages J) -gt 0 ]] || fail "J: no write-hint page reached the master"
+[[ $(pages J) -le 4 ]] || fail "J: $(pages J) hint pages for an UPDATE that writes one row: the scanned rows' data pages were sent"
+put_tunable ${origin} rep_write_hints_written_rows 0 OFF
+echo "update tc set v = v + 1 where c = 3 and b = 1023" > $W/j_off.sql
+run_case J_OFF $W/j_off.sql
+put_tunable ${origin} rep_write_hints_written_rows 1 ON
+[[ $(packets J_OFF) -eq 1 ]] || fail "J: $(packets J_OFF) write-hint packets for 1 UPDATE"
+[[ $(pages J_OFF) -gt 4 ]] || fail "J: $(pages J_OFF) hint pages with rep_write_hints_written_rows off, expected the scanned rows' data pages"
+wait_caught_up
+for n in ${nodes}; do
+    [[ "$(sqlh $n "select group_concat(id) from (select id from tc where v = 1 order by id)")" == "1003,1023" ]] || fail "J: tc differs on $n"
+done
+
 sqlh ${master} "drop table t" || fail "drop table t"
 sqlh ${master} "drop table tb" || fail "drop table tb"
+sqlh ${master} "drop table tc" || fail "drop table tc"
 rm -rf $W
 echo "Success"
 exit 0
