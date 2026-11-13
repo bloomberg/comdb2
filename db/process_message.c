@@ -2163,6 +2163,9 @@ clipper_usage:
         const char *clstr = mach_class_class2name(mclass);
         logmsg(LOGMSG_USER, "machine_class for %s is %s\n", hostname, clstr);
 #ifdef COMDB2_TEST
+    } else if (tokcmp(tok, ltok, "clientstats_exact") == 0) {
+        extern void clientstats_print_exact(void);
+        clientstats_print_exact();
     } else if (tokcmp(tok, ltok, "test_allowed_class") == 0) {
         char *physrep_host = NULL;
         char *source_host = NULL;
@@ -5218,8 +5221,7 @@ void fastcount(char *tablename)
         return;
     }
 
-    calc_table_size(p_db, 0);
-    dtasize = p_db->totalsize / 3;
+    dtasize = calc_table_size(p_db, 0) / 3;
     recsize = p_db->lrl;
     numrecs = dtasize / recsize;
 
@@ -5268,20 +5270,22 @@ static void dump_table_sizes(struct dbenv *dbenv)
 
     for (ndb = 0; ndb < dbenv->num_dbs; ndb++) {
         db = dbenv->dbs[ndb];
+        uint64_t tblsize = __atomic_load_n(&db->totalsize, __ATOMIC_RELAXED);
 
         if (total > 0)
-            percent = (db->totalsize * 100ULL) / total;
+            percent = (tblsize * 100ULL) / total;
         else
             percent = 0;
-        logmsg(LOGMSG_USER, "table %*s sz %12s %3d%% ", maxtblname,
-               db->tablename, fmt_size(b, sizeof(b), db->totalsize), (int)percent);
-        logmsg(LOGMSG_USER, "(dta %s", fmt_size(b, sizeof(b), db->dtasize));
+        logmsg(LOGMSG_USER, "table %*s sz %12s %3d%% ", maxtblname, db->tablename, fmt_size(b, sizeof(b), tblsize),
+               (int)percent);
+        logmsg(LOGMSG_USER, "(dta %s", fmt_size(b, sizeof(b), __atomic_load_n(&db->dtasize, __ATOMIC_RELAXED)));
         for (ii = 0; ii < db->nix; ii++) {
-           logmsg(LOGMSG_USER, ", ix%d %s", ii, fmt_size(b, sizeof(b), db->ixsizes[ii]));
+            logmsg(LOGMSG_USER, ", ix%d %s", ii,
+                   fmt_size(b, sizeof(b), __atomic_load_n(&db->ixsizes[ii], __ATOMIC_RELAXED)));
         }
         for (ii = 0; ii < db->numblobs; ii++) {
-           logmsg(LOGMSG_USER, ", blob%d %s", ii,
-                   fmt_size(b, sizeof(b), db->blobsizes[ii]));
+            logmsg(LOGMSG_USER, ", blob%d %s", ii,
+                   fmt_size(b, sizeof(b), __atomic_load_n(&db->blobsizes[ii], __ATOMIC_RELAXED)));
         }
         logmsg(LOGMSG_USER, ")");
         if (db->timepartition_name)
@@ -5292,14 +5296,14 @@ static void dump_table_sizes(struct dbenv *dbenv)
     }
     for (ndb = 0; ndb < dbenv->num_qdbs; ndb++) {
         db = dbenv->qdbs[ndb];
+        uint64_t tblsize = __atomic_load_n(&db->totalsize, __ATOMIC_RELAXED);
 
         if (total > 0)
-            percent = (db->totalsize * 100ULL) / total;
+            percent = (tblsize * 100ULL) / total;
         else
             percent = 0;
-        logmsg(LOGMSG_USER, "queue %*s sz %12s %3d%% (%u extents)\n",
-               maxtblname, db->tablename, fmt_size(b, sizeof(b), db->totalsize),
-               (int)percent, db->numextents);
+        logmsg(LOGMSG_USER, "queue %*s sz %12s %3d%% (%u extents)\n", maxtblname, db->tablename,
+               fmt_size(b, sizeof(b), tblsize), (int)percent, __atomic_load_n(&db->numextents, __ATOMIC_RELAXED));
     }
 
     if (total > 0)

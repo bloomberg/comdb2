@@ -15,6 +15,7 @@
  */
 
 #include <strings.h>
+#include "comdb2_atomic.h"
 #include <errno.h>
 #include <poll.h>
 #include <util.h>
@@ -8101,9 +8102,9 @@ int osql_process_packet(struct ireq *iq, uuid_t uuid, void *trans, char **pmsg,
     p_buf = _get_txn_info(msg, &type);
 
     if (type >= 0 && type < MAX_OSQL_TYPES)
-        db->blockosqltypcnt[type]++;
+        ATOMIC_ADD64(db->blockosqltypcnt[type], 1);
     else
-        db->blockosqltypcnt[0]++; /* invalids */
+        ATOMIC_ADD64(db->blockosqltypcnt[0], 1); /* invalids */
 
 #if DEBUG_REORDER
     const char *osql_reqtype_str(int type);

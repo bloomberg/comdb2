@@ -61,6 +61,13 @@ extern int gbl_metrics_count;
 /* Refresh the values of all metrics. */
 int refresh_metrics(void);
 
+/* Return a malloc'd copy of all metric values, taken under the metrics lock,
+ * or NULL on OOM. Free with free(). */
+void *metrics_snapshot(void);
+
+/* Return a pointer to the value of metric m inside a metrics_snapshot(). */
+const void *metric_snapshot_value(const void *snap, const comdb2_metric *m);
+
 /* Initialize & reset the values of all metrics. */
 int init_metrics(void);
 

@@ -20,6 +20,7 @@
 #include <flibc.h>
 #include <sql.h>
 #include "sys_wrap.h"
+#include "comdb2_atomic.h"
 
 extern int gbl_partial_indexes;
 
@@ -192,7 +193,7 @@ retry:
     if (rc != 0) {
         rc = bdb_tran_abort(db->handle, tran, &bdberr);
         if (bdberr == BDBERR_DEADLOCK && ++retries < gbl_maxretries) {
-            n_retries++;
+            ATOMIC_ADD64(n_retries, 1);
             printf("Retrying purge transaction...\n");
             goto retry;
         }
@@ -468,7 +469,7 @@ deadlock:
     bzero(blobs_buf, sizeof(blobs_buf));
     idx_blobs = NULL;
     if (++retries < gbl_maxretries) {
-        n_retries++;
+        ATOMIC_ADD64(n_retries, 1);
         goto retry;
     }
     snprintf(msg, msglen, "gave up after %d deadlock retries", retries);
