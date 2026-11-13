@@ -2,6 +2,7 @@
 
 . ${TESTSROOTDIR}/tools/write_prompt.sh
 . ${TESTSROOTDIR}/tools/waitmach.sh
+. ${TESTSROOTDIR}/memory_tools/lifecycle.sh
 
 if [[ -z "$sleeptime" ]]; then 
     sleeptime=5
@@ -24,6 +25,7 @@ function bounce_node
     write_prompt $func "Running $func"
     $CDB2SQL_EXE $CDB2_OPTIONS --tabs $DBNAME --host $node "exec procedure sys.cmd.send(\"exit\")"
     sleep $sleeptime
+    memory_tool_lifecycle_wait_exit $(cat ${TMPDIR}/${DBNAME}.${node}.pid)
     if [ $node == $(hostname) ] ; then
         (
             kill -9 $(cat ${TMPDIR}/${DBNAME}.${node}.pid)
@@ -79,6 +81,7 @@ function bounce_local
     write_prompt $func "Running $func"
     $CDB2SQL_EXE $CDB2_OPTIONS --tabs $DBNAME default "exec procedure sys.cmd.send(\"exit\")"
     sleep $sleeptime
+    memory_tool_lifecycle_wait_exit $(cat ${TMPDIR}/${DBNAME}.pid)
     (
         PARAMS="$DBNAME --no-global-lrl"
         kill -9 $(cat ${TMPDIR}/${DBNAME}.pid)
@@ -142,6 +145,10 @@ function kill_by_pidfile() {
         local pid=$(cat $pidfile)
         ps -p $pid -o args | grep -q "comdb2 ${DBNAME}"
         if [[ $? -eq 0 ]]; then
+            # pidfiles are ${DBNAME}.pid or ${DBNAME}.<node>.pid
+            local node=$(basename $pidfile .pid)
+            [[ $node == ${DBNAME}.* ]] && node=${node#${DBNAME}.} || node=
+            ${TESTSROOTDIR}/memory_tools/before_db_kill.sh ${DBNAME} $node
             echo "kill -9 $pid"
             kill -9 $pid
         fi

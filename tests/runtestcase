@@ -2,11 +2,12 @@
 
 . ${TESTSROOTDIR}/testutils
 . ${TESTSROOTDIR}/quarantine.sh
+. ${TESTSROOTDIR}/memory_tools/lifecycle.sh
 
 testdb_start_testcase
 
 # on exit call_unsetup
-trap "call_unsetup \"0\"" INT EXIT
+trap "call_unsetup \"0\"; memory_tool_lifecycle_finalize fail" INT EXIT
 
 
 # Setup a debugger to run comdb2 server
@@ -105,6 +106,18 @@ successful=0
 DATETIME=$(date +"%Y-%m-%d %H:%M:%S")
 echo Starting $TESTCASE with id $TESTID at $DATETIME >> ${TEST_LOG}
 mkdir -p ${TESTDIR}/logs/
+
+# MEMORY_TOOL_VARIANT runs every server of the test under a memory tool
+if ! memory_tool_lifecycle_init; then
+    echo "!$TESTCASE: failed to set up memory tool ${MEMORY_TOOL_VARIANT}" | tee -a ${TEST_LOG}
+    trap - INT EXIT
+    exit 1
+fi
+if memory_tool_lifecycle_active; then
+    TEST_TIMEOUT=$(memory_tool_lifecycle_scale_timeout $TEST_TIMEOUT)
+    SETUP_TIMEOUT=$(memory_tool_lifecycle_scale_timeout $SETUP_TIMEOUT)
+    [[ -n "$CLUSTER" ]] && memory_tool_lifecycle_prepare_cluster
+fi
 
 call_unsetup() {
     if [[ $COMDB2_UNITTEST == 1 ]] || [[ "$LEAVEDBRUNNING" == "1" ]] ; then 
@@ -406,6 +419,7 @@ exit_if_above_max_test_failures
 testdb_note "setup start"
 call_setup
 testdb_note "setup end"
+memory_tool_lifecycle_after_setup
 
 DATETIME=$(date +"%Y-%m-%d %H:%M:%S")
 echo "!$TESTCASE: started running with timeout ${TEST_TIMEOUT} at $DATETIME"
@@ -577,8 +591,11 @@ elif [[ -n "$cr" ]] ; then
     cr=""
     teststatus=5
 elif [[ $rc -eq 0 ]] ; then
-    echo -e "!$TESTCASE: ${GREEN}success${NEUTRAL} (logs in ${TESTDIR}/logs/${DBNAME}.testcase)"
-    echo "!$TESTCASE: success" >> ${TEST_LOG}
+    # in memory-tool runs success is only reported after the memory check
+    if ! memory_tool_lifecycle_active; then
+        echo -e "!$TESTCASE: ${GREEN}success${NEUTRAL} (logs in ${TESTDIR}/logs/${DBNAME}.testcase)"
+        echo "!$TESTCASE: success" >> ${TEST_LOG}
+    fi
     successful=1
     teststatus=0
 else
@@ -595,6 +612,21 @@ fi
 trap - INT EXIT
 
 call_unsetup
+
+# after unsetup, so servers have exited and the memory tools have reported
+if memory_tool_lifecycle_active; then
+    if memory_tool_lifecycle_finalize $([[ $teststatus -eq 0 ]] && echo pass || echo fail); then
+        if [[ $teststatus -eq 0 ]]; then
+            echo -e "!$TESTCASE: ${GREEN}success${NEUTRAL} (logs in ${TESTDIR}/logs/${DBNAME}.testcase)"
+            echo "!$TESTCASE: success" >> ${TEST_LOG}
+        fi
+    else
+        echo -e "!$TESTCASE: ${RED}failed${NEUTRAL} memory check ${MEMORY_TOOL_VARIANT} (see ${MEMORY_TOOL_ARTIFACT_ROOT}/summary.txt)"
+        echo "!$TESTCASE: failed memory check ${MEMORY_TOOL_VARIANT}" >> ${TEST_LOG}
+        [[ $teststatus -eq 0 ]] && teststatus=6
+        [[ $rc -eq 0 ]] && rc=1
+    fi
+fi
 
 if [[ -z "$cr" ]] ; then
     # find any cores after unsetup -- ONLY works if CLEANUPDBDIR=0 because unsetup cleans up dir

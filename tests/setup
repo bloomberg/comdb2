@@ -33,6 +33,7 @@ done
 
 # set paths
 source $TESTSROOTDIR/setup.common
+source $TESTSROOTDIR/tools/wait_for_pidfile.sh
 
 mkdir -p $DBDIR
 
@@ -128,7 +129,10 @@ setup_db() {
     echo "enable_temptable_clean_exit on" >> ${LRL}
     echo "assert_no_schemalk_in_distributed_commit 1" >> ${LRL}
     echo "replicant_poll_on_sc 1" >> ${LRL}
-    echo "exitalarmsec 10" >> ${LRL}
+    echo "exitalarmsec ${MEMORY_TOOL_EXITALARMSEC:-10}" >> ${LRL}
+    if [[ -n ${MEMORY_TOOL_WATCHTHRESHOLD} ]]; then
+        echo "watchthreshold ${MEMORY_TOOL_WATCHTHRESHOLD}" >> ${LRL}
+    fi
 
     # If CLUSTER is defined, populate config and lrl with that info
     if [[ -n "$CLUSTER" ]]; then
@@ -155,6 +159,10 @@ setup_db() {
             # SSL handshakes are expensive!
             echo "comdb2_config:connect_timeout:10000" >> $CDB2_CONFIG
         fi
+    fi
+    # memory-tool runs: the server accepts and handshakes that many times slower
+    if [[ -n ${MEMORY_TOOL_CONNECT_TIMEOUT} ]]; then
+        echo "comdb2_config:connect_timeout:${MEMORY_TOOL_CONNECT_TIMEOUT}" >> $CDB2_CONFIG
     fi
 
     set +e
@@ -207,7 +215,8 @@ setup_db() {
 
     # The script occasionally fails here. Let's find out what the rc is.
     set +e
-    $COMDB2_EXE --create ${DBNAME} ${PARAMS} &> $LOGDIR/${DBNAME}.init
+    # memory-tool runs cover --create too; other DEBUG_PREFIX uses (gdb, perf) do not
+    ${MEMORY_TOOL_VARIANT:+$DEBUG_PREFIX} $COMDB2_EXE --create ${DBNAME} ${PARAMS} &> $LOGDIR/${DBNAME}.init
     rc=$?
     rm -f ${DBNAME}.trap
     if [[ $rc -ne 0 ]]; then
@@ -237,11 +246,11 @@ setup_db() {
             echo "!$TESTCASE: starting single node"
             ${DEBUG_PREFIX} $COMDB2_EXE ${DBNAME} ${PARAMS} &> $LOGDIR/${DBNAME}.db &
             dbpid=$!
-            sleep 2
-
-            if [ ! -f ${TMPDIR}/${DBNAME}.pid ] ; then
-                echo "pid ${TMPDIR}/${DBNAME}.pid does not exist"
+            # Not a fixed sleep: an instrumented server (memory-tool run) takes
+            # many times longer to get this far.
+            if ! wait_for_pidfile ${TMPDIR}/${DBNAME}.pid $dbpid $((10 * ${MEMORY_TOOL_SLOWDOWN:-1})); then
                 check_db_port_running_local # this error is immediate so we should be able to catch it early
+                failexit "single node did not start, see $LOGDIR/${DBNAME}.db"
             fi
 
             kill -0 `cat ${TMPDIR}/${DBNAME}.pid` > /dev/null

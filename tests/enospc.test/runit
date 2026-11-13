@@ -28,7 +28,7 @@ for file in ${DBDIR}/*.datas* ${DBDIR}/*.index; do
     ./cdb2_verify $file
 done
 
-${COMDB2_EXE} $dbname --lrl ${DBDIR}/${dbname}.lrl --no-global-lrl --pidfile ${TMPDIR}/${DBNAME}.pid >> ${TESTDIR}/logs/${dbname}.db 2>&1 &
+${DEBUG_PREFIX} ${COMDB2_EXE} $dbname --lrl ${DBDIR}/${dbname}.lrl --no-global-lrl --pidfile ${TMPDIR}/${DBNAME}.pid >> ${TESTDIR}/logs/${dbname}.db 2>&1 &
 sleep 5
 
 # steal from setup - wait until db is up

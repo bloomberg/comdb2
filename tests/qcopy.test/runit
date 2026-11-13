@@ -15,9 +15,9 @@ grep -v name ${DBNAME}.lrl | grep -v "cluster nodes" > tmp && mv tmp ${DBNAME}.l
 NEWNAME="qcopy$$test"
 echo "name $NEWNAME" >> ${DBNAME}.lrl
 echo creating new db with name $NEWNAME
-$COMDB2_EXE $NEWNAME --create --lrl ${DBNAME}.lrl
+${MEMORY_TOOL_VARIANT:+$DEBUG_PREFIX} $COMDB2_EXE $NEWNAME --create --lrl ${DBNAME}.lrl
 echo starting new db $NEWNAME
-$COMDB2_EXE $NEWNAME --lrl ${DBNAME}.lrl &
+${DEBUG_PREFIX} $COMDB2_EXE $NEWNAME --lrl ${DBNAME}.lrl &
 dbpid=$!
 
 function exiting {

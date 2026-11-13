@@ -19,7 +19,7 @@ function create_database()
     echo "reqldiffstat 1" >> "${DBDIR}/${DBNAME}.lrl"
     echo "dir ${DBDIR}" >> "${DBDIR}/${DBNAME}.lrl"
 
-    "${COMDB2_EXE}" "${DBNAME}" --create --lrl "${DBDIR}/${DBNAME}.lrl" || failexit "failed to create database ${DBNAME}"
+    ${MEMORY_TOOL_VARIANT:+$DEBUG_PREFIX} "${COMDB2_EXE}" "${DBNAME}" --create --lrl "${DBDIR}/${DBNAME}.lrl" || failexit "failed to create database ${DBNAME}"
 }
 
 function wait_for_db()
@@ -34,7 +34,7 @@ function wait_for_db()
 
 function start_database()
 {
-    "${COMDB2_EXE}" "${DBNAME}" --lrl "${DBDIR}/${DBNAME}.lrl" --no-global-lrl --pidfile "${PIDFILE}" >> "${TESTDIR}/logs/${DBNAME}.db" 2>&1 &
+    ${DEBUG_PREFIX} "${COMDB2_EXE}" "${DBNAME}" --lrl "${DBDIR}/${DBNAME}.lrl" --no-global-lrl --pidfile "${PIDFILE}" >> "${TESTDIR}/logs/${DBNAME}.db" 2>&1 &
     wait_for_db "${DBNAME}"
 }
 

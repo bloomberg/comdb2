@@ -72,7 +72,7 @@ function create_database_with_table()
     echo "name $DB" > $NEWDBDIR/$DB.lrl
     echo "dir ${NEWDBDIR}" >> $NEWDBDIR/$DB.lrl
     echo "table $CSC2 $NEWDBDIR/${CSC2}.csc2" >> $NEWDBDIR/$DB.lrl
-    ${COMDB2_EXE} ${DB} --create --dir ${NEWDBDIR} --lrl $NEWDBDIR/$DB.lrl &> out
+    ${MEMORY_TOOL_VARIANT:+$DEBUG_PREFIX} ${COMDB2_EXE} ${DB} --create --dir ${NEWDBDIR} --lrl $NEWDBDIR/$DB.lrl &> out
     egrep "$GREPTRACE" out
     if [[ $? -ne 0 ]]; then
         cat out
@@ -85,7 +85,7 @@ function start_and_stop_db()
 {
     DB=$1
     NEWDBDIR=${DBDIR}/${DB}
-    ${COMDB2_EXE} ${DB} --dir ${NEWDBDIR} --lrl $NEWDBDIR/$DB.lrl &> out &
+    ${DEBUG_PREFIX} ${COMDB2_EXE} ${DB} --dir ${NEWDBDIR} --lrl $NEWDBDIR/$DB.lrl &> out &
     PID=$!
 
     # Wait for "I AM READY", or timeout
