@@ -2882,6 +2882,15 @@ int bdb_get_modsnap_start_state(bdb_state_type *bdb_state,
 
 extern int __txn_is_prepared_unresolved(DB_ENV *, const char *);
 
+extern int __txn_is_prepared_schema(DB_ENV *, const char *);
+
+int bdb_dist_txn_is_schema_prepare(bdb_state_type *bdb_state, const char *dist_txnid)
+{
+    if (bdb_state->parent)
+        bdb_state = bdb_state->parent;
+    return __txn_is_prepared_schema(bdb_state->dbenv, dist_txnid);
+}
+
 int bdb_dist_txn_is_prepared(bdb_state_type *bdb_state, const char *dist_txnid)
 {
     if (bdb_state->parent)

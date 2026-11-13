@@ -29,7 +29,8 @@ enum {
     IS_NOT_DURABLE = 3,
     NO_DIST_TABLE = 4,
     LOCK_DESIRED = 5,
-    ALL_PREPARED = 6
+    ALL_PREPARED = 6,
+    TIMED_OUT = 7
 };
 
 /* This coordinator records participant information */
@@ -106,7 +107,8 @@ int participant_heartbeat(const char *dist_txnid, const char *participant_name, 
 int participant_wait(const char *dist_txnid, const char *coordinator_name, const char *coordinator_tier,
                      const char *coordinator_master);
 
-/* This schema change participant waits for the coordinator, ignoring lock-desired */
+/* This schema change participant waits for the coordinator, ignoring
+ * lock-desired, for up to disttxn_ddl_timeout_ms: then it returns TIMED_OUT */
 int participant_wait_ddl(const char *dist_txnid, const char *coordinator_name, const char *coordinator_tier,
                          const char *coordinator_master);
 
@@ -116,6 +118,10 @@ int participant_wait_resumed_ddl(const char *dist_txnid, const char *coordinator
 
 /* This participant processes a coordinator's abort */
 int coordinator_aborted(const char *dist_txnid);
+
+/* Abort a recovered prepared transaction; a 2pc schema change's restored
+ * sc_list is resumed */
+int disttxn_abort_recovered(const char *dist_txnid);
 
 /* This participant processes a cordinator's commit */
 int coordinator_committed(const char *dist_txnid);

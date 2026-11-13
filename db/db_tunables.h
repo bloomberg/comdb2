@@ -329,6 +329,17 @@ REGISTER_TUNABLE("debug_exit_participant_before_ddl_prepare",
                  "Participant exits after finalizing a 2pc schema change, before it prepares.  (Default: off)",
                  TUNABLE_BOOLEAN, &gbl_debug_exit_participant_before_ddl_prepare, EXPERIMENTAL | INTERNAL, NULL, NULL,
                  NULL, NULL);
+REGISTER_TUNABLE("debug_fail_2pc_redo_finalize",
+                 "Fail the finalize of this many redos of committed 2pc schema changes.  (Default: 0)", TUNABLE_INTEGER,
+                 &gbl_debug_fail_2pc_redo_finalize, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("debug_resumed_ddl_lock_desired",
+                 "This many resumed 2pc participants see lock-desired while asking their coordinator.  (Default: 0)",
+                 TUNABLE_INTEGER, &gbl_debug_resumed_ddl_lock_desired, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("debug_commit_ddl_during_upgrade",
+                 "A new master delivers a coordinator commit for each prepared 2pc schema change while it is "
+                 "aborting them.  (Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_debug_commit_ddl_during_upgrade, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL,
+                 NULL);
 REGISTER_TUNABLE("debug_exit_participant_after_prepare", "Participant exits after successful prepare.  (Default: off)",
                  TUNABLE_BOOLEAN, &gbl_debug_exit_participant_after_prepare, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL,
                  NULL);

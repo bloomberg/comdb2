@@ -185,6 +185,8 @@ int gbl_debug_exit_participant_after_prepare = 0;
 int gbl_debug_fail_ddl_prepare = 0;
 int gbl_debug_sleep_ddl_before_lock_ms = 0;
 int gbl_debug_exit_participant_before_ddl_prepare = 0;
+int gbl_debug_commit_ddl_during_upgrade = 0;
+int gbl_debug_resumed_ddl_lock_desired = 0;
 int gbl_debug_exit_coordinator_before_commit = 0;
 int gbl_debug_sleep_coordinator_before_commit = 0;
 int gbl_debug_exit_coordinator_after_commit = 0;
@@ -475,6 +477,17 @@ static const char *has_committed_rcode(int rcode)
     return "UNKNOWN";
 }
 
+/* Abort a recovered prepared transaction.  A prepared 2pc schema change gets
+ * its sc_list back, which is resumed: that asks the coordinator again. */
+int disttxn_abort_recovered(const char *dist_txnid)
+{
+    int schema = bdb_dist_txn_is_schema_prepare(thedb->bdb_env, dist_txnid);
+    int rc = thedb->bdb_env->dbenv->txn_abort_recovered(thedb->bdb_env->dbenv, dist_txnid);
+    if (rc == 0 && schema && bdb_amimaster(thedb->bdb_env))
+        resume_2pc_sc_list_aborted(dist_txnid);
+    return rc;
+}
+
 static void recover_prepared_transaction(const char *dist_txnid, const char *coordinator_dbname,
                                          const char *coordinator_tier)
 {
@@ -492,7 +505,7 @@ static void recover_prepared_transaction(const char *dist_txnid, const char *coo
             if (gbl_debug_disttxn_trace) {
                 logmsg(LOGMSG_USER, "DISTTXN %s txn %s coordinator-local txn has aborted\n", __func__, dist_txnid);
             }
-            thedb->bdb_env->dbenv->txn_abort_recovered(thedb->bdb_env->dbenv, dist_txnid);
+            disttxn_abort_recovered(dist_txnid);
         } else if (gbl_debug_disttxn_trace) {
             logmsg(LOGMSG_USER, "DISTTXN %s txn %s coordinator-local txn-has-committed returns %s\n", __func__,
                    dist_txnid, has_committed_rcode(committed));
@@ -2114,7 +2127,12 @@ static int participant_wait_int(const char *dist_txnid, const char *coordinator_
     Pthread_mutex_lock(&p->lk);
     Pthread_mutex_unlock(&part_lk);
 
-    while (p->state == I_AM_PREPARED && !(lock_desired = (!ignore_lock_desired && bdb_lock_desired(thedb->bdb_env)))) {
+    /* A schema change waits holding the schema lock, which stops the whole
+     * db: it gives up after disttxn_ddl_timeout_ms */
+    int timed_out = 0, wait_start = comdb2_time_epochms();
+    while (p->state == I_AM_PREPARED && !(lock_desired = (!ignore_lock_desired && bdb_lock_desired(thedb->bdb_env))) &&
+           !(timed_out = (ignore_lock_desired && gbl_disttxn_ddl_timeout_ms > 0 &&
+                          comdb2_time_epochms() - wait_start >= gbl_disttxn_ddl_timeout_ms))) {
         if (gbl_debug_disttxn_trace) {
             logmsg(LOGMSG_USER, "DISTTXN %s line %d sending prepared %s first=%d\n", __func__, __LINE__, dist_txnid,
                    first);
@@ -2155,6 +2173,12 @@ static int participant_wait_int(const char *dist_txnid, const char *coordinator_
 
     if (rtn == I_AM_PREPARED && lock_desired) {
         return LOCK_DESIRED;
+    }
+
+    if (rtn == I_AM_PREPARED && timed_out) {
+        logmsg(LOGMSG_ERROR, "%s: dist-txnid %s gave up on coordinator %s after %d ms\n", __func__, dist_txnid,
+               coordinator_name, gbl_disttxn_ddl_timeout_ms);
+        return TIMED_OUT;
     }
 
     return (rtn == I_AM_COMMITTED) ? HAS_COMMITTED : HAS_ABORTED;
@@ -2233,8 +2257,9 @@ int participant_wait_ddl(const char *dist_txnid, const char *coordinator_name, c
     return rc;
 }
 
-/* A participant resuming a 2pc schema change it had prepared asks the
- * coordinator for its decision */
+/* A participant resuming a 2pc schema change asks the coordinator for its
+ * decision before it redoes it, holding no locks.  It stops if it is no longer
+ * master: the next master asks. */
 int participant_wait_resumed_ddl(const char *dist_txnid, const char *coordinator_name, const char *coordinator_tier)
 {
     Pthread_mutex_lock(&part_lk);
@@ -2247,7 +2272,13 @@ int participant_wait_resumed_ddl(const char *dist_txnid, const char *coordinator
     Pthread_mutex_unlock(&part_lk);
 
     int lock_desired = 0;
-    while (p->state == I_AM_PREPARED && !(lock_desired = bdb_lock_desired(thedb->bdb_env))) {
+    if (gbl_debug_resumed_ddl_lock_desired > 0) {
+        gbl_debug_resumed_ddl_lock_desired--;
+        logmsg(LOGMSG_USER, "%s: lock desired for resumed %s on debug tunable\n", __func__, dist_txnid);
+        lock_desired = 1;
+    }
+    while (!lock_desired && p->state == I_AM_PREPARED &&
+           !(lock_desired = (bdb_lock_desired(thedb->bdb_env) || !bdb_amimaster(thedb->bdb_env)))) {
         Pthread_mutex_unlock(&p->lk);
         send_coordinator_prepared_find_master(dist_txnid, coordinator_name, coordinator_tier);
         Pthread_mutex_lock(&p->lk);
@@ -2282,7 +2313,7 @@ int coordinator_aborted(const char *dist_txnid)
 
         /* Abort recovered transactions immediately */
         Pthread_mutex_unlock(&part_lk);
-        int rc = thedb->bdb_env->dbenv->txn_abort_recovered(thedb->bdb_env->dbenv, dist_txnid);
+        int rc = disttxn_abort_recovered(dist_txnid);
         if (rc == 0) {
             if (gbl_debug_disttxn_trace) {
                 logmsg(LOGMSG_USER, "DISTTXN %s dist_txnid %s aborted recovered txn\n", __func__, dist_txnid);
@@ -2668,9 +2699,23 @@ void disttxn_init_recover_prepared(void)
     thedb->bdb_env->dbenv->set_recover_prepared_callback(thedb->bdb_env->dbenv, recover_prepared_transaction);
 }
 
+/* Test the window in which a new master aborts a prepared schema change: the
+ * coordinator's commit must not commit it there */
+static void debug_commit_ddl_during_upgrade(const char *dist_txnid)
+{
+    if (!gbl_debug_commit_ddl_during_upgrade)
+        return;
+    logmsg(LOGMSG_USER, "%s delivering coordinator commit for %s on debug tunable\n", __func__, dist_txnid);
+    coordinator_committed(dist_txnid);
+}
+
+extern void (*__txn_debug_upgrade_ddl_commit)(const char *dist_txnid);
+
 /* Initialize coordinator and participant data structures */
 void disttxn_init(void)
 {
+    __txn_debug_upgrade_ddl_commit = debug_commit_ddl_during_upgrade;
+
     Pthread_mutex_lock(&part_lk);
     participant_hash = hash_init_strptr(0);
     Pthread_mutex_unlock(&part_lk);

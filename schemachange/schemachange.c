@@ -1599,10 +1599,104 @@ const char *schema_change_kind(struct schema_change_type *s)
     return "UNKNOWN";
 }
 
+/* 2pc sc_lists being resumed or waiting for a retry */
+struct sc_2pc_resume {
+    uuid_t uuid;
+    int active;  /* being resumed */
+    int retries; /* failed resumes since it last committed or aborted */
+    struct sc_2pc_resume *next;
+};
+static struct sc_2pc_resume *sc_2pc_resumes = NULL;
+static pthread_mutex_t sc_2pc_resume_lk = PTHREAD_MUTEX_INITIALIZER;
+
+#define SC_2PC_RESUME_RETRY_SECS 10
+#define SC_2PC_RESUME_RETRY_MAX_SECS 300
+
+/* call with sc_2pc_resume_lk */
+static struct sc_2pc_resume **sc_2pc_resume_find_lk(uuid_t uuid)
+{
+    struct sc_2pc_resume **pr = &sc_2pc_resumes;
+    while (*pr && comdb2uuidcmp((*pr)->uuid, uuid))
+        pr = &(*pr)->next;
+    return pr;
+}
+
+/* call with sc_2pc_resume_lk: drop r once it is neither resumed nor retried */
+static void sc_2pc_resume_prune_lk(struct sc_2pc_resume **pr)
+{
+    struct sc_2pc_resume *r = *pr;
+    if (r && !r->active && !r->retries) {
+        *pr = r->next;
+        free(r);
+    }
+}
+
+int sc_2pc_resume_begin(sc_list_2pc_t *dist, uuid_t uuid)
+{
+    int rc = 1;
+    Pthread_mutex_lock(&sc_2pc_resume_lk);
+    struct sc_2pc_resume **pr = sc_2pc_resume_find_lk(uuid);
+    if (*pr && (*pr)->active) {
+        rc = 0;
+    } else {
+        if (!*pr && (*pr = calloc(1, sizeof(struct sc_2pc_resume))))
+            comdb2uuidcpy((*pr)->uuid, uuid);
+        if (*pr)
+            (*pr)->active = 1;
+        /* out of memory: resume it untracked */
+    }
+    Pthread_mutex_unlock(&sc_2pc_resume_lk);
+    if (rc) {
+        dist->resuming = 1;
+        comdb2uuidcpy(dist->uuid, uuid);
+    }
+    return rc;
+}
+
+static void sc_2pc_resume_end(uuid_t uuid)
+{
+    Pthread_mutex_lock(&sc_2pc_resume_lk);
+    struct sc_2pc_resume **pr = sc_2pc_resume_find_lk(uuid);
+    if (*pr) {
+        (*pr)->active = 0;
+        sc_2pc_resume_prune_lk(pr);
+    }
+    Pthread_mutex_unlock(&sc_2pc_resume_lk);
+}
+
+int sc_2pc_resume_retry_secs(uuid_t uuid)
+{
+    int retries = 1;
+    Pthread_mutex_lock(&sc_2pc_resume_lk);
+    struct sc_2pc_resume **pr = sc_2pc_resume_find_lk(uuid);
+    if (!*pr && (*pr = calloc(1, sizeof(struct sc_2pc_resume))))
+        comdb2uuidcpy((*pr)->uuid, uuid);
+    if (*pr)
+        retries = ++(*pr)->retries;
+    Pthread_mutex_unlock(&sc_2pc_resume_lk);
+    int secs = SC_2PC_RESUME_RETRY_SECS;
+    while (--retries > 0 && secs < SC_2PC_RESUME_RETRY_MAX_SECS)
+        secs *= 2;
+    return secs < SC_2PC_RESUME_RETRY_MAX_SECS ? secs : SC_2PC_RESUME_RETRY_MAX_SECS;
+}
+
+void sc_2pc_resume_done(uuid_t uuid)
+{
+    Pthread_mutex_lock(&sc_2pc_resume_lk);
+    struct sc_2pc_resume **pr = sc_2pc_resume_find_lk(uuid);
+    if (*pr) {
+        (*pr)->retries = 0;
+        sc_2pc_resume_prune_lk(pr);
+    }
+    Pthread_mutex_unlock(&sc_2pc_resume_lk);
+}
+
 void sc_list_2pc_free(sc_list_2pc_t *dist)
 {
     if (!dist)
         return;
+    if (dist->resuming)
+        sc_2pc_resume_end(dist->uuid);
     free(dist->dist_txnid);
     free(dist->coordinator_dbname);
     free(dist->coordinator_tier);
@@ -1623,6 +1717,7 @@ int sc_list_2pc_create(sc_list_t *scl, int is_coordinator, const char *dist_txni
     sc_list_2pc_t *dist = scl->dist = calloc(1, sizeof(sc_list_2pc_t));
     if (!dist)
         return -1;
+    scl->version = SESS_SC_LIST_2PC_VER;
     dist->is_coordinator = is_coordinator;
     dist->dist_txnid = strdup(dist_txnid);
     if (!is_coordinator) {

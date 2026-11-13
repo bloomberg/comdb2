@@ -1469,6 +1469,9 @@ struct ireq {
     /* abort_disttxn already told the coordinator or participants that this
      * dist-txn failed */
     int disttxn_failed;
+    /* a prepared 2pc schema change participant gave up on its coordinator:
+     * resume its sc_list once this request is done */
+    int disttxn_ddl_resume;
     double cost;
     uint64_t sc_seed;
     uint32_t sc_host;

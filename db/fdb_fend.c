@@ -6410,8 +6410,10 @@ static int _running_dist_ddl(struct schema_change_type *sc, char **errmsg, uint3
     /* commit the transaction */
     rc = osql_sock_commit(clnt, OSQL_SOCK_REQ, TRANS_CLNTCOMM_NORMAL);
     if (rc) {
-        logmsg(LOGMSG_ERROR, "%s Failed to commit ddl transaction rc %d\n", __func__, rc);
-        *errmsg = "failed to commit";
+        logmsg(LOGMSG_ERROR, "%s Failed to commit ddl transaction rc %d %s\n", __func__, rc, clnt->osql.xerr.errstr);
+        /* the master's error, e.g. that the outcome is unknown (the schema
+         * change may yet commit), is not just "failed to commit" */
+        *errmsg = clnt->osql.xerr.errstr[0] ? clnt->osql.xerr.errstr : "failed to commit";
         goto setup_error;
     }
 

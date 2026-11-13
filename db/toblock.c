@@ -2958,7 +2958,8 @@ void abort_disttxn(struct ireq *iq, int rc, int outrc)
  * parent_trans.  A participant prepares and waits for the coordinator; the
  * coordinator waits for every participant to prepare, then adds its commit
  * decision to parent_trans so that committing parent_trans is the decision.
- * Returns 0 if parent_trans should commit. */
+ * Returns 0 if parent_trans should commit, nonzero to abort it: 1 if a
+ * prepared participant gave up on its coordinator, so the outcome is unknown. */
 static int disttxn_ddl_vote(struct ireq *iq, tran_type *parent_trans, void *bskey, int bskeylen, struct block_err *err,
                             int *outrc)
 {
@@ -2997,6 +2998,11 @@ static int disttxn_ddl_vote(struct ireq *iq, tran_type *parent_trans, void *bske
         Pthread_mutex_lock(&blklk);
         prepared_count--;
         Pthread_mutex_unlock(&blklk);
+        /* gave up on the coordinator: abort, and resume the kept sc_list */
+        if (rc == TIMED_OUT) {
+            snprintf(iq->errstat.errstr, ERRSTAT_STR_SZ, "distributed schema change timed out waiting for coordinator");
+            return 1;
+        }
         return (rc == HAS_COMMITTED) ? 0 : -1;
     }
 
@@ -6080,6 +6086,15 @@ add_blkseq:
                         unlock_schema_lk();
                         iq->sc_locked = 0;
                     }
+                    /* Keep the 2pc sc_list and sc seed, as a downgrade does:
+                     * its resume asks the coordinator, holding no locks, and
+                     * redoes the schema change if it committed */
+                    if (dist_ddl_abort > 0) {
+                        iq->osql_flags &= ~OSQL_FLAGS_SCDONE;
+                        iq->disttxn_ddl_resume = 1;
+                        /* without SCDONE the abort callback frees nothing */
+                        osql_sc_release_for_resume(iq);
+                    }
                     if (iq->sc_logical_tran) {
                         irc = trans_commit_logical(iq, iq->sc_logical_tran,
                                                    gbl_myhostname, 0, 1, NULL,
@@ -6772,6 +6787,12 @@ static int toblock_main(struct javasp_trans_state *javasp_trans_handle, struct i
     } else {
         osql_postabort_handle(iq);
         handle_postabort_bpfunc(iq);
+    }
+
+    /* after the cleanup above, so that the redo does not race it */
+    if (iq->disttxn_ddl_resume) {
+        iq->disttxn_ddl_resume = 0;
+        resume_2pc_sc_list(iq->scs_uuid);
     }
 
     if (iq->tptlock)

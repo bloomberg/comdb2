@@ -6264,29 +6264,34 @@ void freedb_int(dbtable *db, dbtable *replace)
         db->dbs_idx = dbs_idx;
         db->sqlaliasname = sqlaliasname;
         db->timepartition_name = timepartition_name;
-        /* keep the shard map if replace, rebuilt from csc2, has none: losing it
-         * leaves a generic shard (e.g. one whose drop was backed out) with
-         * sqlaliasname set but no dbnames.  A map of its own replaces it. */
-        if (numdbs && !db->numdbs) {
+        /* Keep the shard map, as sqlaliasname: replace is rebuilt from csc2,
+         * and losing the map leaves a generic shard (e.g. one whose drop was
+         * backed out) with sqlaliasname set but no dbnames.  Others may hold
+         * the old strings, so they stay; a map replace brought is its own
+         * copy, which nothing else refers to, so it goes. */
+        if (numdbs) {
+            if (db->dbnames != dbnames_arr) {
+                for (i = 0; i < db->numdbs; i++)
+                    free(db->dbnames[i]);
+                free(db->dbnames);
+            }
+            if (db->shardnames != shardnames) {
+                for (i = 0; db->shardnames && i < db->numdbs; i++)
+                    free(db->shardnames[i]);
+                free(db->shardnames);
+            }
             db->numdbs = numdbs;
             db->dbnames = dbnames_arr;
             db->shardnames = shardnames;
-        } else if (db->dbnames != dbnames_arr) {
-            for (i = 0; i < numdbs; i++) {
-                free(dbnames[i]);
-                if (shardnames)
-                    free(shardnames[i]);
-            }
-            free(dbnames_arr);
-            free(shardnames);
         }
-        if (numcols && !db->numcols) {
+        if (numcols) {
+            if (db->columns != columns_arr) {
+                for (i = 0; i < db->numcols; i++)
+                    free(db->columns[i]);
+                free(db->columns);
+            }
             db->numcols = numcols;
             db->columns = columns_arr;
-        } else if (db->columns != columns_arr) {
-            for (i = 0; i < numcols; i++)
-                free(columns[i]);
-            free(columns_arr);
         }
     }
 }

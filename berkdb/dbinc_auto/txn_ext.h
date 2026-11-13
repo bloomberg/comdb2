@@ -127,6 +127,7 @@ int __txn_recover_dist_abort __P((DB_ENV *, const char *));
 int __txn_recover_dist_commit __P((DB_ENV *, const char *));
 int __txn_is_dist_committed __P((DB_ENV *, const char *));
 int __txn_is_prepared_unresolved __P((DB_ENV *, const char *));
+int __txn_is_prepared_schema __P((DB_ENV *, const char *));
 int __txn_clear_all_prepared __P((DB_ENV *));
 void __txn_prune_resolved_prepared __P((DB_ENV *));
 int __txn_upgrade_all_prepared __P((DB_ENV *));

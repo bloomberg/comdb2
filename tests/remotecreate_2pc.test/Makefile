@@ -15,8 +15,13 @@ ifeq ($(TESTSROOTDIR),)
 else
   include $(TESTSROOTDIR)/testcase.mk
 endif
+# about 4 minutes on one node; node restarts take longer on a cluster.
+# tools/get_tests_inorder.sh greps the single export line below.
 ifeq ($(TEST_TIMEOUT),)
-	export TEST_TIMEOUT=30m
+  export TEST_TIMEOUT=10m
+  ifneq ($(CLUSTER),)
+    TEST_TIMEOUT:=20m
+  endif
 endif
 ifeq ($(SETUP_TIMEOUT),)
 	export SETUP_TIMEOUT=3m

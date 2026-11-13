@@ -1124,6 +1124,10 @@ static int abort_sc_list(sc_list_t *scl, hash_t *tables)
  * only_2pc: resume only the 2pc sc_lists, which are saved even without
  * multitable_ddl, and add the tables they resume to 'tables'
  */
+/* in the tables of resume_sc_multiddl: an unreadable 2pc sc_list, resume no
+ * table on its own */
+#define SC_2PC_ALL_TABLES "*"
+
 static int resume_sc_multiddl(int scabort, int only_2pc, hash_t *tables)
 {
     sc_list_t scl = {0};
@@ -1152,8 +1156,15 @@ static int resume_sc_multiddl(int scabort, int only_2pc, hash_t *tables)
         p_buf_key = keys[i];
         p_buf_key_end = p_buf_key + keylen;
         if (!osqlcomm_scl_get_key(&scl, p_buf_key, p_buf_key_end)) {
+            /* .scabort drops it by its raw key, and goes on with the rest */
+            if (scabort) {
+                int bdberr = 0;
+                if (!bdb_llmeta_set_schema_change_list(NULL, (char *)p_buf_key, keylen, NULL, 0, &bdberr))
+                    continue;
+                logmsg(LOGMSG_ERROR, "%s: failed to drop unreadable sc list, bdberr %d\n", __func__, bdberr);
+            }
             rc = -1;
-            if (only_2pc)
+            if (only_2pc || scabort)
                 continue;
             goto freetime;
         }
@@ -1162,6 +1173,15 @@ static int resume_sc_multiddl(int scabort, int only_2pc, hash_t *tables)
         p_buf_end = p_buf + dtalens[i];
         if (!osqlcomm_scl_get(&scl, p_buf, p_buf_end)) {
             sc_list_free(&scl);
+            /* A 2pc sc_list that does not parse cannot be trusted to name its
+             * tables: resume no table on its own, which would ignore the
+             * coordinator */
+            if (only_2pc && !scabort && scl.version == SESS_SC_LIST_2PC_VER &&
+                !hash_find_readonly(tables, SC_2PC_ALL_TABLES)) {
+                char *all = strdup(SC_2PC_ALL_TABLES);
+                if (all)
+                    hash_add(tables, all);
+            }
             /* .scabort drops it all the same */
             if (scabort && !osql_delete_sc_list_int(scl.uuid, NULL, __func__, __LINE__))
                 continue;
@@ -1207,6 +1227,69 @@ freetime:
     }
     free(dtalens);
     return rc;
+}
+
+/* A participant that gave up waiting for its coordinator aborted its prepared
+ * schema change, which kept its 2pc sc_list: resume it now, which asks the
+ * coordinator and redoes it only if it committed */
+/* Resume the 2pc sc_list with this uuid, or, if dist_txnid is set, the one of
+ * that dist-txn.  Returns 1 if there is none. */
+static int resume_2pc_sc_list_int(uuid_t uuid, const char *dist_txnid)
+{
+    sc_list_t scl = {0};
+    void **dtas = NULL, **keys = NULL;
+    int *dtalens = NULL;
+    int keylen = 0, num = 0, bdberr = 0, rc = 1;
+
+    if (bdb_llmeta_get_all_sc_lists(NULL, &dtas, &dtalens, &keys, &keylen, &num, &bdberr)) {
+        logmsg(LOGMSG_ERROR, "%s: failed to retrieve sc lists, bdberr %d\n", __func__, bdberr);
+        return -1;
+    }
+    for (int i = 0; i < num && rc == 1; i++) {
+        if (!osqlcomm_scl_get_key(&scl, keys[i], (uint8_t *)keys[i] + keylen) ||
+            (!dist_txnid && comdb2uuidcmp(scl.uuid, uuid)))
+            continue;
+        if (!osqlcomm_scl_get(&scl, dtas[i], (uint8_t *)dtas[i] + dtalens[i]) || !scl.dist) {
+            sc_list_free(&scl);
+            if (!dist_txnid)
+                rc = -1;
+            continue;
+        }
+        if (!dist_txnid || !strcmp(scl.dist->dist_txnid, dist_txnid))
+            rc = resume_sc_multiddl_txn(&scl, NULL);
+        sc_list_free(&scl);
+    }
+    for (int i = 0; i < num; i++) {
+        free(dtas[i]);
+        free(keys[i]);
+    }
+    free(dtas);
+    free(keys);
+    free(dtalens);
+    return rc;
+}
+
+int resume_2pc_sc_list(uuid_t uuid)
+{
+    int rc = resume_2pc_sc_list_int(uuid, NULL);
+    if (rc) {
+        uuidstr_t us;
+        logmsg(LOGMSG_ERROR, "%s: could not resume 2pc sc list %s\n", __func__, comdb2uuidstr(uuid, us));
+    }
+    return rc;
+}
+
+/* A prepared 2pc schema change left to its coordinator was aborted, which
+ * restored its sc_list: resume that now rather than at the next master
+ * change.  Nothing to do for a dist-txn that is not a schema change. */
+void resume_2pc_sc_list_aborted(const char *dist_txnid)
+{
+    uuid_t none = {0};
+    int rc = resume_2pc_sc_list_int(none, dist_txnid);
+    if (rc == 0)
+        logmsg(LOGMSG_INFO, "%s: resumed 2pc schema change %s after its prepare was aborted\n", __func__, dist_txnid);
+    else if (rc != 1)
+        logmsg(LOGMSG_ERROR, "%s: could not resume 2pc schema change %s, rc %d\n", __func__, dist_txnid, rc);
 }
 
 static int free_sc_2pc_table(void *obj, void *arg)
@@ -1290,6 +1373,12 @@ int resume_schema_change(void)
         }
 
         /* if we got some data back, that means we were in a schema change */
+        if (packed_sc_data && hash_find_readonly(sc_2pc_tables, SC_2PC_ALL_TABLES)) {
+            logmsg(LOGMSG_ERROR, "%s: not resuming %s: a 2pc sc_list could not be read\n", __func__,
+                   thedb->dbs[i]->tablename);
+            free(packed_sc_data);
+            continue;
+        }
         if (packed_sc_data) {
             struct schema_change_type *s;
             if (!thedb->dbs[i]->timepartition_name) {

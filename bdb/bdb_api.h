@@ -2002,6 +2002,9 @@ void bdb_upgrade_all_prepared(bdb_state_type *bdb_state);
 /* Return 1 if dist_txnid is prepared and not yet committed or aborted */
 int bdb_dist_txn_is_prepared(bdb_state_type *bdb_state, const char *dist_txnid);
 
+/* Return 1 if dist_txnid is a prepared schema change */
+int bdb_dist_txn_is_schema_prepare(bdb_state_type *bdb_state, const char *dist_txnid);
+
 const char *bdb_get_tmpdir(bdb_state_type *bdb_state);
 
 int bdb_form_file_name(bdb_state_type *bdb_state, int is_data_file, int filenum,

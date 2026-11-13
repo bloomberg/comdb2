@@ -10010,11 +10010,9 @@ uint8_t *osqlcomm_scl_put_key(struct sc_list *scl, uint8_t *p_buf,
     return p_buf;
 }
 
-/* The 2pc configuration follows the schema changes of a 2pc sc_list: magic,
- * role, strings (length with terminator, 0 for NULL, then bytes),
- * participants.  The sc_list keeps version SESS_SC_LIST_VER, so that a binary
- * that predates it, which ignores what follows the schema changes, can still
- * resume the schema changes queued behind it. */
+/* The 2pc configuration follows the schema changes of a 2pc sc_list, which
+ * has version SESS_SC_LIST_2PC_VER: magic, role, strings (length with
+ * terminator, 0 for NULL, then bytes), participants. */
 #define SCL_2PC_MAGIC 0x32504353 /* "2PCS" */
 #define SCL_STR_SIZE(str) (sizeof(int) + ((str) ? strlen(str) + 1 : 0))
 #define PUTS(str)                                                                                                      \
@@ -10084,9 +10082,12 @@ static const uint8_t *scl_2pc_get(sc_list_2pc_t **pd, const uint8_t *p_buf, cons
     if (!d->dist_txnid || n < 0 || n > p_buf_end - p_buf || !(d->participant_names = calloc(n + 1, sizeof(char *))) ||
         !(d->participant_tiers = calloc(n + 1, sizeof(char *))))
         return NULL;
-    for (d->nparticipants = 0; d->nparticipants < n; d->nparticipants++) {
-        GETS(d->participant_names[d->nparticipants]);
-        GETS(d->participant_tiers[d->nparticipants]);
+    /* count each slot before filling it, so that sc_list_2pc_free frees a
+     * name whose tier fails to read (the arrays are zeroed) */
+    for (int i = 0; i < n; i++) {
+        d->nparticipants = i + 1;
+        GETS(d->participant_names[i]);
+        GETS(d->participant_tiers[i]);
     }
     return p_buf;
 }
@@ -10095,7 +10096,7 @@ const uint8_t *osqlcomm_scl_get(struct sc_list *scl,
                                 const uint8_t *p_buf, const uint8_t *p_buf_end)
 {
     GETI(scl->version);
-    if (scl->version != SESS_SC_LIST_VER) {
+    if (scl->version != SESS_SC_LIST_VER && scl->version != SESS_SC_LIST_2PC_VER) {
         logmsg(LOGMSG_ERROR, "Found unsupported SCL version %d\n", scl->version);
         return NULL;
     }
@@ -10113,7 +10114,7 @@ const uint8_t *osqlcomm_scl_get(struct sc_list *scl,
         return NULL;
     p_buf = buf_no_net_get(scl->ser_scs, scl->ser_scs_len, p_buf, p_buf_end);
     /* a 2pc sc_list has its configuration after the schema changes */
-    if (p_buf && p_buf < p_buf_end)
+    if (p_buf && scl->version == SESS_SC_LIST_2PC_VER)
         p_buf = scl_2pc_get(&scl->dist, p_buf, p_buf_end);
     return p_buf;
 }
