@@ -39,7 +39,7 @@ ${PMUX_EXE} a b c &> err.out
 cat >> err.exp <<EOF
 ${PMUX_EXE}: invalid argument 'a'
 Usage: pmux [-h] [-c pmuxdb cluster] [-d pmuxdb name] [-b bind path]
-[-p listen port] [-r free ports range x:y][-l|-n][-f]
+[-p listen port] [-r free ports range x:y][-l|-n][-f][-D ms]
 
 Options:
  -h            This help message
@@ -51,6 +51,7 @@ Options:
  -l            Use file to persist port allocation
  -n            Do not persist port allocation (default)
  -f            Run in foreground rather than put to background
+ -D            Delay reply to unix reg by ms (testing)
 EOF
 
 if ! diff err.out err.exp; then
