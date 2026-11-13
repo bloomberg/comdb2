@@ -2426,6 +2426,8 @@ int bdb_recoverlk_blocked(bdb_state_type *bdb_state);
  * cannot rewind pages underneath it; poll bdb_recoverlk_blocked to yield). */
 int bdb_readlock_recovery(bdb_state_type *bdb_state);
 int bdb_unlock_recovery(bdb_state_type *bdb_state);
+/* Count of full (non-skipped) recoveries; a copy compares it at start and end */
+int64_t bdb_destructive_recovery_gen(void);
 
 void send_newmaster(bdb_state_type *bdb_state, int online);
 

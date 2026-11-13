@@ -1127,7 +1127,7 @@ REGISTER_TUNABLE("rep_process_txn_trace",
                  "transactions. (Default: off)",
                  TUNABLE_BOOLEAN, &gbl_rep_process_txn_time, READONLY | NOARG,
                  NULL, NULL, NULL, NULL);
-REGISTER_TUNABLE("rep_skip_recovery", "Skip recovery if truncate won't unwind a transaction.  (Default: off)",
+REGISTER_TUNABLE("rep_skip_recovery", "Skip recovery if truncate won't unwind a transaction.  (Default: on)",
                  TUNABLE_BOOLEAN, &gbl_rep_skip_recovery, 0, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("emit_gen_commits", "Emit commit-records which include cluster generation.  (Default: on)",
                  TUNABLE_BOOLEAN, &gbl_emit_gen_commits, 0, NULL, NULL, NULL, NULL);
