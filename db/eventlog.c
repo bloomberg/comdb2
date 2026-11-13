@@ -374,7 +374,7 @@ void eventlog_tables(cson_object *obj, const struct reqlogger *logger)
 
 void eventlog_perfdata(cson_object *obj, const struct reqlogger *logger)
 {
-    const struct berkdb_thread_stats *thread_stats = bdb_get_thread_stats();
+    const struct berkdb_thread_stats *thread_stats = reqlog_thread_stats(logger);
 
     cson_value *perfval = cson_value_new_object();
     cson_object *perfobj = cson_value_get_object(perfval);

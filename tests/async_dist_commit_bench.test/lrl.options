@@ -1,0 +1,6 @@
+# the PR numbers use a 128 MB cache (the code default is 64 MB)
+cache 128 mb
+# the test harness turns this off (tests/setup); production has it on
+make_slow_replicants_incoherent on
+# measure against the code before logput_window was on by default; logput_window*.testopts turn it on
+logput_window 0
