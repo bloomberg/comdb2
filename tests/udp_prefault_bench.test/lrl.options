@@ -1,0 +1,9 @@
+# Keep the cache much smaller than the table, so replication reads cold pages
+# (the default minimum cache is 64 MB)
+cachekbmin 8192
+cache 8 mb
+# The UDP prefault features are off by default; the test switches them off
+# and on between rounds at runtime
+enable_prefault_udp
+udp_prefault_async 1
+rep_write_hints 1
