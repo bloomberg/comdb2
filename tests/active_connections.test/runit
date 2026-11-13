@@ -60,9 +60,14 @@ runpid=$!
 wait_active 2
 $r "select sleep(1)" > /dev/null &
 queuedpid=$!
-wait_active 3
-n=$($admin "select count(*) from comdb2_connections where state='queued'")
+# Wait for the queued state itself: other short-lived new connections can bring active to 3 first
+for i in $(seq 1 50); do
+    n=$($admin "select count(*) from comdb2_connections where state='queued'")
+    [[ "$n" == "1" ]] && break
+    sleep 0.2
+done
 [[ "$n" == "1" ]] || failexit "expected 1 queued connection, got $n"
+wait_active 3
 wait $runpid $queuedpid
 wait_active 1
 
@@ -102,6 +107,26 @@ n=$($admin "select count(*) from comdb2_connections where state='new' and time_i
 wait_active 1
 s=$($admin "select state from comdb2_connections where connection_id=$id")
 [[ "$s" == "idle" ]] || failexit "connection $id is '$s' after its grace period, expected idle"
+
+# A connection stalled in the SSL handshake cannot be closed by the server either, so it stays
+# new and counted even after its grace period, like a connection idle inside a transaction
+exec 6<>/dev/tcp/$connhost/$port || failexit "cannot connect to $connhost:$port"
+printf 'newsql\n' >&6
+# SSL request: type 121 (SSLCONN), no payload. Then never start the handshake.
+printf '\x00\x00\x00\x79\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00' >&6
+read -r -n1 -t 5 -u 6 reply
+if [[ "$reply" == "Y" ]]; then
+    wait_active 2
+    sleep 4 # past the 3s grace period
+    n=$($admin "select count(*) from comdb2_connections where state='new'")
+    [[ "$n" == "1" ]] || failexit "expected the stalled SSL handshake to still be new, got $n new connections"
+    wait_active 2
+    exec 6>&-
+    wait_active 1
+else
+    echo "SSL not enabled (reply '$reply'), skipping the stalled SSL handshake check"
+    exec 6>&-
+fi
 
 exec 3>&- 4>&- 5>&-
 wait
