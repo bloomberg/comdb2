@@ -1,0 +1,91 @@
+#!/usr/bin/env bash
+bash -n "$0" || exit 1
+
+# B-tree prefault (btpf): scans return the same results with it on, it does
+# prefault pages, and its asynchronous jobs survive many concurrent scans and
+# the table's files being closed under them (truncate, rebuild, drop).
+
+dbnm=$1
+failexit() { echo "Failed: $1"; exit 1; }
+# One node for everything: the tunable, the scans and the prefault counter are
+# per node.  On a cluster that is a replicant: most reads run there, and its
+# table handles have no dbreg id of their own.
+if [[ -n "$CLUSTER" ]]; then
+    node=$(cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select host from comdb2_cluster where is_master='N' and coherent_state='coherent' limit 1")
+    [[ -n "$node" ]] || failexit "no coherent replicant"
+    S="cdb2sql --tabs ${CDB2_OPTIONS} $dbnm --host $node"
+else
+    S="cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default"
+fi
+N=300000
+
+load() {
+    $S "create table t { schema { int k int v cstring s[400] } keys { \"PK\" = k } }" || failexit "create"
+    local st
+    for (( st = 0; st < N; st += 100000 )); do
+        $S "insert into t select value, value % 1000, printf('%0390d', value) from generate_series($st, $(( st + 99999 )))" > /dev/null || failexit "insert $st"
+    done
+}
+
+scans() {
+    echo "$($S "select count(*), sum(k), sum(length(s)) from t")"
+    echo "$($S "select k from t order by k desc limit 3")"
+    echo "$($S "select count(*), max(k) from (select k from t order by rowid desc limit 100000000)")"
+    echo "$($S "select count(*) from t where k between 1000 and 250000")"
+}
+
+pf_in() { $S "exec procedure sys.cmd.send('bdb cachestat')" | sed -n 's/.*st_page_pf_in: *\([0-9]*\).*/\1/p' | head -1; }
+
+load
+
+# A short scan does not read ahead, it has to cross btpf_start_after pages
+# first.  The start of the table is out of the cache after the load, and the
+# first scan only reads its first few pages, so the second one, allowed to
+# read ahead right away, finds the rest of its window still to read.
+$S "put tunable btpf_enabled 1" > /dev/null || failexit "btpf on"
+p0=$(pf_in)
+$S "select s from t limit 20" > /dev/null || failexit "short scan"
+p1=$(pf_in)
+(( p1 == p0 )) || failexit "a short scan read ahead ($p0 -> $p1)"
+$S "put tunable btpf_start_after 0" > /dev/null || failexit "btpf_start_after 0"
+$S "select s from t limit 20" > /dev/null || failexit "short scan"
+p2=$(pf_in)
+(( p2 > p1 )) || failexit "nothing was read ahead with btpf_start_after 0 ($p1 -> $p2)"
+$S "put tunable btpf_start_after 4" > /dev/null || failexit "btpf_start_after 4"
+
+$S "put tunable btpf_enabled 0" > /dev/null || failexit "btpf off"
+scans > expected.txt
+$S "put tunable btpf_enabled 1" > /dev/null || failexit "btpf on"
+p0=$(pf_in)
+scans > actual.txt
+diff expected.txt actual.txt || failexit "scans differ with btpf on"
+p1=$(pf_in)
+(( p1 > p0 )) || failexit "nothing was prefaulted ($p0 -> $p1)"
+echo "prefaulted $(( p1 - p0 )) pages"
+
+# Many concurrent scans, enough to fill the prefault queue
+pids=""
+for i in $(seq 1 24); do
+    $S "select sum(length(s)) from t" > /dev/null & pids="$pids $!"
+done
+for p in $pids; do
+    wait $p || failexit "a concurrent scan failed"
+done
+
+# Close the table's files while scans keep enqueueing prefault jobs for them
+for op in "truncate t" "rebuild t" "drop table t"; do
+    for i in 1 2 3 4; do
+        ( for j in 1 2 3; do $S "select sum(length(s)) from t" > /dev/null 2>&1; done ) &
+    done
+    sleep 1
+    $S "$op" > /dev/null || failexit "$op"
+    wait
+    $S "select 1" > /dev/null || failexit "database down after $op"
+    [[ "$op" == "drop table t" ]] && { load; continue; }
+    [[ "$op" == "truncate t" ]] && { $S "drop table t" > /dev/null; load; }
+done
+
+scans > actual.txt
+diff expected.txt actual.txt || failexit "scans differ after the lifecycle tests"
+$S "put tunable btpf_enabled 0" > /dev/null
+echo "Success"

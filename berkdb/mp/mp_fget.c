@@ -461,6 +461,11 @@ retry:	st_hsearch = 0;
 		 * the page to the buffer pool.
 		 */
 		MUTEX_UNLOCK(dbenv, &hp->hash_mutex);
+		/* a probe only asks whether the page is cached */
+		if (flags == DB_MPOOL_PROBE) {
+			ret = DB_FIRST_MISS;
+			goto err;
+		}
 
 alloc:		/*
 		 * If DB_MPOOL_NEW is set, we have to allocate a page number.
