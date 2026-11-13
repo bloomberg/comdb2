@@ -772,9 +772,7 @@ int osql_sess_save_sc_list(osql_sess_t *sess)
     if (sess->scs.count == 0)
         return 0;
 
-    /* A 2pc schema change is always saved: a new master must resume it with
-     * its 2pc configuration, rather than resume its tables one by one as
-     * local schema changes */
+    /* always save a 2pc schema change, for its resume */
     int dist = sess->dist_txnid && (sess->is_coordinator || sess->is_participant);
 
     if (!gbl_multitable_ddl && !dist)
@@ -787,10 +785,9 @@ int osql_sess_save_sc_list(osql_sess_t *sess)
         goto done;
     }
 
-    /* the participants have moved to the coordinator's dist-txn */
-    if (dist && (sc_list_2pc_create(&scl, sess->is_coordinator, sess->dist_txnid, sess->coordinator_dbname,
-                                    sess->coordinator_tier) ||
-                 (sess->is_coordinator && coordinator_copy_participants(sess->dist_txnid, scl.dist)))) {
+    /* a resumed coordinator needs no participant list: it aborts, and participants ask it */
+    if (dist && sc_list_2pc_create(&scl, sess->is_coordinator, sess->dist_txnid, sess->coordinator_dbname,
+                                   sess->coordinator_tier)) {
         errstat_set_rcstrf(&sess->xerr, rc = ERR_SC, "failed to save 2pc schema change %s", sess->dist_txnid);
         logmsg(LOGMSG_ERROR, "%s: failed to add 2pc configuration for %s\n", __func__, sess->dist_txnid);
         goto done;
@@ -814,5 +811,25 @@ int osql_sess_save_sc_list(osql_sess_t *sess)
 
 done:
     sc_list_free(&scl);
+    return rc;
+}
+
+/* mark the 2pc sc_list of uuid may_vote (and voted); no prepared txn may hold the sc_list */
+int osql_sc_list_mark(uuid_t uuid, int voted)
+{
+    sc_list_t scl = {0};
+    int rc = sc_list_2pc_get(uuid, NULL, &scl);
+    if (rc == 0) {
+        scl.dist->may_vote = 1;
+        if (voted)
+            scl.dist->voted = 1;
+        rc = _write_sc_list(&scl);
+    }
+    sc_list_free(&scl);
+    if (rc) {
+        uuidstr_t us;
+        logmsg(LOGMSG_ERROR, "%s: failed to mark 2pc sc list %s%s\n", __func__, comdb2uuidstr(uuid, us),
+               voted ? " voted" : "");
+    }
     return rc;
 }

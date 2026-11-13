@@ -1345,8 +1345,7 @@ __txn_commit_int(txnp, flags, ltranid, llid, last_commit_lsn, rlocks, inlks,
 						dist_txnid.size = strlen(txnp->dist_txnid);
 						SET_LOG_FLAGS_ROWLOCKS(dbenv, txnp, ltranflags, lflags);
 						ltranflags |= LF_ISSET(DB_TXN_DIST_UPD_SHADOWS);
-						/* A prepared schema change: replicants take the schema lock to
-						 * apply its commit */
+						/* replicants take the schema lock to apply it */
 						ltranflags |= LF_ISSET(DB_TXN_SCHEMA_LOCK);
 
 						TXN_DETAIL *tp = (TXN_DETAIL *)R_ADDR(&txnp->mgrp->reginfo, txnp->off);
@@ -2631,6 +2630,9 @@ __txn_set_recover_prepared_callback(dbenv, func)
 	return (ret);
 }
 
+/* called once dist_txnid's recovered prepare is aborted */
+void (*__txn_abort_recovered_cb)(const char *dist_txnid) = NULL;
+
 /*
  * __txn_abort_recovered_pp --
  *	DB_ENV->txn_abort_recovered pre/post processing.
@@ -2653,6 +2655,8 @@ int
 	ret = __txn_abort_recovered(dbenv, dist_txnid);
 	if (rep_check)
 		__env_rep_exit(dbenv);
+	if (ret == 0 && __txn_abort_recovered_cb)
+		__txn_abort_recovered_cb(dist_txnid);
 	return (ret);
 }
 

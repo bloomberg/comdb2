@@ -125,7 +125,7 @@ int wrlock_schema_timed_int(int timeoutms, const char *file, const char *func, i
             rc = ETIMEDOUT;
             break;
         }
-        poll(NULL, 0, 10);
+        poll(NULL, 0, 1);
     }
 #else
     rc = pthread_rwlock_timedwrlock(&schema_lk, &ts);

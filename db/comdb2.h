@@ -1471,11 +1471,13 @@ struct ireq {
      * only then is sc_pending_mtx worth taking - see sc_pending_lock(). */
     int sc_shared;
     uuid_t scs_uuid; /* on resume, there is no sorese, but we need to know uuid for scs */
-    /* on resume of a 2pc schema change, its 2pc configuration */
-    struct sc_list_2pc *sc_resume_2pc;
-    /* abort_disttxn already told the coordinator or participants that this
-     * dist-txn failed */
-    int disttxn_failed;
+    struct sc_list_2pc *sc_resume_2pc; /* 2pc configuration of a resumed schema change */
+    int disttxn_failed;                /* abort_disttxn already ran */
+    int disttxn_ddl_resume;            /* resume the 2pc sc_list once this request is done */
+    void *disttxn_ddl_pending;         /* disttxn_ddl_pending_begin handle */
+    int disttxn_ddl_logged;            /* 2pc coordinator commit is logged even if the request fails */
+    void *disttxn_systable_tran;       /* see sc_comdb2_tables_lock_tran */
+    void *disttxn_systable_lock;       /* see sc_lock_comdb2_tables_finalize */
     double cost;
     uint64_t sc_seed;
     uint32_t sc_host;
@@ -2785,6 +2787,7 @@ void dbgtrace(int, char *, ...);
 
 int get_sqlite_entry_size(struct sql_thread *thd, int n);
 void *get_sqlite_entry(struct sql_thread *thd, int n);
+const char *get_sqlite_entry_tblname(struct sql_thread *thd, int n);
 struct dbtable *get_sqlite_db(struct sql_thread *thd, int iTable, int *ixnum);
 /* table name for a rootpage; safe to use after the table has been dropped */
 const char *get_sqlite_tblname(struct sql_thread *thd, int iTable);

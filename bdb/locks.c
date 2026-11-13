@@ -736,6 +736,34 @@ int bdb_lock_tablename_write(bdb_state_type *bdb_state, const char *name,
     return rc;
 }
 
+int bdb_lock_tablename_write_keep(bdb_state_type *bdb_state, const char *name, tran_type *tran, void **lkp)
+{
+    DB_LOCK *dblk;
+    DBT lk;
+    char lkname[TABLELOCK_KEY_SIZE];
+
+    *lkp = NULL;
+    if ((dblk = calloc(1, sizeof(DB_LOCK))) == NULL)
+        return ENOMEM;
+    if (tran->parent)
+        tran = tran->parent;
+    form_tablelock_keyname(name, lkname, &lk);
+    int rc = berkdb_lock(bdb_state->dbenv, resolve_locker_id(tran), 0, &lk, DB_LOCK_WRITE, dblk);
+    if (rc == 0)
+        *lkp = dblk;
+    else
+        free(dblk);
+    return rc;
+}
+
+void bdb_put_kept_tablename_lock(bdb_state_type *bdb_state, void *lkp)
+{
+    if (!lkp)
+        return;
+    bdb_release_lock(bdb_state, (DB_LOCK *)lkp);
+    free(lkp);
+}
+
 /* return whether current lockid has given type of lock on tablename */
 int bdb_has_tablename_locked(bdb_state_type *bdb_state, const char *tblname,
                              uint32_t lockid, enum query_lock_type type)

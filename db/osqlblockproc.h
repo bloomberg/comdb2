@@ -115,4 +115,11 @@ void osql_bplog_set_blkseq(osql_sess_t *sess, struct ireq *iq);
  */
 void osql_bplog_time_done(osql_bp_timings_t *tms);
 
+/* 2pc schema change resume */
+struct sc_list;
+void osql_sc_release_for_resume(struct ireq *iq);
+void osql_resume_2pc_retry(uuid_t uuid);
+int resume_sc_multiddl_txn(struct sc_list *scl, hash_t *tables);
+void _sc_list_mark_over(struct sc_list *scl);
+
 #endif

@@ -5725,8 +5725,10 @@ __rep_process_txn_int(dbenv, rctl, rec, ltrans, maxlsn, commit_gen, rep_gen, loc
 		__rep_set_last_locked(dbenv, &(rctl->lsn));
 
 		/* got all the locks.  ack back early */
+		/* nor a dist-commit of a schema change */
 		if ((gbl_early) && (!gbl_reallyearly) &&
 			!(maxlsn.file == 0 && maxlsn.offset == 0) &&
+			!(!txn_rl_args && (lflags & DB_TXN_SCHEMA_LOCK)) &&
 			(!txn_rl_args ||
 			((txn_rl_args->lflags & DB_TXN_LOGICAL_COMMIT) &&
 				!(txn_rl_args->lflags & DB_TXN_SCHEMA_LOCK)) ||
@@ -6755,8 +6757,10 @@ bad_resize:	;
 	// This can cause an early ack regardless of the value of gbl_early.
 	__rep_set_last_locked(dbenv, &(rctl->lsn));
 
+	/* nor a dist-commit of a schema change */
 	if ((gbl_early) && (!gbl_reallyearly) &&
 		!(maxlsn.file == 0 && maxlsn.offset == 0) &&
+		!(!txn_rl_args && get_schema_lk) &&
 		(!txn_rl_args || ((txn_rl_args->lflags & DB_TXN_LOGICAL_COMMIT) &&
 			!(txn_rl_args->lflags & DB_TXN_SCHEMA_LOCK)) ||
 		F_ISSET(rctl, DB_LOG_REP_ACK))
@@ -8023,6 +8027,10 @@ restart:
 			if ((ret = 
 				__txn_dist_prepare_read(dbenv, mylog.data, &txnprep)) != 0)
 					goto err;
+
+			/* a committed 2pc schema change: reload schemas after undo */
+			if (txnprep->lflags & DB_TXN_SCHEMA_LOCK)
+				schema_lk_count++;
 
 			if (online) {
 				ret = recovery_getlocks(dbenv, lockid, &txnprep->locks, lsn, endianize);

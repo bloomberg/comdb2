@@ -10040,11 +10040,7 @@ uint8_t *osqlcomm_scl_put_key(struct sc_list *scl, uint8_t *p_buf,
     return p_buf;
 }
 
-/* The 2pc configuration follows the schema changes of a 2pc sc_list: magic,
- * role, strings (length with terminator, 0 for NULL, then bytes),
- * participants.  The sc_list keeps version SESS_SC_LIST_VER, so that a binary
- * that predates it, which ignores what follows the schema changes, can still
- * resume the schema changes queued behind it. */
+/* 2pc config after the scs: magic, role, may_vote, voted, strings (length incl. NUL, 0 for NULL) */
 #define SCL_2PC_MAGIC 0x32504353 /* "2PCS" */
 #define SCL_STR_SIZE(str) (sizeof(int) + ((str) ? strlen(str) + 1 : 0))
 #define PUTS(str)                                                                                                      \
@@ -10071,11 +10067,8 @@ int osqlcomm_scl_2pc_size(struct sc_list *scl)
     sc_list_2pc_t *d = scl->dist;
     if (!d)
         return 0;
-    int size = 3 * sizeof(int) + SCL_STR_SIZE(d->dist_txnid) + SCL_STR_SIZE(d->coordinator_dbname) +
-               SCL_STR_SIZE(d->coordinator_tier);
-    for (int i = 0; i < d->nparticipants; i++)
-        size += SCL_STR_SIZE(d->participant_names[i]) + SCL_STR_SIZE(d->participant_tiers[i]);
-    return size;
+    return 4 * sizeof(int) + SCL_STR_SIZE(d->dist_txnid) + SCL_STR_SIZE(d->coordinator_dbname) +
+           SCL_STR_SIZE(d->coordinator_tier);
 }
 
 static uint8_t *scl_2pc_put(sc_list_2pc_t *d, uint8_t *p_buf, const uint8_t *p_buf_end)
@@ -10083,21 +10076,18 @@ static uint8_t *scl_2pc_put(sc_list_2pc_t *d, uint8_t *p_buf, const uint8_t *p_b
     int magic = SCL_2PC_MAGIC;
     PUTI(magic);
     PUTI(d->is_coordinator);
+    PUTI(d->may_vote);
+    PUTI(d->voted);
     PUTS(d->dist_txnid);
     PUTS(d->coordinator_dbname);
     PUTS(d->coordinator_tier);
-    PUTI(d->nparticipants);
-    for (int i = 0; i < d->nparticipants; i++) {
-        PUTS(d->participant_names[i]);
-        PUTS(d->participant_tiers[i]);
-    }
     return p_buf;
 }
 
 /* on failure the caller frees *pd with sc_list_2pc_free() */
 static const uint8_t *scl_2pc_get(sc_list_2pc_t **pd, const uint8_t *p_buf, const uint8_t *p_buf_end)
 {
-    int magic = 0, n = 0;
+    int magic = 0;
     GETI(magic);
     if (magic != SCL_2PC_MAGIC) {
         logmsg(LOGMSG_ERROR, "%s: bad 2pc sc_list magic %x\n", __func__, magic);
@@ -10107,17 +10097,13 @@ static const uint8_t *scl_2pc_get(sc_list_2pc_t **pd, const uint8_t *p_buf, cons
     if (!d)
         return NULL;
     GETI(d->is_coordinator);
+    GETI(d->may_vote);
+    GETI(d->voted);
     GETS(d->dist_txnid);
     GETS(d->coordinator_dbname);
     GETS(d->coordinator_tier);
-    GETI(n);
-    if (!d->dist_txnid || n < 0 || n > p_buf_end - p_buf || !(d->participant_names = calloc(n + 1, sizeof(char *))) ||
-        !(d->participant_tiers = calloc(n + 1, sizeof(char *))))
+    if (!d->dist_txnid)
         return NULL;
-    for (d->nparticipants = 0; d->nparticipants < n; d->nparticipants++) {
-        GETS(d->participant_names[d->nparticipants]);
-        GETS(d->participant_tiers[d->nparticipants]);
-    }
     return p_buf;
 }
 
@@ -10125,7 +10111,7 @@ const uint8_t *osqlcomm_scl_get(struct sc_list *scl,
                                 const uint8_t *p_buf, const uint8_t *p_buf_end)
 {
     GETI(scl->version);
-    if (scl->version != SESS_SC_LIST_VER) {
+    if (scl->version != SESS_SC_LIST_VER && scl->version != SESS_SC_LIST_2PC_VER) {
         logmsg(LOGMSG_ERROR, "Found unsupported SCL version %d\n", scl->version);
         return NULL;
     }
@@ -10143,7 +10129,7 @@ const uint8_t *osqlcomm_scl_get(struct sc_list *scl,
         return NULL;
     p_buf = buf_no_net_get(scl->ser_scs, scl->ser_scs_len, p_buf, p_buf_end);
     /* a 2pc sc_list has its configuration after the schema changes */
-    if (p_buf && p_buf < p_buf_end)
+    if (p_buf && scl->version == SESS_SC_LIST_2PC_VER)
         p_buf = scl_2pc_get(&scl->dist, p_buf, p_buf_end);
     return p_buf;
 }

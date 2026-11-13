@@ -98,6 +98,7 @@
 #include <comdb2_atomic.h>
 #include <bbhrtime.h>
 #include <sqllogfill.h>
+#include <disttxn.h>
 
 int (*comdb2_ipc_master_set)(char *host) = 0;
 
@@ -6493,8 +6494,8 @@ int comdb2_next_allowed_table(sqlite3_int64 *tabId)
 
     while (*tabId < thedb->num_dbs) {
         pDb = thedb->dbs[*tabId];
-        /* lets skip shard names */
-        if (!pDb->timepartition_name) {
+        /* lets skip shard names, and undecided 2pc ddl tables as sqlite_master does */
+        if (!pDb->timepartition_name && !disttxn_ddl_table_pending(pDb->tablename)) {
             tablename = pDb->tablename;
             rc = bdb_check_user_tbl_access(thedb->bdb_env,
                                            thd->clnt->current_user.name,
