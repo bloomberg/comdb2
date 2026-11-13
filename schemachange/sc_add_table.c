@@ -151,6 +151,9 @@ int add_table_to_environment(char *table, const char *csc2,
     if (newdb->dbenv->master == gbl_myhostname) {
         if ((rc = sql_syntax_check(iq, newdb)))
             return SC_CSC2_ERROR;
+        /* shards copy an existing table's schema, which may be grandfathered */
+        if (s && !timepartition_name && (rc = check_partial_index_tz(s, NULL, newdb)))
+            return rc;
     }
 
     if (rc) {
