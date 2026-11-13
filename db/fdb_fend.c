@@ -71,7 +71,6 @@ extern int gbl_fdb_resolve_local;
 extern char *gbl_fdb_resolve_tier;
 extern int gbl_fdb_class_override_spew_limit;
 extern int gbl_2pc;
-extern int gbl_2pc_ddl;
 extern int gbl_partial_indexes;
 extern int gbl_expressions_indexes;
 extern int gbl_debug_disttxn_trace;
@@ -6683,8 +6682,7 @@ static int _running_dist_ddl(struct schema_change_type *sc, char **errmsg, uint3
 
     *errmsg = "";
 
-    /* With 2pc ddl enabled the shards are 2pc participants and this node is the
-     * coordinator, so the schema change commits on every shard or on none */
+    /* with 2pc ddl, the shards are participants of this coordinator */
     clnt->use_2pc = (gbl_2pc && gbl_2pc_ddl);
 
     pushes = (fdb_push_connector_t**)alloca(nshards * sizeof(fdb_push_connector_t*));
@@ -6710,10 +6708,12 @@ static int _running_dist_ddl(struct schema_change_type *sc, char **errmsg, uint3
         goto setup_error;
     }
 
-    const char *str[6];
-    int strl[6];
-    char *extra_set[7];
-    int n_extra_sets = 6;
+    enum { N_PARTITION_SETS = 6, N_2PC_SETS = 2 };
+    const char *str[N_PARTITION_SETS];
+    int strl[N_PARTITION_SETS];
+    char *extra_set[N_PARTITION_SETS + N_2PC_SETS];
+    int n_extra_sets = N_PARTITION_SETS;
+    char remsql_version[32];
 
     char numdbs_str[3];
     char numcols_str[3];
@@ -6774,9 +6774,14 @@ static int _running_dist_ddl(struct schema_change_type *sc, char **errmsg, uint3
     for (i = 0; i < nshards; i++)
         pos += snprintf(&extra_set[5][pos], strl[5] - pos, "%s ", shardnames[i]);
 
-    /* a 2pc participant reports its effects, which needs verifyretry off */
-    if (clnt->use_2pc)
+    /* SET REMSQL_VERSION resets the remsql mode: it goes before SET PARTITION NAME */
+    if (clnt->use_2pc) {
+        snprintf(remsql_version, sizeof(remsql_version), "SET REMSQL_VERSION %d", FDB_VER_2PC_DDL);
+        memmove(&extra_set[1], extra_set, n_extra_sets * sizeof(extra_set[0]));
+        extra_set[0] = remsql_version;
+        n_extra_sets++;
         extra_set[n_extra_sets++] = "SET VERIFYRETRY OFF";
+    }
 
     /* start the transaction */
     for(i = 0; i < nshards; i++) {
@@ -6818,8 +6823,9 @@ static int _running_dist_ddl(struct schema_change_type *sc, char **errmsg, uint3
     /* commit the transaction */
     rc = osql_sock_commit(clnt, OSQL_SOCK_REQ, TRANS_CLNTCOMM_NORMAL);
     if (rc) {
-        logmsg(LOGMSG_ERROR, "%s Failed to commit ddl transaction rc %d\n", __func__, rc);
-        *errmsg = "failed to commit";
+        logmsg(LOGMSG_ERROR, "%s Failed to commit ddl transaction rc %d %s\n", __func__, rc, clnt->osql.xerr.errstr);
+        /* pass on the master's error, e.g. outcome unknown */
+        *errmsg = clnt->osql.xerr.errstr[0] ? clnt->osql.xerr.errstr : "failed to commit";
         goto setup_error;
     }
 

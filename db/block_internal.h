@@ -819,6 +819,7 @@ int backout_constraint_pointers(struct dbtable *tbl, struct dbtable *newdb);
 
 int do_twophase_commit(struct ireq *iq, tranid_t id, block_state_t *blkstate,
                        int initial_state, fstblkseq_t *seqnum);
+void abort_disttxn(struct ireq *iq, int rc, int outrc);
 
 void remember_modified_genid(block_state_t *blkstate, unsigned long long genid);
 

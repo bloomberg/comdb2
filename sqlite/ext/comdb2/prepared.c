@@ -80,14 +80,19 @@ static inline char *dist_flags_to_str(uint32_t flags)
         strcat(r, "COMMITTED");
         first = 1;
     }
-    if (flags & DB_DIST_SCHEMA_LK) {
-        if (first) strcat(r, "|");
-        strcat(r, "SCHEMA_LK");
-        first = 1;
-    }
     if (flags & DB_DIST_UPDSHADOWS) {
         if (first) strcat(r, "|");
         strcat(r, "UPDSHADOWS");
+        first = 1;
+    }
+    if (flags & DB_DIST_DISCARDED) {
+        if (first) strcat(r, "|");
+        strcat(r, "DISCARDED");
+        first = 1;
+    }
+    if (flags & DB_DIST_SCHEMA_ABORT) {
+        if (first) strcat(r, "|");
+        strcat(r, "SCHEMA_ABORT");
         first = 1;
     }
     return r;

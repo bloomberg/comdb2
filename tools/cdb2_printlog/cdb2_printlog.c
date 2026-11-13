@@ -229,6 +229,8 @@ int tool_cdb2_printlog_main(argc, argv)
 		goto shutdown;
 	}
 
+	/* app records reach bdb code that follows st.parent */
+	memset(&st, 0, sizeof(st));
 	st.dir = "./";
 	st.attr = calloc(1, sizeof(bdb_attr_type));
 	st.attr->llog = 1;

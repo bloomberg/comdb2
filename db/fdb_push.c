@@ -678,6 +678,7 @@ int handle_fdb_push_write(sqlclntstate *clnt, struct errstat *err, int n_extra_s
     int created;
     int rc;
     int set_inremtrans = 0;
+    int is_ddl = push && (push->type == AST_TYPE_CREATE || push->type == AST_TYPE_DROP);
     const char *noverify = "SET VeRiFyReTRy OFF";
     int cdb2open_flags = clnt->features.require_fastsql ? CDB2_REQUIRE_FASTSQL : 0 /* no sqlite row format here */;
 
@@ -743,8 +744,8 @@ int handle_fdb_push_write(sqlclntstate *clnt, struct errstat *err, int n_extra_s
                 set_inremtrans = 1;
             }
 
-            /* identify this db, node and client transaction to the remote */
-            rc = fdb_rempush_set(clnt, fdb, tran->fcon.hndl);
+            /* identify this db, node and client transaction to the remote (not dist ddl: shard's own tables) */
+            rc = is_ddl ? 0 : fdb_rempush_set(clnt, fdb, tran->fcon.hndl);
             if (rc) {
                 goto hndl_err;
             }
@@ -769,7 +770,7 @@ int handle_fdb_push_write(sqlclntstate *clnt, struct errstat *err, int n_extra_s
             tran->writes_status = FDB_TRAN_BEGIN;
         } else {
             /* identify this db and node to the remote */
-            rc = fdb_rempush_set(clnt, fdb, tran->fcon.hndl);
+            rc = is_ddl ? 0 : fdb_rempush_set(clnt, fdb, tran->fcon.hndl);
             if (rc) {
                 goto hndl_err;
             }

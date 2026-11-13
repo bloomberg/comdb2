@@ -389,6 +389,11 @@ void *get_sqlite_entry(struct sql_thread *thd, int n)
     return thd->rootpages[n].entry;
 }
 
+const char *get_sqlite_entry_tblname(struct sql_thread *thd, int n)
+{
+    return thd->rootpages[n].tblname;
+}
+
 int get_copy_rootpages_custom(struct sql_thread *thd, master_entry_t *ents,
                               int nents)
 {

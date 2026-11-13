@@ -110,6 +110,8 @@ int osql_sess_save_sc_list(osql_sess_t *sess);
  *
  */
 int osql_delete_sc_list_int(uuid_t uuid, tran_type *trans, const char *f, int l);
+/* mark the 2pc sc_list of uuid may_vote (and voted) */
+int osql_sc_list_mark(uuid_t uuid, int voted);
 #define osql_delete_sc_list(uuid, trans) osql_delete_sc_list_int((uuid), (trans), __func__, __LINE__)
 
 /**

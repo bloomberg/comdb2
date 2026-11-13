@@ -28,6 +28,15 @@ set -x
 #     schema change from its 2pc sc_list and aborts it
 # 11. A coordinator that loses its master before it commits resumes its
 #     schema change from its 2pc sc_list, aborts it, and its participants abort
+# 18. A coordinator that is not one of the shards
+# 19. A coordinator whose own schema change fails aborts every shard
+# 20. A participant whose redo of a committed drop fails once retries it
+# 21. A resumed participant that sees lock-desired while it stays master still
+#     applies the committed drop
+# 22. A participant killed before it can vote and restarted while the
+#     coordinator still waits for votes aborts, rather than count as a yes vote
+# 38. A participant killed after it may vote but before it prepares, and
+#     restarted while the coordinator still waits for votes, aborts too
 ################################################################################
 
 # Validate required environment variables
@@ -91,11 +100,30 @@ OUT=log.txt
 export stopfile=./stopfile.txt
 export LOGDIR=$TESTDIR/logs
 
-rm -f ${OUT} $stopfile
+rm -f ${OUT} $stopfile ${DBNAME}.fail_exit
+
+RUNIT_SCRIPT=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/$(basename "${BASH_SOURCE[0]}")
+
+# "TEST <n> <testcase>" for a testcase function, <n> from the "# TEST <n>:"
+# header above it; just the name if it has none
+function testcase_label
+{
+    local tc=$1 n
+    [[ -z "$tc" ]] && return
+    n=$(awk -v fn="$tc" '/^# TEST [0-9]+[a-z]*:/ { n = $3; sub(":", "", n) }
+        /^function test_/ && $2 == fn { print n; exit }' "$RUNIT_SCRIPT" 2>/dev/null)
+    if [[ -n "$n" ]]; then
+        echo "TEST $n $tc"
+    else
+        echo "$tc"
+    fi
+}
 
 function fail_exit
 {
-    echo "Failed: $@" | tee ${DBNAME}.fail_exit
+    local label=$(testcase_label "$current_testcase")
+    # appended: fail_with_timings repeats every reason at the end of the log
+    echo "Failed: ${label:+[$label] }$@" | tee -a ${DBNAME}.fail_exit
     touch $stopfile
 }
 
@@ -353,7 +381,18 @@ function setup_testcase
         done
     fi
 
-    $P_SQL "DROP TABLE IF EXISTS t" 2>/dev/null
+    # A participant an earlier testcase left resuming keeps t reserved until
+    # it learns its coordinator's decision (a retry may be up to tens of
+    # seconds away): retry the drop until then
+    local out start=$SECONDS
+    while ! out=$($P_SQL "DROP TABLE IF EXISTS t" 2>&1); do
+        if (( SECONDS - start >= 90 )); then
+            fail_exit "setup_testcase: could not drop t: $out"
+            return
+        fi
+        echo "setup_testcase: drop of t failed, retrying: $out"
+        sleep 2
+    done
     # Give a moment for drop to propagate
     sleep 1
 }
@@ -513,6 +552,19 @@ function test_multiple_create_drop
 DEFAULT_DDL_TIMEOUT_MS=120000
 
 # Start every node of db whose process is gone (a debug tunable made it exit)
+# Stop db on every node, so that restart_db brings it back
+function stop_db
+{
+    local db=$1 opts=$2 node
+    if [[ -z "$CLUSTER" ]]; then
+        $CDB2SQL_EXE $opts $db default "exec procedure sys.cmd.send('exit')" >/dev/null 2>&1
+    else
+        for node in $CLUSTER; do
+            $CDB2SQL_EXE $opts $db --host $node "exec procedure sys.cmd.send('exit')" >/dev/null 2>&1
+        done
+    fi
+}
+
 function restart_db
 {
     local db=$1 dir=$2 opts=$3 node
@@ -526,6 +578,15 @@ function restart_db
         for node in $CLUSTER; do
             $CDB2SQL_EXE $opts $db --host $node "select 1" >/dev/null 2>&1 && continue
             echo "restarting $db on $node"
+            # wait for the old process to be gone, its port to be free (a
+            # clean exit takes a moment after 'exit' returns)
+            if [[ "$node" == "$(hostname)" ]]; then
+                local pid=$(cat ${TMPDIR}/${db}.${node}.pid 2>/dev/null) waited=0
+                while [[ -n "$pid" ]] && kill -0 $pid 2>/dev/null && (( waited++ < 60 )); do sleep 1; done
+            else
+                ssh -n -o StrictHostKeyChecking=no $node "pid=\$(cat ${TMPDIR}/${db}.pid 2>/dev/null); w=0; \
+                    while [ -n \"\$pid\" ] && kill -0 \$pid 2>/dev/null && [ \$w -lt 60 ]; do sleep 1; w=\$((w+1)); done"
+            fi
             if [[ "$node" == "$(hostname)" ]]; then
                 (cd $dir; $COMDB2_EXE $db $params --pidfile ${TMPDIR}/${db}.${node}.pid \
                     >> $LOGDIR/${db}.${node}.db 2>&1 &)
@@ -566,6 +627,23 @@ function has_table
     fi
 }
 
+# Wait (up to max seconds) until every shard agrees on whether tbl exists;
+# echoes the per-shard state, returns nonzero if they never agree
+function wait_shards_agree
+{
+    local tbl=$1 max=${2:-60} waited=0 s0 s1 s2 s3
+    while :; do
+        s0=$(has_table $DBNAME "$CDB2_OPTIONS" $tbl)
+        s1=$(has_table $SECONDARY_DBNAME "$SECONDARY_CDB2_OPTIONS" $tbl)
+        s2=$(has_table $TERTIARY_DBNAME "$TERTIARY_CDB2_OPTIONS" $tbl)
+        s3=$(has_table $QUATERNARY_DBNAME "$QUATERNARY_CDB2_OPTIONS" $tbl)
+        echo "$tbl on ${DBNAME}=$s0 ${SECONDARY_DBNAME}=$s1 ${TERTIARY_DBNAME}=$s2 ${QUATERNARY_DBNAME}=$s3"
+        [[ "$s0$s1$s2$s3" == "0000" || "$s0$s1$s2$s3" == "1111" ]] && return 0
+        (( waited++ >= max )) && return 1
+        sleep 1
+    done
+}
+
 # Run ddl on the coordinator db directly, so the coordinator is known
 C_SQL="cdb2sql ${CDB2_OPTIONS} ${DBNAME} default"
 
@@ -576,10 +654,8 @@ function clear_debug_tunables
     for pair in "$DBNAME|$CDB2_OPTIONS" "$SECONDARY_DBNAME|$SECONDARY_CDB2_OPTIONS" \
                 "$TERTIARY_DBNAME|$TERTIARY_CDB2_OPTIONS" "$QUATERNARY_DBNAME|$QUATERNARY_CDB2_OPTIONS"; do
         IFS='|' read -r db opts <<< "$pair"
-        for t in debug_fail_ddl_prepare debug_sleep_coordinator_before_commit \
-                 debug_exit_participant_before_ddl_prepare debug_exit_participant_after_prepare \
-                 debug_exit_coordinator_before_commit \
-                 debug_sleep_ddl_before_lock_ms; do
+        for t in debug_remote_2pc_fault debug_sleep_coordinator_before_commit \
+                 debug_exit_participant_after_prepare debug_exit_coordinator_before_commit; do
             set_tunable $db "$opts" $t 0
         done
         set_tunable $db "$opts" disttxn_ddl_timeout_ms $DEFAULT_DDL_TIMEOUT_MS
@@ -621,13 +697,20 @@ function test_coordinator_decides_abort
     setup_outcome_ddl drop
     [[ -f $stopfile ]] && return
 
-    set_tunable $QUATERNARY_DBNAME "$QUATERNARY_CDB2_OPTIONS" debug_fail_ddl_prepare 1
+    set_tunable $QUATERNARY_DBNAME "$QUATERNARY_CDB2_OPTIONS" debug_remote_2pc_fault fail_prepare
 
-    $C_SQL "drop table t" 2>&1
+    local out
+    out=$($C_SQL "drop table t" 2>&1)
     local rc=$?
-    set_tunable $QUATERNARY_DBNAME "$QUATERNARY_CDB2_OPTIONS" debug_fail_ddl_prepare 0
+    echo "$out"
+    set_tunable $QUATERNARY_DBNAME "$QUATERNARY_CDB2_OPTIONS" debug_remote_2pc_fault off
     if (( rc == 0 )); then
         fail_exit "test_coordinator_decides_abort: drop should have failed"
+        return
+    fi
+    # the client gets the participant's error, not a generic "failed to commit"
+    if ! echo "$out" | grep -q "Failed prepare on debug tunable"; then
+        fail_exit "test_coordinator_decides_abort: client did not get the failed prepare error"
         return
     fi
 
@@ -707,14 +790,14 @@ function test_ddl_timeout
     [[ -f $stopfile ]] && return
 
     set_tunable $DBNAME "$CDB2_OPTIONS" disttxn_ddl_timeout_ms 3000
-    set_tunable $QUATERNARY_DBNAME "$QUATERNARY_CDB2_OPTIONS" debug_sleep_ddl_before_lock_ms 5000
+    set_tunable $QUATERNARY_DBNAME "$QUATERNARY_CDB2_OPTIONS" debug_remote_2pc_fault sleep_before_lock:5000
 
     local out rc start=$(date +%s)
     out=$($C_SQL "drop table t" 2>&1)
     rc=$?
     local took=$(( $(date +%s) - start ))
     echo "$out"
-    set_tunable $QUATERNARY_DBNAME "$QUATERNARY_CDB2_OPTIONS" debug_sleep_ddl_before_lock_ms 0
+    set_tunable $QUATERNARY_DBNAME "$QUATERNARY_CDB2_OPTIONS" debug_remote_2pc_fault off
     set_tunable $DBNAME "$CDB2_OPTIONS" disttxn_ddl_timeout_ms $DEFAULT_DDL_TIMEOUT_MS
     if (( rc != 0 )); then
         fail_exit "test_ddl_timeout: drop failed, a slow participant timed it out"
@@ -736,15 +819,14 @@ function test_ddl_timeout
 }
 
 ########################################
-# TEST 9: Distributed schema lock deadlock
+# TEST 9: No distributed schema lock deadlock
 # The primary coordinates a drop of t1 and the secondary a drop of t2, and each
 # is the other's participant.  Both drops sleep before they take the schema
-# lock, participants twice as long: both coordinators read every shard's
-# table version before any lock is held, then each finalizes first and holds
-# its db's schema lock
-# while it waits for a participant that waits for that same lock: the two
-# drops wait for each other.  The timeout must break that, and each drop
-# commits on both shards or on none.
+# lock, participants twice as long.  If each one's participant prepares before
+# the other's coordinator locks, each coordinator waits for the other's
+# prepared participant: the one with the higher dist-txn id aborts at once, so
+# at least one drop commits, well before the timeout, and each applies on both
+# shards or on neither.
 ########################################
 function test_ddl_deadlock_timeout
 {
@@ -764,7 +846,7 @@ function test_ddl_deadlock_timeout
     for pair in "$DBNAME|$CDB2_OPTIONS" "$SECONDARY_DBNAME|$SECONDARY_CDB2_OPTIONS"; do
         IFS='|' read -r db opts <<< "$pair"
         set_tunable $db "$opts" disttxn_ddl_timeout_ms 8000
-        set_tunable $db "$opts" debug_sleep_ddl_before_lock_ms 1500
+        set_tunable $db "$opts" debug_remote_2pc_fault sleep_before_lock:1500
     done
 
     $C_SQL "drop table t1" > drop_t1.out 2>&1 &
@@ -790,17 +872,11 @@ function test_ddl_deadlock_timeout
 
     for pair in "$DBNAME|$CDB2_OPTIONS" "$SECONDARY_DBNAME|$SECONDARY_CDB2_OPTIONS"; do
         IFS='|' read -r db opts <<< "$pair"
-        set_tunable $db "$opts" debug_sleep_ddl_before_lock_ms 0
+        set_tunable $db "$opts" debug_remote_2pc_fault off
     done
-    # They deadlocked, so a timeout aborted at least one; once its schema
-    # lock is released the other can still commit
-    if (( rc1 == 0 && rc2 == 0 )); then
-        fail_exit "test_ddl_deadlock_timeout: drops did not wait for each other"
-        return
-    fi
-    if ! grep -q "distributed schema change .*timed out after 8000 ms" $LOGDIR/${DBNAME}*.db \
-            $LOGDIR/${SECONDARY_DBNAME}*.db; then
-        fail_exit "test_ddl_deadlock_timeout: no schema change timed out"
+    # a cycle aborts the higher dist-txn id, not both at the timeout
+    if (( rc1 != 0 && rc2 != 0 )); then
+        fail_exit "test_ddl_deadlock_timeout: drops waited for each other (t1 rc $rc1, t2 rc $rc2)"
         return
     fi
     # aborted participants learn the outcome once they get the schema lock
@@ -841,31 +917,20 @@ function test_participant_resume_aborts
     setup_outcome_ddl create
     [[ -f $stopfile ]] && return
 
-    set_tunable $QUATERNARY_DBNAME "$QUATERNARY_CDB2_OPTIONS" debug_exit_participant_before_ddl_prepare 1
+    set_tunable $QUATERNARY_DBNAME "$QUATERNARY_CDB2_OPTIONS" debug_remote_2pc_fault exit_before_prepare
 
     $C_SQL "create table t(a int unique, b int) partitioned by columns(a) on (${shards})" 2>&1
     local rc=$?
-    # on a cluster the participant's new master can resume, finalize and vote
-    # before the coordinator gives up: then every shard commits
-    if (( rc == 0 )) && [[ -z "$CLUSTER" ]]; then
+    # it never prepared, so it never voted: even a restart (its new master, on
+    # a cluster) that resumes before the coordinator gives up must not vote
+    if (( rc == 0 )); then
         fail_exit "test_participant_resume_aborts: create should have failed"
         return
     fi
 
     restart_db $QUATERNARY_DBNAME $QUATERNARY_DBDIR "$QUATERNARY_CDB2_OPTIONS"
     [[ -f $stopfile ]] && return
-    set_tunable $QUATERNARY_DBNAME "$QUATERNARY_CDB2_OPTIONS" debug_exit_participant_before_ddl_prepare 0
-
-    if (( rc == 0 )); then
-        wait_for_log $QUATERNARY_DBNAME "committing resumed 2pc schema change .* as participant"
-        [[ -f $stopfile ]] && return
-        verify_ddl_outcome create 1
-        [[ -f $stopfile ]] && return
-        verify_table_usable t
-        [[ -f $stopfile ]] && return
-        echo "test_participant_resume_aborts PASSED (resumed participant committed)"
-        return
-    fi
+    set_tunable $QUATERNARY_DBNAME "$QUATERNARY_CDB2_OPTIONS" debug_remote_2pc_fault off
 
     wait_for_log $QUATERNARY_DBNAME "aborting resumed 2pc schema change .* as participant"
     [[ -f $stopfile ]] && return
@@ -928,8 +993,7 @@ function test_participant_prepared_restart_abort
 
     set_tunable $QUATERNARY_DBNAME "$QUATERNARY_CDB2_OPTIONS" debug_exit_participant_after_prepare 1
     # the tertiary fails its prepare only after the quaternary has prepared
-    set_tunable $TERTIARY_DBNAME "$TERTIARY_CDB2_OPTIONS" debug_sleep_ddl_before_lock_ms 5000
-    set_tunable $TERTIARY_DBNAME "$TERTIARY_CDB2_OPTIONS" debug_fail_ddl_prepare 1
+    set_tunable $TERTIARY_DBNAME "$TERTIARY_CDB2_OPTIONS" debug_remote_2pc_fault "sleep_before_lock:5000,fail_prepare"
 
     $C_SQL "create table t(a int unique, b int) partitioned by columns(a) on (${shards})" 2>&1
     if (( $? == 0 )); then
@@ -937,8 +1001,7 @@ function test_participant_prepared_restart_abort
         return
     fi
 
-    set_tunable $TERTIARY_DBNAME "$TERTIARY_CDB2_OPTIONS" debug_sleep_ddl_before_lock_ms 0
-    set_tunable $TERTIARY_DBNAME "$TERTIARY_CDB2_OPTIONS" debug_fail_ddl_prepare 0
+    set_tunable $TERTIARY_DBNAME "$TERTIARY_CDB2_OPTIONS" debug_remote_2pc_fault off
     restart_db $QUATERNARY_DBNAME $QUATERNARY_DBDIR "$QUATERNARY_CDB2_OPTIONS"
     [[ -f $stopfile ]] && return
     set_tunable $QUATERNARY_DBNAME "$QUATERNARY_CDB2_OPTIONS" debug_exit_participant_after_prepare 0
@@ -961,9 +1024,11 @@ function test_participant_prepared_restart_abort
 ########################################
 # TEST 12: Coordinator resumes and aborts
 # The coordinator exits after every participant prepared its drop, before it
-# commits the decision.  Its new master resumes the drop from the 2pc sc_list;
-# it must not commit its own shard's drop, but abort it and tell the
-# participants, which abort theirs.
+# commits the decision.  Its new master finds the drop's 2pc sc_list; it must
+# not commit its own shard's drop, but abort it, without redoing it, and tell
+# the participants, which abort theirs.  It must also clear its shard's
+# schema change record, so that a later master does not resume the drop as a
+# local schema change.
 ########################################
 function test_coordinator_resume_aborts
 {
@@ -984,9 +1049,23 @@ function test_coordinator_resume_aborts
     [[ -f $stopfile ]] && return
     set_tunable $DBNAME "$CDB2_OPTIONS" debug_exit_coordinator_before_commit 0
 
-    wait_for_log $DBNAME "aborting resumed 2pc schema change .* as coordinator"
+    # aborted from the sc_list, not after redoing the drop
+    wait_for_log $DBNAME "resume_sc_multiddl_txn uuid .*: aborting resumed 2pc schema change .* as coordinator"
     [[ -f $stopfile ]] && return
 
+    verify_ddl_outcome drop 0
+    [[ -f $stopfile ]] && return
+
+    # a later master of the coordinator must not resume the drop on its own
+    local resumed=$(cat $LOGDIR/${DBNAME}*.db 2>/dev/null | grep -c "in the middle of a schema change, resuming")
+    stop_db $DBNAME "$CDB2_OPTIONS"
+    restart_db $DBNAME $DBDIR "$CDB2_OPTIONS"
+    [[ -f $stopfile ]] && return
+    sleep 5
+    if (( $(cat $LOGDIR/${DBNAME}*.db 2>/dev/null | grep -c "in the middle of a schema change, resuming") > resumed )); then
+        fail_exit "test_coordinator_resume_aborts: the coordinator resumed the aborted drop as a local schema change"
+        return
+    fi
     verify_ddl_outcome drop 0
     [[ -f $stopfile ]] && return
     verify_table_usable t
@@ -996,9 +1075,227 @@ function test_coordinator_resume_aborts
 }
 
 ########################################
-# Review testcases (PR 5832): each one checks a suspected issue and fails
-# when the issue is present.
+# TEST 13: Prepared participant gives up, coordinator commits later
+# The quaternary waits at most 2s for its coordinator, which sleeps 5s after
+# every participant prepared before it commits.  The quaternary aborts its
+# prepared schema change, releases it in memory and frees its schema lock,
+# then asks the coordinator again holding no locks, and redoes the schema
+# change when it learns that it committed: every shard ends up changed.  Run
+# for a drop and for a create, whose new table the abort must release; the
+# redo creates its own btrees, so only those may be left on disk.
 ########################################
+# Files of the quaternary's shard of t made since mark_shard_files; its dbdir is
+# local only without a cluster
+function mark_shard_files
+{
+    touch $QUATERNARY_DBDIR/../shard_files.mark
+}
+
+function new_shard_files
+{
+    [[ -n "$CLUSTER" ]] && { echo 0; return; }
+    find $QUATERNARY_DBDIR -maxdepth 1 -name '$4_t_*' -newer $QUATERNARY_DBDIR/../shard_files.mark | wc -l | tr -d ' '
+}
+
+function participant_gives_up_then_commits
+{
+    local kind=$1
+    echo "=== TEST: test_participant_gives_up_then_commits $kind ==="
+
+    setup_outcome_ddl $kind
+    [[ -f $stopfile ]] && return
+    mark_shard_files
+
+    local committed=$(cat $LOGDIR/${QUATERNARY_DBNAME}*.db 2>/dev/null | grep -c "committing resumed 2pc schema change")
+    local gaveup=$(cat $LOGDIR/${QUATERNARY_DBNAME}*.db 2>/dev/null | grep -c "gave up on coordinator")
+    set_tunable $QUATERNARY_DBNAME "$QUATERNARY_CDB2_OPTIONS" disttxn_ddl_timeout_ms 2000
+    set_tunable $DBNAME "$CDB2_OPTIONS" debug_sleep_coordinator_before_commit 1
+
+    if [[ "$kind" == "create" ]]; then
+        $C_SQL "create table t(a int unique, b int) partitioned by columns(a) on (${shards})" 2>&1
+    else
+        $C_SQL "drop table t" 2>&1
+    fi
+    echo "$kind rc $?"
+
+    set_tunable $DBNAME "$CDB2_OPTIONS" debug_sleep_coordinator_before_commit 0
+    set_tunable $QUATERNARY_DBNAME "$QUATERNARY_CDB2_OPTIONS" disttxn_ddl_timeout_ms $DEFAULT_DDL_TIMEOUT_MS
+
+    local waited=0
+    while (( $(cat $LOGDIR/${QUATERNARY_DBNAME}*.db 2>/dev/null | grep -c "gave up on coordinator") <= gaveup )); do
+        if (( waited++ >= 60 )); then
+            fail_exit "test_participant_gives_up_then_commits $kind: the participant did not give up"
+            return
+        fi
+        sleep 1
+    done
+    waited=0
+    while (( $(cat $LOGDIR/${QUATERNARY_DBNAME}*.db 2>/dev/null | grep -c "committing resumed 2pc schema change") <= committed )); do
+        if (( waited++ >= 60 )); then
+            fail_exit "test_participant_gives_up_then_commits $kind: the participant did not redo the committed $kind"
+            return
+        fi
+        sleep 1
+    done
+
+    verify_ddl_outcome $kind 1
+    [[ -f $stopfile ]] && return
+
+    # the redo's data and index btree
+    local files=$(new_shard_files)
+    if [[ "$kind" == "create" ]] && (( files > 2 )); then
+        fail_exit "test_participant_gives_up_then_commits create: ${QUATERNARY_DBNAME} left the btrees of the create it gave up on: ${files} new files"
+        return
+    fi
+
+    echo "test_participant_gives_up_then_commits $kind PASSED"
+}
+
+function test_participant_gives_up_then_commits
+{
+    participant_gives_up_then_commits drop
+}
+
+function test_participant_gives_up_then_commits_create
+{
+    participant_gives_up_then_commits create
+}
+
+########################################
+# TEST 13c: Prepared participant gives up, coordinator aborts later
+# The quaternary gives up on its coordinator after 2s and aborts its prepared
+# schema change; the tertiary then fails its prepare, so the coordinator
+# aborts.  The quaternary drops its 2pc sc_list, and must also clear the
+# per-table schema change record that its drop left: otherwise, without
+# multitable_ddl, its next master resumes that drop as a local schema change
+# and drops its shard.  Run for a create too, whose btrees must not be left on
+# disk.
+########################################
+function participant_gives_up_then_aborts
+{
+    local kind=$1
+    echo "=== TEST: test_participant_gives_up_then_aborts $kind ==="
+
+    setup_outcome_ddl $kind
+    [[ -f $stopfile ]] && return
+    mark_shard_files
+
+    local gaveup=$(cat $LOGDIR/${QUATERNARY_DBNAME}*.db 2>/dev/null | grep -c "gave up on coordinator")
+    local aborted=$(cat $LOGDIR/${QUATERNARY_DBNAME}*.db 2>/dev/null | grep -c "aborting resumed 2pc schema change")
+    set_tunable $QUATERNARY_DBNAME "$QUATERNARY_CDB2_OPTIONS" disttxn_ddl_timeout_ms 2000
+    # the tertiary fails its prepare only after the quaternary gave up
+    set_tunable $TERTIARY_DBNAME "$TERTIARY_CDB2_OPTIONS" debug_remote_2pc_fault "sleep_before_lock:3000,fail_prepare"
+
+    if [[ "$kind" == "create" ]]; then
+        $C_SQL "create table t(a int unique, b int) partitioned by columns(a) on (${shards})" 2>&1
+    else
+        $C_SQL "drop table t" 2>&1
+    fi
+    local rc=$?
+
+    set_tunable $TERTIARY_DBNAME "$TERTIARY_CDB2_OPTIONS" debug_remote_2pc_fault off
+    set_tunable $QUATERNARY_DBNAME "$QUATERNARY_CDB2_OPTIONS" disttxn_ddl_timeout_ms $DEFAULT_DDL_TIMEOUT_MS
+
+    if (( rc == 0 )); then
+        fail_exit "test_participant_gives_up_then_aborts $kind: $kind should have failed"
+        return
+    fi
+    if (( $(cat $LOGDIR/${QUATERNARY_DBNAME}*.db 2>/dev/null | grep -c "gave up on coordinator") <= gaveup )); then
+        fail_exit "test_participant_gives_up_then_aborts $kind: the quaternary did not give up"
+        return
+    fi
+    local waited=0
+    while (( $(cat $LOGDIR/${QUATERNARY_DBNAME}*.db 2>/dev/null | grep -c "aborting resumed 2pc schema change") <= aborted )); do
+        if (( waited++ >= 60 )); then
+            fail_exit "test_participant_gives_up_then_aborts $kind: the quaternary did not abort its resumed $kind"
+            return
+        fi
+        sleep 1
+    done
+    verify_ddl_outcome $kind 0
+    [[ -f $stopfile ]] && return
+
+    if [[ "$kind" == "create" ]]; then
+        local files=$(new_shard_files)
+        if (( files > 0 )); then
+            fail_exit "test_participant_gives_up_then_aborts create: ${QUATERNARY_DBNAME} left ${files} files of its aborted shard of t on disk"
+            return
+        fi
+        echo "test_participant_gives_up_then_aborts $kind PASSED"
+        return
+    fi
+
+    # a new master of the quaternary must not resume the drop on its own
+    local resumed=$(cat $LOGDIR/${QUATERNARY_DBNAME}*.db 2>/dev/null | grep -c "in the middle of a schema change, resuming")
+    stop_db $QUATERNARY_DBNAME "$QUATERNARY_CDB2_OPTIONS"
+    restart_db $QUATERNARY_DBNAME $QUATERNARY_DBDIR "$QUATERNARY_CDB2_OPTIONS"
+    [[ -f $stopfile ]] && return
+    sleep 5
+
+    if (( $(cat $LOGDIR/${QUATERNARY_DBNAME}*.db 2>/dev/null | grep -c "in the middle of a schema change, resuming") > resumed )); then
+        fail_exit "test_participant_gives_up_then_aborts: the quaternary resumed the aborted drop as a local schema change"
+        return
+    fi
+    verify_ddl_outcome drop 0
+    [[ -f $stopfile ]] && return
+    verify_table_usable t
+    [[ -f $stopfile ]] && return
+
+    echo "test_participant_gives_up_then_aborts $kind PASSED"
+}
+
+function test_participant_gives_up_then_aborts
+{
+    participant_gives_up_then_aborts drop
+}
+
+function test_participant_gives_up_then_aborts_create
+{
+    participant_gives_up_then_aborts create
+}
+
+########################################
+# TEST 14: Coordinator commit during the participant's upgrade
+# The quaternary exits after it prepared its part of a create, and the
+# coordinator commits.  The quaternary's new master aborts the prepared
+# create, and debug_remote_2pc_fault commit_during_upgrade delivers the coordinator's
+# commit in the middle of that.  It must not commit the create there, which
+# would leave it on disk but not in memory: the resume redoes it.
+########################################
+function test_commit_during_participant_upgrade
+{
+    echo "=== TEST: test_commit_during_participant_upgrade ==="
+
+    setup_outcome_ddl create
+    [[ -f $stopfile ]] && return
+
+    local lrl=$QUATERNARY_DBDIR/$QUATERNARY_DBNAME.lrl
+    # a single node upgrades when it restarts; a cluster's replicants upgrade
+    set_tunable $QUATERNARY_DBNAME "$QUATERNARY_CDB2_OPTIONS" debug_remote_2pc_fault commit_during_upgrade
+    [[ -z "$CLUSTER" ]] && echo "debug_remote_2pc_fault commit_during_upgrade" >> $lrl
+    set_tunable $QUATERNARY_DBNAME "$QUATERNARY_CDB2_OPTIONS" debug_exit_participant_after_prepare 1
+
+    $C_SQL "create table t(a int unique, b int) partitioned by columns(a) on (${shards})" 2>&1
+    echo "create rc $?"
+
+    restart_db $QUATERNARY_DBNAME $QUATERNARY_DBDIR "$QUATERNARY_CDB2_OPTIONS"
+    [[ -f $stopfile ]] && return
+    [[ -z "$CLUSTER" ]] && sed -i.bak '/^debug_remote_2pc_fault/d' $lrl
+    set_tunable $QUATERNARY_DBNAME "$QUATERNARY_CDB2_OPTIONS" debug_exit_participant_after_prepare 0
+    set_tunable $QUATERNARY_DBNAME "$QUATERNARY_CDB2_OPTIONS" debug_remote_2pc_fault off
+
+    wait_for_log $QUATERNARY_DBNAME "delivering coordinator commit for"
+    [[ -f $stopfile ]] && return
+    wait_for_log $QUATERNARY_DBNAME "not committing schema change .* the upgrade aborts it"
+    [[ -f $stopfile ]] && return
+
+    verify_ddl_outcome create 1
+    [[ -f $stopfile ]] && return
+    verify_table_usable t
+    [[ -f $stopfile ]] && return
+
+    echo "test_commit_during_participant_upgrade PASSED"
+}
 
 # Time (whole seconds) a statement takes on db, giving up after max seconds;
 # prints the elapsed seconds, or "timeout"
@@ -1024,14 +1321,13 @@ function make_unrelated_table
 }
 
 ########################################
-# REVIEW A: a prepared participant blocks every query on its db until the
-# coordinator decides.  The coordinator sleeps 5s after all participants
-# prepared; a read of a table the ddl does not touch, on a participant,
-# should not wait for that.
+# TEST 15: a prepared participant does not block queries on tables the ddl
+# does not touch.  The coordinator sleeps after all participants prepared; a
+# read of an unrelated table on a participant must not wait for it.
 ########################################
-function test_review_participant_reads_block_while_prepared
+function test_participant_reads_block_while_prepared
 {
-    echo "=== TEST: test_review_participant_reads_block_while_prepared ==="
+    echo "=== TEST: test_participant_reads_block_while_prepared ==="
     setup_outcome_ddl drop
     [[ -f $stopfile ]] && return
     make_unrelated_table $QUATERNARY_DBNAME "$QUATERNARY_CDB2_OPTIONS"
@@ -1040,60 +1336,60 @@ function test_review_participant_reads_block_while_prepared
     echo "baseline read took ${base}s"
 
     set_tunable $DBNAME "$CDB2_OPTIONS" debug_sleep_coordinator_before_commit 1
-    $C_SQL "drop table t" > review_a.out 2>&1 &
+    $C_SQL "drop table t" > participant_read_drop.out 2>&1 &
     local drop_pid=$!
     sleep 2
     local took=$(timed_sql $QUATERNARY_DBNAME "$QUATERNARY_CDB2_OPTIONS" 20 "select count(*) from unrelated")
     wait $drop_pid
     set_tunable $DBNAME "$CDB2_OPTIONS" debug_sleep_coordinator_before_commit 0
-    echo "read of unrelated table on prepared participant took ${took}s (drop: $(cat review_a.out))"
+    echo "read of unrelated table on prepared participant took ${took}s (drop: $(cat participant_read_drop.out))"
 
     if [[ "$took" == "timeout" ]] || (( took >= 2 )); then
-        fail_exit "REVIEW A CONFIRMED: read of an unrelated table on prepared participant ${QUATERNARY_DBNAME} took ${took}s (baseline ${base}s)"
+        fail_exit "test_participant_reads_block_while_prepared: read of an unrelated table on prepared participant ${QUATERNARY_DBNAME} took ${took}s (baseline ${base}s)"
         return
     fi
-    echo "test_review_participant_reads_block_while_prepared PASSED"
+    echo "test_participant_reads_block_while_prepared PASSED"
 }
 
 ########################################
-# REVIEW B: the coordinator holds its own schema write lock while it waits for
-# participants, so a slow participant (up to disttxn_ddl_timeout_ms, 120s by
-# default) blocks every query on the coordinator db.
+# TEST 16: the coordinator collects votes before it takes its schema write
+# lock, so a slow participant does not block queries on unrelated tables of the
+# coordinator db.
 ########################################
-function test_review_coordinator_reads_block_on_slow_participant
+function test_coordinator_reads_block_on_slow_participant
 {
-    echo "=== TEST: test_review_coordinator_reads_block_on_slow_participant ==="
+    echo "=== TEST: test_coordinator_reads_block_on_slow_participant ==="
     setup_outcome_ddl drop
     [[ -f $stopfile ]] && return
     make_unrelated_table $DBNAME "$CDB2_OPTIONS"
 
     # participants sleep twice this: 8s
-    set_tunable $QUATERNARY_DBNAME "$QUATERNARY_CDB2_OPTIONS" debug_sleep_ddl_before_lock_ms 4000
-    $C_SQL "drop table t" > review_b.out 2>&1 &
+    set_tunable $QUATERNARY_DBNAME "$QUATERNARY_CDB2_OPTIONS" debug_remote_2pc_fault sleep_before_lock:4000
+    $C_SQL "drop table t" > coordinator_read_drop.out 2>&1 &
     local drop_pid=$!
     sleep 2
     local took=$(timed_sql $DBNAME "$CDB2_OPTIONS" 30 "select count(*) from unrelated")
     wait $drop_pid
     local rc=$?
-    set_tunable $QUATERNARY_DBNAME "$QUATERNARY_CDB2_OPTIONS" debug_sleep_ddl_before_lock_ms 0
-    echo "read of unrelated table on coordinator took ${took}s (drop rc $rc: $(cat review_b.out))"
+    set_tunable $QUATERNARY_DBNAME "$QUATERNARY_CDB2_OPTIONS" debug_remote_2pc_fault off
+    echo "read of unrelated table on coordinator took ${took}s (drop rc $rc: $(cat coordinator_read_drop.out))"
 
     if [[ "$took" == "timeout" ]] || (( took >= 3 )); then
-        fail_exit "REVIEW B CONFIRMED: read of an unrelated table on coordinator ${DBNAME} took ${took}s while waiting for a slow participant"
+        fail_exit "test_coordinator_reads_block_on_slow_participant: read of an unrelated table on coordinator ${DBNAME} took ${took}s while waiting for a slow participant"
         return
     fi
-    echo "test_review_coordinator_reads_block_on_slow_participant PASSED"
+    echo "test_coordinator_reads_block_on_slow_participant PASSED"
 }
 
 ########################################
-# REVIEW C: a participant that prepared has no bound on its wait: if the
-# coordinator is gone, the participant keeps the schema write lock forever and
-# its whole db stops answering.  The coordinator exits after every participant
-# prepared and is left down for 30s.
+# TEST 17: a prepared participant whose coordinator is gone still answers
+# queries on unrelated tables: it waits for the decision without the schema
+# lock.  The coordinator exits after every participant prepared and is left
+# down for 30s.
 ########################################
-function test_review_participant_unusable_while_coordinator_down
+function test_participant_unusable_while_coordinator_down
 {
-    echo "=== TEST: test_review_participant_unusable_while_coordinator_down ==="
+    echo "=== TEST: test_participant_unusable_while_coordinator_down ==="
     setup_outcome_ddl drop
     [[ -f $stopfile ]] && return
     make_unrelated_table $QUATERNARY_DBNAME "$QUATERNARY_CDB2_OPTIONS"
@@ -1115,10 +1411,780 @@ function test_review_participant_unusable_while_coordinator_down
     echo "after coordinator restart: ${QUATERNARY_DBNAME} read ${after}"
 
     if [[ "$took3" == "timeout" ]]; then
-        fail_exit "REVIEW C CONFIRMED: participant ${QUATERNARY_DBNAME} did not answer a read of an unrelated table for 30s while the coordinator was down (after restart: ${after})"
+        fail_exit "test_participant_unusable_while_coordinator_down: participant ${QUATERNARY_DBNAME} did not answer a read of an unrelated table for 30s while the coordinator was down (after restart: ${after})"
         return
     fi
-    echo "test_review_participant_unusable_while_coordinator_down PASSED"
+    echo "test_participant_unusable_while_coordinator_down PASSED"
+}
+
+########################################
+# TEST 18: The coordinator is not one of the shards
+# The db running the create holds no shard, so it has no schema change of its
+# own: the shards still create, and a drop from a shard removes them.
+########################################
+function test_coordinator_not_a_shard
+{
+    echo "=== TEST: test_coordinator_not_a_shard ==="
+    setup_testcase
+    [[ -f $stopfile ]] && return
+
+    local others="${SECONDARY_DBNAME}, ${TERTIARY_DBNAME}, ${QUATERNARY_DBNAME}" pair db opts
+    $C_SQL "create table t(a int unique, b int) partitioned by columns(a) on (${others})"
+    if (( $? != 0 )); then
+        fail_exit "test_coordinator_not_a_shard: create failed"
+        return
+    fi
+    for pair in "$SECONDARY_DBNAME|$SECONDARY_CDB2_OPTIONS" "$TERTIARY_DBNAME|$TERTIARY_CDB2_OPTIONS" \
+                "$QUATERNARY_DBNAME|$QUATERNARY_CDB2_OPTIONS"; do
+        IFS='|' read -r db opts <<< "$pair"
+        if [[ $(has_table $db "$opts" t) != 1 ]]; then
+            fail_exit "test_coordinator_not_a_shard: $db does not have t"
+            return
+        fi
+    done
+    if [[ $(has_table $DBNAME "$CDB2_OPTIONS" t) != 0 ]]; then
+        fail_exit "test_coordinator_not_a_shard: the coordinator has t though it is not a shard"
+        return
+    fi
+
+    $S1_SQL "drop table t"
+    if (( $? != 0 )); then
+        fail_exit "test_coordinator_not_a_shard: drop from ${SECONDARY_DBNAME} failed"
+        return
+    fi
+    verify_table_gone t
+    [[ -f $stopfile ]] && return
+
+    echo "test_coordinator_not_a_shard PASSED"
+}
+
+########################################
+# TEST 19: The coordinator's own schema change fails
+# The coordinator already has a table t, so its part of the create fails after
+# the shards may have prepared: no shard gets t, and the coordinator's table
+# is left alone.
+########################################
+function test_coordinator_table_exists
+{
+    echo "=== TEST: test_coordinator_table_exists ==="
+    setup_testcase
+    [[ -f $stopfile ]] && return
+
+    $S0_SQL "create table t(a int unique, b int)" || { fail_exit "test_coordinator_table_exists: could not create t"; return; }
+    $S0_SQL "insert into t values(100, 100)"
+
+    $C_SQL "create table t(a int unique, b int) partitioned by columns(a) on (${shards})" 2>&1
+    if (( $? == 0 )); then
+        fail_exit "test_coordinator_table_exists: create succeeded though the coordinator has t"
+        return
+    fi
+
+    local pair db opts
+    for pair in "$SECONDARY_DBNAME|$SECONDARY_CDB2_OPTIONS" "$TERTIARY_DBNAME|$TERTIARY_CDB2_OPTIONS" \
+                "$QUATERNARY_DBNAME|$QUATERNARY_CDB2_OPTIONS"; do
+        IFS='|' read -r db opts <<< "$pair"
+        if [[ $(has_table $db "$opts" t) != 0 ]]; then
+            fail_exit "test_coordinator_table_exists: $db has t after the create aborted"
+            return
+        fi
+    done
+    if [[ "$($S0_SQLT 'select count(*) from t')" != "1" ]]; then
+        fail_exit "test_coordinator_table_exists: the coordinator's own t lost its row"
+        return
+    fi
+    $S0_SQL "drop table t"
+
+    echo "test_coordinator_table_exists PASSED"
+}
+
+# Count the quaternary's log lines matching pattern
+function quaternary_log_count
+{
+    cat $LOGDIR/${QUATERNARY_DBNAME}*.db 2>/dev/null | grep -c "$1"
+}
+
+# Wait up to max seconds for more than base quaternary log lines matching pattern
+function wait_quaternary_log
+{
+    local pattern=$1 max=$2 base=$3 waited=0
+    while (( $(quaternary_log_count "$pattern") <= base )); do
+        (( waited++ >= max )) && return 1
+        sleep 1
+    done
+    return 0
+}
+
+# The quaternary gives up on the coordinator during a drop of t, which the
+# coordinator then commits
+function quaternary_gives_up_on_drop
+{
+    local caller=$1
+    setup_outcome_ddl drop
+    [[ -f $stopfile ]] && return 1
+    local gaveup=$(quaternary_log_count "gave up on coordinator")
+    set_tunable $QUATERNARY_DBNAME "$QUATERNARY_CDB2_OPTIONS" disttxn_ddl_timeout_ms 2000
+    set_tunable $DBNAME "$CDB2_OPTIONS" debug_sleep_coordinator_before_commit 1
+    $C_SQL "drop table t" 2>&1
+    echo "drop rc $?"
+    set_tunable $DBNAME "$CDB2_OPTIONS" debug_sleep_coordinator_before_commit 0
+    set_tunable $QUATERNARY_DBNAME "$QUATERNARY_CDB2_OPTIONS" disttxn_ddl_timeout_ms $DEFAULT_DDL_TIMEOUT_MS
+    if ! wait_quaternary_log "gave up on coordinator" 60 $gaveup; then
+        fail_exit "$caller: ${QUATERNARY_DBNAME} did not give up on the coordinator"
+        return 1
+    fi
+    return 0
+}
+
+########################################
+# TEST 20: The redo of a committed drop fails once
+# The quaternary gives up on the coordinator, which commits; the quaternary's
+# redo then fails its finalize once (debug_remote_2pc_fault fail_redo_finalize).  Its retry
+# must apply the drop, rather than crash or find the table still marked as
+# running a schema change.
+########################################
+function test_participant_redo_finalize_fails_once
+{
+    echo "=== TEST: test_participant_redo_finalize_fails_once ==="
+    local committed=$(quaternary_log_count "committing resumed 2pc schema change")
+    local injected=$(quaternary_log_count "failing finalize of 2pc redo")
+    set_tunable $QUATERNARY_DBNAME "$QUATERNARY_CDB2_OPTIONS" debug_remote_2pc_fault fail_redo_finalize:1
+    quaternary_gives_up_on_drop test_participant_redo_finalize_fails_once || return
+    if ! wait_quaternary_log "failing finalize of 2pc redo" 60 $injected; then
+        fail_exit "test_participant_redo_finalize_fails_once: the redo did not fail on the debug tunable"
+        return
+    fi
+    if ! wait_quaternary_log "committing resumed 2pc schema change" 75 $committed; then
+        cat $LOGDIR/${QUATERNARY_DBNAME}*.db | sed -n '/failing finalize of 2pc redo/,$p' |
+            grep -E "sc_set_running|retrying|redo of committed" | head -20
+        fail_exit "test_participant_redo_finalize_fails_once: ${QUATERNARY_DBNAME} did not apply the committed drop after one failed redo"
+        return
+    fi
+    verify_ddl_outcome drop 1
+    [[ -f $stopfile ]] && return
+
+    echo "test_participant_redo_finalize_fails_once PASSED"
+}
+
+########################################
+# TEST 21: A resumed participant sees lock-desired while it stays master
+# The quaternary gives up on the coordinator, which commits; while its resume
+# asks the coordinator, it sees lock-desired once
+# (debug_remote_2pc_fault resumed_lock_desired) but stays master.  It must still apply the
+# committed drop, rather than leave it to the next master change.
+########################################
+function test_resumed_participant_lock_desired_once
+{
+    echo "=== TEST: test_resumed_participant_lock_desired_once ==="
+    local committed=$(quaternary_log_count "committing resumed 2pc schema change")
+    local injected=$(quaternary_log_count "lock desired for resumed")
+    set_tunable $QUATERNARY_DBNAME "$QUATERNARY_CDB2_OPTIONS" debug_remote_2pc_fault resumed_lock_desired:1
+    quaternary_gives_up_on_drop test_resumed_participant_lock_desired_once || return
+    if ! wait_quaternary_log "lock desired for resumed" 60 $injected; then
+        fail_exit "test_resumed_participant_lock_desired_once: the resume did not see lock-desired on the debug tunable"
+        return
+    fi
+    if ! wait_quaternary_log "committing resumed 2pc schema change" 75 $committed; then
+        echo "${QUATERNARY_DBNAME} has t: $(has_table $QUATERNARY_DBNAME "$QUATERNARY_CDB2_OPTIONS" t)"
+        fail_exit "test_resumed_participant_lock_desired_once: ${QUATERNARY_DBNAME} did not apply the committed drop while it stayed master"
+        return
+    fi
+    verify_ddl_outcome drop 1
+    [[ -f $stopfile ]] && return
+
+    echo "test_resumed_participant_lock_desired_once PASSED"
+}
+
+########################################
+# TEST 22: A participant that never voted does not count as a yes vote
+# The quaternary is killed while its part of a create waits to take the schema
+# lock, before it can vote, and is restarted at once, while the coordinator
+# still waits for votes.  Its resume must abort the create and tell the
+# coordinator, not ask it with a PREPARED, which the coordinator would count as
+# a yes vote: the create must fail on every shard.
+########################################
+function kill_db_master
+{
+    local db=$1 opts=$2 master
+    if [[ -z "$CLUSTER" ]]; then
+        kill -9 $(cat ${TMPDIR}/${db}.pid)
+    else
+        master=$($CDB2SQL_EXE --tabs $opts $db default "select host from comdb2_cluster where is_master='Y'")
+        ssh -n -o StrictHostKeyChecking=no $master "pkill -9 -f 'comdb2 $db '"
+    fi
+}
+
+function test_unprepared_participant_cannot_vote
+{
+    echo "=== TEST: test_unprepared_participant_cannot_vote ==="
+
+    setup_outcome_ddl create
+    [[ -f $stopfile ]] && return
+
+    local slept=$(quaternary_log_count "before taking the schema lock on debug tunable")
+    local aborted=$(quaternary_log_count "never voted, aborting it")
+    # the quaternary, a participant, sleeps twice this long before the lock
+    set_tunable $QUATERNARY_DBNAME "$QUATERNARY_CDB2_OPTIONS" debug_remote_2pc_fault sleep_before_lock:3000
+
+    local out=$TMPDIR/unprepared_vote.out
+    rm -f $out $out.rc
+    ( $C_SQL "create table t(a int unique, b int) partitioned by columns(a) on (${shards})" > $out 2>&1
+      echo $? > $out.rc ) &
+    local cpid=$!
+
+    if ! wait_quaternary_log "before taking the schema lock on debug tunable" 30 $slept; then
+        fail_exit "test_unprepared_participant_cannot_vote: ${QUATERNARY_DBNAME} did not reach the schema lock"
+        return
+    fi
+    kill_db_master $QUATERNARY_DBNAME "$QUATERNARY_CDB2_OPTIONS"
+    local t0=$SECONDS
+    # restart it while the coordinator is still waiting for its vote
+    restart_db $QUATERNARY_DBNAME $QUATERNARY_DBDIR "$QUATERNARY_CDB2_OPTIONS"
+    [[ -f $stopfile ]] && return
+    echo "restarted ${QUATERNARY_DBNAME} in $((SECONDS - t0))s"
+
+    wait $cpid
+    local rc=$(cat $out.rc)
+    cat $out
+    echo "create rc $rc"
+
+    if (( rc == 0 )); then
+        fail_exit "test_unprepared_participant_cannot_vote: create committed although ${QUATERNARY_DBNAME} never voted"
+        return
+    fi
+    if ! wait_quaternary_log "never voted, aborting it" 30 $aborted; then
+        fail_exit "test_unprepared_participant_cannot_vote: ${QUATERNARY_DBNAME} did not abort its resumed create"
+        return
+    fi
+    verify_ddl_outcome create 0
+    [[ -f $stopfile ]] && return
+
+    # nothing is left behind: the create works now
+    $P_SQL "create table t(a int unique, b int) partitioned by columns(a) on (${shards})"
+    if (( $? != 0 )); then
+        fail_exit "test_unprepared_participant_cannot_vote: could not create t after the resumed abort"
+        return
+    fi
+    verify_table t
+    [[ -f $stopfile ]] && return
+
+    echo "test_unprepared_participant_cannot_vote PASSED"
+}
+
+########################################
+# TEST 23: A participant that gave up keeps its table name reserved
+# The quaternary gives up on its coordinator after 2s and aborts its prepared
+# create, which frees the name t on that shard until it learns the outcome.
+# A local create of t in that window must not leave the shard with a table
+# that is not the partition's once the coordinator commits.
+########################################
+function test_participant_gave_up_name_reserved
+{
+    echo "=== TEST: test_participant_gave_up_name_reserved ==="
+    setup_outcome_ddl create
+    [[ -f $stopfile ]] && return
+    $S3_SQL "drop table if exists t" >/dev/null 2>&1
+
+    local gaveup=$(cat $LOGDIR/${QUATERNARY_DBNAME}*.db 2>/dev/null | grep -c "gave up on coordinator")
+    set_tunable $QUATERNARY_DBNAME "$QUATERNARY_CDB2_OPTIONS" disttxn_ddl_timeout_ms 2000
+    set_tunable $DBNAME "$CDB2_OPTIONS" debug_sleep_coordinator_before_commit 1
+
+    $C_SQL "create table t(a int unique, b int) partitioned by columns(a) on (${shards})" > name_reserved_create.out 2>&1 &
+    local create_pid=$!
+
+    local waited=0
+    while (( $(cat $LOGDIR/${QUATERNARY_DBNAME}*.db 2>/dev/null | grep -c "gave up on coordinator") <= gaveup )); do
+        if (( waited++ >= 300 )); then
+            fail_exit "test_participant_gave_up_name_reserved: the participant did not give up"
+            return
+        fi
+        sleep 0.1
+    done
+    local local_out
+    local_out=$($S3_SQL "create table t(x int)" 2>&1)
+    local local_rc=$?
+    wait $create_pid
+    local create_rc=$?
+    set_tunable $DBNAME "$CDB2_OPTIONS" debug_sleep_coordinator_before_commit 0
+    set_tunable $QUATERNARY_DBNAME "$QUATERNARY_CDB2_OPTIONS" disttxn_ddl_timeout_ms $DEFAULT_DDL_TIMEOUT_MS
+    echo "distributed create rc $create_rc: $(cat name_reserved_create.out)"
+    echo "local create on ${QUATERNARY_DBNAME} rc $local_rc: $local_out"
+
+    # give the participant's resume time to redo the committed create
+    sleep 30
+    # the shard must still answer queries, and its t must be the partition's
+    local any_out shard_out
+    any_out=$($S3_SQLT "select 1" 2>&1)
+    local any_rc=$?
+    shard_out=$($S3_SQLT "select a, b from t limit 1" 2>&1)
+    local shard_rc=$?
+    echo "${QUATERNARY_DBNAME}: 'select 1' rc $any_rc [$any_out]; 'select a, b from t' rc $shard_rc [$shard_out]"
+
+    # leave the shard usable for later testcases
+    $S3_SQL "drop table t" >/dev/null 2>&1
+
+    if (( create_rc == 0 )) && (( any_rc != 0 || shard_rc != 0 )); then
+        fail_exit "test_participant_gave_up_name_reserved: distributed create succeeded, then ${QUATERNARY_DBNAME} broke: select 1 rc $any_rc [$any_out], select a, b from t rc $shard_rc [$shard_out]"
+        return
+    fi
+    echo "test_participant_gave_up_name_reserved PASSED"
+}
+
+function master_of
+{
+    local db=$1 opts=$2
+    $CDB2SQL_EXE --tabs $opts $db default "select host from comdb2_cluster where is_master='Y'" 2>/dev/null
+}
+
+########################################
+# TEST 24: A prepared participant still gives up mastership
+# Every participant prepares its drop, then the coordinator is frozen
+# (SIGSTOP on every node, so no other coordinator node resumes and aborts it)
+# while it sleeps before committing.  Asked to downgrade meanwhile, the
+# quaternary's master must hand over promptly, not hold the cluster without a
+# master until disttxn_ddl_timeout_ms (60s here).  Needs replicants.
+########################################
+function signal_db_all_nodes
+{
+    local db=$1 sig=$2 node
+    for node in $CLUSTER; do
+        if [[ "$node" == "$(hostname)" ]]; then
+            kill -$sig $(cat ${TMPDIR}/${db}.${node}.pid) 2>/dev/null
+        else
+            ssh -n -o StrictHostKeyChecking=no $node "kill -$sig \$(cat ${TMPDIR}/${db}.pid)" 2>/dev/null
+        fi
+    done
+}
+
+function test_prepared_participant_yields_mastership
+{
+    echo "=== TEST: test_prepared_participant_yields_mastership ==="
+    if [[ -z "$CLUSTER" ]]; then
+        echo "test_prepared_participant_yields_mastership needs CLUSTER (run it in tests/docker)"
+        return
+    fi
+    setup_outcome_ddl drop
+    [[ -f $stopfile ]] && return
+
+    set_tunable $QUATERNARY_DBNAME "$QUATERNARY_CDB2_OPTIONS" disttxn_ddl_timeout_ms 60000
+    set_tunable $DBNAME "$CDB2_OPTIONS" debug_sleep_coordinator_before_commit 1
+    $C_SQL "drop table t" > yields_mastership_drop.out 2>&1 &
+    local drop_pid=$!
+    # the coordinator sleeps 5s once every participant prepared
+    sleep 2
+    signal_db_all_nodes $DBNAME STOP
+
+    local old=$(master_of $QUATERNARY_DBNAME "$QUATERNARY_CDB2_OPTIONS")
+    echo "${QUATERNARY_DBNAME} master before downgrade: $old"
+    # time from the request: the downgrade command itself blocks until the handover
+    local start=$SECONDS new=""
+    $CDB2SQL_EXE -admin $QUATERNARY_CDB2_OPTIONS $QUATERNARY_DBNAME --host $old \
+        "exec procedure sys.cmd.send('downgrade')" >/dev/null 2>&1 &
+    local downgrade_pid=$!
+    while (( SECONDS - start < 90 )); do
+        new=$(master_of $QUATERNARY_DBNAME "$QUATERNARY_CDB2_OPTIONS")
+        [[ -n "$new" && "$new" != "$old" ]] && break
+        sleep 1
+    done
+    local took=$((SECONDS - start))
+    wait $downgrade_pid
+    local gaveup=$(cat $LOGDIR/${QUATERNARY_DBNAME}*.db 2>/dev/null | grep -c "gave up on coordinator")
+    echo "${QUATERNARY_DBNAME} master after downgrade: $new, after ${took}s; participant gave-up lines: $gaveup"
+
+    signal_db_all_nodes $DBNAME CONT
+    wait $drop_pid
+    echo "drop: $(cat yields_mastership_drop.out)"
+    set_tunable $DBNAME "$CDB2_OPTIONS" debug_sleep_coordinator_before_commit 0
+    set_tunable $QUATERNARY_DBNAME "$QUATERNARY_CDB2_OPTIONS" disttxn_ddl_timeout_ms $DEFAULT_DDL_TIMEOUT_MS
+
+    if [[ -z "$new" || "$new" == "$old" ]] || (( took > 15 )); then
+        fail_exit "test_prepared_participant_yields_mastership: prepared participant ${QUATERNARY_DBNAME} took ${took}s to hand over mastership (old $old, new $new)"
+        return
+    fi
+    # it voted yes before it yielded: its new master must take the
+    # coordinator's decision, not abort on its own, so the shards agree
+    if ! wait_shards_agree t 60; then
+        fail_exit "test_prepared_participant_yields_mastership: shards disagree on t after ${QUATERNARY_DBNAME} yielded mastership while prepared"
+        return
+    fi
+    echo "test_prepared_participant_yields_mastership PASSED"
+}
+
+########################################
+# TEST 25: .scabort can cancel a participant whose coordinator is gone
+# The coordinator exits after every participant prepared and stays down; the
+# quaternary gives up on it after 2s and keeps asking it.  An operator who
+# restarts the quaternary with a .scabort marker must get the 2pc sc_list
+# dropped, rather than have it resumed and retried forever.
+########################################
+function test_scabort_cancels_participant
+{
+    echo "=== TEST: test_scabort_cancels_participant ==="
+    setup_outcome_ddl drop
+    [[ -f $stopfile ]] && return
+
+    local gaveup=$(quaternary_log_count "gave up on coordinator")
+    set_tunable $QUATERNARY_DBNAME "$QUATERNARY_CDB2_OPTIONS" disttxn_ddl_timeout_ms 2000
+    set_tunable $DBNAME "$CDB2_OPTIONS" debug_exit_coordinator_before_commit 1
+    $C_SQL "drop table t" 2>&1
+    echo "drop rc $?"
+    if ! wait_quaternary_log "gave up on coordinator" 30 $gaveup; then
+        fail_exit "test_scabort_cancels_participant: the participant did not give up"
+        return
+    fi
+
+    local before=$(cat $LOGDIR/${QUATERNARY_DBNAME}*.db 2>/dev/null | grep -c "not cancelling 2pc schema change")
+    local marker_dir=$TESTDIR/tmp/cdb2
+    mkdir -p $marker_dir
+    touch $marker_dir/${QUATERNARY_DBNAME}.scabort
+    stop_db $QUATERNARY_DBNAME "$QUATERNARY_CDB2_OPTIONS"
+    restart_db $QUATERNARY_DBNAME $QUATERNARY_DBDIR "$QUATERNARY_CDB2_OPTIONS"
+    sleep 5
+    rm -f $marker_dir/${QUATERNARY_DBNAME}.scabort
+    local after=$(cat $LOGDIR/${QUATERNARY_DBNAME}*.db 2>/dev/null | grep -c "not cancelling 2pc schema change")
+    echo "'not cancelling 2pc schema change' before $before, after scabort restart $after"
+
+    # the coordinator's resume aborts it: clean up for later testcases
+    restart_db $DBNAME $DBDIR "$CDB2_OPTIONS"
+    set_tunable $DBNAME "$CDB2_OPTIONS" debug_exit_coordinator_before_commit 0
+    set_tunable $QUATERNARY_DBNAME "$QUATERNARY_CDB2_OPTIONS" disttxn_ddl_timeout_ms $DEFAULT_DDL_TIMEOUT_MS
+
+    if (( after > before )); then
+        fail_exit "test_scabort_cancels_participant: .scabort on ${QUATERNARY_DBNAME} did not cancel its 2pc schema change, it resumed it again"
+        return
+    fi
+    echo "test_scabort_cancels_participant PASSED"
+}
+
+########################################
+# TEST 26: A rowlocks participant is rejected
+# 2pc ddl does not support rowlocks.  With rowlocks on the quaternary, the
+# create must fail on every shard.  The other shards still build the table
+# before the quaternary's bplog rejects it: rejecting the statement earlier
+# would need the push path to report a participant's statement error.
+########################################
+function test_rowlocks_participant_rejected_early
+{
+    echo "=== TEST: test_rowlocks_participant_rejected_early ==="
+    setup_outcome_ddl create
+    [[ -f $stopfile ]] && return
+
+    $S3_SQL "put rowlocks enable" 2>&1
+    local s1before=$(cat $LOGDIR/${SECONDARY_DBNAME}*.db 2>/dev/null | grep -c "Start add table transaction ok")
+    local out
+    out=$($C_SQL "create table t(a int unique, b int) partitioned by columns(a) on (${shards})" 2>&1)
+    local rc=$?
+    $S3_SQL "put rowlocks disable" 2>&1
+    local s1after=$(cat $LOGDIR/${SECONDARY_DBNAME}*.db 2>/dev/null | grep -c "Start add table transaction ok")
+    echo "create rc $rc: $out; ${SECONDARY_DBNAME} add-table starts: $((s1after - s1before))"
+
+    if (( rc == 0 )); then
+        verify_table t
+        echo "test_rowlocks_participant_rejected_early PASSED (create allowed)"
+        return
+    fi
+    verify_table_gone t
+    [[ -f $stopfile ]] && return
+    echo "test_rowlocks_participant_rejected_early PASSED"
+}
+
+########################################
+# TEST 26b: An older participant is rejected before it receives 2pc DDL
+# The DDL-specific 2pc protocol must be negotiated before the participant's
+# transaction begins. A participant limited to the previous protocol must
+# reject the create, leaving no committed shard table.
+########################################
+function test_old_participant_rejected_early
+{
+    echo "=== TEST: test_old_participant_rejected_early ==="
+    setup_outcome_ddl create
+    [[ -f $stopfile ]] && return
+
+    set_tunable $QUATERNARY_DBNAME "$QUATERNARY_CDB2_OPTIONS" fdb_default_version 10
+    local out
+    out=$($C_SQL "create table t(a int unique, b int) partitioned by columns(a) on (${shards})" 2>&1)
+    local rc=$?
+    set_tunable $QUATERNARY_DBNAME "$QUATERNARY_CDB2_OPTIONS" fdb_default_version 11
+    echo "create rc $rc: $out"
+
+    if (( rc == 0 )); then
+        fail_exit "test_old_participant_rejected_early: create succeeded with an older participant"
+        return
+    fi
+    verify_ddl_outcome create 0
+    [[ -f $stopfile ]] && return
+
+    echo "test_old_participant_rejected_early PASSED"
+}
+
+########################################
+# TEST 27: A 2pc schema change gets the schema lock under read load
+# Readers keep taking the coordinator's schema read lock; the drop must still
+# get the write lock within disttxn_ddl_timeout_ms.
+########################################
+function test_ddl_schema_lock_under_read_load
+{
+    echo "=== TEST: test_ddl_schema_lock_under_read_load ==="
+    setup_outcome_ddl drop
+    [[ -f $stopfile ]] && return
+    make_unrelated_table $DBNAME "$CDB2_OPTIONS"
+
+    local pids="" i
+    for i in 1 2 3 4 5 6 7 8; do
+        (yes "select count(*) from unrelated" | head -200000 | \
+            $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default - >/dev/null 2>&1) &
+        pids="$pids $!"
+    done
+    sleep 2
+    set_tunable $DBNAME "$CDB2_OPTIONS" disttxn_ddl_timeout_ms 5000
+    local out
+    out=$($C_SQL "drop table t" 2>&1)
+    local rc=$?
+    set_tunable $DBNAME "$CDB2_OPTIONS" disttxn_ddl_timeout_ms $DEFAULT_DDL_TIMEOUT_MS
+    kill $pids 2>/dev/null
+    pkill -f "select count\(\*\) from unrelated" 2>/dev/null
+    wait $pids 2>/dev/null
+    echo "drop under read load rc $rc: $out"
+
+    if (( rc != 0 )); then
+        fail_exit "test_ddl_schema_lock_under_read_load: drop failed under read load: $out"
+        return
+    fi
+    verify_table_gone t
+    [[ -f $stopfile ]] && return
+    echo "test_ddl_schema_lock_under_read_load PASSED"
+}
+
+########################################
+# TEST 28: A participant whose commit fails does not report it propagated
+# The tertiary's commit of its prepared drop fails after the coordinator
+# committed (debug_remote_2pc_fault fail_commit).  It must still end up dropping t (or
+# the client must hear of the failure), not tell the coordinator that it
+# propagated and keep t.
+########################################
+function test_participant_commit_failure
+{
+    echo "=== TEST: test_participant_commit_failure ==="
+    setup_outcome_ddl drop
+    [[ -f $stopfile ]] && return
+
+    set_tunable $TERTIARY_DBNAME "$TERTIARY_CDB2_OPTIONS" debug_remote_2pc_fault fail_commit
+    local out
+    out=$($C_SQL "drop table t" 2>&1)
+    local rc=$?
+    set_tunable $TERTIARY_DBNAME "$TERTIARY_CDB2_OPTIONS" debug_remote_2pc_fault off
+    echo "drop rc $rc: $out"
+
+    local waited=0
+    while (( $(has_table $TERTIARY_DBNAME "$TERTIARY_CDB2_OPTIONS" t) == 1 )) && (( waited++ < 30 )); do
+        sleep 1
+    done
+    local s2=$(has_table $TERTIARY_DBNAME "$TERTIARY_CDB2_OPTIONS" t)
+    local s0=$(has_table $DBNAME "$CDB2_OPTIONS" t)
+    echo "after 30s: t on ${DBNAME}=$s0 ${TERTIARY_DBNAME}=$s2"
+
+    # leave the shards consistent for later testcases
+    $S2_SQL "drop table t" >/dev/null 2>&1
+
+    if (( rc == 0 && s2 == 1 )); then
+        fail_exit "test_participant_commit_failure: drop succeeded but ${TERTIARY_DBNAME}, whose commit failed, still has t"
+        return
+    fi
+    echo "test_participant_commit_failure PASSED"
+}
+
+########################################
+# TEST 29: A successful distributed create is visible on every shard
+# The coordinator is slow to decide (it sleeps 5s once every participant
+# prepared, as a coordinator behind a busy schema lock or a slow finalize
+# would).  The quaternary, prepared, gives up after 2s and aborts its create.
+# The coordinator still commits and the client is told the create succeeded:
+# the table must then exist on every shard, not appear later on some shards.
+########################################
+function test_success_visible_on_every_shard
+{
+    echo "=== TEST: test_success_visible_on_every_shard ==="
+    setup_outcome_ddl create
+    [[ -f $stopfile ]] && return
+
+    set_tunable $QUATERNARY_DBNAME "$QUATERNARY_CDB2_OPTIONS" disttxn_ddl_timeout_ms 2000
+    set_tunable $DBNAME "$CDB2_OPTIONS" debug_sleep_coordinator_before_commit 1
+    local out
+    out=$($C_SQL "create table t(a int unique, b int) partitioned by columns(a) on (${shards})" 2>&1)
+    local rc=$?
+    # right after the client hears success
+    local s0=$(has_table $DBNAME "$CDB2_OPTIONS" t)
+    local s1=$(has_table $SECONDARY_DBNAME "$SECONDARY_CDB2_OPTIONS" t)
+    local s2=$(has_table $TERTIARY_DBNAME "$TERTIARY_CDB2_OPTIONS" t)
+    local s3=$(has_table $QUATERNARY_DBNAME "$QUATERNARY_CDB2_OPTIONS" t)
+    set_tunable $DBNAME "$CDB2_OPTIONS" debug_sleep_coordinator_before_commit 0
+    set_tunable $QUATERNARY_DBNAME "$QUATERNARY_CDB2_OPTIONS" disttxn_ddl_timeout_ms $DEFAULT_DDL_TIMEOUT_MS
+    echo "create rc $rc: $out; right after: t on ${DBNAME}=$s0 ${SECONDARY_DBNAME}=$s1 ${TERTIARY_DBNAME}=$s2 ${QUATERNARY_DBNAME}=$s3"
+
+    # let the quaternary's redo finish, then leave the shards clean
+    sleep 10
+    local s3later=$(has_table $QUATERNARY_DBNAME "$QUATERNARY_CDB2_OPTIONS" t)
+    echo "10s later: t on ${QUATERNARY_DBNAME}=$s3later"
+    $C_SQL "drop table t" >/dev/null 2>&1
+
+    if (( rc == 0 )) && (( s0 + s1 + s2 + s3 != 4 )); then
+        fail_exit "test_success_visible_on_every_shard: create succeeded but t is missing on a shard (${DBNAME}=$s0 ${SECONDARY_DBNAME}=$s1 ${TERTIARY_DBNAME}=$s2 ${QUATERNARY_DBNAME}=$s3)"
+        return
+    fi
+    echo "test_success_visible_on_every_shard PASSED"
+}
+
+########################################
+# TEST 37: a participant whose commit is logged but whose wait for replicants
+# fails (trans_commit_logical returns nonzero after the commit) still has the
+# table it created, and stays up.  debug_remote_2pc_fault fail_commit_wait
+# returns ERR_NOT_DURABLE from a commit that succeeded, as trans_commit_int does
+# when trans_wait_for_seqnum_int fails.
+########################################
+function test_participant_commit_wait_fails
+{
+    echo "=== TEST: test_participant_commit_wait_fails ==="
+    setup_outcome_ddl create
+    [[ -f $stopfile ]] && return
+
+    set_tunable $TERTIARY_DBNAME "$TERTIARY_CDB2_OPTIONS" debug_remote_2pc_fault fail_commit_wait
+    local out
+    out=$($C_SQL "create table t(a int unique, b int) partitioned by columns(a) on (${shards})" 2>&1)
+    local rc=$?
+    set_tunable $TERTIARY_DBNAME "$TERTIARY_CDB2_OPTIONS" debug_remote_2pc_fault off
+    echo "create rc $rc: $out"
+    sleep 5
+
+    local alive=$($CDB2SQL_EXE --tabs $TERTIARY_CDB2_OPTIONS $TERTIARY_DBNAME default "select 1" 2>&1)
+    local s2=$(has_table $TERTIARY_DBNAME "$TERTIARY_CDB2_OPTIONS" t)
+    local ins
+    ins=$($CDB2SQL_EXE $TERTIARY_CDB2_OPTIONS $TERTIARY_DBNAME default "insert into t values(1, 1)" 2>&1)
+    local insrc=$?
+    local sel=$($CDB2SQL_EXE --tabs $TERTIARY_CDB2_OPTIONS $TERTIARY_DBNAME default "select a, b from t" 2>&1)
+    local st=$($CDB2SQL_EXE --tabs $TERTIARY_CDB2_OPTIONS $TERTIARY_DBNAME default "select status from comdb2_sc_history order by start desc limit 1" 2>&1)
+    echo "after: ${TERTIARY_DBNAME} alive='$alive' has t=$s2 insert rc $insrc ($ins) select '$sel' sc status '$st'"
+
+    if [[ "$st" == "ABORTED" ]]; then
+        fail_exit "test_participant_commit_wait_fails: ${TERTIARY_DBNAME} ran the abort cleanup on its committed create (sc status $st)"
+        return
+    fi
+    if [[ "$alive" != "1" ]]; then
+        fail_exit "test_participant_commit_wait_fails: ${TERTIARY_DBNAME} is down after its committed create's replicant wait failed"
+        return
+    fi
+    if (( s2 != 1 || insrc != 0 )) || [[ "$sel" != "1	1" ]]; then
+        fail_exit "test_participant_commit_wait_fails: ${TERTIARY_DBNAME} lost the table it committed (has t=$s2, insert rc $insrc, select '$sel')"
+        return
+    fi
+    $C_SQL "drop table t" >/dev/null 2>&1
+    echo "test_participant_commit_wait_fails PASSED"
+}
+
+########################################
+# TEST 38: a participant that never prepared does not count as a yes vote
+# The quaternary marks its 2pc sc_list may_vote, finalizes its part of a
+# create, and is killed while it pauses before preparing
+# (test_sc_finalize_pause_ms); sync commits made the mark durable.  The coordinator sleeps before it collects
+# votes (sleep_before_lock), long enough for the quaternary to restart.  The
+# restarted quaternary has no prepared transaction: it never voted yes, so the
+# create must fail on every shard.  Its resume must not send the coordinator a
+# PREPARED, which the coordinator counts as a yes vote, before it withdrew its
+# vote (it cannot tell that it never voted: see TEST 43).  (On a cluster the
+# may_vote mark replicates, so a new master hits this without the flush.)
+# With redo_fails set, the quaternary's redo of the committed create keeps
+# failing (fail_redo_finalize from its lrl, as a shard that cannot apply the
+# schema change would): a yes vote it never cast leaves the client told the
+# create succeeded while the quaternary never has t.
+########################################
+function unprepared_participant_counted_as_yes
+{
+    local redo_fails=$1 name=test_unprepared_participant_counted_as_yes${1:+_redo_fails}
+    echo "=== TEST: $name ==="
+
+    setup_outcome_ddl create
+    [[ -f $stopfile ]] && return
+
+    local paused=$(quaternary_log_count "finalized, pausing")
+    local unprepared=$(quaternary_log_count "has no prepare record, withdrew its vote")
+    local lrl=$QUATERNARY_DBDIR/$QUATERNARY_DBNAME.lrl
+    # sync commits make its may_vote mark durable at once, as replicating it
+    # does on a cluster; a flush would wait for the finalize, which prepares
+    echo "setattr SYNCTRANSACTIONS 1" >> $lrl
+    stop_db $QUATERNARY_DBNAME "$QUATERNARY_CDB2_OPTIONS"
+    restart_db $QUATERNARY_DBNAME $QUATERNARY_DBDIR "$QUATERNARY_CDB2_OPTIONS"
+    [[ -f $stopfile ]] && return
+    # counted after the restart above, which recovers earlier tests' prepares
+    # still in the log
+    local recovered=$(quaternary_log_count "Recovering prepared txn")
+    # it pauses after it marked may_vote and finalized, before it prepares
+    set_tunable $QUATERNARY_DBNAME "$QUATERNARY_CDB2_OPTIONS" test_sc_finalize_pause_ms 30000
+    set_tunable $DBNAME "$CDB2_OPTIONS" debug_remote_2pc_fault sleep_before_lock:45000
+
+    local out=$TMPDIR/unprepared_yes.out
+    rm -f $out $out.rc
+    ( $C_SQL "create table t(a int unique, b int) partitioned by columns(a) on (${shards})" > $out 2>&1
+      echo $? > $out.rc ) &
+    local cpid=$!
+
+    if ! wait_quaternary_log "finalized, pausing" 40 $paused; then
+        fail_exit "$name: ${QUATERNARY_DBNAME} did not pause before preparing"
+        return
+    fi
+    sleep 2
+    kill_db_master $QUATERNARY_DBNAME "$QUATERNARY_CDB2_OPTIONS"
+    (( redo_fails )) && echo "debug_remote_2pc_fault fail_redo_finalize:1000000" >> $lrl
+    local t0=$SECONDS
+    restart_db $QUATERNARY_DBNAME $QUATERNARY_DBDIR "$QUATERNARY_CDB2_OPTIONS"
+    [[ -f $stopfile ]] && return
+    echo "restarted ${QUATERNARY_DBNAME} in $((SECONDS - t0))s"
+
+    wait $cpid
+    local rc=$(cat $out.rc)
+    cat $out
+    echo "create rc $rc"
+    set_tunable $DBNAME "$CDB2_OPTIONS" debug_remote_2pc_fault off
+    # on a cluster the nodes that were not killed still have it
+    set_tunable $QUATERNARY_DBNAME "$QUATERNARY_CDB2_OPTIONS" test_sc_finalize_pause_ms 0
+    sed -i.bak '/SYNCTRANSACTIONS/d; /fail_redo_finalize/d' $lrl
+
+    # the kill must have come before the prepare
+    if (( $(quaternary_log_count "Recovering prepared txn") > recovered )); then
+        fail_exit "$name: ${QUATERNARY_DBNAME} prepared before it was killed"
+        return
+    fi
+    if (( redo_fails )); then
+        sleep 20
+        local s3=$(has_table $QUATERNARY_DBNAME "$QUATERNARY_CDB2_OPTIONS" t)
+        local failed=$(quaternary_log_count "failing finalize of 2pc redo")
+        echo "after 20s: ${QUATERNARY_DBNAME} has t=$s3, failed redos $failed"
+        set_tunable $QUATERNARY_DBNAME "$QUATERNARY_CDB2_OPTIONS" debug_remote_2pc_fault off
+        if (( rc == 0 && s3 == 0 )); then
+            $C_SQL "drop table t" >/dev/null 2>&1
+            fail_exit "$name: the create reported success, but ${QUATERNARY_DBNAME}, which never prepared, has no t"
+            return
+        fi
+    fi
+    if (( rc == 0 )); then
+        $C_SQL "drop table t" >/dev/null 2>&1
+        fail_exit "$name: create committed although ${QUATERNARY_DBNAME} never prepared"
+        return
+    fi
+    if ! wait_quaternary_log "has no prepare record, withdrew its vote" 30 $unprepared; then
+        fail_exit "$name: ${QUATERNARY_DBNAME} did not withdraw the vote of its resumed, unprepared create"
+        return
+    fi
+    verify_ddl_outcome create 0
+    [[ -f $stopfile ]] && return
+    echo "$name PASSED"
+}
+
+function test_unprepared_participant_counted_as_yes
+{
+    unprepared_participant_counted_as_yes
+}
+
+function test_unprepared_participant_counted_as_yes_redo_fails
+{
+    unprepared_participant_counted_as_yes 1
 }
 
 ########################################
@@ -1172,6 +2238,504 @@ function setup_coordinators
     done
 }
 
+########################################
+# TEST 30: a local schema change on a prepared participant does not stop that
+# db.  The participant releases its schema lock once prepared, but its
+# prepared txn keeps the llmeta pages it wrote.  The coordinator sleeps 5s
+# after every participant prepared; meanwhile a local create on a participant
+# takes the schema write lock to finalize.  A read of an unrelated table there
+# should not wait for the coordinator's decision.
+########################################
+function test_local_ddl_on_prepared_participant
+{
+    echo "=== TEST: test_local_ddl_on_prepared_participant ==="
+    setup_outcome_ddl drop
+    [[ -f $stopfile ]] && return
+    make_unrelated_table $QUATERNARY_DBNAME "$QUATERNARY_CDB2_OPTIONS"
+    $S3_SQL "drop table if exists local_ddl" >/dev/null 2>&1
+
+    set_tunable $DBNAME "$CDB2_OPTIONS" debug_sleep_coordinator_before_commit 1
+    $C_SQL "drop table t" > local_ddl_drop.out 2>&1 &
+    local drop_pid=$!
+    sleep 2
+    local ddl_start=$(date +%s)
+    $S3_SQL "create table local_ddl(a int)" > local_ddl_create.out 2>&1 &
+    local ddl_pid=$!
+    sleep 1
+    local took=$(timed_sql $QUATERNARY_DBNAME "$QUATERNARY_CDB2_OPTIONS" 20 "select count(*) from unrelated")
+    wait $ddl_pid
+    local ddl_took=$(( $(date +%s) - ddl_start ))
+    wait $drop_pid
+    set_tunable $DBNAME "$CDB2_OPTIONS" debug_sleep_coordinator_before_commit 0
+    echo "local create on prepared participant took ${ddl_took}s ($(cat local_ddl_create.out)); read of unrelated table took ${took}s (drop: $(cat local_ddl_drop.out))"
+    $S3_SQL "drop table if exists local_ddl" >/dev/null 2>&1
+
+    if [[ "$took" == "timeout" ]] || (( took >= 2 )); then
+        fail_exit "test_local_ddl_on_prepared_participant: read of an unrelated table on ${QUATERNARY_DBNAME} took ${took}s while a local create waited for the prepared drop"
+        return
+    fi
+    echo "test_local_ddl_on_prepared_participant PASSED"
+}
+
+########################################
+# TEST 31: a prepared participant does not show its undecided drop.  The
+# coordinator exits once every participant prepared, so the drop is aborted
+# when it comes back.  A read of the table on a participant meanwhile must not
+# fail with 'no such table': it waits for the decision and finds the table.
+########################################
+function test_prepared_drop_not_visible
+{
+    echo "=== TEST: test_prepared_drop_not_visible ==="
+    setup_outcome_ddl drop
+    [[ -f $stopfile ]] && return
+
+    set_tunable $DBNAME "$CDB2_OPTIONS" debug_exit_coordinator_before_commit 1
+    $C_SQL "drop table t" 2>&1
+    echo "drop rc $?"
+    sleep 2
+
+    timeout 120 $S3_SQLT "select count(*) from t" > prepared_drop_read.out 2>&1 &
+    local read_pid=$!
+    sleep 2
+    restart_db $DBNAME $DBDIR "$CDB2_OPTIONS"
+    set_tunable $DBNAME "$CDB2_OPTIONS" debug_exit_coordinator_before_commit 0
+    wait $read_pid
+    local read_rc=$?
+    echo "read on ${QUATERNARY_DBNAME} while the drop was undecided: rc ${read_rc} ($(cat prepared_drop_read.out))"
+
+    if (( read_rc != 0 )); then
+        fail_exit "test_prepared_drop_not_visible: ${QUATERNARY_DBNAME} failed a read of t before the coordinator decided: $(cat prepared_drop_read.out)"
+        return
+    fi
+    verify_ddl_outcome drop 0
+    [[ -f $stopfile ]] && return
+    echo "test_prepared_drop_not_visible PASSED"
+}
+
+########################################
+# TEST 32: a prepared participant does not let clients write to its undecided
+# create.  The coordinator exits once every participant prepared, so the
+# create is aborted when it comes back.  An insert into t on a participant
+# meanwhile must not succeed: the abort would silently lose a committed row.
+########################################
+function test_prepared_create_not_writable
+{
+    echo "=== TEST: test_prepared_create_not_writable ==="
+    setup_outcome_ddl create
+    [[ -f $stopfile ]] && return
+
+    set_tunable $DBNAME "$CDB2_OPTIONS" debug_exit_coordinator_before_commit 1
+    $C_SQL "create table t(a int unique, b int) partitioned by columns(a) on (${shards})" 2>&1
+    echo "create rc $?"
+    sleep 2
+
+    timeout 20 $S3_SQL "insert into t values(1, 1)" > prepared_create_insert.out 2>&1
+    local ins_rc=$?
+    timeout 20 $S3_SQLT "select count(*) from t" > prepared_create_read.out 2>&1
+    local read_rc=$?
+    echo "on ${QUATERNARY_DBNAME} while the create was undecided: insert rc ${ins_rc} ($(cat prepared_create_insert.out)), read rc ${read_rc} ($(cat prepared_create_read.out))"
+
+    restart_db $DBNAME $DBDIR "$CDB2_OPTIONS"
+    set_tunable $DBNAME "$CDB2_OPTIONS" debug_exit_coordinator_before_commit 0
+    verify_ddl_outcome create 0
+    [[ -f $stopfile ]] && return
+
+    if (( ins_rc == 0 )); then
+        fail_exit "test_prepared_create_not_writable: ${QUATERNARY_DBNAME} committed an insert into t before the coordinator decided; the aborted create lost it"
+        return
+    fi
+    echo "test_prepared_create_not_writable PASSED"
+}
+
+########################################
+# TEST 33: a statement naming a table that never existed fails at once on a
+# prepared participant.  The coordinator exits once every participant
+# prepared; meanwhile a select from a nonexistent table on a participant should
+# fail with 'no such table' right away, not wait for an unrelated decision.
+########################################
+function test_prepared_participant_bad_table_fails_fast
+{
+    echo "=== TEST: test_prepared_participant_bad_table_fails_fast ==="
+    setup_outcome_ddl drop
+    [[ -f $stopfile ]] && return
+
+    set_tunable $DBNAME "$CDB2_OPTIONS" debug_exit_coordinator_before_commit 1
+    $C_SQL "drop table t" 2>&1
+    echo "drop rc $?"
+    sleep 2
+
+    local took=$(timed_sql $QUATERNARY_DBNAME "$QUATERNARY_CDB2_OPTIONS" 15 "select * from no_such_table_xyz")
+    echo "select from a nonexistent table on prepared participant ${QUATERNARY_DBNAME} took ${took}s"
+
+    restart_db $DBNAME $DBDIR "$CDB2_OPTIONS"
+    set_tunable $DBNAME "$CDB2_OPTIONS" debug_exit_coordinator_before_commit 0
+    verify_ddl_outcome drop 0
+    [[ -f $stopfile ]] && return
+
+    if [[ "$took" == "timeout" ]] || (( took >= 3 )); then
+        fail_exit "test_prepared_participant_bad_table_fails_fast: a select from a nonexistent table on ${QUATERNARY_DBNAME} took ${took}s while an unrelated drop was prepared"
+        return
+    fi
+    echo "test_prepared_participant_bad_table_fails_fast PASSED"
+}
+
+########################################
+# TEST 34: a stored procedure on a prepared participant does not write to its
+# undecided create either.  As in TEST 32 the coordinator exits once every
+# participant prepared, so the create is aborted when it comes back.  A lua
+# procedure prepares its statements without get_prepared_stmt(); its insert
+# into t must not succeed, or the abort silently loses a committed row.
+########################################
+function test_prepared_create_not_writable_from_sp
+{
+    echo "=== TEST: test_prepared_create_not_writable_from_sp ==="
+    setup_outcome_ddl create
+    [[ -f $stopfile ]] && return
+
+    $S3_SQL - >/dev/null 2>&1 <<'EOF'
+create procedure ins2pc version 'v1' {
+local function main()
+    local rc = db:exec("insert into t values(1, 1)")
+    if rc == nil then
+        return -201, db:error()
+    end
+    return 0
+end
+}$$
+put default procedure ins2pc 'v1'
+EOF
+
+    set_tunable $DBNAME "$CDB2_OPTIONS" debug_exit_coordinator_before_commit 1
+    $C_SQL "create table t(a int unique, b int) partitioned by columns(a) on (${shards})" 2>&1
+    echo "create rc $?"
+    sleep 2
+
+    # the client waits through the coordinator's restart, which aborts the create
+    timeout 120 $S3_SQL "exec procedure ins2pc()" > prepared_create_sp_insert.out 2>&1 &
+    local ins_pid=$!
+    sleep 3
+    restart_db $DBNAME $DBDIR "$CDB2_OPTIONS"
+    set_tunable $DBNAME "$CDB2_OPTIONS" debug_exit_coordinator_before_commit 0
+    wait $ins_pid
+    local ins_rc=$?
+    echo "on ${QUATERNARY_DBNAME} while the create was undecided: sp insert rc ${ins_rc} ($(cat prepared_create_sp_insert.out))"
+    verify_ddl_outcome create 0
+    $S3_SQL "drop procedure ins2pc version 'v1'" >/dev/null 2>&1
+    [[ -f $stopfile ]] && return
+
+    if (( ins_rc == 0 )) && ! grep -qi "error\|fail\|no such" prepared_create_sp_insert.out; then
+        fail_exit "test_prepared_create_not_writable_from_sp: a stored procedure on ${QUATERNARY_DBNAME} committed an insert into t before the coordinator decided; the aborted create lost it"
+        return
+    fi
+    echo "test_prepared_create_not_writable_from_sp PASSED"
+}
+
+########################################
+# TEST 35: a participant that gave up mastership while prepared does not keep
+# its table names reserved once another master resolved the schema change.
+# As in TEST 24, the quaternary's master is asked to downgrade while its drop
+# of t is prepared and the coordinator is frozen.  The new master learns the
+# commit and redoes the drop.  When the old master is master again, a local
+# create of t there must not fail as reserved by a pending distributed schema
+# change: nothing is pending any more.  Needs replicants.
+########################################
+function test_gave_up_mastership_releases_names
+{
+    echo "=== TEST: test_gave_up_mastership_releases_names ==="
+    if [[ -z "$CLUSTER" ]]; then
+        echo "test_gave_up_mastership_releases_names needs CLUSTER (run it in tests/docker)"
+        return
+    fi
+    setup_outcome_ddl drop
+    [[ -f $stopfile ]] && return
+
+    set_tunable $QUATERNARY_DBNAME "$QUATERNARY_CDB2_OPTIONS" disttxn_ddl_timeout_ms 60000
+    set_tunable $DBNAME "$CDB2_OPTIONS" debug_sleep_coordinator_before_commit 1
+    $C_SQL "drop table t" > releases_names_drop.out 2>&1 &
+    local drop_pid=$!
+    sleep 2
+    signal_db_all_nodes $DBNAME STOP
+
+    local old=$(master_of $QUATERNARY_DBNAME "$QUATERNARY_CDB2_OPTIONS") new="" start=$SECONDS
+    $CDB2SQL_EXE -admin $QUATERNARY_CDB2_OPTIONS $QUATERNARY_DBNAME --host $old \
+        "exec procedure sys.cmd.send('downgrade')" >/dev/null 2>&1
+    while (( SECONDS - start < 90 )); do
+        new=$(master_of $QUATERNARY_DBNAME "$QUATERNARY_CDB2_OPTIONS")
+        [[ -n "$new" && "$new" != "$old" ]] && break
+        sleep 1
+    done
+    signal_db_all_nodes $DBNAME CONT
+    wait $drop_pid
+    echo "drop: $(cat releases_names_drop.out); ${QUATERNARY_DBNAME} master $old -> $new"
+    set_tunable $DBNAME "$CDB2_OPTIONS" debug_sleep_coordinator_before_commit 0
+    set_tunable $QUATERNARY_DBNAME "$QUATERNARY_CDB2_OPTIONS" disttxn_ddl_timeout_ms $DEFAULT_DDL_TIMEOUT_MS
+
+    # the new master's resume asks the coordinator and commits or aborts it
+    local waited=0
+    until cat $LOGDIR/${QUATERNARY_DBNAME}*.db 2>/dev/null |
+          grep -q "committing resumed 2pc schema change\|aborting resumed 2pc schema change"; do
+        if (( waited++ >= 90 )); then
+            fail_exit "test_gave_up_mastership_releases_names: ${QUATERNARY_DBNAME} never resolved the drop"
+            return
+        fi
+        sleep 1
+    done
+
+    # the old master's resume retries in 10s and, not master, gives up: let
+    # that happen before it is master again
+    sleep 15
+
+    # hand mastership back to the old master
+    local cur tries=0
+    while cur=$(master_of $QUATERNARY_DBNAME "$QUATERNARY_CDB2_OPTIONS"); [[ "$cur" != "$old" ]]; do
+        if (( tries++ >= 10 )); then
+            fail_exit "test_gave_up_mastership_releases_names: could not make $old master again (master $cur)"
+            return
+        fi
+        [[ -n "$cur" ]] && $CDB2SQL_EXE -admin $QUATERNARY_CDB2_OPTIONS $QUATERNARY_DBNAME --host $cur \
+            "exec procedure sys.cmd.send('downgrade')" >/dev/null 2>&1
+        sleep 5
+    done
+    echo "${QUATERNARY_DBNAME} master is $old again"
+
+    # the shard's own table is the one the participant dropped and reserved
+    local shard=$(cat $LOGDIR/${QUATERNARY_DBNAME}*.db 2>/dev/null | grep "kind SC_DROPTABLE" | tail -1 |
+                  sed -n 's/.*Starting schema change: table \([^ ]*\) kind.*/\1/p')
+    local out
+    out=$($S3_SQL "create table '${shard}'(x int)" 2>&1)
+    local rc=$?
+    echo "local create of ${shard} on ${QUATERNARY_DBNAME} (master $old): rc $rc: $out"
+    (( rc == 0 )) && $S3_SQL "drop table '${shard}'" >/dev/null 2>&1
+
+    # whatever the outcome, '$shard' is no longer reserved: it may exist, but
+    # the create must not be refused as reserved (SC_CANT_SET_RUNNING, -99,
+    # whose message does not reach the client)
+    if (( rc != 0 )) && [[ "$out" == *"reserved by a pending distributed"* || "$out" == *"rc -99"* ]]; then
+        fail_exit "test_gave_up_mastership_releases_names: ${QUATERNARY_DBNAME} master $old still refuses ${shard} after the 2pc drop was resolved: $out"
+        return
+    fi
+    echo "test_gave_up_mastership_releases_names PASSED"
+}
+
+########################################
+# TEST 36: a stored procedure on a prepared participant does not see its
+# undecided drop either.  As in TEST 31 the coordinator exits once every
+# participant prepared, so the drop is aborted when it comes back.  A lua
+# procedure prepares its statements through get_prepared_stmt_try_lock(), not
+# get_prepared_stmt(); its read of t must wait and find the table, not fail
+# with 'no such table' for a drop that is then rolled back.
+########################################
+function test_prepared_drop_not_visible_from_sp
+{
+    echo "=== TEST: test_prepared_drop_not_visible_from_sp ==="
+    setup_outcome_ddl drop
+    [[ -f $stopfile ]] && return
+
+    $S3_SQL - >/dev/null 2>&1 <<'EOF'
+create procedure sel2pc version 'v1' {
+local function main()
+    local stmt, rc = db:prepare("select count(*) as n from t")
+    if stmt == nil then
+        return -201, db:error()
+    end
+    local row = stmt:fetch()
+    if row == nil then
+        return -202, db:error()
+    end
+    db:emit(row)
+    return 0
+end
+}$$
+put default procedure sel2pc 'v1'
+EOF
+
+    set_tunable $DBNAME "$CDB2_OPTIONS" debug_exit_coordinator_before_commit 1
+    $C_SQL "drop table t" 2>&1
+    echo "drop rc $?"
+    sleep 2
+
+    timeout 120 $S3_SQLT "exec procedure sel2pc()" > prepared_drop_sp_read.out 2>&1 &
+    local read_pid=$!
+    sleep 2
+    restart_db $DBNAME $DBDIR "$CDB2_OPTIONS"
+    set_tunable $DBNAME "$CDB2_OPTIONS" debug_exit_coordinator_before_commit 0
+    wait $read_pid
+    local read_rc=$?
+    echo "sp read on ${QUATERNARY_DBNAME} while the drop was undecided: rc ${read_rc} ($(cat prepared_drop_sp_read.out))"
+    verify_ddl_outcome drop 0
+    $S3_SQL "drop procedure sel2pc version 'v1'" >/dev/null 2>&1
+    [[ -f $stopfile ]] && return
+
+    if (( read_rc != 0 )) || grep -qi "no such table" prepared_drop_sp_read.out; then
+        fail_exit "test_prepared_drop_not_visible_from_sp: a stored procedure on ${QUATERNARY_DBNAME} saw t dropped before the coordinator decided (the drop was then rolled back): $(cat prepared_drop_sp_read.out)"
+        return
+    fi
+    echo "test_prepared_drop_not_visible_from_sp PASSED"
+}
+
+########################################
+# TEST 39: a prepared participant neither lists its undecided create in its
+# system tables nor blocks them.  The coordinator exits once every participant
+# has prepared, so the create is aborted when the coordinator comes back.
+# Meanwhile, on a participant, sqlite_master must not list t, because t is
+# then rolled back, and a query of comdb2_tables must not wait for the
+# coordinator's decision.
+########################################
+function test_prepared_create_not_in_systables
+{
+    echo "=== TEST: test_prepared_create_not_in_systables ==="
+    setup_outcome_ddl create
+    [[ -f $stopfile ]] && return
+
+    local q_master="select name from sqlite_master where type='table' order by name"
+    $S3_SQLT "$q_master" > sqlite_master_before.out 2>&1
+
+    set_tunable $DBNAME "$CDB2_OPTIONS" debug_exit_coordinator_before_commit 1
+    $C_SQL "create table t(a int unique, b int) partitioned by columns(a) on (${shards})" 2>&1
+    echo "create rc $?"
+    sleep 2
+
+    timeout 20 $S3_SQLT "$q_master" > sqlite_master_during.out 2>&1
+    local took=$(timed_sql $QUATERNARY_DBNAME "$QUATERNARY_CDB2_OPTIONS" 10 "select tablename from comdb2_tables")
+
+    restart_db $DBNAME $DBDIR "$CDB2_OPTIONS"
+    set_tunable $DBNAME "$CDB2_OPTIONS" debug_exit_coordinator_before_commit 0
+    verify_ddl_outcome create 0
+    [[ -f $stopfile ]] && return
+
+    local new_master=$(comm -13 sqlite_master_before.out sqlite_master_during.out | tr '\n' ' ')
+    echo "on ${QUATERNARY_DBNAME} while the create was undecided: sqlite_master added [${new_master}], comdb2_tables took ${took}s"
+    if [[ -n "${new_master// /}" ]]; then
+        fail_exit "test_prepared_create_not_in_systables: ${QUATERNARY_DBNAME} listed the undecided (later aborted) create in sqlite_master: [${new_master}]"
+        return
+    fi
+    if [[ "$took" == "timeout" ]] || (( took >= 3 )); then
+        fail_exit "test_prepared_create_not_in_systables: comdb2_tables on ${QUATERNARY_DBNAME} took ${took}s while the create was undecided"
+        return
+    fi
+    echo "test_prepared_create_not_in_systables PASSED"
+}
+
+########################################
+# TEST 40: a stored procedure on a fresh sql thread does not write to an
+# undecided create.  TEST 34 passes only because the sql thread that runs the
+# procedure still has an sqlite schema built before the participant
+# finalized.  Here idle sql threads exit after 1s, so the procedure runs on a
+# new thread, which builds its schema from the finalized but undecided tables.
+# As in TEST 34, the coordinator exits once every participant has prepared,
+# so the create is aborted.  The insert must not succeed, because the abort
+# would lose a row that the client was told was committed.
+########################################
+function test_prepared_create_not_writable_from_sp_fresh_thread
+{
+    echo "=== TEST: test_prepared_create_not_writable_from_sp_fresh_thread ==="
+    setup_outcome_ddl create
+    [[ -f $stopfile ]] && return
+
+    $S3_SQL - >/dev/null 2>&1 <<'EOF'
+create procedure ins2pcf version 'v1' {
+local function main()
+    local rc = db:exec("insert into t values(1, 1)")
+    if rc == nil then
+        return -201, db:error()
+    end
+    return 0
+end
+}$$
+put default procedure ins2pcf 'v1'
+EOF
+
+    local old_linger=$($S3_SQLT "select value from comdb2_tunables where name='sqlenginepool.linger'")
+    local old_mint=$($S3_SQLT "select value from comdb2_tunables where name='sqlenginepool.mint'")
+    set_tunable $QUATERNARY_DBNAME "$QUATERNARY_CDB2_OPTIONS" sqlenginepool.mint 0
+    set_tunable $QUATERNARY_DBNAME "$QUATERNARY_CDB2_OPTIONS" sqlenginepool.linger 1
+
+    set_tunable $DBNAME "$CDB2_OPTIONS" debug_exit_coordinator_before_commit 1
+    $C_SQL "create table t(a int unique, b int) partitioned by columns(a) on (${shards})" 2>&1
+    echo "create rc $?"
+    # idle sql threads, schemas built before the finalize, exit meanwhile
+    sleep 4
+
+    # the client waits through the coordinator's restart, which aborts the create
+    timeout 120 $S3_SQL "exec procedure ins2pcf()" > prepared_create_spf_insert.out 2>&1 &
+    local ins_pid=$!
+    sleep 3
+    restart_db $DBNAME $DBDIR "$CDB2_OPTIONS"
+    set_tunable $DBNAME "$CDB2_OPTIONS" debug_exit_coordinator_before_commit 0
+    wait $ins_pid
+    local ins_rc=$?
+    echo "on ${QUATERNARY_DBNAME} while the create was undecided: sp insert rc ${ins_rc} ($(cat prepared_create_spf_insert.out))"
+    set_tunable $QUATERNARY_DBNAME "$QUATERNARY_CDB2_OPTIONS" sqlenginepool.linger ${old_linger:-0}
+    set_tunable $QUATERNARY_DBNAME "$QUATERNARY_CDB2_OPTIONS" sqlenginepool.mint ${old_mint:-0}
+    verify_ddl_outcome create 0
+    $S3_SQL "drop procedure ins2pcf version 'v1'" >/dev/null 2>&1
+    [[ -f $stopfile ]] && return
+
+    if (( ins_rc == 0 )) && ! grep -qi "error\|fail\|no such" prepared_create_spf_insert.out; then
+        fail_exit "test_prepared_create_not_writable_from_sp_fresh_thread: a stored procedure on ${QUATERNARY_DBNAME} committed an insert into t before the coordinator decided; the aborted create lost it"
+        return
+    fi
+    echo "test_prepared_create_not_writable_from_sp_fresh_thread PASSED"
+}
+
+########################################
+# TEST 41: a second 2pc schema change on a prepared participant does not stop
+# that db.  The quaternary is a participant of two drops: tb, coordinated by
+# the secondary, and ta, coordinated by the primary.  The drop of tb sleeps
+# before it takes the schema lock.  Meanwhile the drop of ta prepares on the
+# quaternary, and its coordinator exits, so ta stays undecided.  When the drop
+# of tb wakes up, it takes the schema write lock and then rewrites its sc_list
+# in llmeta, whose pages the prepared drop of ta still holds.  A read of an
+# unrelated table on the quaternary must not wait for ta's coordinator.
+########################################
+function test_second_ddl_on_prepared_participant
+{
+    echo "=== TEST: test_second_ddl_on_prepared_participant ==="
+    setup_testcase
+    [[ -f $stopfile ]] && return
+
+    local a_shards="${DBNAME}, ${QUATERNARY_DBNAME}" b_shards="${SECONDARY_DBNAME}, ${QUATERNARY_DBNAME}"
+    $C_SQL "drop table if exists ta" >/dev/null 2>&1
+    $S1_SQL "drop table if exists tb" >/dev/null 2>&1
+    $C_SQL "create table ta(a int unique, b int) partitioned by columns(a) on (${a_shards})" || \
+        { fail_exit "test_second_ddl_on_prepared_participant: could not create ta"; return; }
+    $S1_SQL "create table tb(a int unique, b int) partitioned by columns(a) on (${b_shards})" || \
+        { fail_exit "test_second_ddl_on_prepared_participant: could not create tb"; return; }
+    make_unrelated_table $QUATERNARY_DBNAME "$QUATERNARY_CDB2_OPTIONS"
+
+    # the quaternary's drop of tb sleeps 8s before it takes the schema lock
+    set_tunable $QUATERNARY_DBNAME "$QUATERNARY_CDB2_OPTIONS" debug_remote_2pc_fault sleep_before_lock:4000
+    timeout 120 $S1_SQL "drop table tb" > second_ddl_drop_tb.out 2>&1 &
+    local tb_pid=$!
+    sleep 2
+    set_tunable $QUATERNARY_DBNAME "$QUATERNARY_CDB2_OPTIONS" debug_remote_2pc_fault off
+
+    # ta prepares on the quaternary, then its coordinator exits
+    set_tunable $DBNAME "$CDB2_OPTIONS" debug_exit_coordinator_before_commit 1
+    $C_SQL "drop table ta" > second_ddl_drop_ta.out 2>&1
+    echo "drop ta rc $? ($(cat second_ddl_drop_ta.out))"
+
+    # tb wakes up and takes the quaternary's schema write lock
+    sleep 8
+    local took=$(timed_sql $QUATERNARY_DBNAME "$QUATERNARY_CDB2_OPTIONS" 15 "select count(*) from unrelated")
+    echo "read of unrelated table on ${QUATERNARY_DBNAME} with ta prepared and tb finalizing took ${took}s"
+
+    restart_db $DBNAME $DBDIR "$CDB2_OPTIONS"
+    set_tunable $DBNAME "$CDB2_OPTIONS" debug_exit_coordinator_before_commit 0
+    wait $tb_pid
+    local tb_rc=$?
+    echo "drop tb rc ${tb_rc} ($(cat second_ddl_drop_tb.out))"
+    sleep 5
+    $C_SQL "drop table if exists ta" >/dev/null 2>&1
+    $S1_SQL "drop table if exists tb" >/dev/null 2>&1
+
+    if [[ "$took" == "timeout" ]] || (( took >= 3 )); then
+        fail_exit "test_second_ddl_on_prepared_participant: a read of an unrelated table on ${QUATERNARY_DBNAME} took ${took}s while a second 2pc drop held its schema lock behind the prepared one"
+        return
+    fi
+    echo "test_second_ddl_on_prepared_participant PASSED"
+}
+
 setup_coordinators
 
 # Wait for comdb2_distributed_transactions table to be created on all databases
@@ -1211,45 +2775,509 @@ function wait_dist_table
 wait_dist_table
 [[ -f $stopfile ]] && { echo "Testcase failed"; exit -1; }
 
+# How long each testcase took, printed as it ends and again on failure
+timings=""
+current_testcase=""
+current_start=0
+########################################
+# TEST 42: a client transaction mixing a 2pc remote insert with a local
+# create table either commits both or neither, and does not hang.  The
+# coordinator holds a distributed transaction (the remote insert) and a
+# schema change at once, so it goes through the 2pc schema change path.
+########################################
+function test_mixed_dml_ddl_txn
+{
+    echo "=== TEST: test_mixed_dml_ddl_txn ==="
+    $S1_SQL "drop table if exists mx" >/dev/null 2>&1
+    $C_SQL "drop table if exists mxl" >/dev/null 2>&1
+    $S1_SQL "create table mx(a int)" >/dev/null 2>&1
+    local out rc
+    out=$(timeout 90 $C_SQL - 2>&1 <<EOF2
+begin
+insert into LOCAL_${SECONDARY_DBNAME}.mx values(1)
+create table mxl(a int)
+commit
+EOF2
+)
+    rc=$?
+    local rows=$($S1_SQLT "select count(*) from mx" 2>&1)
+    local tbl=$(has_table $DBNAME "$CDB2_OPTIONS" mxl)
+    echo "mixed txn rc $rc: $out; rows on ${SECONDARY_DBNAME}=$rows mxl on ${DBNAME}=$tbl"
+    $S1_SQL "drop table if exists mx" >/dev/null 2>&1
+    $C_SQL "drop table if exists mxl" >/dev/null 2>&1
+    if (( rc == 124 )); then
+        fail_exit "test_mixed_dml_ddl_txn: the transaction hung"
+        return
+    fi
+    if [[ "$rows" != "$tbl" ]]; then
+        fail_exit "test_mixed_dml_ddl_txn: partial outcome: rows on ${SECONDARY_DBNAME}=$rows, mxl on ${DBNAME}=$tbl (rc $rc)"
+        return
+    fi
+    echo "test_mixed_dml_ddl_txn PASSED"
+}
+
+########################################
+# TEST 43: a participant that voted yes, gave up, and crashed before it kept
+# that it voted, still applies its coordinator's commit.  The quaternary waits
+# at most 2s for its coordinator, which sleeps 5s after every participant
+# prepared, then commits.  The quaternary aborts its prepared drop and exits
+# (exit_before_voted) before it marks its 2pc sc_list voted.  Its recovery no
+# longer has the prepare (it was aborted), so after the restart nothing local
+# says it voted: it must still not decide on its own that it never voted, and
+# must drop its shard as the coordinator committed.
+########################################
+function test_gave_up_crash_before_voted
+{
+    echo "=== TEST: test_gave_up_crash_before_voted ==="
+    setup_outcome_ddl drop
+    [[ -f $stopfile ]] && return
+
+    local exited=$(quaternary_log_count "before keeping that")
+    local committed=$(quaternary_log_count "committing resumed 2pc schema change")
+    set_tunable $QUATERNARY_DBNAME "$QUATERNARY_CDB2_OPTIONS" disttxn_ddl_timeout_ms 2000
+    set_tunable $QUATERNARY_DBNAME "$QUATERNARY_CDB2_OPTIONS" debug_remote_2pc_fault exit_before_voted
+    set_tunable $DBNAME "$CDB2_OPTIONS" debug_sleep_coordinator_before_commit 1
+
+    local out=$TMPDIR/gave_up_crash.out
+    rm -f $out
+    ( $C_SQL "drop table t" > $out 2>&1; echo "rc $?" >> $out ) &
+    local cpid=$!
+    if ! wait_quaternary_log "before keeping that" 40 $exited; then
+        fail_exit "test_gave_up_crash_before_voted: ${QUATERNARY_DBNAME} did not exit after giving up"
+        return
+    fi
+    wait $cpid
+    echo "drop: $(cat $out)"
+    set_tunable $DBNAME "$CDB2_OPTIONS" debug_sleep_coordinator_before_commit 0
+    # the fault and timeout are not in the lrl: the restart clears them
+    restart_db $QUATERNARY_DBNAME $QUATERNARY_DBDIR "$QUATERNARY_CDB2_OPTIONS"
+    [[ -f $stopfile ]] && return
+
+    if ! wait_quaternary_log "committing resumed 2pc schema change" 60 $committed; then
+        echo "${QUATERNARY_DBNAME} resume: $(cat $LOGDIR/${QUATERNARY_DBNAME}*.db | grep -E 'never prepared|never voted|resume_2pc' | tail -3)"
+        fail_exit "test_gave_up_crash_before_voted: ${QUATERNARY_DBNAME} did not apply the committed drop after its restart"
+        return
+    fi
+    verify_ddl_outcome drop 1
+    [[ -f $stopfile ]] && return
+    echo "test_gave_up_crash_before_voted PASSED"
+}
+
+########################################
+# TEST 44: a coordinator whose commit fails before it is logged backs out its
+# schema.  The coordinator writes its decision, but its logical commit fails
+# unlogged (fail_coordinator_commit), so it aborts every participant.  Its
+# finalized drop was already published in memory: it must back that out, not
+# run the abort cleanup on it, so t is still there and usable on every shard,
+# the coordinator included.  System-table readers run through the backout,
+# which must hold comdb2_tables as the participant's does.
+########################################
+function test_coordinator_commit_fails_unlogged
+{
+    echo "=== TEST: test_coordinator_commit_fails_unlogged ==="
+    setup_outcome_ddl drop
+    [[ -f $stopfile ]] && return
+
+    set_tunable $DBNAME "$CDB2_OPTIONS" debug_remote_2pc_fault fail_coordinator_commit
+    ( while :; do $S0_SQL "select count(*) from comdb2_columns" >/dev/null 2>&1; done ) &
+    local reader=$!
+    local out
+    out=$($C_SQL "drop table t" 2>&1)
+    local rc=$?
+    kill $reader; wait $reader 2>/dev/null
+    set_tunable $DBNAME "$CDB2_OPTIONS" debug_remote_2pc_fault off
+    echo "drop rc $rc: $out"
+    if (( rc == 0 )); then
+        fail_exit "test_coordinator_commit_fails_unlogged: drop should have failed"
+        return
+    fi
+    verify_ddl_outcome drop 0
+    [[ -f $stopfile ]] && return
+    if ! $S0_SQL "insert into t values(4400, 1)" >/dev/null 2>&1; then
+        fail_exit "test_coordinator_commit_fails_unlogged: t on ${DBNAME} is not writable after the failed commit"
+        return
+    fi
+    # the coordinator's table is whole after a restart too
+    stop_db $DBNAME "$CDB2_OPTIONS"
+    restart_db $DBNAME $DBDIR "$CDB2_OPTIONS"
+    [[ -f $stopfile ]] && return
+    if [[ "$($S0_SQLT "select count(*) from t where a = 4400" 2>&1)" != "1" ]]; then
+        fail_exit "test_coordinator_commit_fails_unlogged: t on ${DBNAME} lost its row after a restart"
+        return
+    fi
+    echo "test_coordinator_commit_fails_unlogged PASSED"
+}
+
+########################################
+# TEST 45: a participant whose create fails to finalize, after it locked
+# comdb2_tables, backs out cleanly.  Its comdb2_tables lock is held in a
+# transaction of its own; the failed request must release it, not leave it
+# open past the request (which the master asserts against), and the create
+# must fail on every shard and work once the fault is gone.
+########################################
+function test_participant_finalize_fails
+{
+    echo "=== TEST: test_participant_finalize_fails ==="
+    setup_outcome_ddl create
+    [[ -f $stopfile ]] && return
+
+    set_tunable $QUATERNARY_DBNAME "$QUATERNARY_CDB2_OPTIONS" debug_remote_2pc_fault fail_finalize
+    local out
+    out=$($C_SQL "create table t(a int unique, b int) partitioned by columns(a) on (${shards})" 2>&1)
+    local rc=$?
+    set_tunable $QUATERNARY_DBNAME "$QUATERNARY_CDB2_OPTIONS" debug_remote_2pc_fault off
+    echo "create rc $rc: $out"
+    if (( rc == 0 )); then
+        fail_exit "test_participant_finalize_fails: create should have failed"
+        return
+    fi
+    if ! $S3_SQL "select 1" >/dev/null 2>&1; then
+        fail_exit "test_participant_finalize_fails: ${QUATERNARY_DBNAME} is down after its failed finalize"
+        return
+    fi
+    verify_ddl_outcome create 0
+    [[ -f $stopfile ]] && return
+    # comdb2_tables is readable, and the create works once the fault is gone
+    if ! $S3_SQL "select count(*) from comdb2_tables" >/dev/null 2>&1; then
+        fail_exit "test_participant_finalize_fails: comdb2_tables on ${QUATERNARY_DBNAME} is not readable"
+        return
+    fi
+    if ! $P_SQL "create table t(a int unique, b int) partitioned by columns(a) on (${shards})"; then
+        fail_exit "test_participant_finalize_fails: create failed after the fault was cleared"
+        return
+    fi
+    verify_ddl_outcome create 1
+    [[ -f $stopfile ]] && return
+    echo "test_participant_finalize_fails PASSED"
+}
+
+########################################
+# TEST 46: a local stored procedure on a prepared participant does not stop
+# that db.  As TEST 30, but the local schema change is a procedure, which
+# writes llmeta only in its finalize, holding the schema write lock: it must
+# not take that lock while a prepared schema change holds llmeta pages.
+########################################
+function test_local_sp_on_prepared_participant
+{
+    echo "=== TEST: test_local_sp_on_prepared_participant ==="
+    setup_outcome_ddl drop
+    [[ -f $stopfile ]] && return
+    make_unrelated_table $QUATERNARY_DBNAME "$QUATERNARY_CDB2_OPTIONS"
+    $S3_SQL "drop procedure local_sp version 'v1'" >/dev/null 2>&1
+
+    set_tunable $DBNAME "$CDB2_OPTIONS" debug_sleep_coordinator_before_commit 1
+    $C_SQL "drop table t" > local_sp_drop.out 2>&1 &
+    local drop_pid=$!
+    sleep 2
+    $S3_SQL "create procedure local_sp version 'v1' {local function main() return 0 end}" > local_sp_create.out 2>&1 &
+    local sp_pid=$!
+    sleep 1
+    local took=$(timed_sql $QUATERNARY_DBNAME "$QUATERNARY_CDB2_OPTIONS" 20 "select count(*) from unrelated")
+    wait $sp_pid
+    wait $drop_pid
+    set_tunable $DBNAME "$CDB2_OPTIONS" debug_sleep_coordinator_before_commit 0
+    echo "local procedure on prepared participant: $(cat local_sp_create.out); read of unrelated table took ${took}s (drop: $(cat local_sp_drop.out))"
+    $S3_SQL "drop procedure local_sp version 'v1'" >/dev/null 2>&1
+
+    if [[ "$took" == "timeout" ]] || (( took >= 2 )); then
+        fail_exit "test_local_sp_on_prepared_participant: read of an unrelated table on ${QUATERNARY_DBNAME} took ${took}s while a local procedure waited for the prepared drop"
+        return
+    fi
+    echo "test_local_sp_on_prepared_participant PASSED"
+}
+
+########################################
+# TEST 47: a reverse scan of sqlite_master on a prepared participant does not
+# show its undecided create.  The new table's entries are the last ones in
+# sqlite_master, which is where a reverse scan starts.
+########################################
+function test_prepared_create_not_in_reverse_master_scan
+{
+    echo "=== TEST: test_prepared_create_not_in_reverse_master_scan ==="
+    setup_outcome_ddl create
+    [[ -f $stopfile ]] && return
+
+    set_tunable $DBNAME "$CDB2_OPTIONS" debug_sleep_coordinator_before_commit 1
+    $C_SQL "create table t(a int unique, b int) partitioned by columns(a) on (${shards})" > reverse_scan_create.out 2>&1 &
+    local create_pid=$!
+    sleep 2
+    local last
+    last=$(timeout 10 $S3_SQLT "select tbl_name from sqlite_master order by rowid desc limit 1" 2>&1)
+    wait $create_pid
+    set_tunable $DBNAME "$CDB2_OPTIONS" debug_sleep_coordinator_before_commit 0
+    echo "while undecided on ${QUATERNARY_DBNAME}: last sqlite_master entry [${last}]; create: $(cat reverse_scan_create.out)"
+    verify_ddl_outcome create 1
+    [[ -f $stopfile ]] && return
+    if [[ "$last" == "t" ]]; then
+        fail_exit "test_prepared_create_not_in_reverse_master_scan: ${QUATERNARY_DBNAME} showed the undecided create in a reverse scan of sqlite_master"
+        return
+    fi
+    echo "test_prepared_create_not_in_reverse_master_scan PASSED"
+}
+
+########################################
+# TEST 48: a participant's prepare record lists its comdb2_tables lock.
+# Replicants apply a prepared schema change at its commit, holding the locks
+# its prepare record lists; system tables on replicants rely on the
+# comdb2_tables write lock to read the table list while scdone changes it.
+# The participant releases the lock on its master once prepared (TEST 39),
+# but the prepare record must still carry it.
+########################################
+function last_prepare_locks
+{
+    local db=$1 opts=$2 dir=$3 out
+    if [[ -n "$CLUSTER" ]]; then
+        local master=$(master_of $db "$opts")
+        out=$(ssh -n -o StrictHostKeyChecking=no $master "$COMDB2_EXE --tool cdb2_printlog -h $dir/logs" 2>/dev/null)
+    else
+        out=$($COMDB2_EXE --tool cdb2_printlog -h $dir/logs 2>/dev/null)
+    fi
+    # the last dist_prepare record, up to the next record
+    echo "$out" | awk '/^\[[0-9]+\]\[[0-9]+\]/ { inp = ($0 ~ /__txn_dist_prepare/); if (inp) blk = "" } inp { blk = blk $0 "\n" } END { printf "%s", blk }'
+}
+
+function test_prepare_record_lists_comdb2_tables
+{
+    echo "=== TEST: test_prepare_record_lists_comdb2_tables ==="
+    setup_testcase
+    [[ -f $stopfile ]] && return
+
+    local ddl pair db opts dir prep
+    for ddl in "create table t(a int unique, b int) partitioned by columns(a) on (${shards})" "drop table t"; do
+        if ! $C_SQL "$ddl"; then
+            fail_exit "test_prepare_record_lists_comdb2_tables: '$ddl' failed"
+            return
+        fi
+        for pair in "$SECONDARY_DBNAME|$SECONDARY_CDB2_OPTIONS|$SECONDARY_DBDIR" \
+                    "$QUATERNARY_DBNAME|$QUATERNARY_CDB2_OPTIONS|$QUATERNARY_DBDIR"; do
+            IFS='|' read -r db opts dir <<< "$pair"
+            prep=$(last_prepare_locks $db "$opts" $dir)
+            echo "last prepare record of ${db} after '${ddl}':"
+            echo "$prep"
+            if ! echo "$prep" | grep -q "dist-txnid: ${DBNAME}-"; then
+                fail_exit "test_prepare_record_lists_comdb2_tables: no prepare record from coordinator ${DBNAME} on ${db} after '$ddl'"
+                return
+            fi
+            if ! echo "$prep" | grep -q "TABLELOCK: comdb2_tables"; then
+                fail_exit "test_prepare_record_lists_comdb2_tables: ${db}'s prepare record for '$ddl' does not list the comdb2_tables lock; its replicants apply the schema change without it"
+                return
+            fi
+        done
+    done
+    echo "test_prepare_record_lists_comdb2_tables PASSED"
+}
+
+########################################
+# TEST 49: undoing a participant's committed schema change reloads its schema
+# A participant commits its prepared schema change with a dist-commit record.
+# If that commit is later undone (log truncation: a master that loses an
+# election to a node without the commit), the participant must reload its
+# schemas, as for any undone schema change; otherwise it keeps serving a table
+# whose files and llmeta entries the undo removed.
+# Leaves t on the other shards: run it last.
+########################################
+function participant_lsn
+{
+    $S1_SQLT "exec procedure sys.cmd.send('flush')" >/dev/null 2>&1
+    $S1_SQLT "select lsn from comdb2_transaction_logs(NULL, NULL, 4) limit 1"
+}
+
+function test_truncate_undoes_participant_create
+{
+    echo "=== TEST: test_truncate_undoes_participant_create ==="
+    setup_testcase
+    [[ -f $stopfile ]] && return
+    if [[ -n "$CLUSTER" ]]; then
+        # a cluster's replicants would have to truncate too
+        echo "test_truncate_undoes_participant_create SKIPPED on a cluster"
+        return
+    fi
+
+    local lsn
+    lsn=$(participant_lsn)
+    echo "${SECONDARY_DBNAME} lsn before the create: $lsn"
+    if [[ -z "$lsn" ]]; then
+        fail_exit "test_truncate_undoes_participant_create: no lsn from ${SECONDARY_DBNAME}"
+        return
+    fi
+    if ! $C_SQL "create table t(a int unique, b int) partitioned by columns(a) on (${shards})"; then
+        fail_exit "test_truncate_undoes_participant_create: create failed"
+        return
+    fi
+    verify_table t
+    [[ -f $stopfile ]] && return
+
+    $S1_SQL "exec procedure sys.cmd.truncate_log(\"$lsn\")"
+    sleep 2
+
+    local tables
+    tables=$($S1_SQLT "select tablename from comdb2_tables where tablename='t'" 2>&1)
+    echo "${SECONDARY_DBNAME} comdb2_tables after the truncate: '$tables'"
+    if [[ -n "$tables" ]]; then
+        fail_exit "test_truncate_undoes_participant_create: ${SECONDARY_DBNAME} still lists t after its create was undone (schemas not reloaded)"
+        return
+    fi
+    if $S1_SQLT "select * from t" >/dev/null 2>&1; then
+        fail_exit "test_truncate_undoes_participant_create: ${SECONDARY_DBNAME} still serves t after its create was undone"
+        return
+    fi
+    echo "test_truncate_undoes_participant_create PASSED"
+}
+
+########################################
+# TEST 50: a client transaction on a prepared participant that names the
+# undecided create's table waits for the decision and keeps its earlier writes.
+# The statement fails to prepare ("no such table") while the create is hidden,
+# then prepares again once the coordinator commits; the failed prepare must not
+# have aborted the transaction meanwhile.
+########################################
+function test_intrans_wait_keeps_txn
+{
+    echo "=== TEST: test_intrans_wait_keeps_txn ==="
+    setup_outcome_ddl create
+    [[ -f $stopfile ]] && return
+    $S3_SQL "drop table if exists u" >/dev/null 2>&1
+    $S3_SQL "create table u(a int)" >/dev/null 2>&1
+
+    set_tunable $DBNAME "$CDB2_OPTIONS" debug_sleep_coordinator_before_commit 1
+    $C_SQL "create table t(a int unique, b int) partitioned by columns(a) on (${shards})" > intrans_wait_create.out 2>&1 &
+    local create_pid=$!
+    sleep 2
+    # only the participant's master waits for the decision; a replicant has no t until the commit
+    local host=default
+    [[ -n "$CLUSTER" ]] && host="--host $(master_of $QUATERNARY_DBNAME "$QUATERNARY_CDB2_OPTIONS")"
+    timeout 60 $CDB2SQL_EXE $QUATERNARY_CDB2_OPTIONS $QUATERNARY_DBNAME $host > intrans_wait_txn.out 2>&1 <<EOF
+begin
+insert into u values(1)
+insert into t values(1, 1)
+commit
+EOF
+    local txn_rc=$?
+    wait $create_pid
+    local create_rc=$?
+    set_tunable $DBNAME "$CDB2_OPTIONS" debug_sleep_coordinator_before_commit 0
+    local nu=$($S3_SQLT "select count(*) from u" 2>&1)
+    local nt=$($S3_SQLT "select count(*) from t" 2>&1)
+    echo "create rc ${create_rc} ($(cat intrans_wait_create.out)); txn rc ${txn_rc} ($(cat intrans_wait_txn.out)); u rows ${nu}, t rows ${nt}"
+
+    if (( create_rc != 0 )); then
+        fail_exit "test_intrans_wait_keeps_txn: create failed: $(cat intrans_wait_create.out)"
+        return
+    fi
+    if (( txn_rc == 0 )) && [[ "$nu" != "1" || "$nt" != "1" ]]; then
+        fail_exit "test_intrans_wait_keeps_txn: ${QUATERNARY_DBNAME} reported the transaction committed but has u=${nu} t=${nt} rows"
+        return
+    fi
+    if (( txn_rc != 0 )); then
+        fail_exit "test_intrans_wait_keeps_txn: transaction failed after waiting for the decision: $(cat intrans_wait_txn.out)"
+        return
+    fi
+    echo "test_intrans_wait_keeps_txn PASSED"
+}
+
+########################################
+# TEST 51: a read that waits for a prepared participant's undecided drop stops
+# when its client gives up.  The coordinator exits once every participant
+# prepared, so the drop stays undecided until it comes back.  One read has
+# maxquerytime 2, the other's client is killed after 3s; neither may keep its
+# sql thread waiting for the decision.
+########################################
+function test_pending_table_wait_stops_for_client
+{
+    echo "=== TEST: test_pending_table_wait_stops_for_client ==="
+    setup_outcome_ddl drop
+    [[ -f $stopfile ]] && return
+    local host=default
+    [[ -n "$CLUSTER" ]] && host="--host $(master_of $QUATERNARY_DBNAME "$QUATERNARY_CDB2_OPTIONS")"
+    local q="$CDB2SQL_EXE --tabs $QUATERNARY_CDB2_OPTIONS $QUATERNARY_DBNAME $host"
+
+    set_tunable $DBNAME "$CDB2_OPTIONS" debug_exit_coordinator_before_commit 1
+    $C_SQL "drop table t" 2>&1
+    echo "drop rc $?"
+    sleep 2
+
+    timeout 60 $q > pending_wait_maxquerytime.out 2>&1 <<EOT &
+set maxquerytime 2
+select count(*) from t
+EOT
+    local mqt_pid=$!
+    timeout 3 $q "select count(*) from t" > pending_wait_killed.out 2>&1
+    wait $mqt_pid
+    local mqt_rc=$?
+    sleep 4
+    local waiting=$($q "select count(*) from comdb2_connections where sql = 'select count(*) from t'" 2>&1)
+    restart_db $DBNAME $DBDIR "$CDB2_OPTIONS"
+    set_tunable $DBNAME "$CDB2_OPTIONS" debug_exit_coordinator_before_commit 0
+    echo "while the drop was undecided: maxquerytime read rc ${mqt_rc} ($(cat pending_wait_maxquerytime.out)); sql threads still waiting: ${waiting}"
+    verify_ddl_outcome drop 0
+    [[ -f $stopfile ]] && return
+
+    if (( mqt_rc == 0 )) || [[ "$waiting" != "0" ]]; then
+        fail_exit "test_pending_table_wait_stops_for_client: ${QUATERNARY_DBNAME} still has ${waiting} sql threads waiting for the undecided drop after their clients gave up"
+        return
+    fi
+    echo "test_pending_table_wait_stops_for_client PASSED"
+}
+
+function run_testcase
+{
+    local testcase=$1 start=$SECONDS
+    current_testcase=$testcase
+    last_testcase=$testcase
+    current_start=$start
+    $testcase
+    current_testcase=""
+    local took=$((SECONDS - start))
+    timings="$timings
+    $testcase ${took}s"
+    echo "TIMING: $testcase took ${took}s"
+}
+
+# the failure goes last: CI shows only the tail of this log
+function fail_with_timings
+{
+    echo "Testcase timings:$timings"
+    echo "Failed testcase(s): $(testcase_label "${1:-$last_testcase}")"
+    if [[ -s ${DBNAME}.fail_exit ]]; then
+        cat ${DBNAME}.fail_exit
+    else
+        echo "Failed: no reason recorded"
+    fi
+    echo "Testcase failed"
+    exit -1
+}
+
+# the harness's timeout sends TERM first: still say what ran and for how long
+trap 'echo "Failed: timed out in ${current_testcase:-setup} after $((SECONDS - current_start))s" >> ${DBNAME}.fail_exit; fail_with_timings "${current_testcase:-setup}"' TERM
+
 # RC2PC_ONLY="test_a test_b": run only these testcases; each failure is
 # recorded and the next one still runs
 if [[ -n "$RC2PC_ONLY" ]]; then
     failed=""
     for testcase in $RC2PC_ONLY; do
         rm -f $stopfile
-        $testcase
+        run_testcase $testcase
         clear_debug_tunables
         [[ -f $stopfile ]] && failed="$failed $testcase"
     done
     if [[ -n "$failed" ]]; then
-        echo "Failed testcases:$failed"
-        echo "Testcase failed"
-        exit -1
+        fail_with_timings "$failed"
     fi
     echo "Success"
     exit 0
 fi
 
-# Run tests in order
+# Run tests in order; test_truncate_undoes_participant_create leaves a shard without t, so it runs last
 
 echo "========================================="
 echo "Running basic tests"
 echo "========================================="
 
-test_basic_create
-[[ -f $stopfile ]] && { echo "Testcase failed"; exit -1; }
-
-test_basic_drop
-[[ -f $stopfile ]] && { echo "Testcase failed"; exit -1; }
-
-test_create_drop_lifecycle
-[[ -f $stopfile ]] && { echo "Testcase failed"; exit -1; }
-
-test_nonkey_sharding_fails
-[[ -f $stopfile ]] && { echo "Testcase failed"; exit -1; }
-
-test_multiple_create_drop
-[[ -f $stopfile ]] && { echo "Testcase failed"; exit -1; }
+for testcase in test_basic_create test_basic_drop test_create_drop_lifecycle test_nonkey_sharding_fails \
+                test_multiple_create_drop; do
+    run_testcase $testcase
+    [[ -f $stopfile ]] && fail_with_timings
+done
 
 echo "========================================="
 echo "Running 2pc outcome tests"
@@ -1258,10 +3286,33 @@ echo "========================================="
 for testcase in test_coordinator_decides_abort test_replicant_hides_prepare test_ddl_timeout \
                 test_ddl_deadlock_timeout test_participant_resume_aborts test_participant_prepared_restart \
                 test_participant_prepared_restart_abort \
-                test_coordinator_resume_aborts; do
-    $testcase
+                test_coordinator_resume_aborts test_participant_gives_up_then_commits \
+                test_participant_gives_up_then_commits_create test_participant_gives_up_then_aborts \
+                test_participant_gives_up_then_aborts_create \
+                test_commit_during_participant_upgrade test_coordinator_not_a_shard test_coordinator_table_exists \
+                test_participant_redo_finalize_fails_once test_resumed_participant_lock_desired_once \
+                test_unprepared_participant_cannot_vote test_participant_reads_block_while_prepared \
+                test_coordinator_reads_block_on_slow_participant test_participant_unusable_while_coordinator_down \
+                test_participant_gave_up_name_reserved test_prepared_participant_yields_mastership \
+                test_scabort_cancels_participant test_rowlocks_participant_rejected_early \
+                test_old_participant_rejected_early \
+                test_ddl_schema_lock_under_read_load test_participant_commit_failure \
+                test_success_visible_on_every_shard test_local_ddl_on_prepared_participant \
+                test_prepared_drop_not_visible test_prepared_create_not_writable \
+                test_prepared_participant_bad_table_fails_fast test_prepared_create_not_writable_from_sp \
+                test_gave_up_mastership_releases_names test_prepared_drop_not_visible_from_sp \
+                test_participant_commit_wait_fails test_unprepared_participant_counted_as_yes \
+                test_unprepared_participant_counted_as_yes_redo_fails test_prepared_create_not_in_systables \
+                test_prepared_create_not_writable_from_sp_fresh_thread test_second_ddl_on_prepared_participant \
+                test_mixed_dml_ddl_txn test_gave_up_crash_before_voted \
+                test_coordinator_commit_fails_unlogged test_participant_finalize_fails \
+                test_local_sp_on_prepared_participant test_prepared_create_not_in_reverse_master_scan \
+                test_prepare_record_lists_comdb2_tables test_intrans_wait_keeps_txn \
+                test_pending_table_wait_stops_for_client \
+                test_truncate_undoes_participant_create; do
+    run_testcase $testcase
     clear_debug_tunables
-    [[ -f $stopfile ]] && { echo "Testcase failed"; exit -1; }
+    [[ -f $stopfile ]] && fail_with_timings
 done
 
 echo "========================================="

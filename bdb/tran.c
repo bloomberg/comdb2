@@ -1432,9 +1432,7 @@ int bdb_tran_prepare(bdb_state_type *bdb_state, tran_type *tran, const char *dis
         return -1;
     }
 
-    /* A schema change (pagelock mode) runs under a logical transaction with a
-     * single physical transaction.  That physical transaction is top-level in
-     * berkdb, so it can be prepared. */
+    /* a (pagelock) schema change's single physical txn is top-level in berkdb */
     int sc_tran = (tran->tranclass == TRANCLASS_PHYSICAL && tran->logical_tran &&
                    tran->logical_tran->single_physical_transaction && tran->logical_tran->schema_change_txn &&
                    tran->logical_tran->sc_parent_tran == NULL);
@@ -1461,8 +1459,7 @@ int bdb_tran_prepare(bdb_state_type *bdb_state, tran_type *tran, const char *dis
 
     if (sc_tran) {
         tran_type *ltran = tran->logical_tran;
-        /* Nothing may be logged in a txn after its prepare record: write the
-         * logical commit now, and the logical commit path skips it */
+        /* nothing may follow the prepare record: log the logical commit now */
         if (ltran->wrote_begin_record) {
             if (bdb_state->repinfo->myhost != bdb_state->repinfo->master_host) {
                 logmsg(LOGMSG_ERROR, "%s cannot prepare schema change: not master\n", __func__);
@@ -1898,8 +1895,7 @@ int bdb_tran_commit_with_seqnum_int(bdb_state_type *bdb_state, tran_type *tran,
             */
         }
 
-        /* log end of transaction; a prepared schema change wrote it before its
-         * prepare record */
+        /* log end of transaction (a prepared schema change already did) */
         if (physical_tran != NULL && tran->wrote_begin_record && !physical_tran->is_prepared &&
             bdb_state->repinfo->myhost == bdb_state->repinfo->master_host) {
             /* set flag telling the send routine to flush this lsn immediately
@@ -2903,15 +2899,6 @@ int bdb_get_modsnap_start_state(bdb_state_type *bdb_state,
             last_checkpoint_lsn.file, last_checkpoint_lsn.offset);
 
     return 0;
-}
-
-extern int __txn_is_prepared_unresolved(DB_ENV *, const char *);
-
-int bdb_dist_txn_is_prepared(bdb_state_type *bdb_state, const char *dist_txnid)
-{
-    if (bdb_state->parent)
-        bdb_state = bdb_state->parent;
-    return __txn_is_prepared_unresolved(bdb_state->dbenv, dist_txnid);
 }
 
 void bdb_upgrade_all_prepared(bdb_state_type *bdb_state)

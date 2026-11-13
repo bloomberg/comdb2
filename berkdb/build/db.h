@@ -1227,13 +1227,18 @@ typedef enum {
 	DB_DIST_HAVELOCKS   = 0x00000001,
 	DB_DIST_COMMITTED   = 0x00000002,
 	DB_DIST_ABORTED     = 0x00000004,
-	DB_DIST_SCHEMA_LK   = 0x00000008,
 	DB_DIST_INFLIGHT    = 0x00000010,
 	DB_DIST_RECOVERED   = 0x00000020,
 	DB_DIST_UPDSHADOWS  = 0x00000040,
 	DB_DIST_DISCARDED   = 0x00000080,
-	DB_DIST_SCHEMA_ABORT = 0x00000100
+	DB_DIST_SCHEMA_ABORT = 0x00000100  /* prepared schema change the upgrade aborts */
 } db_dist_state;
+
+int __txn_is_prepared_unresolved(DB_ENV *, const char *dist_txnid);
+/* hooks for prepared schema changes, set by the application */
+extern void (*__txn_upgrade_saw_prepare)(const char *dist_txnid);
+extern void (*__txn_debug_upgrade_ddl_commit)(const char *dist_txnid);
+extern void (*__txn_abort_recovered_cb)(const char *dist_txnid);
 
 struct __db_txn_prepared_child {
 	u_int64_t cutxnid;
