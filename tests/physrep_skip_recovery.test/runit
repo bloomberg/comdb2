@@ -1,0 +1,228 @@
+#!/usr/bin/env bash
+bash -n "$0" || exit 1
+
+# A physrep that rewinds without unwinding a commit must take skip-recovery
+# (log-only truncate), keep applying, stay consistent, and survive a crash.
+
+source ${TESTSROOTDIR}/tools/runit_common.sh
+
+export COPYCOMDB2_EXE=${BUILDDIR}/db/copycomdb2
+export DESTDB=${TESTCASE}dest${TESTID}
+export DEST_DBDIR=${DBDIR}/$DESTDB
+export replog=$DEST_DBDIR/$DESTDB.log
+export rewinds=6
+
+function failexit
+{
+    echo "Failed: $1"
+    [[ -f $DEST_DBDIR/${DESTDB}.pid ]] && kill -9 $(cat $DEST_DBDIR/${DESTDB}.pid) 2>/dev/null
+    exit 1
+}
+
+function src_sql
+{
+    $CDB2SQL_EXE -s --tabs $CDB2_OPTIONS $DBNAME default "$1" 2>&1
+}
+
+function dest_sql
+{
+    $CDB2SQL_EXE -s --tabs $CDB2_OPTIONS $DESTDB @localhost "$1" 2>&1
+}
+
+function start_physrep
+{
+    ( timeout $TEST_TIMEOUT $COMDB2_EXE $DESTDB -lrl $DEST_DBDIR/${DESTDB}.lrl -pidfile $DEST_DBDIR/${DESTDB}.pid >>$replog 2>&1) &
+    local j=0
+    while [[ $j -lt 60 ]]; do
+        dest_sql "select 1" >/dev/null 2>&1 && return 0
+        sleep 1
+        let j=j+1
+    done
+    failexit "physrep did not come up"
+}
+
+function create_physrep
+{
+    mkdir -p $DEST_DBDIR
+    if [[ -z "$CLUSTER" ]]; then
+        cl="-y @localhost"
+        rmt=""
+    else
+        cl="-y @$(echo $CLUSTER | tr ' ' ',')"
+        if [[ "$CLUSTER" =~ .*$myhost.* ]]; then
+            rmt=""
+        else
+            clarray=($CLUSTER)
+            rmt="${clarray[0]}:"
+        fi
+    fi
+
+    ${COPYCOMDB2_EXE} -x ${COMDB2_EXE} -H $DESTDB $cl $rmt${DBDIR}/${DBNAME}.lrl $DEST_DBDIR $DEST_DBDIR
+    [[ $? -ne 0 ]] && failexit "copycomdb2 failed"
+
+    df $DBDIR | awk '{print $1 }' | grep "tmpfs\|nfs" && echo "setattr directio 0" >> $DEST_DBDIR/${DESTDB}.lrl
+    if [ -n "$PMUXPORT" ] ; then
+        echo "portmux_port $PMUXPORT" >> $DEST_DBDIR/${DESTDB}.lrl
+        echo "portmux_bind_path $pmux_socket" >> $DEST_DBDIR/${DESTDB}.lrl
+    fi
+    cat >> $DEST_DBDIR/${DESTDB}.lrl <<EOF
+physrep_debug 1
+log_cksum_prev 0
+rep_skip_recovery 1
+# Always rewind to the anchor, even when the tail would match the source
+physrep_skip_noop_truncation 0
+EOF
+    start_physrep
+}
+
+function override_physrep_sp
+{
+    local mnode=`getmaster`
+    ${CDB2SQL_EXE} $CDB2_OPTIONS $DBNAME --host $mnode "create procedure 'sys.physrep.register_replicant' version '1' { `cat ./register_replicant.lua`  }"
+    for sp in reset_nodes update_registry keepalive keepalive_v2; do
+        ${CDB2SQL_EXE} $CDB2_OPTIONS $DBNAME --host $mnode "create procedure 'sys.physrep.$sp' version '1' { local function main() end }"
+    done
+}
+
+# count, sum and total blob length must match between source and physrep
+function table_sig
+{
+    $1 "select count(*), sum(a), sum(length(b)) from t"
+}
+
+function wait_for_sync
+{
+    local j=0 s d
+    while [[ $j -lt 180 ]]; do
+        s=$(table_sig src_sql)
+        d=$(table_sig dest_sql)
+        [[ "$s" == "$d" ]] && return 0
+        sleep 1
+        let j=j+1
+    done
+    failexit "physrep never caught up: source=[$s] physrep=[$d]"
+}
+
+# Keep the source mid-transaction: large multi-record inserts back to back.
+function writer
+{
+    local i=0
+    while [[ $i -lt $1 ]]; do
+        src_sql "insert into t select value, randomblob(2048) from generate_series(1, 4000)" >/dev/null
+        let i=i+1
+    done
+}
+
+logbase=0
+
+function count_log
+{
+    local n
+    n=$(tail -n +$((logbase + 1)) $replog 2>/dev/null | egrep -c "$1")
+    echo "${n:-0}"
+}
+
+# Force a re-registration and wait until the physrep's truncate has finished (either path).
+function force_rewind
+{
+    local done_re="skip-recovery truncate log lsn|full recovery ran"
+    local before=$(count_log "$done_re")
+    $CDB2SQL_EXE --admin $CDB2_OPTIONS --host localhost $DESTDB "exec procedure sys.cmd.send('physrep_force_registration')" >/dev/null
+    local j=0
+    while [[ $j -lt 60 ]]; do
+        [[ $(count_log "$done_re") -gt $before ]] && return 0
+        sleep 1
+        let j=j+1
+    done
+    egrep "Rewind to lsn|skipping truncation|find_match|Found match" $replog | tail -5
+    failexit "physrep did not truncate after forced re-registration"
+}
+
+function check_skip_path
+{
+    local skipped=$(count_log "skip-recovery truncate log lsn")
+    local full=$(count_log "full recovery ran")
+    local cannot=$(count_log "skip-recovery cannot skip")
+    echo "rewinds=$(count_log 'Rewind to lsn') skip-truncates=$skipped full-recoveries=$full cannot-skip=$cannot"
+    tail -n +$((logbase + 1)) $replog | egrep "Rewind to lsn|skip-recovery|full recovery ran" | tail -20
+    [[ $full -ne 0 ]] && failexit "physrep ran $full full recoveries for rewinds that unwound no commit"
+    [[ $cannot -ne 0 ]] && failexit "physrep could not skip recovery $cannot times"
+    [[ $skipped -lt $1 ]] && failexit "expected at least $1 skip-recovery truncates, saw $skipped"
+}
+
+function verify_physrep
+{
+    local out=$(dest_sql "exec procedure sys.cmd.verify('t')")
+    echo "$out" | grep -qi "fail\|error" && failexit "verify on physrep failed: $out"
+}
+
+function run_test
+{
+    src_sql "create table t(a int, b blob)" >/dev/null || failexit "create table"
+    src_sql "create index ta on t(a)" >/dev/null || failexit "create index"
+    override_physrep_sp
+    src_sql "insert into t select value, randomblob(256) from generate_series(1, 1000)" >/dev/null
+
+    create_physrep
+    wait_for_sync
+    # Count only from here: startup re-registrations while the source elects can
+    # anchor on a checkpoint below its non-matchable startup commits
+    logbase=$(wc -l < $replog)
+
+    # 1. Rewinds mid-transaction must all take the skip path
+    local i=0
+    while [[ $i -lt $rewinds ]]; do
+        writer 10 &
+        local wpid=$!
+        sleep 3
+        force_rewind
+        wait $wpid
+        wait_for_sync
+        let i=i+1
+    done
+    check_skip_path $rewinds
+    verify_physrep
+
+    # 2. A copy of the physrep taken across rewinds must survive and restore
+    local archive=${TESTDIR}/physrep.ar.$$ restoredir=${TESTDIR}/physrep.restore.$$
+    writer 20 &
+    local wpid=$!
+    $COMDB2AR_EXE c $DEST_DBDIR/${DESTDB}.lrl > $archive 2> ${TESTDIR}/physrep.ar.err.$$ &
+    local arpid=$!
+    sleep 2
+    force_rewind
+    sleep 2
+    force_rewind
+    wait $arpid
+    local rc=$?
+    wait $wpid
+    cat ${TESTDIR}/physrep.ar.err.$$
+    [[ $rc -ne 0 ]] && failexit "comdb2ar copy of the physrep failed across skip-recovery rewinds (rc=$rc)"
+    mkdir -p $restoredir
+    $COMDB2AR_EXE x -x $COMDB2_EXE $restoredir $restoredir < $archive || failexit "restore of physrep archive failed"
+    rm -rf $archive $restoredir
+    wait_for_sync
+    check_skip_path $((rewinds + 2))
+
+    # 3. Crash after skip-recovery truncates: startup recovery must bring it back consistent
+    writer 5 &
+    wpid=$!
+    sleep 2
+    force_rewind
+    kill -9 $(cat $DEST_DBDIR/${DESTDB}.pid)
+    wait $wpid
+    start_physrep
+    wait_for_sync
+    verify_physrep
+
+    # 4. Keep applying afterwards
+    src_sql "insert into t select value, randomblob(256) from generate_series(1, 500)" >/dev/null
+    wait_for_sync
+    check_skip_path $((rewinds + 3))
+
+    kill -9 $(cat $DEST_DBDIR/${DESTDB}.pid)
+}
+
+run_test
+echo "Success"
+exit 0

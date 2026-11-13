@@ -1,23 +1,26 @@
-This test verifies that a copy (comdb2ar) is aborted if the database runs
-recovery that rewinds the log (rep_verify_match) while the copy is in flight.
+This test verifies that a copy (comdb2ar) is aborted if the database runs a full
+recovery while the copy is in flight, and that it survives exclusive operations
+that don't.
 
-Such a rewind -- which happens on a physical replicant when it truncates to
-resync, or on a normal replicant that connects to a new master -- rewrites data
-pages backwards, so the pages captured by an overlapping copy no longer
-reconcile with the forward log replay the archive relies on.  The copy would
-otherwise be silently corrupt.
+A full recovery unwinds at least one commit, rewriting data pages backwards, so
+the pages captured by an overlapping copy no longer reconcile with the forward
+log replay the archive relies on.  Skip-recovery (a truncate that unwinds no
+commit, the common replicant and physrep case after an election) only drops log
+whose pages were never written, which the copy can safely hold.
 
-The copy (logdelete4) holds the recovery lock and the bdb lock in read mode for
-its duration; recovery write-locks these before it rewinds any page, in both
-online and offline recovery modes.  When recovery (or another exclusive
-operation) waits on one of those locks, the copy releases them and is marked
-aborted, and comdb2ar discards the archive.
+The copy (logdelete4) holds the recovery lock and the bdb lock in read mode.
+When recovery or an upgrade/downgrade waits on one of them, the copy releases
+them and takes them back afterwards.  Each full recovery bumps a generation, and
+copy_complete answers "aborted" only if that generation moved during the copy.
 
 The test, for BOTH online_recovery on and off:
   1. Connects a copy and holds it at connect (debug_block_comdb2ar) after it has
      taken the read locks.
-  2. Forces a rewind with sys.cmd.truncate_time (blocks on the bdb write lock
-     when offline, on recoverlk when online).
+  2. Forces a rewind on the master with sys.cmd.truncate_time, which unwinds an
+     applied insert (masters never skip recovery).
   3. Releases the copy and verifies comdb2ar aborts with a non-zero exit,
      reporting that recovery ran during the copy.
   4. Also verifies a copy with no concurrent recovery still succeeds.
+Then, on a cluster:
+  5. Holds a copy on the master, downgrades it, releases the copy, and verifies
+     the copy succeeds, the node ran no full recovery, and the archive restores.
