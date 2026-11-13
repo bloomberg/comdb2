@@ -61,6 +61,7 @@ static const char revid[] =
 #include "thrman.h"
 #include "thread_util.h"
 #include "debug_switches.h"
+#include "comdb2_atomic.h"
 
 #ifndef TESTSUITE
 
@@ -7490,6 +7491,10 @@ recovery_release_locks(dbenv, lockid)
 
 void __dbenv_reset_mintruncate_vars(DB_ENV *dbenv);
 
+/* Bumped under the recovery write lock by each full (non-skipped) recovery, which unwinds a
+ * commit and so rewrites pages.  A copy that sees it move cannot trust what it has copied. */
+int64_t gbl_destructive_recovery_gen = 0;
+
 static int
 __rep_dorecovery(dbenv, lsnp, trunclsnp, online, undid_schema_change)
 	DB_ENV *dbenv;
@@ -7742,6 +7747,11 @@ restart:
 	logmsg(LOGMSG_INFO, "%s calling truncate with lsn [%d:%d]\n", __func__,
 			lsnp->file, lsnp->offset);
 	ret = __db_apprec(dbenv, lsnp, trunclsnp, undo, DB_RECOVER_NOCKP);
+
+	/* Publish before releasing the recovery lock so a waiting copy sees it */
+	int64_t destructive_gen = ATOMIC_ADD64(gbl_destructive_recovery_gen, 1);
+	logmsg(LOGMSG_INFO, "%s: full recovery ran (rc=%d), destructive-recovery-gen %"PRId64"\n",
+		__func__, ret, destructive_gen);
 
 	/* Increase generation before releasing recovery lock */
 	if (i_am_master) {
@@ -8775,7 +8785,7 @@ int __dbenv_rep_verify_match(DB_ENV* dbenv, unsigned int file, unsigned int offs
 	return ret;
 }
 
-int gbl_rep_skip_recovery = 0;
+int gbl_rep_skip_recovery = 1;
 
 int __log_find_latest_checkpoint_before_lsn(DB_ENV *dbenv,
 	DB_LOGC *logc, DB_LSN *max_lsn, DB_LSN *start_lsn);
@@ -8909,7 +8919,10 @@ __rep_verify_match(dbenv, rp, savetime, online)
 	}
 
 	int i_am_master = F_ISSET(rep, REP_F_MASTER);
-	if (gbl_rep_skip_recovery && !i_am_master && dbenv->prev_commit_lsn.file > 0 && log_compare(&dbenv->prev_commit_lsn, &rp->lsn) <= 0) {
+	/* Physreps apply only at commit, like replicants, even when master of their own cluster */
+	int can_skip = !i_am_master || gbl_is_physical_replicant;
+	if (gbl_rep_skip_recovery && can_skip && dbenv->prev_commit_lsn.file > 0 &&
+		log_compare(&dbenv->prev_commit_lsn, &rp->lsn) <= 0) {
 		DB_TXNREGION *region;
 		region = ((DB_TXNMGR *)dbenv->tx_handle)->reginfo.primary;
 		dbenv->wrlock_recovery_lock(dbenv, __func__, __LINE__);
@@ -8963,6 +8976,12 @@ __rep_verify_match(dbenv, rp, savetime, online)
 		F_SET(region, TXN_IN_RECOVERY);
 		__log_vtruncate(dbenv, &rp->lsn, &region->last_ckp, &trunclsn);
 		F_CLR(region, TXN_IN_RECOVERY);
+
+		/* As in __rep_dorecovery: a physrep master bumps its gen so its own replicants re-verify */
+		if (i_am_master) {
+			uint32_t newgen = rep->gen + (20 + rand() % 20);
+			__rep_set_gen(dbenv, __func__, __LINE__, newgen);
+		}
 
 		dbenv->unlock_recovery_lock(dbenv, __func__, __LINE__);
 
