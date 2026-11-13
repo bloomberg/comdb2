@@ -831,7 +831,7 @@ These options are toggle-able at runtime.
 |enable_overflow_page_trace | | If set, don't warn when a page order table scan encounters an overflow page.
 |enable_pageorder_recsz_check | | Disables enable_pageorder_recsz_check
 |enable_partial_indexes | not set | If set, allows partial index definitions in table schema.  See [partial indices](table_schema.html#partial-indices)
-|enable_prefault_udp | not set |  Send lossy prefault requests to replicants 
+|enable_prefault_udp | set |  Send lossy prefault requests to replicants 
 |enable_selectv_range_check | not set | ***Experimental*** If set, SELECTV will send ranges for verification, not every touched record.
 |enable_serial_isolation | 0 | Enable to allow SERIALIZABLE level transactions to run against the database
 |enable_snapshot_isolation | set | Enable to allow SNAPSHOT level transactions to run against the database.  On by default; see `disable_snapshot_isolation`.

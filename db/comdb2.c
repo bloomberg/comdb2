@@ -309,7 +309,7 @@ int gbl_sqlreadahead = 0;
 int gbl_ioqueue = 0;
 int gbl_prefaulthelperthreads = 0;
 int gbl_osqlpfault_threads = 0;
-int gbl_prefault_udp = 0;
+int gbl_prefault_udp = 1;
 __thread int send_prefault_udp = 0;
 __thread snap_uid_t *osql_snap_info; /* contains cnonce */
 
