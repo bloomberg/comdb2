@@ -1999,9 +1999,6 @@ int bdb_add_rep_blob(bdb_state_type *bdb_state, tran_type *tran, int session,
 
 void bdb_upgrade_all_prepared(bdb_state_type *bdb_state);
 
-/* Return 1 if dist_txnid is prepared and not yet committed or aborted */
-int bdb_dist_txn_is_prepared(bdb_state_type *bdb_state, const char *dist_txnid);
-
 const char *bdb_get_tmpdir(bdb_state_type *bdb_state);
 
 int bdb_form_file_name(bdb_state_type *bdb_state, int is_data_file, int filenum,
@@ -2030,6 +2027,9 @@ void bdb_lockspeed(bdb_state_type *bdb_state);
 int bdb_lock_table_write(bdb_state_type *bdb_state, tran_type *tran);
 int bdb_lock_tablename_write(bdb_state_type *bdb_state, const char *tblname,
                              tran_type *tran);
+/* write-lock tablename until bdb_put_kept_tablename_lock, not until tran ends */
+int bdb_lock_tablename_write_keep(bdb_state_type *bdb_state, const char *name, tran_type *tran, void **lkp);
+void bdb_put_kept_tablename_lock(bdb_state_type *bdb_state, void *lkp);
 int bdb_lock_tablename_read(bdb_state_type *, const char *name, tran_type *);
 
 enum query_lock_type {

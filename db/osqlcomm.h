@@ -444,7 +444,6 @@ const uint8_t *osqlcomm_scl_get(struct sc_list *scl,
                                 const uint8_t *p_buf, const uint8_t *p_buf_end);
 uint8_t *osqlcomm_scl_put(struct sc_list *scl,
                           uint8_t *p_buf, const uint8_t *p_buf_end);
-/* size of the 2pc configuration in a 2pc sc_list (0 for others) */
 int osqlcomm_scl_2pc_size(struct sc_list *scl);
 
 /**

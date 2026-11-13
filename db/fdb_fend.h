@@ -75,8 +75,9 @@
 #define FDB_VER_CDB2API 7
 #define FDB_VER_WR_CDB2API 8
 #define FDB_VER_2PC_CDB2API 9
+#define FDB_VER_2PC_DDL 10
 
-#define FDB_VER FDB_VER_2PC_CDB2API
+#define FDB_VER FDB_VER_2PC_DDL
 
 extern int gbl_fdb_default_ver;
 

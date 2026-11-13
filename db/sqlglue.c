@@ -109,6 +109,7 @@
 #include <sqlwriter.h>
 
 #include "views.h"
+#include <disttxn.h>
 
 int gbl_delay_sql_lock_release_sec = 5;
 
@@ -3381,7 +3382,34 @@ static int cursor_move_compressed(BtCursor *pCur, int *pRes, int how)
     return rc;
 }
 
+/* sqlite_master hides the tables of undecided 2pc schema changes */
+static int master_entry_pending(struct sql_thread *thd, int pos)
+{
+    const char *tblname = (pos >= 0 && pos < thd->rootpage_nentries) ? get_sqlite_entry_tblname(thd, pos) : NULL;
+    return tblname && disttxn_ddl_table_pending(tblname);
+}
+
+static int cursor_move_master_int(BtCursor *pCur, int *pRes, int how);
+
 static int cursor_move_master(BtCursor *pCur, int *pRes, int how)
+{
+    struct sql_thread *thd = pCur->thd;
+    int rc = cursor_move_master_int(pCur, pRes, how);
+    /* CLAST sets eof on the last entry it positions on: check that one too */
+    if (rc || *pRes || (pCur->eof && how != CLAST))
+        return rc;
+    while (rc == SQLITE_OK && !*pRes && (!pCur->eof || how == CLAST) && master_entry_pending(thd, pCur->tblpos)) {
+        rc = cursor_move_master_int(pCur, pRes, (how == CPREV || how == CLAST) ? CPREV : CNEXT);
+    }
+    /* stepped back off the first entry */
+    if (rc == SQLITE_OK && !*pRes && pCur->tblpos < 0) {
+        *pRes = 1;
+        pCur->eof = 1;
+    }
+    return rc;
+}
+
+static int cursor_move_master_int(BtCursor *pCur, int *pRes, int how)
 {
     /* skip preprop. if we're called from sqlite3_open_serial
      * and if peer_dropped_connection is true, we'll get NO SQL ENGINE and
