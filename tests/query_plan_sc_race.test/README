@@ -1,0 +1,2 @@
+Verify a statement that lost its curtran on a failed recover_deadlock doesn't read freed schemas when recording its
+query plan while a schema change on its table finalizes

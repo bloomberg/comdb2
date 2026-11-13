@@ -19,6 +19,7 @@
 #include <string.h>
 #include <stddef.h>
 #include <inttypes.h>
+#include <poll.h>
 
 #include "reqlog.h"
 #include "logmsg.h"
@@ -41,6 +42,7 @@ extern hash_t *gbl_sample_queries_hash;
 extern int gbl_verbose_normalized_queries;
 int gbl_fingerprint_max_queries = 1000;
 int gbl_warn_on_equiv_type_mismatch;
+int gbl_debug_query_plan_no_curtran_sleep_ms = 0;
 
 static int free_fingerprint(void *obj, void *arg)
 {
@@ -226,7 +228,14 @@ void add_fingerprint(struct sqlclntstate *clnt, sqlite3_stmt *stmt, struct strin
     calc_fingerprint(zNormSql, &nNormSql, fingerprint);
     struct string_ref *query_plan_ref = NULL;
     char *params = NULL;
-    int calc_query_plan = gbl_query_plans && !is_lua;
+    if (!clnt->dbtran.cursor_tran && gbl_debug_query_plan_no_curtran_sleep_ms > 0) {
+        logmsg(LOGMSG_USER, "%s: no curtran, sleeping %dms\n", __func__, gbl_debug_query_plan_no_curtran_sleep_ms);
+        poll(NULL, 0, gbl_debug_query_plan_no_curtran_sleep_ms);
+    }
+    /* The plan is built from live schemas, which are only safe to read while
+     * the statement's table locks are held; a failed recover_deadlock drops
+     * the curtran and with it those locks, letting a schema change free them. */
+    int calc_query_plan = gbl_query_plans && !is_lua && clnt->dbtran.cursor_tran;
     if (calc_query_plan) {
         query_plan_ref = form_query_plan(clnt, stmt);
         calc_fingerprint(query_plan_ref ? string_ref_cstr(query_plan_ref) : NULL, &temp, plan_fingerprint);
