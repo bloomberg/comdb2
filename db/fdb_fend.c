@@ -70,6 +70,8 @@
 extern int gbl_fdb_resolve_local;
 extern char *gbl_fdb_resolve_tier;
 extern int gbl_fdb_class_override_spew_limit;
+extern int gbl_2pc;
+extern int gbl_2pc_ddl;
 extern int gbl_partial_indexes;
 extern int gbl_expressions_indexes;
 extern int gbl_debug_disttxn_trace;
@@ -4247,7 +4249,8 @@ int fdb_trans_commit(sqlclntstate *clnt, enum trans_clntcomm sideeffects, int *i
                      * remote bplog, so do not include this fdb as a participant
                      */
                     tran->nwrites = effects.num_inserted + effects.num_deleted + effects.num_updated;
-                    if (tran->nwrites) {
+                    /* a ddl writes no rows */
+                    if (tran->nwrites || tran->is_ddl) {
                         tran->writes_status = FDB_TRAN_WRITES;
                         *is_distributed = 1;
                     }
@@ -6272,8 +6275,9 @@ static int _running_dist_ddl(struct schema_change_type *sc, char **errmsg, uint3
 
     *errmsg = "";
 
-    /* Fix this, for now disable 2pc if its a DDL */
-    clnt->use_2pc = 0;
+    /* With 2pc ddl enabled the shards are 2pc participants and this node is the
+     * coordinator, so the schema change commits on every shard or on none */
+    clnt->use_2pc = (gbl_2pc && gbl_2pc_ddl);
 
     pushes = (fdb_push_connector_t**)alloca(nshards * sizeof(fdb_push_connector_t*));
     bzero(pushes, nshards * sizeof(fdb_push_connector_t*));
@@ -6300,7 +6304,8 @@ static int _running_dist_ddl(struct schema_change_type *sc, char **errmsg, uint3
 
     const char *str[6];
     int strl[6];
-    char *extra_set[6];
+    char *extra_set[7];
+    int n_extra_sets = 6;
 
     char numdbs_str[3];
     char numcols_str[3];
@@ -6361,6 +6366,10 @@ static int _running_dist_ddl(struct schema_change_type *sc, char **errmsg, uint3
     for (i = 0; i < nshards; i++)
         pos += snprintf(&extra_set[5][pos], strl[5] - pos, "%s ", shardnames[i]);
 
+    /* a 2pc participant reports its effects, which needs verifyretry off */
+    if (clnt->use_2pc)
+        extra_set[n_extra_sets++] = "SET VERIFYRETRY OFF";
+
     /* start the transaction */
     for(i = 0; i < nshards; i++) {
         clnt->fdb_push = pushes[i];
@@ -6374,7 +6383,7 @@ static int _running_dist_ddl(struct schema_change_type *sc, char **errmsg, uint3
                 rc = osql_schemachange_logic(sc, 0);
             } else {
                 /* remote */
-                rc = handle_fdb_push_write(clnt, &err, 6, (const char **)&extra_set, clnt->sql);
+                rc = handle_fdb_push_write(clnt, &err, n_extra_sets, (const char **)&extra_set, clnt->sql);
             }
         } while (0);
         clnt->sql = sql;
@@ -6393,6 +6402,7 @@ static int _running_dist_ddl(struct schema_change_type *sc, char **errmsg, uint3
             /* ddl has no rows writes */
             tran->nwrites += 1;
             tran->writes_status = FDB_TRAN_WRITES;
+            tran->is_ddl = 1;
             put_fdb(fdb, FDB_PUT_NOFREE);
         }
     }
@@ -6400,8 +6410,10 @@ static int _running_dist_ddl(struct schema_change_type *sc, char **errmsg, uint3
     /* commit the transaction */
     rc = osql_sock_commit(clnt, OSQL_SOCK_REQ, TRANS_CLNTCOMM_NORMAL);
     if (rc) {
-        logmsg(LOGMSG_ERROR, "%s Failed to commit ddl transaction rc %d\n", __func__, rc);
-        *errmsg = "failed to commit";
+        logmsg(LOGMSG_ERROR, "%s Failed to commit ddl transaction rc %d %s\n", __func__, rc, clnt->osql.xerr.errstr);
+        /* the master's error, e.g. that the outcome is unknown (the schema
+         * change may yet commit), is not just "failed to commit" */
+        *errmsg = clnt->osql.xerr.errstr[0] ? clnt->osql.xerr.errstr : "failed to commit";
         goto setup_error;
     }
 

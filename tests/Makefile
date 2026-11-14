@@ -22,7 +22,7 @@ ifeq ($(SKIPSSL),1)
 endif
 
 # Skip tests that need tcl
-ifeq ($(wildcard $(BUILDDIR)/tests/tools/tcl/libtclcdb2.so),)
+ifeq ($(wildcard $(BUILDDIR)/tests/tools/tcl/libtclcdb2.so $(BUILDDIR)/tests/tools/tcl/libtclcdb2.dylib),)
   #if we have not compiled with tcl, skip tests that require tclcdb2
   SKIPS:=$(shell ls *.test/*.tcl | xargs grep 'package require tclcdb2' | cut -f1 -d'/')
   DISABLED_TESTS:="${DISABLED_TESTS} ${SKIPS}"

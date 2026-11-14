@@ -428,6 +428,36 @@ typedef struct llog_scdone {
 } llog_scdone_t;
 
 #define SESS_SC_LIST_VER 1
+/* A 2pc sc_list has its 2pc configuration after its schema changes.  Binaries
+ * that predate it reject this version only with multitable_ddl; without it
+ * (the default) they never read sc_lists and resume its tables one by one as
+ * local schema changes.  Do not downgrade while a 2pc schema change is
+ * pending. */
+#define SESS_SC_LIST_2PC_VER 2
+
+/* The 2pc configuration of a distributed schema change, saved with its
+ * schema changes so that a new master that resumes them knows that it is a
+ * coordinator or a participant, and whom to tell the outcome */
+typedef struct sc_list_2pc {
+    int is_coordinator;
+    /* participant: set before it can vote, so a resume that finds it unset
+     * knows that it never voted yes and can abort on its own */
+    int may_vote;
+    char *dist_txnid;
+    /* participant: its coordinator */
+    char *coordinator_dbname;
+    char *coordinator_tier;
+    /* coordinator: its participants */
+    int nparticipants;
+    char **participant_names;
+    char **participant_tiers;
+    /* participant, not saved: the coordinator committed, so resume redoes it */
+    int coordinator_committed;
+    /* not saved: a resume of uuid holds it (sc_2pc_resume_begin); freeing this
+     * ends that resume */
+    int resuming;
+    uuid_t uuid;
+} sc_list_2pc_t;
 
 struct sc_list {
     uuid_t uuid; /* part of the key */
@@ -436,6 +466,7 @@ struct sc_list {
     int ser_scs_len;
     int *offsets;
     char *ser_scs;
+    sc_list_2pc_t *dist; /* set for a 2pc schema change */
 };
 typedef struct sc_list sc_list_t;
 
@@ -443,6 +474,34 @@ typedef struct sc_list sc_list_t;
  * pointer fields are malloced
  */
 int sc_list_create(sc_list_t *scl, void *vscs, uuid_t uuid);
+
+/* make scl a sclist2pc; a participant passes its coordinator, a coordinator
+ * adds its participants after */
+int sc_list_2pc_create(sc_list_t *scl, int is_coordinator, const char *dist_txnid, const char *coordinator_dbname,
+                       const char *coordinator_tier);
+
+/* free the malloced fields of scl */
+void sc_list_free(sc_list_t *scl);
+void sc_list_2pc_free(sc_list_2pc_t *dist);
+
+/* resume the 2pc sc_list of a participant that gave up on its coordinator */
+int resume_2pc_sc_list(uuid_t uuid);
+/* resume the 2pc sc_list of dist_txnid, if any, once its prepare was aborted */
+void resume_2pc_sc_list_aborted(const char *dist_txnid);
+
+/* One resume of a 2pc sc_list at a time: sc_2pc_resume_begin returns 0 if
+ * uuid is being resumed already, else marks dist as resuming it, which
+ * sc_list_2pc_free ends.  A failed resume is retried after
+ * sc_2pc_resume_retry_secs (growing with each retry), until
+ * sc_2pc_resume_done (it committed or aborted). */
+int sc_2pc_resume_begin(sc_list_2pc_t *dist, uuid_t uuid);
+int sc_2pc_resume_retry_secs(uuid_t uuid);
+void sc_2pc_resume_done(uuid_t uuid);
+/* A participant that gave up on its coordinator reserves its tables against
+ * other schema changes until sc_2pc_resume_done */
+void sc_2pc_reserve_table(uuid_t uuid, const char *table);
+void sc_2pc_reserve_sc(uuid_t uuid, struct schema_change_type *sc);
+int sc_2pc_table_reserved(const char *table);
 
 /* Returns 1 if schema changes of this kind run through do_ddl(), which is the
  * only path that marks the schema change in llmeta and, on completion, calls

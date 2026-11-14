@@ -1471,6 +1471,16 @@ struct ireq {
      * only then is sc_pending_mtx worth taking - see sc_pending_lock(). */
     int sc_shared;
     uuid_t scs_uuid; /* on resume, there is no sorese, but we need to know uuid for scs */
+    /* on resume of a 2pc schema change, its 2pc configuration */
+    struct sc_list_2pc *sc_resume_2pc;
+    /* abort_disttxn already told the coordinator or participants that this
+     * dist-txn failed */
+    int disttxn_failed;
+    /* a prepared 2pc schema change participant gave up on its coordinator:
+     * resume its sc_list once this request is done */
+    int disttxn_ddl_resume;
+    /* a 2pc schema change coordinator collected every yes vote */
+    int disttxn_all_prepared;
     double cost;
     uint64_t sc_seed;
     uint32_t sc_host;

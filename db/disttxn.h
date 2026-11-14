@@ -22,10 +22,21 @@
 #define DISTRIBUTED_TRANSACTIONS_TABLE "comdb2_distributed_transactions"
 
 /* coordinator_wait / participant_wait rcodes */
-enum { KEEP_RCODE = 0, HAS_COMMITTED = 1, HAS_ABORTED = 2, IS_NOT_DURABLE = 3, NO_DIST_TABLE = 4, LOCK_DESIRED = 5 };
+enum {
+    KEEP_RCODE = 0,
+    HAS_COMMITTED = 1,
+    HAS_ABORTED = 2,
+    IS_NOT_DURABLE = 3,
+    NO_DIST_TABLE = 4,
+    LOCK_DESIRED = 5,
+    ALL_PREPARED = 6,
+    TIMED_OUT = 7
+};
 
 /* This coordinator records participant information */
-int collect_participants(const char *dist_txnid, participant_list_t *participants);
+/* is_ddl: a distributed schema change, whose local part can fail after its
+ * participants prepared */
+int collect_participants(const char *dist_txnid, participant_list_t *participants, int is_ddl);
 
 /* This coordinator asks participants to prepare */
 int dispatch_participants(const char *dist_txnid);
@@ -43,6 +54,25 @@ int participant_failed(const char *dist_txnid, const char *dbname, const char *t
 /* This coordinator will block until participants have responded */
 int coordinator_wait(const char *dist_txnid, int can_retry, int *rcode, int *outrc, char *errmsg, int errmsglen,
                      int force_failure);
+
+/* This schema change coordinator blocks until participants have responded.
+ * Returns ALL_PREPARED when it can commit: it writes the decision itself. */
+int coordinator_wait_ddl(const char *dist_txnid, int *rcode, int *outrc, char *errmsg, int errmsglen);
+
+/* This schema change coordinator adds its commit decision to trans */
+int coordinator_ddl_write_decision(tran_type *trans, const char *dist_txnid);
+
+/* This schema change coordinator committed its decision durably (rc 0), did
+ * not write it (rc -1), or does not know whether it committed (rc
+ * LOCK_DESIRED); tell participants */
+int coordinator_ddl_committed(const char *dist_txnid, int rc);
+
+/* 2pc schema change resume: this coordinator copies its participants to dist,
+ * and an aborted resume tells its participants, or, for a participant that
+ * never voted yes, its coordinator */
+struct sc_list_2pc;
+int coordinator_copy_participants(const char *dist_txnid, struct sc_list_2pc *dist);
+void disttxn_ddl_resume_aborted(struct sc_list_2pc *dist);
 
 /* This coordinator will block until participants have propogated this txn */
 int coordinator_wait_propagate(const char *dist_txnid);
@@ -78,8 +108,25 @@ int participant_heartbeat(const char *dist_txnid, const char *participant_name, 
 int participant_wait(const char *dist_txnid, const char *coordinator_name, const char *coordinator_tier,
                      const char *coordinator_master);
 
+/* This schema change participant waits for the coordinator for up to twice
+ * disttxn_ddl_timeout_ms (then TIMED_OUT), or until lock-desired */
+int participant_wait_ddl(const char *dist_txnid, const char *coordinator_name, const char *coordinator_tier,
+                         const char *coordinator_master);
+
+/* A participant resuming a 2pc schema change asks the coordinator for its
+ * decision: HAS_COMMITTED, HAS_ABORTED or LOCK_DESIRED */
+int participant_wait_resumed_ddl(const char *dist_txnid, const char *coordinator_name, const char *coordinator_tier);
+
+/* The commit of this prepared schema change failed after the coordinator
+ * committed: stop heartbeating it */
+void participant_ddl_commit_failed(const char *dist_txnid);
+
 /* This participant processes a coordinator's abort */
 int coordinator_aborted(const char *dist_txnid);
+
+/* Abort a recovered prepared transaction; a 2pc schema change's restored
+ * sc_list is resumed */
+int disttxn_abort_recovered(const char *dist_txnid);
 
 /* This participant processes a cordinator's commit */
 int coordinator_committed(const char *dist_txnid);

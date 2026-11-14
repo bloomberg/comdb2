@@ -3440,7 +3440,7 @@ clipper_usage:
         if ((tokcmp(tok, ltok, "commit") == 0) && found) {
             dbenv->bdb_env->dbenv->txn_commit_recovered(dbenv->bdb_env->dbenv, dist_txnid);
         } else if ((tokcmp(tok, ltok, "abort") == 0) && found) {
-            dbenv->bdb_env->dbenv->txn_abort_recovered(dbenv->bdb_env->dbenv, dist_txnid);
+            disttxn_abort_recovered(dist_txnid);
         } else if ((tokcmp(tok, ltok, "discard") == 0) && found) {
             dbenv->bdb_env->dbenv->txn_discard_recovered(dbenv->bdb_env->dbenv, dist_txnid);
         } else {

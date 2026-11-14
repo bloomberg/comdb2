@@ -481,7 +481,7 @@ int osql_sess_rcvop(uuid_t uuid, int type, void *data, int datalen, int *found)
             logmsg(LOGMSG_USER, "DISTTXN %s %s collect_participants uuid=%s\n", __func__, sess->dist_txnid,
                    comdb2uuidstr(sess->uuid, us));
         }
-        rc = collect_participants(sess->dist_txnid, &sess->participants);
+        rc = collect_participants(sess->dist_txnid, &sess->participants, sess->scs.count > 0);
         if (rc) {
             rc = osql_repository_put(sess);
             goto failed_stream;
@@ -702,7 +702,7 @@ static void _destroy_schema_changes(osql_sess_t *sess)
 static int _write_sc_list(sc_list_t *scl)
 {
     int rc = 0;
-    int payload_len = scl->offsets[0] + scl->ser_scs_len;
+    int payload_len = scl->offsets[0] + scl->ser_scs_len + osqlcomm_scl_2pc_size(scl);
     char *payload = malloc(payload_len);
     if (!payload) {
         logmsg(LOGMSG_ERROR, "%s oom\n", __func__);
@@ -772,13 +772,27 @@ int osql_sess_save_sc_list(osql_sess_t *sess)
     if (sess->scs.count == 0)
         return 0;
 
-    if (!gbl_multitable_ddl)
+    /* A 2pc schema change is always saved: a new master must resume it with
+     * its 2pc configuration, rather than resume its tables one by one as
+     * local schema changes */
+    int dist = sess->dist_txnid && (sess->is_coordinator || sess->is_participant);
+
+    if (!gbl_multitable_ddl && !dist)
         return 0;
 
     rc = sc_list_create(&scl, &sess->scs, sess->uuid);
     if (rc) {
         logmsg(LOGMSG_ERROR, "%s: failed to create sc_list\n",
                __func__);
+        goto done;
+    }
+
+    /* the participants have moved to the coordinator's dist-txn */
+    if (dist && (sc_list_2pc_create(&scl, sess->is_coordinator, sess->dist_txnid, sess->coordinator_dbname,
+                                    sess->coordinator_tier) ||
+                 (sess->is_coordinator && coordinator_copy_participants(sess->dist_txnid, scl.dist)))) {
+        errstat_set_rcstrf(&sess->xerr, rc = ERR_SC, "failed to save 2pc schema change %s", sess->dist_txnid);
+        logmsg(LOGMSG_ERROR, "%s: failed to add 2pc configuration for %s\n", __func__, sess->dist_txnid);
         goto done;
     }
 
@@ -799,7 +813,43 @@ int osql_sess_save_sc_list(osql_sess_t *sess)
     rc = _write_sc_list(&scl);
 
 done:
-    free(scl.offsets);
-    free(scl.ser_scs);
+    sc_list_free(&scl);
+    return rc;
+}
+
+int osql_sc_list_may_vote(uuid_t uuid)
+{
+    sc_list_t scl = {0};
+    void **dtas = NULL, **keys = NULL;
+    int *dtalens = NULL;
+    int keylen = 0, num = 0, bdberr = 0, rc = -1;
+
+    /* the schema changes have left the session by now: rewrite the saved
+     * sc_list rather than build it again */
+    if (bdb_llmeta_get_all_sc_lists(NULL, &dtas, &dtalens, &keys, &keylen, &num, &bdberr)) {
+        logmsg(LOGMSG_ERROR, "%s: failed to retrieve sc lists, bdberr %d\n", __func__, bdberr);
+        return -1;
+    }
+    for (int i = 0; i < num && rc == -1; i++) {
+        if (!osqlcomm_scl_get_key(&scl, keys[i], (uint8_t *)keys[i] + keylen) || comdb2uuidcmp(scl.uuid, uuid))
+            continue;
+        if (osqlcomm_scl_get(&scl, dtas[i], (uint8_t *)dtas[i] + dtalens[i]) && scl.dist) {
+            scl.dist->may_vote = 1;
+            rc = _write_sc_list(&scl);
+        }
+        sc_list_free(&scl);
+        break;
+    }
+    for (int i = 0; i < num; i++) {
+        free(dtas[i]);
+        free(keys[i]);
+    }
+    free(dtas);
+    free(keys);
+    free(dtalens);
+    if (rc) {
+        uuidstr_t us;
+        logmsg(LOGMSG_ERROR, "%s: failed to mark 2pc sc list %s\n", __func__, comdb2uuidstr(uuid, us));
+    }
     return rc;
 }

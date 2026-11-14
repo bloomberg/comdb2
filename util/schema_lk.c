@@ -19,12 +19,17 @@
 #include <sys_wrap.h>
 #include <schema_lk.h>
 #include <assert.h>
+#include <errno.h>
+#include <poll.h>
+#include <time.h>
 
 static pthread_rwlock_t schema_lk = PTHREAD_RWLOCK_INITIALIZER;
 static pthread_t last_schema_wrlock_owner;
 
 __thread int have_readlock = 0;
 __thread int have_writelock = 0;
+/* This thread holds the write lock to finalize a schema change */
+__thread int have_sc_finalize_lock = 0;
 
 int have_schema_lock(void)
 {
@@ -71,8 +76,10 @@ void unlock_schema_int(const char *file, const char *func, int line)
 #endif
     if (have_readlock)
         have_readlock--;
-    else if (have_writelock)
+    else if (have_writelock) {
         have_writelock = 0;
+        have_sc_finalize_lock = 0;
+    }
     Pthread_rwlock_unlock(&schema_lk);
 }
 
@@ -88,6 +95,60 @@ void wrlock_schema_int(const char *file, const char *func, int line)
     logmsg(LOGMSG_USER, "%p:WRLOCK %s:%d\n", (void *)pthread_self(), func, line);
 #endif
     last_schema_wrlock_owner = pthread_self();
+}
+
+int wrlock_schema_timed_int(int timeoutms, const char *file, const char *func, int line)
+{
+#ifdef DEBUG_SCHEMA_LK
+    bdb_thread_assert_nolocks(get_bdb_env());
+#endif
+    assert(have_readlock == 0 && have_writelock == 0);
+    struct timespec ts;
+    int rc;
+#ifdef __APPLE__
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+#else
+    clock_gettime(CLOCK_REALTIME, &ts);
+#endif
+    ts.tv_sec += timeoutms / 1000;
+    ts.tv_nsec += (timeoutms % 1000) * 1000000L;
+    if (ts.tv_nsec >= 1000000000L) {
+        ts.tv_sec++;
+        ts.tv_nsec -= 1000000000L;
+    }
+#ifdef __APPLE__
+    /* no pthread_rwlock_timedwrlock */
+    while ((rc = pthread_rwlock_trywrlock(&schema_lk)) == EBUSY) {
+        struct timespec now;
+        clock_gettime(CLOCK_MONOTONIC, &now);
+        if (now.tv_sec > ts.tv_sec || (now.tv_sec == ts.tv_sec && now.tv_nsec >= ts.tv_nsec)) {
+            rc = ETIMEDOUT;
+            break;
+        }
+        poll(NULL, 0, 1);
+    }
+#else
+    rc = pthread_rwlock_timedwrlock(&schema_lk, &ts);
+#endif
+    if (rc)
+        return rc;
+    have_writelock = 1;
+#ifdef VERBOSE_SCHEMA_LK
+    logmsg(LOGMSG_USER, "%p:WRLOCK %s:%d\n", (void *)pthread_self(), func, line);
+#endif
+    last_schema_wrlock_owner = pthread_self();
+    return 0;
+}
+
+void set_sc_finalize_schema_lk(void)
+{
+    if (have_writelock)
+        have_sc_finalize_lock = 1;
+}
+
+int have_sc_finalize_schema_lk(void)
+{
+    return have_sc_finalize_lock;
 }
 
 void assert_wrlock_schema_int(const char *file, const char *func, int line)

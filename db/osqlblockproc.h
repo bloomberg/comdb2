@@ -115,4 +115,8 @@ void osql_bplog_set_blkseq(osql_sess_t *sess, struct ireq *iq);
  */
 void osql_bplog_time_done(osql_bp_timings_t *tms);
 
+/* Release the pending schema changes in memory, as a downgrade does, keeping
+ * the sc_list and sc seed that their resume redoes them from */
+void osql_sc_release_for_resume(struct ireq *iq);
+
 #endif

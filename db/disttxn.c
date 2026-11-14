@@ -16,6 +16,7 @@
 #include <alloca.h>
 #include <segstr.h>
 #include <sql.h>
+#include <schemachange.h>
 
 /**
  * coordinator:
@@ -91,6 +92,7 @@ typedef struct distributed_transaction {
     LINKC_T(struct distributed_transaction) linkv;
 
     int sending;
+    int is_ddl;
     int failrc;
     int outrc;
     char *errstr;
@@ -167,6 +169,8 @@ static char allowed_coordinators_str[2048] = {0};
 
 /* Tunables */
 int gbl_2pc = 0;
+int gbl_2pc_ddl = 0;
+int gbl_disttxn_ddl_timeout_ms = 120000;
 int gbl_disttxn_linger_time = 10;
 int gbl_disttxn_handle_linger_time = 60;
 int gbl_disttxn_handle_cache = 1;
@@ -178,6 +182,59 @@ int gbl_coordinator_block_until_durable = 1;
 
 /* Debug tunables */
 int gbl_debug_exit_participant_after_prepare = 0;
+int gbl_debug_fail_ddl_prepare = 0;
+int gbl_debug_sleep_ddl_before_lock_ms = 0;
+int gbl_debug_exit_participant_before_ddl_prepare = 0;
+int gbl_debug_commit_ddl_during_upgrade = 0;
+int gbl_debug_resumed_ddl_lock_desired = 0;
+extern int gbl_debug_fail_2pc_redo_finalize;
+char *gbl_debug_remote_2pc_fault = NULL;
+
+/* Parse the debug_remote_2pc_fault tunable: a comma-separated list of faults,
+ * some with a ':' argument; "off", "0" or empty clears them all.  Returns
+ * non-zero, changing nothing, on an unknown fault. */
+int disttxn_set_remote_2pc_fault(const char *faults)
+{
+    int fail_prepare = 0, exit_before_prepare = 0, commit_during_upgrade = 0, sleep_ms = 0, redo = 0, lockd = 0;
+    char *copy = strdup(faults ? faults : ""), *tok, *last = NULL;
+    if (!copy)
+        return 1;
+    for (tok = strtok_r(copy, ", ", &last); tok; tok = strtok_r(NULL, ", ", &last)) {
+        char *arg = strchr(tok, ':');
+        if (arg)
+            *arg++ = '\0';
+        int n = arg ? atoi(arg) : 1;
+        if (!strcmp(tok, "off") || !strcmp(tok, "0"))
+            continue;
+        else if (!strcmp(tok, "fail_prepare"))
+            fail_prepare = 1;
+        else if (!strcmp(tok, "fail_commit"))
+            fail_prepare = 2;
+        else if (!strcmp(tok, "exit_before_prepare"))
+            exit_before_prepare = 1;
+        else if (!strcmp(tok, "commit_during_upgrade"))
+            commit_during_upgrade = 1;
+        else if (!strcmp(tok, "sleep_before_lock") && arg)
+            sleep_ms = n;
+        else if (!strcmp(tok, "fail_redo_finalize"))
+            redo = n;
+        else if (!strcmp(tok, "resumed_lock_desired"))
+            lockd = n;
+        else {
+            logmsg(LOGMSG_ERROR, "%s: unknown remote 2pc fault '%s'\n", __func__, tok);
+            free(copy);
+            return 1;
+        }
+    }
+    free(copy);
+    gbl_debug_fail_ddl_prepare = fail_prepare;
+    gbl_debug_exit_participant_before_ddl_prepare = exit_before_prepare;
+    gbl_debug_commit_ddl_during_upgrade = commit_during_upgrade;
+    gbl_debug_sleep_ddl_before_lock_ms = sleep_ms;
+    gbl_debug_fail_2pc_redo_finalize = redo;
+    gbl_debug_resumed_ddl_lock_desired = lockd;
+    return 0;
+}
 int gbl_debug_exit_coordinator_before_commit = 0;
 int gbl_debug_sleep_coordinator_before_commit = 0;
 int gbl_debug_exit_coordinator_after_commit = 0;
@@ -336,9 +393,9 @@ static void send_coordinator_prepared(const char *dist_txnid, const char *dbname
                      gbl_disttxn_async_messages);
 }
 
-/* Find coordinator master & tell it that we have prepared */
-static void send_coordinator_prepared_find_master(const char *dist_txnid, const char *coordinator_dbname,
-                                                  const char *coordinator_tier)
+/* Find the master of coordinator_dbname (or of a participant) & send it op */
+static void send_2pc_message_find_master(const char *dist_txnid, const char *coordinator_dbname,
+                                         const char *coordinator_tier, int op, int rcode, int outrc, const char *errmsg)
 {
     if (gbl_debug_disttxn_trace) {
         logmsg(LOGMSG_USER, "DISTTXN %s dist_txnid %s dbname=%s tier=%s\n", __func__, dist_txnid, coordinator_dbname,
@@ -356,13 +413,17 @@ static void send_coordinator_prepared_find_master(const char *dist_txnid, const 
         cdb2_set_debug_trace(hndl);
     }
     char *pname = gbl_dbname, *ptier = gbl_machine_class ? gbl_machine_class : gbl_myhostname;
-    if ((rc = cdb2_send_2pc(hndl, (char *)coordinator_dbname, pname, ptier, gbl_myhostname, CDB2_DIST__PREPARED,
-                            (char *)dist_txnid, 0, 0, NULL, gbl_disttxn_async_messages)) != 0) {
+    if ((rc = cdb2_send_2pc(hndl, (char *)coordinator_dbname, pname, ptier, gbl_myhostname, op, (char *)dist_txnid,
+                            rcode, outrc, (char *)errmsg, gbl_disttxn_async_messages)) != 0) {
         logmsg(LOGMSG_INFO, "%s dist-txn %s error sending to %s tier %s, rc=%d\n", __func__, dist_txnid,
                coordinator_dbname, coordinator_tier, rc);
     }
     cdb2_close(hndl);
 }
+
+/* Find coordinator master & tell it that we have prepared */
+#define send_coordinator_prepared_find_master(dist_txnid, dbname, tier)                                                \
+    send_2pc_message_find_master(dist_txnid, dbname, tier, CDB2_DIST__PREPARED, 0, 0, NULL)
 
 /* Return true if comdb2_distributed_transactions has this record */
 static int transaction_has_committed(const char *dist_txnid)
@@ -464,6 +525,17 @@ static const char *has_committed_rcode(int rcode)
     return "UNKNOWN";
 }
 
+/* Abort a recovered prepared transaction.  A prepared 2pc schema change gets
+ * its sc_list back, which is resumed: that asks the coordinator again. */
+int disttxn_abort_recovered(const char *dist_txnid)
+{
+    int schema = bdb_dist_txn_is_schema_prepare(thedb->bdb_env, dist_txnid);
+    int rc = thedb->bdb_env->dbenv->txn_abort_recovered(thedb->bdb_env->dbenv, dist_txnid);
+    if (rc == 0 && schema && bdb_amimaster(thedb->bdb_env))
+        resume_2pc_sc_list_aborted(dist_txnid);
+    return rc;
+}
+
 static void recover_prepared_transaction(const char *dist_txnid, const char *coordinator_dbname,
                                          const char *coordinator_tier)
 {
@@ -481,7 +553,7 @@ static void recover_prepared_transaction(const char *dist_txnid, const char *coo
             if (gbl_debug_disttxn_trace) {
                 logmsg(LOGMSG_USER, "DISTTXN %s txn %s coordinator-local txn has aborted\n", __func__, dist_txnid);
             }
-            thedb->bdb_env->dbenv->txn_abort_recovered(thedb->bdb_env->dbenv, dist_txnid);
+            disttxn_abort_recovered(dist_txnid);
         } else if (gbl_debug_disttxn_trace) {
             logmsg(LOGMSG_USER, "DISTTXN %s txn %s coordinator-local txn-has-committed returns %s\n", __func__,
                    dist_txnid, has_committed_rcode(committed));
@@ -689,7 +761,7 @@ int dispatch_participants(const char *dist_txnid)
     return 0;
 }
 
-int collect_participants(const char *dist_txnid, participant_list_t *participants)
+int collect_participants(const char *dist_txnid, participant_list_t *participants, int is_ddl)
 {
     if (gbl_debug_disttxn_trace) {
         logmsg(LOGMSG_USER, "DISTTXN %s dist_txnid %s\n", __func__, dist_txnid);
@@ -721,6 +793,7 @@ int collect_participants(const char *dist_txnid, participant_list_t *participant
     Pthread_cond_init(&dtran->cd, NULL);
     Pthread_cond_init(&dtran->send_cd, NULL);
     dtran->state = DISTTXN_COLLECTED;
+    dtran->is_ddl = is_ddl;
 
     /* Grab participant list */
     struct participant *part;
@@ -897,6 +970,78 @@ static void flush_log(void)
     thedb->bdb_env->dbenv->log_flush(thedb->bdb_env->dbenv, NULL);
 }
 
+/* Add the dist-txnid to comdb2_distributed_transactions in trans */
+static int add_distributed_transaction_record(struct ireq *iq, tran_type *trans, const char *dist_txnid)
+{
+    char *tagname = ".ONDISK";
+    uint8_t *p_tagname_buf = (uint8_t *)tagname;
+    uint8_t *p_tagname_buf_end = p_tagname_buf + 7;
+    uint8_t *p_buf_data, *p_buf_data_end;
+    unsigned long long genid = 0LL;
+    int opcodefail = 0, ixfailnum = 0, rrn = 0, rc;
+
+    p_buf_data = alloca(iq->usedb->schema->recsize);
+    p_buf_data_end = p_buf_data + iq->usedb->schema->recsize;
+
+    rc = disttxn_ondisk_record(iq, (char *)dist_txnid, p_buf_data);
+    if (rc) {
+        logmsg(LOGMSG_ERROR, "%s: couldn't create ondisk record for dist-txn table, rc=%d\n", __func__, rc);
+        return rc;
+    }
+
+    int addflags = (RECFLAGS_NO_TRIGGERS | RECFLAGS_NO_BLOBS | RECFLAGS_INLINE_CONSTRAINTS);
+
+    return add_record(iq, trans, p_tagname_buf, p_tagname_buf_end, p_buf_data, p_buf_data_end, NULL, NULL, 0,
+                      &opcodefail, &ixfailnum, &rrn, &genid, -1ULL, BLOCK2_ADDKL, 0, addflags, 0);
+}
+
+/* A coordinator whose local part is a schema change does not prepare it: it
+ * writes the commit decision in the same transaction, so that commit is the
+ * decision.  The insert runs in a child of trans so that a deadlock with
+ * another coordinator's insert can be retried. */
+int coordinator_ddl_write_decision(tran_type *trans, const char *dist_txnid)
+{
+    struct ireq iq = {0};
+    tran_type *child;
+    int dlcount = 0, rc;
+
+    if (gbl_debug_disttxn_trace) {
+        logmsg(LOGMSG_USER, "DISTTXN %s dist_txnid %s\n", __func__, dist_txnid);
+    }
+
+    init_fake_ireq(thedb, &iq);
+    iq.usedb = get_dbtable_by_name(DISTRIBUTED_TRANSACTIONS_TABLE);
+
+    if (!iq.usedb) {
+        logmsg(LOGMSG_ERROR, "%s: couldn't find dist-txn table\n", __func__);
+        return -1;
+    }
+
+retry:
+    rc = trans_start(&iq, trans, &child);
+    if (rc != 0) {
+        logmsg(LOGMSG_ERROR, "%s error starting child transaction, %d\n", __func__, rc);
+        return rc;
+    }
+
+    rc = add_distributed_transaction_record(&iq, child, dist_txnid);
+    if (rc != 0) {
+        trans_abort(&iq, child);
+        if (rc == RC_INTERNAL_RETRY && ++dlcount < gbl_maxretries) {
+            goto retry;
+        }
+        logmsg(LOGMSG_ERROR, "%s error adding dist-txn %s, rc=%d\n", __func__, dist_txnid, rc);
+        return rc;
+    }
+
+    rc = trans_commit(&iq, child, gbl_myhostname);
+    if (rc != 0) {
+        logmsg(LOGMSG_ERROR, "%s error committing child transaction for dist-txn %s, rc=%d\n", __func__, dist_txnid,
+               rc);
+    }
+    return rc;
+}
+
 /* Commit == write the dist-txnid to comdb2_distributed_transactions */
 static int commit_distributed_transaction(transaction_t *dtran)
 {
@@ -904,13 +1049,8 @@ static int commit_distributed_transaction(transaction_t *dtran)
         logmsg(LOGMSG_USER, "DISTTXN %s dist_txnid %s\n", __func__, dtran->dist_txnid);
     }
     struct ireq iq = {0};
-    char *tagname = ".ONDISK";
-    uint8_t *p_tagname_buf = (uint8_t *)tagname;
-    uint8_t *p_tagname_buf_end = p_tagname_buf + 7;
-    uint8_t *p_buf_data, *p_buf_data_end;
-    unsigned long long genid = 0LL;
     tran_type *trans;
-    int opcodefail = 0, ixfailnum = 0, rrn = 0, dlcount = 0, rc;
+    int dlcount = 0, rc;
 
     /* Held by the coordinator transaction */
     assert(bdb_lockref() > 0);
@@ -923,16 +1063,7 @@ static int commit_distributed_transaction(transaction_t *dtran)
         return -1;
     }
 
-    p_buf_data = alloca(iq.usedb->schema->recsize);
-    p_buf_data_end = p_buf_data + iq.usedb->schema->recsize;
-
 retry:
-    rc = disttxn_ondisk_record(&iq, dtran->dist_txnid, p_buf_data);
-    if (rc) {
-        logmsg(LOGMSG_ERROR, "%s: couldn't create ondisk record for dist-txn table, rc=%d\n", __func__, rc);
-        return rc;
-    }
-
     rc = trans_start(&iq, NULL, &trans);
     if (rc != 0) {
         logmsg(LOGMSG_INFO, "%s error starting transaction, %d\n", __func__, rc);
@@ -943,10 +1074,7 @@ retry:
         bdb_trans_track(thedb->bdb_env, trans);
     }
 
-    int addflags = (RECFLAGS_NO_TRIGGERS | RECFLAGS_NO_BLOBS | RECFLAGS_INLINE_CONSTRAINTS);
-
-    rc = add_record(&iq, trans, p_tagname_buf, p_tagname_buf_end, p_buf_data, p_buf_data_end, NULL, NULL, 0,
-                    &opcodefail, &ixfailnum, &rrn, &genid, -1ULL, BLOCK2_ADDKL, 0, addflags, 0);
+    rc = add_distributed_transaction_record(&iq, trans, dtran->dist_txnid);
 
     if (rc != 0) {
         trans_abort(&iq, trans);
@@ -1102,9 +1230,12 @@ void coordinator_failed(const char *dist_txnid)
 
     dtran->coordinator_local->status = PARTICIPANT_FAILED;
 
-    assert(dtran->state != DISTTXN_PREPARED && dtran->state != DISTTXN_COMMITTED && dtran->state != DISTTXN_PROPAGATED);
+    /* A schema change coordinator decides in its own commit, so its local
+     * schema change can fail after every participant has prepared */
+    assert((dtran->is_ddl || dtran->state != DISTTXN_PREPARED) && dtran->state != DISTTXN_COMMITTED &&
+           dtran->state != DISTTXN_PROPAGATED);
 
-    if (dtran->state == DISTTXN_PREPARING) {
+    if (dtran->state == DISTTXN_PREPARING || dtran->state == DISTTXN_PREPARED) {
         abort_transaction_lk(dtran, 0);
     }
     dtran->state = DISTTXN_ABORT_RESOLVED;
@@ -1289,7 +1420,7 @@ static int coordinator_should_wait_lk(transaction_t *dtran, int can_retry, int *
 
 /* This blocks the coordinator's bp until we know whether this can commit, or until a timeout */
 static int coordinator_wait_int(const char *dist_txnid, int can_retry, int *rcode, int *outrc, char *errmsg,
-                                int errmsglen, int force_failure)
+                                int errmsglen, int force_failure, int ddl)
 {
     int returnzero = 0;
     if (gbl_debug_disttxn_trace) {
@@ -1406,6 +1537,12 @@ static int coordinator_wait_int(const char *dist_txnid, int can_retry, int *rcod
                    dtran->dist_txnid);
             sleep(5);
         }
+        /* The schema change coordinator writes the decision in its own
+         * commit.  It stays 'waiting' until coordinator_ddl_committed, so
+         * that the timeout thread cannot abort it while it decides. */
+        if (ddl) {
+            return ALL_PREPARED;
+        }
         start_timer = comdb2_time_epochms();
         int rc = commit_distributed_transaction(dtran);
         stop_timer = comdb2_time_epochms();
@@ -1475,12 +1612,121 @@ int coordinator_wait(const char *dist_txnid, int can_retry, int *rcode, int *out
                      int force_failure)
 {
     int startms = comdb2_time_epochms();
-    int rc = coordinator_wait_int(dist_txnid, can_retry, rcode, outrc, errmsg, errmsglen, force_failure);
+    int rc = coordinator_wait_int(dist_txnid, can_retry, rcode, outrc, errmsg, errmsglen, force_failure, 0);
     int endms = comdb2_time_epochms();
     if (gbl_debug_disttxn_trace) {
         logmsg(LOGMSG_USER, "DISTTXN %s txnid %s took %d ms\n", __func__, dist_txnid, endms - startms);
     }
     return rc;
+}
+
+int coordinator_wait_ddl(const char *dist_txnid, int *rcode, int *outrc, char *errmsg, int errmsglen)
+{
+    int startms = comdb2_time_epochms();
+    int rc = coordinator_wait_int(dist_txnid, 0, rcode, outrc, errmsg, errmsglen, 0, 1);
+    int endms = comdb2_time_epochms();
+    if (gbl_debug_disttxn_trace) {
+        logmsg(LOGMSG_USER, "DISTTXN %s txnid %s took %d ms rc %d\n", __func__, dist_txnid, endms - startms, rc);
+    }
+    return rc;
+}
+
+/* The schema change coordinator has committed its local transaction, which
+ * holds the decision, durably (rc 0), did not write the decision (rc -1), or
+ * lost mastership before the decision was durable (rc LOCK_DESIRED).  Tell the
+ * participants. */
+int coordinator_ddl_committed(const char *dist_txnid, int rc)
+{
+    if (gbl_debug_disttxn_trace) {
+        logmsg(LOGMSG_USER, "DISTTXN %s dist_txnid %s rc %d\n", __func__, dist_txnid, rc);
+    }
+    transaction_t *dtran;
+    int state;
+
+    Pthread_mutex_lock(&active_transactions_lk);
+    dtran = hash_find(active_transactions_hash, &dist_txnid);
+    if (dtran)
+        Pthread_mutex_lock(&dtran->lk);
+    Pthread_mutex_unlock(&active_transactions_lk);
+
+    if (!dtran) {
+        logmsg(LOGMSG_ERROR, "%s unable to find disttxn %s\n", __func__, dist_txnid);
+        return (rc == 0) ? HAS_COMMITTED : HAS_ABORTED;
+    }
+
+    dtran->coordinator_waiting = 0;
+    if (rc == LOCK_DESIRED) {
+        /* As for dml: keep the txn so that this node does not answer the
+         * participants from a decision that an election may lose.  The next
+         * master answers them from comdb2_distributed_transactions; the
+         * downgrade cleans this up. */
+        dtran->state = DISTTXN_LOCK_DESIRED;
+        Pthread_mutex_unlock(&dtran->lk);
+        return LOCK_DESIRED;
+    }
+    if (rc) {
+        abort_transaction_lk(dtran, 0);
+        dtran->state = DISTTXN_ABORT_RESOLVED;
+    } else {
+        commit_participants_lk(dtran);
+    }
+    dtran->resolved_time = comdb2_time_epochms();
+    state = dtran->state;
+    Pthread_mutex_unlock(&dtran->lk);
+
+    if (state == DISTTXN_ABORT_RESOLVED) {
+        cleanup_dtran(dist_txnid);
+        return HAS_ABORTED;
+    }
+    return HAS_COMMITTED;
+}
+
+int coordinator_copy_participants(const char *dist_txnid, sc_list_2pc_t *dist)
+{
+    transaction_t *dtran;
+    struct participant *part;
+    int n = 0, rc = 0;
+
+    Pthread_mutex_lock(&active_transactions_lk);
+    dtran = hash_find(active_transactions_hash, &dist_txnid);
+    if (dtran)
+        Pthread_mutex_lock(&dtran->lk);
+    Pthread_mutex_unlock(&active_transactions_lk);
+    if (!dtran)
+        return -1;
+
+    int count = listc_size(&dtran->participants);
+    dist->participant_names = calloc(count + 1, sizeof(char *));
+    dist->participant_tiers = calloc(count + 1, sizeof(char *));
+    if (!dist->participant_names || !dist->participant_tiers)
+        rc = -1;
+    LISTC_FOR_EACH(&dtran->participants, part, linkv)
+    {
+        if (rc)
+            break;
+        dist->nparticipants = ++n;
+        dist->participant_names[n - 1] = strdup(part->participant_name);
+        dist->participant_tiers[n - 1] = strdup(part->participant_tier);
+        if (!dist->participant_names[n - 1] || !dist->participant_tiers[n - 1])
+            rc = -1;
+    }
+    Pthread_mutex_unlock(&dtran->lk);
+    return rc;
+}
+
+void disttxn_ddl_resume_aborted(sc_list_2pc_t *dist)
+{
+    logmsg(LOGMSG_INFO, "%s resumed 2pc schema change %s aborted\n", __func__, dist->dist_txnid);
+    /* only a participant that never voted yes: the coordinator cannot be past
+     * collecting votes, so a failure is safe to send */
+    assert(dist->is_coordinator || !dist->may_vote);
+    if (!dist->is_coordinator)
+        send_2pc_message_find_master(dist->dist_txnid, dist->coordinator_dbname, dist->coordinator_tier,
+                                     CDB2_DIST__FAILED_PREPARE, ERR_DIST_ABORT, ERR_BLOCK_FAILED,
+                                     "schema change aborted by a master change");
+    for (int i = 0; dist->is_coordinator && i < dist->nparticipants; i++)
+        send_2pc_message_find_master(dist->dist_txnid, dist->participant_names[i], dist->participant_tiers[i],
+                                     CDB2_DIST__ABORT, 0, 0, NULL);
 }
 
 static int collect_handles_timeout(void *obj, void *arg, int timeout)
@@ -1898,9 +2144,17 @@ void participant_has_propagated(const char *dist_txnid, const char *coordinator_
     disable_sanc_heartbeats(dist_txnid, 1);
 }
 
+/* The commit of a prepared schema change failed after its coordinator
+ * committed: stop heartbeating, so that the coordinator stops waiting for it
+ * to propagate; its resume redoes it */
+void participant_ddl_commit_failed(const char *dist_txnid)
+{
+    disable_sanc_heartbeats(dist_txnid, 1);
+}
+
 /* Participant block-processor blocks on coordinator */
 static int participant_wait_int(const char *dist_txnid, const char *coordinator_name, const char *coordinator_tier,
-                                const char *coordinator_master)
+                                const char *coordinator_master, int is_ddl)
 {
     if (gbl_debug_disttxn_trace) {
         logmsg(LOGMSG_USER, "DISTTXN %s WAIT %s tier %s master %s dist_txnid %s\n", __func__, coordinator_name,
@@ -1932,7 +2186,12 @@ static int participant_wait_int(const char *dist_txnid, const char *coordinator_
     Pthread_mutex_lock(&p->lk);
     Pthread_mutex_unlock(&part_lk);
 
-    while (p->state == I_AM_PREPARED && !(lock_desired = bdb_lock_desired(thedb->bdb_env))) {
+    /* A prepared schema change gives up after twice disttxn_ddl_timeout_ms:
+     * longer than its coordinator, which waits up to disttxn_ddl_timeout_ms
+     * for its own schema lock once every participant prepared */
+    int timed_out = 0, wait_start = comdb2_time_epochms(), ddl_wait_ms = 2 * gbl_disttxn_ddl_timeout_ms;
+    while (p->state == I_AM_PREPARED && !(lock_desired = bdb_lock_desired(thedb->bdb_env)) &&
+           !(timed_out = (is_ddl && ddl_wait_ms > 0 && comdb2_time_epochms() - wait_start >= ddl_wait_ms))) {
         if (gbl_debug_disttxn_trace) {
             logmsg(LOGMSG_USER, "DISTTXN %s line %d sending prepared %s first=%d\n", __func__, __LINE__, dist_txnid,
                    first);
@@ -1973,6 +2232,12 @@ static int participant_wait_int(const char *dist_txnid, const char *coordinator_
 
     if (rtn == I_AM_PREPARED && lock_desired) {
         return LOCK_DESIRED;
+    }
+
+    if (rtn == I_AM_PREPARED && timed_out) {
+        logmsg(LOGMSG_ERROR, "%s: dist-txnid %s gave up on coordinator %s after %d ms\n", __func__, dist_txnid,
+               coordinator_name, ddl_wait_ms);
+        return TIMED_OUT;
     }
 
     return (rtn == I_AM_COMMITTED) ? HAS_COMMITTED : HAS_ABORTED;
@@ -2028,12 +2293,71 @@ int participant_wait(const char *dist_txnid, const char *coordinator_name, const
                      const char *coordinator_master)
 {
     int startms = comdb2_time_epochms();
-    int rc = participant_wait_int(dist_txnid, coordinator_name, coordinator_tier, coordinator_master);
+    int rc = participant_wait_int(dist_txnid, coordinator_name, coordinator_tier, coordinator_master, 0);
     int endms = comdb2_time_epochms();
     if (gbl_debug_disttxn_trace) {
         logmsg(LOGMSG_USER, "DISTTXN %s txnid %s took %d ms\n", __func__, dist_txnid, endms - startms);
     }
     return rc;
+}
+
+/* A prepared schema change gives up on lock-desired as on a timeout: it is
+ * aborted and its kept sc_list redoes it if the coordinator committed (a new
+ * master aborts a recovered one rather than commit it unpublished) */
+int participant_wait_ddl(const char *dist_txnid, const char *coordinator_name, const char *coordinator_tier,
+                         const char *coordinator_master)
+{
+    int startms = comdb2_time_epochms();
+    int rc = participant_wait_int(dist_txnid, coordinator_name, coordinator_tier, coordinator_master, 1);
+    int endms = comdb2_time_epochms();
+    if (gbl_debug_disttxn_trace) {
+        logmsg(LOGMSG_USER, "DISTTXN %s txnid %s took %d ms rc %d\n", __func__, dist_txnid, endms - startms, rc);
+    }
+    return rc;
+}
+
+/* A participant resuming a 2pc schema change asks the coordinator for its
+ * decision before it redoes it, holding no locks.  It stops if it is no longer
+ * master: the next master asks. */
+int participant_wait_resumed_ddl(const char *dist_txnid, const char *coordinator_name, const char *coordinator_tier)
+{
+    Pthread_mutex_lock(&part_lk);
+    participant_t *p = hash_find(participant_hash, &dist_txnid);
+    if (!p) {
+        p = add_participant_lk(dist_txnid, I_AM_PREPARED);
+        p->start_wait = comdb2_time_epochms();
+    }
+    Pthread_mutex_lock(&p->lk);
+    Pthread_mutex_unlock(&part_lk);
+
+    int lock_desired = 0;
+    if (gbl_debug_resumed_ddl_lock_desired > 0) {
+        gbl_debug_resumed_ddl_lock_desired--;
+        logmsg(LOGMSG_USER, "%s: lock desired for resumed %s on debug tunable\n", __func__, dist_txnid);
+        lock_desired = 1;
+    }
+    while (!lock_desired && p->state == I_AM_PREPARED &&
+           !(lock_desired = (bdb_lock_desired(thedb->bdb_env) || !bdb_amimaster(thedb->bdb_env)))) {
+        Pthread_mutex_unlock(&p->lk);
+        send_coordinator_prepared_find_master(dist_txnid, coordinator_name, coordinator_tier);
+        Pthread_mutex_lock(&p->lk);
+        if (p->state == I_AM_PREPARED) {
+            struct timespec ts;
+            clock_gettime(CLOCK_REALTIME, &ts);
+            ts.tv_sec += 1;
+            pthread_cond_timedwait(&p->cd, &p->lk, &ts);
+        }
+    }
+    int state = p->state;
+    Pthread_mutex_unlock(&p->lk);
+
+    Pthread_mutex_lock(&part_lk);
+    rem_participant_lk(p);
+    Pthread_mutex_unlock(&part_lk);
+
+    if (state == I_AM_COMMITTED)
+        return HAS_COMMITTED;
+    return (state == I_AM_PREPARED && lock_desired) ? LOCK_DESIRED : HAS_ABORTED;
 }
 
 /* Coordinator master tells me (participant master) to abort */
@@ -2048,7 +2372,7 @@ int coordinator_aborted(const char *dist_txnid)
 
         /* Abort recovered transactions immediately */
         Pthread_mutex_unlock(&part_lk);
-        int rc = thedb->bdb_env->dbenv->txn_abort_recovered(thedb->bdb_env->dbenv, dist_txnid);
+        int rc = disttxn_abort_recovered(dist_txnid);
         if (rc == 0) {
             if (gbl_debug_disttxn_trace) {
                 logmsg(LOGMSG_USER, "DISTTXN %s dist_txnid %s aborted recovered txn\n", __func__, dist_txnid);
@@ -2434,9 +2758,23 @@ void disttxn_init_recover_prepared(void)
     thedb->bdb_env->dbenv->set_recover_prepared_callback(thedb->bdb_env->dbenv, recover_prepared_transaction);
 }
 
+/* Test the window in which a new master aborts a prepared schema change: the
+ * coordinator's commit must not commit it there */
+static void debug_commit_ddl_during_upgrade(const char *dist_txnid)
+{
+    if (!gbl_debug_commit_ddl_during_upgrade)
+        return;
+    logmsg(LOGMSG_USER, "%s delivering coordinator commit for %s on debug tunable\n", __func__, dist_txnid);
+    coordinator_committed(dist_txnid);
+}
+
+extern void (*__txn_debug_upgrade_ddl_commit)(const char *dist_txnid);
+
 /* Initialize coordinator and participant data structures */
 void disttxn_init(void)
 {
+    __txn_debug_upgrade_ddl_commit = debug_commit_ddl_during_upgrade;
+
     Pthread_mutex_lock(&part_lk);
     participant_hash = hash_init_strptr(0);
     Pthread_mutex_unlock(&part_lk);

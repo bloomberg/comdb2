@@ -305,6 +305,14 @@ int start_schema_change_tran(struct ireq *iq, tran_type *trans)
     uuidstr_t us;
     comdb2uuidstr(s->uuid, us);
     s->seed = seed;
+    /* a participant that gave up on its coordinator keeps its tables until it
+     * learns the outcome; only its own redo, a resume, may change them */
+    if (!s->resume && sc_2pc_table_reserved(s->tablename)) {
+        errstat_set_strf(&iq->errstat, "Table %s is reserved by a pending distributed schema change", s->tablename);
+        free_schema_change_type(s);
+        iq->sc = NULL;
+        return SC_CANT_SET_RUNNING;
+    }
     rc = sc_set_running(iq, s, s->tablename, s->preempted ? 2 : 1, node,
                         time(NULL), __func__, __LINE__);
     if (rc != 0) {
@@ -1601,6 +1609,190 @@ const char *schema_change_kind(struct schema_change_type *s)
     case SC_BULK_IMPORT: return "SC_BULK_IMPORT";
     }
     return "UNKNOWN";
+}
+
+/* 2pc sc_lists being resumed or waiting for a retry */
+struct sc_2pc_resume {
+    uuid_t uuid;
+    int active;  /* being resumed */
+    int retries; /* failed resumes since it last committed or aborted */
+    /* tables a participant that gave up keeps until it learns the outcome */
+    int ntables;
+    char **tables;
+    struct sc_2pc_resume *next;
+};
+static struct sc_2pc_resume *sc_2pc_resumes = NULL;
+static pthread_mutex_t sc_2pc_resume_lk = PTHREAD_MUTEX_INITIALIZER;
+
+#define SC_2PC_RESUME_RETRY_SECS 10
+#define SC_2PC_RESUME_RETRY_MAX_SECS 300
+
+/* call with sc_2pc_resume_lk */
+static struct sc_2pc_resume **sc_2pc_resume_find_lk(uuid_t uuid)
+{
+    struct sc_2pc_resume **pr = &sc_2pc_resumes;
+    while (*pr && comdb2uuidcmp((*pr)->uuid, uuid))
+        pr = &(*pr)->next;
+    return pr;
+}
+
+/* call with sc_2pc_resume_lk: drop r once it is neither resumed nor retried */
+static void sc_2pc_resume_prune_lk(struct sc_2pc_resume **pr)
+{
+    struct sc_2pc_resume *r = *pr;
+    if (r && !r->active && !r->retries && !r->ntables) {
+        *pr = r->next;
+        free(r);
+    }
+}
+
+int sc_2pc_resume_begin(sc_list_2pc_t *dist, uuid_t uuid)
+{
+    int rc = 1;
+    Pthread_mutex_lock(&sc_2pc_resume_lk);
+    struct sc_2pc_resume **pr = sc_2pc_resume_find_lk(uuid);
+    if (*pr && (*pr)->active) {
+        rc = 0;
+    } else {
+        if (!*pr && (*pr = calloc(1, sizeof(struct sc_2pc_resume))))
+            comdb2uuidcpy((*pr)->uuid, uuid);
+        if (*pr)
+            (*pr)->active = 1;
+        /* out of memory: resume it untracked */
+    }
+    Pthread_mutex_unlock(&sc_2pc_resume_lk);
+    if (rc) {
+        dist->resuming = 1;
+        comdb2uuidcpy(dist->uuid, uuid);
+    }
+    return rc;
+}
+
+static void sc_2pc_resume_end(uuid_t uuid)
+{
+    Pthread_mutex_lock(&sc_2pc_resume_lk);
+    struct sc_2pc_resume **pr = sc_2pc_resume_find_lk(uuid);
+    if (*pr) {
+        (*pr)->active = 0;
+        sc_2pc_resume_prune_lk(pr);
+    }
+    Pthread_mutex_unlock(&sc_2pc_resume_lk);
+}
+
+int sc_2pc_resume_retry_secs(uuid_t uuid)
+{
+    int retries = 1;
+    Pthread_mutex_lock(&sc_2pc_resume_lk);
+    struct sc_2pc_resume **pr = sc_2pc_resume_find_lk(uuid);
+    if (!*pr && (*pr = calloc(1, sizeof(struct sc_2pc_resume))))
+        comdb2uuidcpy((*pr)->uuid, uuid);
+    if (*pr)
+        retries = ++(*pr)->retries;
+    Pthread_mutex_unlock(&sc_2pc_resume_lk);
+    int secs = SC_2PC_RESUME_RETRY_SECS;
+    while (--retries > 0 && secs < SC_2PC_RESUME_RETRY_MAX_SECS)
+        secs *= 2;
+    return secs < SC_2PC_RESUME_RETRY_MAX_SECS ? secs : SC_2PC_RESUME_RETRY_MAX_SECS;
+}
+
+void sc_2pc_reserve_table(uuid_t uuid, const char *table)
+{
+    Pthread_mutex_lock(&sc_2pc_resume_lk);
+    struct sc_2pc_resume **pr = sc_2pc_resume_find_lk(uuid);
+    if (!*pr && (*pr = calloc(1, sizeof(struct sc_2pc_resume))))
+        comdb2uuidcpy((*pr)->uuid, uuid);
+    struct sc_2pc_resume *r = *pr;
+    char **tables = r ? realloc(r->tables, (r->ntables + 1) * sizeof(char *)) : NULL;
+    if (tables) {
+        r->tables = tables;
+        if ((tables[r->ntables] = strdup(table)) != NULL)
+            r->ntables++;
+    }
+    Pthread_mutex_unlock(&sc_2pc_resume_lk);
+}
+
+void sc_2pc_reserve_sc(uuid_t uuid, struct schema_change_type *sc)
+{
+    sc_2pc_reserve_table(uuid, sc->tablename);
+    /* a generic shard is named by its partition too */
+    if ((sc->partition.type == PARTITION_ADD_GENSHARD || sc->partition.type == PARTITION_REM_GENSHARD) &&
+        sc->partition.u.genshard.tablename[0])
+        sc_2pc_reserve_table(uuid, sc->partition.u.genshard.tablename);
+}
+
+int sc_2pc_table_reserved(const char *table)
+{
+    int reserved = 0;
+    Pthread_mutex_lock(&sc_2pc_resume_lk);
+    for (struct sc_2pc_resume *r = sc_2pc_resumes; r && !reserved; r = r->next)
+        for (int i = 0; i < r->ntables && !reserved; i++)
+            reserved = !strcasecmp(r->tables[i], table);
+    Pthread_mutex_unlock(&sc_2pc_resume_lk);
+    return reserved;
+}
+
+void sc_2pc_resume_done(uuid_t uuid)
+{
+    Pthread_mutex_lock(&sc_2pc_resume_lk);
+    struct sc_2pc_resume **pr = sc_2pc_resume_find_lk(uuid);
+    if (*pr) {
+        (*pr)->retries = 0;
+        for (int i = 0; i < (*pr)->ntables; i++)
+            free((*pr)->tables[i]);
+        free((*pr)->tables);
+        (*pr)->tables = NULL;
+        (*pr)->ntables = 0;
+        sc_2pc_resume_prune_lk(pr);
+    }
+    Pthread_mutex_unlock(&sc_2pc_resume_lk);
+}
+
+void sc_list_2pc_free(sc_list_2pc_t *dist)
+{
+    if (!dist)
+        return;
+    if (dist->resuming)
+        sc_2pc_resume_end(dist->uuid);
+    free(dist->dist_txnid);
+    free(dist->coordinator_dbname);
+    free(dist->coordinator_tier);
+    for (int i = 0; i < dist->nparticipants; i++) {
+        if (dist->participant_names)
+            free(dist->participant_names[i]);
+        if (dist->participant_tiers)
+            free(dist->participant_tiers[i]);
+    }
+    free(dist->participant_names);
+    free(dist->participant_tiers);
+    free(dist);
+}
+
+int sc_list_2pc_create(sc_list_t *scl, int is_coordinator, const char *dist_txnid, const char *coordinator_dbname,
+                       const char *coordinator_tier)
+{
+    sc_list_2pc_t *dist = scl->dist = calloc(1, sizeof(sc_list_2pc_t));
+    if (!dist)
+        return -1;
+    scl->version = SESS_SC_LIST_2PC_VER;
+    dist->is_coordinator = is_coordinator;
+    dist->dist_txnid = strdup(dist_txnid);
+    if (!is_coordinator) {
+        dist->coordinator_dbname = coordinator_dbname ? strdup(coordinator_dbname) : NULL;
+        dist->coordinator_tier = coordinator_tier ? strdup(coordinator_tier) : NULL;
+        if (!dist->coordinator_dbname || !dist->coordinator_tier)
+            return -1;
+    }
+    return dist->dist_txnid ? 0 : -1;
+}
+
+void sc_list_free(sc_list_t *scl)
+{
+    free(scl->offsets);
+    scl->offsets = NULL;
+    free(scl->ser_scs);
+    scl->ser_scs = NULL;
+    sc_list_2pc_free(scl->dist);
+    scl->dist = NULL;
 }
 
 /* all scs part of the same txn -> in a sc_list object;

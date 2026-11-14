@@ -6167,6 +6167,10 @@ void freedb_int(dbtable *db, dbtable *replace)
     for (i=0; i < db->numcols; i++)
         columns[i] = db->columns[i];
 
+    /* generic shard map; a table rebuilt from its csc2 has none */
+    uint32_t numdbs = db->numdbs, numcols = db->numcols;
+    char **dbnames_arr = db->dbnames, **columns_arr = db->columns, **shardnames = db->shardnames;
+
     dbs_idx = db->dbs_idx;
 
     if (!replace) {
@@ -6260,10 +6264,35 @@ void freedb_int(dbtable *db, dbtable *replace)
         db->dbs_idx = dbs_idx;
         db->sqlaliasname = sqlaliasname;
         db->timepartition_name = timepartition_name;
-        for (i = 0; i < db->numdbs; i++)
-            db->dbnames[i] = dbnames[i];
-        for (i = 0; i < db->numcols; i++)
-            db->columns[i] = columns[i];
+        /* Keep the shard map, as sqlaliasname: replace is rebuilt from csc2,
+         * and losing the map leaves a generic shard (e.g. one whose drop was
+         * backed out) with sqlaliasname set but no dbnames.  Others may hold
+         * the old strings, so they stay; a map replace brought is its own
+         * copy, which nothing else refers to, so it goes. */
+        if (numdbs) {
+            if (db->dbnames != dbnames_arr) {
+                for (i = 0; i < db->numdbs; i++)
+                    free(db->dbnames[i]);
+                free(db->dbnames);
+            }
+            if (db->shardnames != shardnames) {
+                for (i = 0; db->shardnames && i < db->numdbs; i++)
+                    free(db->shardnames[i]);
+                free(db->shardnames);
+            }
+            db->numdbs = numdbs;
+            db->dbnames = dbnames_arr;
+            db->shardnames = shardnames;
+        }
+        if (numcols) {
+            if (db->columns != columns_arr) {
+                for (i = 0; i < db->numcols; i++)
+                    free(db->columns[i]);
+                free(db->columns);
+            }
+            db->numcols = numcols;
+            db->columns = columns_arr;
+        }
     }
 }
 
