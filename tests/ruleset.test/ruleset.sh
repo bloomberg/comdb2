@@ -10,9 +10,10 @@ cdb2sql --host $SP_HOST $SP_OPTIONS "EXEC PROCEDURE sys.cmd.send('free_ruleset')
 cdb2sql --host $SP_HOST $SP_OPTIONS "EXEC PROCEDURE sys.cmd.send('free_ruleset')"
 
 # The builtin_ruleset plugin loads its system.ruleset at startup, which creates
-# the "systemsqlpool" SQL pool.  Get rid of it here so that it does not show up
-# in the saved rulesets (phase 4) or in the pool listing (phase 10).
+# the "systemsqlpool" and "physrepsqlpool" SQL pools.  Get rid of them here so
+# that they do not show up in the saved rulesets (phase 4) or the pool listing (phase 10).
 cdb2sql --host $SP_HOST $SP_OPTIONS "EXEC PROCEDURE sys.cmd.send('destroy_sql_pool systemsqlpool')" > /dev/null 2>&1
+cdb2sql --host $SP_HOST $SP_OPTIONS "EXEC PROCEDURE sys.cmd.send('destroy_sql_pool physrepsqlpool')" > /dev/null 2>&1
 
 cdb2sql --host $SP_HOST $SP_OPTIONS "EXEC PROCEDURE sys.cmd.send('dump_ruleset')"
 

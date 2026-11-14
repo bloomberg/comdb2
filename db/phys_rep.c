@@ -1514,6 +1514,7 @@ static int get_current_lcgen(cdb2_hndl_tp *repl_db, int64_t *lcgen)
 {
     char cmd[200];
     int rc;
+    /* builtin ruleset rule 5 matches this text to route it to physrepsqlpool */
     rc = snprintf(cmd, sizeof(cmd), "select * from comdb2_transaction_logs limit 1");
     if (rc < 0 || rc >= sizeof(cmd)) {
         physrep_logmsg(LOGMSG_ERROR, "%s:%d: Buffer is not long enough!\n", __func__, __LINE__);
@@ -1785,6 +1786,7 @@ repl_loop:
 
         prev_info = info;
 
+        /* builtin ruleset rule 5 matches this text to route it to physrepsqlpool */
         rc = snprintf(sql_cmd, sql_cmd_len, "select * from comdb2_transaction_logs('{%u:%u}', NULL%s)", info.file,
                       info.offset, (gbl_blocking_physrep ? ",9" : ",8"));
         if (rc < 0 || rc >= sql_cmd_len)
