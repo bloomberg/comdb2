@@ -305,6 +305,14 @@ int start_schema_change_tran(struct ireq *iq, tran_type *trans)
     uuidstr_t us;
     comdb2uuidstr(s->uuid, us);
     s->seed = seed;
+    /* a participant that gave up on its coordinator keeps its tables until it
+     * learns the outcome; only its own redo, a resume, may change them */
+    if (!s->resume && sc_2pc_table_reserved(s->tablename)) {
+        errstat_set_strf(&iq->errstat, "Table %s is reserved by a pending distributed schema change", s->tablename);
+        free_schema_change_type(s);
+        iq->sc = NULL;
+        return SC_CANT_SET_RUNNING;
+    }
     rc = sc_set_running(iq, s, s->tablename, s->preempted ? 2 : 1, node,
                         time(NULL), __func__, __LINE__);
     if (rc != 0) {
@@ -1604,6 +1612,9 @@ struct sc_2pc_resume {
     uuid_t uuid;
     int active;  /* being resumed */
     int retries; /* failed resumes since it last committed or aborted */
+    /* tables a participant that gave up keeps until it learns the outcome */
+    int ntables;
+    char **tables;
     struct sc_2pc_resume *next;
 };
 static struct sc_2pc_resume *sc_2pc_resumes = NULL;
@@ -1625,7 +1636,7 @@ static struct sc_2pc_resume **sc_2pc_resume_find_lk(uuid_t uuid)
 static void sc_2pc_resume_prune_lk(struct sc_2pc_resume **pr)
 {
     struct sc_2pc_resume *r = *pr;
-    if (r && !r->active && !r->retries) {
+    if (r && !r->active && !r->retries && !r->ntables) {
         *pr = r->next;
         free(r);
     }
@@ -1680,12 +1691,53 @@ int sc_2pc_resume_retry_secs(uuid_t uuid)
     return secs < SC_2PC_RESUME_RETRY_MAX_SECS ? secs : SC_2PC_RESUME_RETRY_MAX_SECS;
 }
 
+void sc_2pc_reserve_table(uuid_t uuid, const char *table)
+{
+    Pthread_mutex_lock(&sc_2pc_resume_lk);
+    struct sc_2pc_resume **pr = sc_2pc_resume_find_lk(uuid);
+    if (!*pr && (*pr = calloc(1, sizeof(struct sc_2pc_resume))))
+        comdb2uuidcpy((*pr)->uuid, uuid);
+    struct sc_2pc_resume *r = *pr;
+    char **tables = r ? realloc(r->tables, (r->ntables + 1) * sizeof(char *)) : NULL;
+    if (tables) {
+        r->tables = tables;
+        if ((tables[r->ntables] = strdup(table)) != NULL)
+            r->ntables++;
+    }
+    Pthread_mutex_unlock(&sc_2pc_resume_lk);
+}
+
+void sc_2pc_reserve_sc(uuid_t uuid, struct schema_change_type *sc)
+{
+    sc_2pc_reserve_table(uuid, sc->tablename);
+    /* a generic shard is named by its partition too */
+    if ((sc->partition.type == PARTITION_ADD_GENSHARD || sc->partition.type == PARTITION_REM_GENSHARD) &&
+        sc->partition.u.genshard.tablename[0])
+        sc_2pc_reserve_table(uuid, sc->partition.u.genshard.tablename);
+}
+
+int sc_2pc_table_reserved(const char *table)
+{
+    int reserved = 0;
+    Pthread_mutex_lock(&sc_2pc_resume_lk);
+    for (struct sc_2pc_resume *r = sc_2pc_resumes; r && !reserved; r = r->next)
+        for (int i = 0; i < r->ntables && !reserved; i++)
+            reserved = !strcasecmp(r->tables[i], table);
+    Pthread_mutex_unlock(&sc_2pc_resume_lk);
+    return reserved;
+}
+
 void sc_2pc_resume_done(uuid_t uuid)
 {
     Pthread_mutex_lock(&sc_2pc_resume_lk);
     struct sc_2pc_resume **pr = sc_2pc_resume_find_lk(uuid);
     if (*pr) {
         (*pr)->retries = 0;
+        for (int i = 0; i < (*pr)->ntables; i++)
+            free((*pr)->tables[i]);
+        free((*pr)->tables);
+        (*pr)->tables = NULL;
+        (*pr)->ntables = 0;
         sc_2pc_resume_prune_lk(pr);
     }
     Pthread_mutex_unlock(&sc_2pc_resume_lk);

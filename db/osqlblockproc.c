@@ -1639,6 +1639,22 @@ int bplog_schemachange_wait(struct ireq *iq, int rc)
         abort_disttxn(iq, ERR_DIST_ABORT, ERR_BLOCK_FAILED);
     }
 
+    /* A coordinator collects its participants' votes before it takes the
+     * schema lock, so that its db is not stopped while they prepare */
+    if (!rc && iq->sorese && iq->sorese->dist_txnid && iq->sorese->is_coordinator) {
+        int rcode = 0, outrc = 0;
+        char errmsg[ERRSTAT_STR_SZ] = {0};
+        if (coordinator_wait_ddl(iq->sorese->dist_txnid, &rcode, &outrc, errmsg, sizeof(errmsg)) == ALL_PREPARED) {
+            iq->disttxn_all_prepared = 1;
+        } else {
+            rc = ERR_SC;
+            errstat_set_rcstrf(&iq->errstat, rc, "%s", errmsg[0] ? errmsg : "distributed schema change aborted");
+            logmsg(LOGMSG_ERROR, "%s: %s %s\n", __func__, iq->sorese->dist_txnid, iq->errstat.errstr);
+            /* the wait resolved the dist-txn and told the participants */
+            iq->disttxn_failed = 1;
+        }
+    }
+
     int locked = 0;
     if (!rc && iq->sorese && iq->sorese->dist_txnid && gbl_disttxn_ddl_timeout_ms > 0) {
         locked = !wrlock_schema_timed_lk(gbl_disttxn_ddl_timeout_ms);
@@ -2140,7 +2156,7 @@ done:
  * persisted for its tables (in-schema-change record, sc seed), which a later
  * per-table resume would otherwise redo as a local schema change, and record
  * it as aborted. */
-static void _sc_list_mark_over(sc_list_t *scl)
+void _sc_list_mark_over(sc_list_t *scl)
 {
     uuidstr_t us;
     comdb2uuidstr(scl->uuid, us);
@@ -2318,6 +2334,8 @@ int resume_sc_multiddl_txn(sc_list_t *scl, hash_t *tables)
     if (scl->dist && !scl->dist->is_coordinator && !scl->dist->coordinator_committed) {
         LISTC_FOR_EACH_SAFE(&scs, sc, tmp, scs_lnk)
         {
+            /* reserved until the outcome is known (sc_2pc_resume_done) */
+            sc_2pc_reserve_sc(scl->uuid, sc);
             listc_rfl(&scs, sc);
             free_schema_change_type(sc);
         }

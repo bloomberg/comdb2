@@ -275,7 +275,8 @@ REGISTER_TUNABLE("enable_2pc_ddl",
                  TUNABLE_BOOLEAN, &gbl_2pc_ddl, READONLY | NOARG, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("disttxn_ddl_timeout_ms",
                  "A 2pc schema change waits at most this many ms for the schema lock, then aborts, so that schema "
-                 "changes cannot wait on each other's schema locks forever; 0 waits forever.  (Default: 120000)",
+                 "changes cannot wait on each other's schema locks forever; a prepared participant waits twice as "
+                 "long for its coordinator; 0 waits forever.  (Default: 120000)",
                  TUNABLE_INTEGER, &gbl_disttxn_ddl_timeout_ms, 0, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("allow_coordinator",
                  "Set of dbname/tiers which can act as coordinator for this participant.  (Default: none)",

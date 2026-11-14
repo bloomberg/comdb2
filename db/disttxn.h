@@ -108,14 +108,18 @@ int participant_heartbeat(const char *dist_txnid, const char *participant_name, 
 int participant_wait(const char *dist_txnid, const char *coordinator_name, const char *coordinator_tier,
                      const char *coordinator_master);
 
-/* This schema change participant waits for the coordinator, ignoring
- * lock-desired, for up to disttxn_ddl_timeout_ms: then it returns TIMED_OUT */
+/* This schema change participant waits for the coordinator for up to twice
+ * disttxn_ddl_timeout_ms (then TIMED_OUT), or until lock-desired */
 int participant_wait_ddl(const char *dist_txnid, const char *coordinator_name, const char *coordinator_tier,
                          const char *coordinator_master);
 
 /* A participant resuming a 2pc schema change asks the coordinator for its
  * decision: HAS_COMMITTED, HAS_ABORTED or LOCK_DESIRED */
 int participant_wait_resumed_ddl(const char *dist_txnid, const char *coordinator_name, const char *coordinator_tier);
+
+/* The commit of this prepared schema change failed after the coordinator
+ * committed: stop heartbeating it */
+void participant_ddl_commit_failed(const char *dist_txnid);
 
 /* This participant processes a coordinator's abort */
 int coordinator_aborted(const char *dist_txnid);

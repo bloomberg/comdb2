@@ -2990,6 +2990,13 @@ static int disttxn_ddl_vote(struct ireq *iq, tran_type *parent_trans, void *bske
                                    ERR_NOT_DURABLE, ERR_BLOCK_FAILED, "Prepare was not durable");
             return -1;
         }
+        /* Prepared, its txn holds the locks of what it changed: release the
+         * schema lock, so that the db is not stopped while it waits.  An
+         * abort takes it again to back out (backout_schema_changes). */
+        if (iq->sc_locked) {
+            unlock_schema_lk();
+            iq->sc_locked = 0;
+        }
         Pthread_mutex_lock(&blklk);
         prepared_count++;
         Pthread_mutex_unlock(&blklk);
@@ -2998,16 +3005,20 @@ static int disttxn_ddl_vote(struct ireq *iq, tran_type *parent_trans, void *bske
         Pthread_mutex_lock(&blklk);
         prepared_count--;
         Pthread_mutex_unlock(&blklk);
-        /* gave up on the coordinator: abort, and resume the kept sc_list */
-        if (rc == TIMED_OUT) {
-            snprintf(iq->errstat.errstr, ERRSTAT_STR_SZ, "distributed schema change timed out waiting for coordinator");
+        /* gave up on the coordinator, or must yield mastership: abort, and
+         * resume the kept sc_list (on the next master after a downgrade) */
+        if (rc == TIMED_OUT || rc == LOCK_DESIRED) {
+            snprintf(iq->errstat.errstr, ERRSTAT_STR_SZ, "distributed schema change %s waiting for coordinator",
+                     rc == TIMED_OUT ? "timed out" : "gave up mastership");
             return 1;
         }
         return (rc == HAS_COMMITTED) ? 0 : -1;
     }
 
     assert(iq->sorese->is_coordinator);
-    rc = coordinator_wait_ddl(dist_txnid, &err->errcode, outrc, iq->errstat.errstr, ERRSTAT_STR_SZ);
+    /* bplog_schemachange_wait collected the votes before the schema lock */
+    assert(iq->disttxn_all_prepared);
+    rc = iq->disttxn_all_prepared ? ALL_PREPARED : HAS_ABORTED;
     if (rc == ALL_PREPARED) {
         if (coordinator_ddl_write_decision(parent_trans, dist_txnid) == 0)
             return 0;
@@ -6076,6 +6087,9 @@ add_blkseq:
                         trans_abort_logical(iq, iq->sc_logical_tran, NULL, 0, NULL, 0);
                         iq->sc_logical_tran = NULL;
                         backout_schema_changes(iq, NULL);
+                        /* while prepared, sql threads may have cached the
+                         * finalized schema: make them reload it */
+                        BDB_BUMP_DBOPEN_GEN(invalid, "2pc schema change backout");
                         dist_txn_abort_write_blkseq(thedb->bdb_env, bskey, bskeylen);
                         if (!outrc)
                             outrc = ERR_BLOCK_FAILED;
@@ -6090,6 +6104,10 @@ add_blkseq:
                      * its resume asks the coordinator, holding no locks, and
                      * redoes the schema change if it committed */
                     if (dist_ddl_abort > 0) {
+                        /* while it runs, nothing else changes its tables:
+                         * keep them until it learns the outcome */
+                        for (struct schema_change_type *sc = iq->sc_pending; sc; sc = sc->sc_next)
+                            sc_2pc_reserve_sc(iq->scs_uuid, sc);
                         iq->osql_flags &= ~OSQL_FLAGS_SCDONE;
                         iq->disttxn_ddl_resume = 1;
                         /* without SCDONE the abort callback frees nothing */
@@ -6102,6 +6120,7 @@ add_blkseq:
                                    __func__, iq->sorese->dist_txnid);
                             trans_abort_logical(iq, iq->sc_logical_tran, NULL, 0, NULL, 0);
                             backout_schema_changes(iq, NULL);
+                            BDB_BUMP_DBOPEN_GEN(invalid, "2pc schema change backout");
                             /* backout_schema_changes took the schema lock */
                             if (iq->sc_locked) {
                                 unlock_schema_lk();
@@ -6128,9 +6147,21 @@ add_blkseq:
                                     snprintf(iq->errstat.errstr, ERRSTAT_STR_SZ,
                                              "distributed schema change failed to commit, rc %d", irc);
                                 }
-                            } else {
+                            } else if (irc == 0) {
                                 participant_has_propagated(iq->sorese->dist_txnid, iq->sorese->coordinator_dbname,
                                                            iq->sorese->coordinator_master);
+                            } else {
+                                /* The coordinator committed: do not claim it
+                                 * propagated, and redo it from the kept
+                                 * sc_list, as a participant that gave up does */
+                                logmsg(LOGMSG_ERROR, "%s: commit of prepared schema change %s failed, rc %d\n",
+                                       __func__, iq->sorese->dist_txnid, irc);
+                                participant_ddl_commit_failed(iq->sorese->dist_txnid);
+                                for (struct schema_change_type *sc = iq->sc_pending; sc; sc = sc->sc_next)
+                                    sc_2pc_reserve_sc(iq->scs_uuid, sc);
+                                iq->osql_flags &= ~OSQL_FLAGS_SCDONE;
+                                iq->disttxn_ddl_resume = 1;
+                                osql_sc_release_for_resume(iq);
                             }
                         }
                     }

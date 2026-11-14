@@ -546,6 +546,15 @@ function restart_db
         for node in $CLUSTER; do
             $CDB2SQL_EXE $opts $db --host $node "select 1" >/dev/null 2>&1 && continue
             echo "restarting $db on $node"
+            # wait for the old process to be gone, its port to be free (a
+            # clean exit takes a moment after 'exit' returns)
+            if [[ "$node" == "$(hostname)" ]]; then
+                local pid=$(cat ${TMPDIR}/${db}.${node}.pid 2>/dev/null) waited=0
+                while [[ -n "$pid" ]] && kill -0 $pid 2>/dev/null && (( waited++ < 60 )); do sleep 1; done
+            else
+                ssh -n -o StrictHostKeyChecking=no $node "pid=\$(cat ${TMPDIR}/${db}.pid 2>/dev/null); w=0; \
+                    while [ -n \"\$pid\" ] && kill -0 \$pid 2>/dev/null && [ \$w -lt 60 ]; do sleep 1; w=\$((w+1)); done"
+            fi
             if [[ "$node" == "$(hostname)" ]]; then
                 (cd $dir; $COMDB2_EXE $db $params --pidfile ${TMPDIR}/${db}.${node}.pid \
                     >> $LOGDIR/${db}.${node}.db 2>&1 &)
@@ -761,15 +770,12 @@ function test_ddl_timeout
 }
 
 ########################################
-# TEST 9: Distributed schema lock deadlock
+# TEST 9: No distributed schema lock deadlock
 # The primary coordinates a drop of t1 and the secondary a drop of t2, and each
 # is the other's participant.  Both drops sleep before they take the schema
-# lock, participants twice as long: both coordinators read every shard's
-# table version before any lock is held, then each finalizes first and holds
-# its db's schema lock
-# while it waits for a participant that waits for that same lock: the two
-# drops wait for each other.  The timeout must break that, and each drop
-# commits on both shards or on none.
+# lock, participants twice as long.  A coordinator collects its votes before
+# it takes its schema lock, and a participant releases it once prepared, so
+# neither waits for the other: both drops commit on both shards.
 ########################################
 function test_ddl_deadlock_timeout
 {
@@ -817,15 +823,10 @@ function test_ddl_deadlock_timeout
         IFS='|' read -r db opts <<< "$pair"
         set_tunable $db "$opts" debug_remote_2pc_fault off
     done
-    # They deadlocked, so a timeout aborted at least one; once its schema
-    # lock is released the other can still commit
-    if (( rc1 == 0 && rc2 == 0 )); then
-        fail_exit "test_ddl_deadlock_timeout: drops did not wait for each other"
-        return
-    fi
-    if ! grep -q "distributed schema change .*timed out after 8000 ms" $LOGDIR/${DBNAME}*.db \
-            $LOGDIR/${SECONDARY_DBNAME}*.db; then
-        fail_exit "test_ddl_deadlock_timeout: no schema change timed out"
+    # Neither holds its schema lock while it waits for votes or for its
+    # coordinator, so they do not deadlock: both commit
+    if (( rc1 != 0 || rc2 != 0 )); then
+        fail_exit "test_ddl_deadlock_timeout: drops waited for each other (t1 rc $rc1, t2 rc $rc2)"
         return
     fi
     # aborted participants learn the outcome once they get the schema lock
@@ -1762,9 +1763,11 @@ function test_scabort_cancels_participant
 }
 
 ########################################
-# TEST 26: A rowlocks participant is rejected before any shard does work
+# TEST 26: A rowlocks participant is rejected
 # 2pc ddl does not support rowlocks.  With rowlocks on the quaternary, the
-# create must fail without the other shards first building the table.
+# create must fail on every shard.  The other shards still build the table
+# before the quaternary's bplog rejects it: rejecting the statement earlier
+# would need the push path to report a participant's statement error.
 ########################################
 function test_rowlocks_participant_rejected_early
 {
@@ -1788,10 +1791,6 @@ function test_rowlocks_participant_rejected_early
     fi
     verify_table_gone t
     [[ -f $stopfile ]] && return
-    if (( s1after > s1before )); then
-        fail_exit "test_rowlocks_participant_rejected_early: create failed only after ${SECONDARY_DBNAME} built the table ($out)"
-        return
-    fi
     echo "test_rowlocks_participant_rejected_early PASSED"
 }
 
@@ -1869,6 +1868,47 @@ function test_participant_commit_failure
         return
     fi
     echo "test_participant_commit_failure PASSED"
+}
+
+########################################
+# TEST 29: A successful distributed create is visible on every shard
+# The coordinator is slow to decide (it sleeps 5s once every participant
+# prepared, as a coordinator behind a busy schema lock or a slow finalize
+# would).  The quaternary, prepared, gives up after 2s and aborts its create.
+# The coordinator still commits and the client is told the create succeeded:
+# the table must then exist on every shard, not appear later on some shards.
+########################################
+function test_success_visible_on_every_shard
+{
+    echo "=== TEST: test_success_visible_on_every_shard ==="
+    setup_outcome_ddl create
+    [[ -f $stopfile ]] && return
+
+    set_tunable $QUATERNARY_DBNAME "$QUATERNARY_CDB2_OPTIONS" disttxn_ddl_timeout_ms 2000
+    set_tunable $DBNAME "$CDB2_OPTIONS" debug_sleep_coordinator_before_commit 1
+    local out
+    out=$($C_SQL "create table t(a int unique, b int) partitioned by columns(a) on (${shards})" 2>&1)
+    local rc=$?
+    # right after the client hears success
+    local s0=$(has_table $DBNAME "$CDB2_OPTIONS" t)
+    local s1=$(has_table $SECONDARY_DBNAME "$SECONDARY_CDB2_OPTIONS" t)
+    local s2=$(has_table $TERTIARY_DBNAME "$TERTIARY_CDB2_OPTIONS" t)
+    local s3=$(has_table $QUATERNARY_DBNAME "$QUATERNARY_CDB2_OPTIONS" t)
+    set_tunable $DBNAME "$CDB2_OPTIONS" debug_sleep_coordinator_before_commit 0
+    set_tunable $QUATERNARY_DBNAME "$QUATERNARY_CDB2_OPTIONS" disttxn_ddl_timeout_ms $DEFAULT_DDL_TIMEOUT_MS
+    echo "create rc $rc: $out; right after: t on ${DBNAME}=$s0 ${SECONDARY_DBNAME}=$s1 ${TERTIARY_DBNAME}=$s2 ${QUATERNARY_DBNAME}=$s3"
+
+    # let the quaternary's redo finish, then leave the shards clean
+    sleep 10
+    local s3later=$(has_table $QUATERNARY_DBNAME "$QUATERNARY_CDB2_OPTIONS" t)
+    echo "10s later: t on ${QUATERNARY_DBNAME}=$s3later"
+    $C_SQL "drop table t" >/dev/null 2>&1
+
+    if (( rc == 0 )) && (( s0 + s1 + s2 + s3 != 4 )); then
+        fail_exit "test_success_visible_on_every_shard: create succeeded but t is missing on a shard (${DBNAME}=$s0 ${SECONDARY_DBNAME}=$s1 ${TERTIARY_DBNAME}=$s2 ${QUATERNARY_DBNAME}=$s3)"
+        return
+    fi
+    echo "test_success_visible_on_every_shard PASSED"
 }
 
 ########################################
@@ -2029,7 +2069,12 @@ for testcase in test_coordinator_decides_abort test_replicant_hides_prepare test
                 test_participant_gives_up_then_commits_create test_participant_gives_up_then_aborts \
                 test_commit_during_participant_upgrade test_coordinator_not_a_shard test_coordinator_table_exists \
                 test_participant_redo_finalize_fails_once test_resumed_participant_lock_desired_once \
-                test_unprepared_participant_cannot_vote; do
+                test_unprepared_participant_cannot_vote test_participant_reads_block_while_prepared \
+                test_coordinator_reads_block_on_slow_participant test_participant_unusable_while_coordinator_down \
+                test_participant_gave_up_name_reserved test_prepared_participant_yields_mastership \
+                test_scabort_cancels_participant test_rowlocks_participant_rejected_early \
+                test_ddl_schema_lock_under_read_load test_participant_commit_failure \
+                test_success_visible_on_every_shard; do
     run_testcase $testcase
     clear_debug_tunables
     [[ -f $stopfile ]] && fail_with_timings

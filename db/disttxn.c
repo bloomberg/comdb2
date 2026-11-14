@@ -2144,9 +2144,17 @@ void participant_has_propagated(const char *dist_txnid, const char *coordinator_
     disable_sanc_heartbeats(dist_txnid, 1);
 }
 
+/* The commit of a prepared schema change failed after its coordinator
+ * committed: stop heartbeating, so that the coordinator stops waiting for it
+ * to propagate; its resume redoes it */
+void participant_ddl_commit_failed(const char *dist_txnid)
+{
+    disable_sanc_heartbeats(dist_txnid, 1);
+}
+
 /* Participant block-processor blocks on coordinator */
 static int participant_wait_int(const char *dist_txnid, const char *coordinator_name, const char *coordinator_tier,
-                                const char *coordinator_master, int ignore_lock_desired)
+                                const char *coordinator_master, int is_ddl)
 {
     if (gbl_debug_disttxn_trace) {
         logmsg(LOGMSG_USER, "DISTTXN %s WAIT %s tier %s master %s dist_txnid %s\n", __func__, coordinator_name,
@@ -2178,12 +2186,12 @@ static int participant_wait_int(const char *dist_txnid, const char *coordinator_
     Pthread_mutex_lock(&p->lk);
     Pthread_mutex_unlock(&part_lk);
 
-    /* A schema change waits holding the schema lock, which stops the whole
-     * db: it gives up after disttxn_ddl_timeout_ms */
-    int timed_out = 0, wait_start = comdb2_time_epochms();
-    while (p->state == I_AM_PREPARED && !(lock_desired = (!ignore_lock_desired && bdb_lock_desired(thedb->bdb_env))) &&
-           !(timed_out = (ignore_lock_desired && gbl_disttxn_ddl_timeout_ms > 0 &&
-                          comdb2_time_epochms() - wait_start >= gbl_disttxn_ddl_timeout_ms))) {
+    /* A prepared schema change gives up after twice disttxn_ddl_timeout_ms:
+     * longer than its coordinator, which waits up to disttxn_ddl_timeout_ms
+     * for its own schema lock once every participant prepared */
+    int timed_out = 0, wait_start = comdb2_time_epochms(), ddl_wait_ms = 2 * gbl_disttxn_ddl_timeout_ms;
+    while (p->state == I_AM_PREPARED && !(lock_desired = bdb_lock_desired(thedb->bdb_env)) &&
+           !(timed_out = (is_ddl && ddl_wait_ms > 0 && comdb2_time_epochms() - wait_start >= ddl_wait_ms))) {
         if (gbl_debug_disttxn_trace) {
             logmsg(LOGMSG_USER, "DISTTXN %s line %d sending prepared %s first=%d\n", __func__, __LINE__, dist_txnid,
                    first);
@@ -2228,7 +2236,7 @@ static int participant_wait_int(const char *dist_txnid, const char *coordinator_
 
     if (rtn == I_AM_PREPARED && timed_out) {
         logmsg(LOGMSG_ERROR, "%s: dist-txnid %s gave up on coordinator %s after %d ms\n", __func__, dist_txnid,
-               coordinator_name, gbl_disttxn_ddl_timeout_ms);
+               coordinator_name, ddl_wait_ms);
         return TIMED_OUT;
     }
 
@@ -2293,9 +2301,9 @@ int participant_wait(const char *dist_txnid, const char *coordinator_name, const
     return rc;
 }
 
-/* A prepared schema change cannot be discarded on lock-desired: a new master
- * would commit it without publishing the new schema.  So it holds its locks
- * until the coordinator decides. */
+/* A prepared schema change gives up on lock-desired as on a timeout: it is
+ * aborted and its kept sc_list redoes it if the coordinator committed (a new
+ * master aborts a recovered one rather than commit it unpublished) */
 int participant_wait_ddl(const char *dist_txnid, const char *coordinator_name, const char *coordinator_tier,
                          const char *coordinator_master)
 {

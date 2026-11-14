@@ -1096,21 +1096,31 @@ extern int resume_sc_multiddl_txn(sc_list_t *scl, hash_t *tables);
 extern int osql_delete_sc_list_int(uuid_t uuid, tran_type *trans, const char *c, int l);
 extern void disttxn_ddl_resume_aborted(sc_list_2pc_t *dist);
 
+extern void _sc_list_mark_over(sc_list_t *scl);
+
 /* .scabort drops a pending sc_list: the participants of a 2pc schema change
- * are told that it aborted.  A participant keeps its sc_list and resumes it:
- * it may have prepared (the upgrade aborts that transaction) and the
- * coordinator may have committed, so only the coordinator decides. */
+ * are told that it aborted.  A participant is cancelled too, as the operator
+ * asked, even though its coordinator may have committed; one whose txn is
+ * still prepared is left to its coordinator, as only that can resolve it. */
 static int abort_sc_list(sc_list_t *scl, hash_t *tables)
 {
     uuidstr_t us;
     comdb2uuidstr(scl->uuid, us);
     if (scl->dist) {
         if (!scl->dist->is_coordinator) {
-            logmsg(LOGMSG_WARN, "%s: not cancelling 2pc schema change %s, its coordinator %s decides\n", __func__, us,
-                   scl->dist->coordinator_dbname);
-            return resume_sc_multiddl_txn(scl, tables);
+            if (bdb_dist_txn_is_prepared(thedb->bdb_env, scl->dist->dist_txnid)) {
+                logmsg(LOGMSG_WARN, "%s: not cancelling prepared 2pc schema change %s, its coordinator %s decides\n",
+                       __func__, us, scl->dist->coordinator_dbname);
+                return resume_sc_multiddl_txn(scl, tables);
+            }
+            logmsg(LOGMSG_WARN, "%s: cancelling 2pc schema change %s without its coordinator %s's outcome\n", __func__,
+                   us, scl->dist->coordinator_dbname);
+            /* its per-table records would resume it as a local schema change */
+            _sc_list_mark_over(scl);
         }
-        disttxn_ddl_resume_aborted(scl->dist);
+        /* a participant that never voted tells its coordinator */
+        if (scl->dist->is_coordinator || !scl->dist->may_vote)
+            disttxn_ddl_resume_aborted(scl->dist);
     }
     logmsg(LOGMSG_WARN, "%s: cancelling %sschema change %s\n", __func__, scl->dist ? "2pc " : "", us);
     return osql_delete_sc_list_int(scl->uuid, NULL, __func__, __LINE__);
@@ -1272,6 +1282,9 @@ static int resume_2pc_sc_list_int(uuid_t uuid, const char *dist_txnid)
 int resume_2pc_sc_list(uuid_t uuid)
 {
     int rc = resume_2pc_sc_list_int(uuid, NULL);
+    /* no sc_list left: nothing to wait for, release its tables */
+    if (rc == 1)
+        sc_2pc_resume_done(uuid);
     if (rc) {
         uuidstr_t us;
         logmsg(LOGMSG_ERROR, "%s: could not resume 2pc sc list %s\n", __func__, comdb2uuidstr(uuid, us));

@@ -1472,6 +1472,8 @@ struct ireq {
     /* a prepared 2pc schema change participant gave up on its coordinator:
      * resume its sc_list once this request is done */
     int disttxn_ddl_resume;
+    /* a 2pc schema change coordinator collected every yes vote */
+    int disttxn_all_prepared;
     double cost;
     uint64_t sc_seed;
     uint32_t sc_host;

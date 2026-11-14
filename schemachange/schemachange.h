@@ -429,8 +429,10 @@ typedef struct llog_scdone {
 
 #define SESS_SC_LIST_VER 1
 /* A 2pc sc_list has its 2pc configuration after its schema changes.  Binaries
- * that predate it reject this version rather than resume it as a local schema
- * change, which would ignore the coordinator. */
+ * that predate it reject this version only with multitable_ddl; without it
+ * (the default) they never read sc_lists and resume its tables one by one as
+ * local schema changes.  Do not downgrade while a 2pc schema change is
+ * pending. */
 #define SESS_SC_LIST_2PC_VER 2
 
 /* The 2pc configuration of a distributed schema change, saved with its
@@ -495,6 +497,11 @@ void resume_2pc_sc_list_aborted(const char *dist_txnid);
 int sc_2pc_resume_begin(sc_list_2pc_t *dist, uuid_t uuid);
 int sc_2pc_resume_retry_secs(uuid_t uuid);
 void sc_2pc_resume_done(uuid_t uuid);
+/* A participant that gave up on its coordinator reserves its tables against
+ * other schema changes until sc_2pc_resume_done */
+void sc_2pc_reserve_table(uuid_t uuid, const char *table);
+void sc_2pc_reserve_sc(uuid_t uuid, struct schema_change_type *sc);
+int sc_2pc_table_reserved(const char *table);
 
 /* Returns 1 if schema changes of this kind run through do_ddl(), which is the
  * only path that marks the schema change in llmeta and, on completion, calls
