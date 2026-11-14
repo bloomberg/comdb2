@@ -2972,7 +2972,7 @@ static int disttxn_ddl_vote(struct ireq *iq, tran_type *parent_trans, void *bske
                    __func__, dist_txnid);
             _exit(1);
         }
-        if (gbl_debug_fail_ddl_prepare) {
+        if (gbl_debug_fail_ddl_prepare == 1) {
             logmsg(LOGMSG_USER, "%s failing prepare of schema change %s on debug tunable\n", __func__, dist_txnid);
             participant_has_failed(dist_txnid, iq->sorese->coordinator_dbname, iq->sorese->coordinator_master,
                                    ERR_DIST_ABORT, ERR_BLOCK_FAILED, "Failed prepare on debug tunable");
@@ -6096,9 +6096,20 @@ add_blkseq:
                         osql_sc_release_for_resume(iq);
                     }
                     if (iq->sc_logical_tran) {
-                        irc = trans_commit_logical(iq, iq->sc_logical_tran,
-                                                   gbl_myhostname, 0, 1, NULL,
-                                                   0, NULL, 0);
+                        if (dist_ddl && !backed_out && iq->sorese->is_participant && gbl_debug_fail_ddl_prepare == 2) {
+                            /* debug: the commit of the prepared schema change fails */
+                            logmsg(LOGMSG_USER, "%s failing commit of prepared schema change %s on debug tunable\n",
+                                   __func__, iq->sorese->dist_txnid);
+                            trans_abort_logical(iq, iq->sc_logical_tran, NULL, 0, NULL, 0);
+                            backout_schema_changes(iq, NULL);
+                            /* backout_schema_changes took the schema lock */
+                            if (iq->sc_locked) {
+                                unlock_schema_lk();
+                                iq->sc_locked = 0;
+                            }
+                            irc = -1;
+                        } else
+                            irc = trans_commit_logical(iq, iq->sc_logical_tran, gbl_myhostname, 0, 1, NULL, 0, NULL, 0);
                         if (dist_ddl && !backed_out) {
                             if (iq->sorese->is_coordinator) {
                                 /* Only a commit that did not write the

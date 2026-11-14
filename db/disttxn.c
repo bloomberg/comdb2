@@ -187,6 +187,54 @@ int gbl_debug_sleep_ddl_before_lock_ms = 0;
 int gbl_debug_exit_participant_before_ddl_prepare = 0;
 int gbl_debug_commit_ddl_during_upgrade = 0;
 int gbl_debug_resumed_ddl_lock_desired = 0;
+extern int gbl_debug_fail_2pc_redo_finalize;
+char *gbl_debug_remote_2pc_fault = NULL;
+
+/* Parse the debug_remote_2pc_fault tunable: a comma-separated list of faults,
+ * some with a ':' argument; "off", "0" or empty clears them all.  Returns
+ * non-zero, changing nothing, on an unknown fault. */
+int disttxn_set_remote_2pc_fault(const char *faults)
+{
+    int fail_prepare = 0, exit_before_prepare = 0, commit_during_upgrade = 0, sleep_ms = 0, redo = 0, lockd = 0;
+    char *copy = strdup(faults ? faults : ""), *tok, *last = NULL;
+    if (!copy)
+        return 1;
+    for (tok = strtok_r(copy, ", ", &last); tok; tok = strtok_r(NULL, ", ", &last)) {
+        char *arg = strchr(tok, ':');
+        if (arg)
+            *arg++ = '\0';
+        int n = arg ? atoi(arg) : 1;
+        if (!strcmp(tok, "off") || !strcmp(tok, "0"))
+            continue;
+        else if (!strcmp(tok, "fail_prepare"))
+            fail_prepare = 1;
+        else if (!strcmp(tok, "fail_commit"))
+            fail_prepare = 2;
+        else if (!strcmp(tok, "exit_before_prepare"))
+            exit_before_prepare = 1;
+        else if (!strcmp(tok, "commit_during_upgrade"))
+            commit_during_upgrade = 1;
+        else if (!strcmp(tok, "sleep_before_lock") && arg)
+            sleep_ms = n;
+        else if (!strcmp(tok, "fail_redo_finalize"))
+            redo = n;
+        else if (!strcmp(tok, "resumed_lock_desired"))
+            lockd = n;
+        else {
+            logmsg(LOGMSG_ERROR, "%s: unknown remote 2pc fault '%s'\n", __func__, tok);
+            free(copy);
+            return 1;
+        }
+    }
+    free(copy);
+    gbl_debug_fail_ddl_prepare = fail_prepare;
+    gbl_debug_exit_participant_before_ddl_prepare = exit_before_prepare;
+    gbl_debug_commit_ddl_during_upgrade = commit_during_upgrade;
+    gbl_debug_sleep_ddl_before_lock_ms = sleep_ms;
+    gbl_debug_fail_2pc_redo_finalize = redo;
+    gbl_debug_resumed_ddl_lock_desired = lockd;
+    return 0;
+}
 int gbl_debug_exit_coordinator_before_commit = 0;
 int gbl_debug_sleep_coordinator_before_commit = 0;
 int gbl_debug_exit_coordinator_after_commit = 0;

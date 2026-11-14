@@ -319,27 +319,17 @@ REGISTER_TUNABLE("all_waitdie", "Enable waitdie for all transactions.  (Default:
 REGISTER_TUNABLE("debug_disable_waitdie_deadlock_detection", "Disable waitdie deadlock detection.  (Default: off)",
                  TUNABLE_BOOLEAN, &gbl_debug_disable_waitdie_deadlock_detection, EXPERIMENTAL | INTERNAL, NULL, NULL,
                  NULL, NULL);
-REGISTER_TUNABLE("debug_fail_ddl_prepare", "Participant fails to prepare a 2pc schema change.  (Default: off)",
-                 TUNABLE_BOOLEAN, &gbl_debug_fail_ddl_prepare, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
-REGISTER_TUNABLE("debug_sleep_ddl_before_lock_ms",
-                 "A 2pc schema change coordinator sleeps this many ms, and a participant twice as many, before it "
-                 "takes the schema lock to finalize.  (Default: 0)",
-                 TUNABLE_INTEGER, &gbl_debug_sleep_ddl_before_lock_ms, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
-REGISTER_TUNABLE("debug_exit_participant_before_ddl_prepare",
-                 "Participant exits after finalizing a 2pc schema change, before it prepares.  (Default: off)",
-                 TUNABLE_BOOLEAN, &gbl_debug_exit_participant_before_ddl_prepare, EXPERIMENTAL | INTERNAL, NULL, NULL,
-                 NULL, NULL);
-REGISTER_TUNABLE("debug_fail_2pc_redo_finalize",
-                 "Fail the finalize of this many redos of committed 2pc schema changes.  (Default: 0)", TUNABLE_INTEGER,
-                 &gbl_debug_fail_2pc_redo_finalize, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
-REGISTER_TUNABLE("debug_resumed_ddl_lock_desired",
-                 "This many resumed 2pc participants see lock-desired while asking their coordinator.  (Default: 0)",
-                 TUNABLE_INTEGER, &gbl_debug_resumed_ddl_lock_desired, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
-REGISTER_TUNABLE("debug_commit_ddl_during_upgrade",
-                 "A new master delivers a coordinator commit for each prepared 2pc schema change while it is "
-                 "aborting them.  (Default: off)",
-                 TUNABLE_BOOLEAN, &gbl_debug_commit_ddl_during_upgrade, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL,
-                 NULL);
+REGISTER_TUNABLE("debug_remote_2pc_fault",
+                 "Fault injection for remote 2pc schema changes: a comma-separated list of fail_prepare (the "
+                 "participant fails its prepare), fail_commit (the participant fails its commit after the coordinator "
+                 "committed), exit_before_prepare (the participant exits after finalizing, before it prepares), "
+                 "commit_during_upgrade (a new master delivers a coordinator commit while it aborts its prepared "
+                 "schema changes), sleep_before_lock:MS (the coordinator sleeps MS, a participant twice as long, "
+                 "before it takes the schema lock), fail_redo_finalize[:N] (fail the finalize of N redos of committed "
+                 "schema changes), resumed_lock_desired[:N] (N resumed participants see lock-desired); off clears "
+                 "them.  (Default: off)",
+                 TUNABLE_STRING, &gbl_debug_remote_2pc_fault, EXPERIMENTAL | INTERNAL, NULL, NULL,
+                 debug_remote_2pc_fault_update, NULL);
 REGISTER_TUNABLE("debug_exit_participant_after_prepare", "Participant exits after successful prepare.  (Default: off)",
                  TUNABLE_BOOLEAN, &gbl_debug_exit_participant_after_prepare, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL,
                  NULL);

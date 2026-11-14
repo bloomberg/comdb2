@@ -1,6 +1,8 @@
 /* This test verifies that the API behaves as expected
  * even when a broken RAND engine is in the system */
 #define OPENSSL_API_COMPAT 0x10020000L
+/* this test deliberately uses the legacy RAND_METHOD (and ENGINE) API */
+#define OPENSSL_SUPPRESS_DEPRECATED
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
@@ -8,6 +10,14 @@
 #include <libgen.h>
 #include <limits.h>
 #include <openssl/engine.h>
+#include <openssl/rand.h>
+#include <openssl/opensslv.h>
+
+/* OpenSSL 4 has no ENGINEs (its ENGINE functions are stubs): install the
+ * broken RAND_METHOD directly */
+#if OPENSSL_VERSION_MAJOR >= 4
+#define BAD_RAND_NO_ENGINE 1
+#endif
 
 #include <cdb2api.h>
 
@@ -24,10 +34,12 @@ static int bad_rand_status(void)
     return 1;
 }
 
+#ifndef BAD_RAND_NO_ENGINE
 static int rand_init(ENGINE *unused)
 {
     return 1;
 }
+#endif
 
 int main(int argc, char **argv)
 {
@@ -54,6 +66,9 @@ int main(int argc, char **argv)
     bad_rand_method.pseudorand = bad_rand;
     bad_rand_method.status = bad_rand_status;
 
+#ifdef BAD_RAND_NO_ENGINE
+    RAND_set_rand_method(&bad_rand_method);
+#else
     ENGINE *e = ENGINE_new();
     ENGINE_set_id(e, "cdb2test");
     ENGINE_set_name(e, "bad rand engine for cdb2api testsuite");
@@ -72,6 +87,7 @@ int main(int argc, char **argv)
     ENGINE_cleanup();
     RAND_set_rand_engine(NULL);
     RAND_set_rand_method(NULL);
+#endif
 
     setenv("SSL_MODE", "REQUIRE", 1);
     rc = cdb2_open(&hndl, db, tier, 0);
@@ -92,7 +108,9 @@ int main(int argc, char **argv)
         return -1;
     }
 
+#ifndef BAD_RAND_NO_ENGINE
     ENGINE_unregister_RAND(e);
+#endif
     RAND_set_rand_method(NULL);
     can_call_bad_rand = 0;
     unsetenv("SSL_MODE");

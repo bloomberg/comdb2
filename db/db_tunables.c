@@ -83,13 +83,9 @@ extern int gbl_logmsg_epochms;
 
 extern int gbl_2pc;
 extern int gbl_2pc_ddl;
-extern int gbl_debug_fail_ddl_prepare;
 extern int gbl_disttxn_ddl_timeout_ms;
-extern int gbl_debug_sleep_ddl_before_lock_ms;
-extern int gbl_debug_exit_participant_before_ddl_prepare;
-extern int gbl_debug_commit_ddl_during_upgrade;
-extern int gbl_debug_fail_2pc_redo_finalize;
-extern int gbl_debug_resumed_ddl_lock_desired;
+extern char *gbl_debug_remote_2pc_fault;
+int disttxn_set_remote_2pc_fault(const char *faults);
 char *gbl_allowed_coordinators;
 extern int gbl_all_waitdie;
 extern int gbl_debug_disable_waitdie_deadlock_detection;
@@ -1307,6 +1303,15 @@ static int disttxn_allow_coordinator_set(void *context, void *value)
     comdb2_tunable *tunable = (comdb2_tunable *)context;
     int len = strlen(value);
     *(char **)tunable->var = process_allow_coordinator(value, len);
+    return 0;
+}
+
+static int debug_remote_2pc_fault_update(void *context, void *value)
+{
+    comdb2_tunable *tunable = (comdb2_tunable *)context;
+    if (disttxn_set_remote_2pc_fault((char *)value))
+        return 1;
+    *(char **)tunable->var = intern((char *)value);
     return 0;
 }
 
