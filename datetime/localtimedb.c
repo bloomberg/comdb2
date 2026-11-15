@@ -1934,6 +1934,8 @@ register const int doextend;
         char fullname[file_max + 1];
 
         if (name[0] == ':') ++name;
+        /* names come from clients: keep them inside tzdir */
+        if (name[0] == '/' || strstr(name, "..") != NULL) return -1;
         doaccess = name[0] == '/';
         if (!doaccess) {
             if ((p = tzdir) == NULL) return -1;

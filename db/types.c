@@ -562,6 +562,8 @@ const uint8_t *client_datetime_get(cdb2_client_datetime_t *p_client_datetime,
                     p_buf, p_buf_end);
     p_buf = buf_no_net_get(&(p_client_datetime->tzname),
                            sizeof(p_client_datetime->tzname), p_buf, p_buf_end);
+    /* the client's tzname is not guaranteed to be NUL-terminated */
+    p_client_datetime->tzname[sizeof(p_client_datetime->tzname) - 1] = '\0';
 
     return p_buf;
 }
@@ -578,6 +580,8 @@ client_datetime_little_get(cdb2_client_datetime_t *p_client_datetime,
                            sizeof(p_client_datetime->msec), p_buf, p_buf_end);
     p_buf = buf_no_net_get(&(p_client_datetime->tzname),
                            sizeof(p_client_datetime->tzname), p_buf, p_buf_end);
+    /* the client's tzname is not guaranteed to be NUL-terminated */
+    p_client_datetime->tzname[sizeof(p_client_datetime->tzname) - 1] = '\0';
 
     return p_buf;
 }
@@ -14705,20 +14709,30 @@ int get_type(struct param_data *param, void *p, int len, int type,
         param->len = len;
         return 0;
     case CLIENT_DATETIME:
+        if (len != sizeof(cdb2_client_datetime_t))
+            return -1;
         param->len = sizeof(param->u.dt);
         return client_datetime_to_dttz(p, tzname, &param->u.dt, little);
     case CLIENT_DATETIMEUS:
+        if (len != sizeof(cdb2_client_datetimeus_t))
+            return -1;
         param->len = sizeof(param->u.dt);
         return client_datetimeus_to_dttz(p, tzname, &param->u.dt, little);
     case CLIENT_INTVYM:
+        if (len != sizeof(cdb2_client_intv_ym_t))
+            return -1;
         param->len = sizeof(param->u.tv);
         client_intv_ym_to_intv_t(p, &param->u.tv, flip);
         return 0;
     case CLIENT_INTVDS:
+        if (len != sizeof(cdb2_client_intv_ds_t))
+            return -1;
         param->len = sizeof(param->u.tv);
         client_intv_ds_to_intv_t(p, &param->u.tv, flip);
         return 0;
     case CLIENT_INTVDSUS:
+        if (len != sizeof(cdb2_client_intv_dsus_t))
+            return -1;
         param->len = sizeof(param->u.tv);
         client_intv_dsus_to_intv_t(p, &param->u.tv, flip);
         return 0;
