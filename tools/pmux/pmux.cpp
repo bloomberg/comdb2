@@ -244,6 +244,8 @@ struct connection {
     int fd;
     int is_unix;
     std::string svc;
+    // rte overwrites svc, so the registered name is kept separately
+    std::string reg_svc;
     TAILQ_ENTRY(connection) entry;
     connection(int f)
         : addr{0}, rdbuf{evbuffer_new()}, wrbuf{evbuffer_new()}, fd{f}, is_unix{1}
@@ -259,12 +261,14 @@ struct connection {
     {
         debug_log("%s fd:%d\n", __func__, fd);
         --active_connections;
-        const auto& c = connection_map.find(svc);
-        if (c != connection_map.end() && c->second == this) {
-            debug_log("%s removing from active connections:%s fd:%d\n", __func__, svc.c_str(), fd);
-            connection_map.erase(c);
-        } else {
+        if (reg_svc.empty()) {
             TAILQ_REMOVE(&accept_list, this, entry);
+        } else {
+            const auto &c = connection_map.find(reg_svc);
+            if (c != connection_map.end() && c->second == this) {
+                debug_log("%s removing from active connections:%s fd:%d\n", __func__, reg_svc.c_str(), fd);
+                connection_map.erase(c);
+            }
         }
         event_del(&ev);
         if (rdbuf) evbuffer_free(rdbuf);
@@ -438,7 +442,7 @@ static void routefd(int serverfd, short what, void *arg)
         syslog(LOG_ERR, "%s:sendmsg fd:%d rc:%zd expected:%zu (%s)\n", __func__, serverfd, rc, sizeof(c->protocol),
                strerror(errno));
         const auto &s = connection_map.find(c->svc);
-        if (s != connection_map.end()) {
+        if (s != connection_map.end() && s->second != c) {
             delete s->second;
         }
     }
@@ -473,6 +477,10 @@ static int run_cmd(char *cmd, connection *c)
             c->reply("-1 service already active\n");
             return 0;
         }
+        if (c->is_unix && !c->reg_svc.empty()) {
+            c->reply("-1 connection already registered\n");
+            return 0;
+        }
         int port = get_svc_port(svc);
         if (port == -1) {
             port = alloc_port(svc);
@@ -484,6 +492,7 @@ static int run_cmd(char *cmd, connection *c)
         }
         if (c->is_unix) {
             c->svc = svc;
+            c->reg_svc = svc;
             connection_map.insert(std::make_pair(svc, c));
             TAILQ_REMOVE(&accept_list, c, entry);
         }
@@ -963,9 +972,8 @@ int main(int argc, char **argv)
     for (const auto& l : listeners) {
         evconnlistener_free(l);
     }
-    for (const auto& c : connection_map) {
-        connection *conn = c.second;
-        delete conn;
+    while (!connection_map.empty()) {
+        delete connection_map.begin()->second;
     }
     event_base_free(base);
     unlink_bind_path();
