@@ -88,9 +88,20 @@
 
 #define COMDB2MA_SENTINEL(p, m)                                                \
     (void *)(((uintptr_t)(p) + (uintptr_t)(m)) ^ 0xCDB2C00L)
+#ifdef __SANITIZE_ADDRESS__
+/* comdb2_free() probes pointers it did not allocate; for those the header
+   words are an ASan redzone. */
+__attribute__((no_sanitize_address)) static inline int ok_sentinel(void **p)
+{
+    return p[COMDB2MA_SENTINEL_OFS] ==
+           COMDB2MA_SENTINEL(p + COMDB2MA_SENTINEL_OFS, p[COMDB2MA_ALLOC_OFS]);
+}
+#define COMDB2MA_OK_SENTINEL(p) ok_sentinel((void **)(p))
+#else
 #define COMDB2MA_OK_SENTINEL(p)                                                \
     ((p)[COMDB2MA_SENTINEL_OFS] ==                                             \
      COMDB2MA_SENTINEL((p) + COMDB2MA_SENTINEL_OFS, (p)[COMDB2MA_ALLOC_OFS]))
+#endif
 
 #define COMDB2MA_MALLINFO_SAFE(cm)                                             \
     ((cm)->use_lock ? mspace_mallinfo((cm)->m) : mspace_mallinfo_fast((cm)->m))

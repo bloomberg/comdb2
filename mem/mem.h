@@ -20,6 +20,10 @@
 #ifndef INCLUDED_MEM_H
 #define INCLUDED_MEM_H
 
+#if defined(COMDB2_ASAN) && !defined(USE_SYS_ALLOC)
+#error "COMDB2_ASAN requires USE_SYS_ALLOC: pooled allocators hide heap errors from ASan"
+#endif
+
 #include <stddef.h>
 #include <pthread.h>
 
