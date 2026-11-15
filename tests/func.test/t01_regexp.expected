@@ -1,2 +1,11 @@
 (match=1)
 (match=0)
+(match=1)
+(match=NULL)
+(match=NULL)
+[select 'a' regexp 'a{0,0}' as match] failed with rc 300 both m and n are zero in '{m,n}'
+[select 'a' regexp 'a{0}' as match] failed with rc 300 both m and n are zero in '{m,n}'
+[select 'a' regexp '{2,}' as match] failed with rc 300 '{m,n}' without operand
+[select 'a' regexp 'a{2' as match] failed with rc 300 unmatched '{'
+[select 'a' regexp '(a' as match] failed with rc 300 unmatched '('
+(match=1)

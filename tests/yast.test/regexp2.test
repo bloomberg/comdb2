@@ -18,111 +18,109 @@ source $testdir/tester.tcl
 set testprefix regexp2
 
 # Comdb2 modification
-# NC: sqlite triggers not supported, skip
-finish_test
-
+# NC: sqlite triggers not supported, skip sections 1-3
 #load_static_extension db regexp
 
-#-------------------------------------------------------------------------
-# Test that triggers do not become confused and use aux-data created by
-# a different trigger for a different REGEXP invocation.
-#
-do_execsql_test 1.0 {
-  CREATE TABLE t1(a, b, c);
-  CREATE TABLE x1(x, y, z);
-  CREATE TABLE x2(x, y, z);
+##-------------------------------------------------------------------------
+## Test that triggers do not become confused and use aux-data created by
+## a different trigger for a different REGEXP invocation.
+##
+#do_execsql_test 1.0 {
+#  CREATE TABLE t1(a, b, c);
+#  CREATE TABLE x1(x, y, z);
+#  CREATE TABLE x2(x, y, z);
 
-  CREATE TRIGGER tr1 AFTER INSERT ON t1 BEGIN
-    INSERT INTO x1 VALUES(
-        new.a REGEXP 'abc',
-        new.b REGEXP 'abc',
-        new.c REGEXP 'abc'
-    );
-  END;
+#  CREATE TRIGGER tr1 AFTER INSERT ON t1 BEGIN
+#    INSERT INTO x1 VALUES(
+#        new.a REGEXP 'abc',
+#        new.b REGEXP 'abc',
+#        new.c REGEXP 'abc'
+#    );
+#  END;
 
-  CREATE TRIGGER tr2 AFTER INSERT ON t1 BEGIN
-    INSERT INTO x2 VALUES(
-        new.a REGEXP 'def',
-        new.b REGEXP 'def',
-        new.c REGEXP 'def'
-    );
-  END;
+#  CREATE TRIGGER tr2 AFTER INSERT ON t1 BEGIN
+#    INSERT INTO x2 VALUES(
+#        new.a REGEXP 'def',
+#        new.b REGEXP 'def',
+#        new.c REGEXP 'def'
+#    );
+#  END;
 
-  INSERT INTO t1 VALUES('abc', 'def', 'abc');
-  SELECT * FROM t1;
-} {abc def abc}
+#  INSERT INTO t1 VALUES('abc', 'def', 'abc');
+#  SELECT * FROM t1;
+#} {abc def abc}
 
-do_execsql_test 1.1 { SELECT * FROM x1 } {1 0 1}
-do_execsql_test 1.2 { SELECT * FROM x2 } {0 1 0}
+#do_execsql_test 1.1 { SELECT * FROM x1 } {1 0 1}
+#do_execsql_test 1.2 { SELECT * FROM x2 } {0 1 0}
 
-#-------------------------------------------------------------------------
-# Test that if an exception is thrown several triggers deep, all aux-data
-# objects are cleaned up correctly.
-#
-proc sql_error {} {
-  error "SQL error!"
-}
-db func error sql_error
-do_execsql_test 2.0 {
-  CREATE TABLE t2(a, b);
-  CREATE TABLE t3(c, d);
-  CREATE TABLE t4(e, f);
+##-------------------------------------------------------------------------
+## Test that if an exception is thrown several triggers deep, all aux-data
+## objects are cleaned up correctly.
+##
+#proc sql_error {} {
+#  error "SQL error!"
+#}
+#db func error sql_error
+#do_execsql_test 2.0 {
+#  CREATE TABLE t2(a, b);
+#  CREATE TABLE t3(c, d);
+#  CREATE TABLE t4(e, f);
 
-  CREATE TRIGGER t2_tr1 AFTER UPDATE ON t2 BEGIN
-    UPDATE t3 SET d = new.b WHERE c = old.a;
-  END;
+#  CREATE TRIGGER t2_tr1 AFTER UPDATE ON t2 BEGIN
+#    UPDATE t3 SET d = new.b WHERE c = old.a;
+#  END;
 
-  CREATE TRIGGER t3_tr1 AFTER UPDATE ON t3 BEGIN
-    UPDATE t4 SET f = new.d WHERE e = old.c AND new.d REGEXP 'a.*';
-  END;
+#  CREATE TRIGGER t3_tr1 AFTER UPDATE ON t3 BEGIN
+#    UPDATE t4 SET f = new.d WHERE e = old.c AND new.d REGEXP 'a.*';
+#  END;
 
-  CREATE TRIGGER t4_tr1 AFTER UPDATE ON t4 BEGIN
-    SELECT CASE WHEN new.f REGEXP '.*y.*' THEN error() ELSE 1 END;
-  END;
+#  CREATE TRIGGER t4_tr1 AFTER UPDATE ON t4 BEGIN
+#    SELECT CASE WHEN new.f REGEXP '.*y.*' THEN error() ELSE 1 END;
+#  END;
 
-  INSERT INTO t2 VALUES(1, 'a_x_1');
-  INSERT INTO t2 VALUES(2, 'a_y_1');
+#  INSERT INTO t2 VALUES(1, 'a_x_1');
+#  INSERT INTO t2 VALUES(2, 'a_y_1');
 
-  INSERT INTO t3 VALUES(1, 'b1');
-  INSERT INTO t3 VALUES(2, 'b2');
+#  INSERT INTO t3 VALUES(1, 'b1');
+#  INSERT INTO t3 VALUES(2, 'b2');
 
-  INSERT INTO t4 VALUES(1, 'b1');
-  INSERT INTO t4 VALUES(2, 'b2');
-} {}
+#  INSERT INTO t4 VALUES(1, 'b1');
+#  INSERT INTO t4 VALUES(2, 'b2');
+#} {}
 
-do_catchsql_test 2.1 {
-  UPDATE t2 SET a=a+1 WHERE b REGEXP 'a.*' AND b REGEXP '.*1';
-} {1 {SQL error!}}
+#do_catchsql_test 2.1 {
+#  UPDATE t2 SET a=a+1 WHERE b REGEXP 'a.*' AND b REGEXP '.*1';
+#} {1 {SQL error!}}
 
-# Test that the triggers used in the test above work as expected.
-#
-do_execsql_test 2.2 {
-  UPDATE t2 SET b = 'a_abc_1';
-} {}
-do_execsql_test 2.3 {
-  SELECT * FROM t2;
-  SELECT * FROM t3;
-  SELECT * FROM t4;
-} {1 a_abc_1 2 a_abc_1 1 a_abc_1 2 a_abc_1 1 a_abc_1 2 a_abc_1}
+## Test that the triggers used in the test above work as expected.
+##
+#do_execsql_test 2.2 {
+#  UPDATE t2 SET b = 'a_abc_1';
+#} {}
+#do_execsql_test 2.3 {
+#  SELECT * FROM t2;
+#  SELECT * FROM t3;
+#  SELECT * FROM t4;
+#} {1 a_abc_1 2 a_abc_1 1 a_abc_1 2 a_abc_1 1 a_abc_1 2 a_abc_1}
 
-#-------------------------------------------------------------------------
-# Test that trigger parameters (i.e. new.* and old.*) refs are not 
-# considered to be constant across separate invocations of the trigger.
-#
-do_execsql_test 3.0 {
-  CREATE TABLE t5(a);
-  CREATE TABLE t6(x);
+##-------------------------------------------------------------------------
+## Test that trigger parameters (i.e. new.* and old.*) refs are not 
+## considered to be constant across separate invocations of the trigger.
+##
+#do_execsql_test 3.0 {
+#  CREATE TABLE t5(a);
+#  CREATE TABLE t6(x);
 
-  CREATE TRIGGER t5tr AFTER DELETE ON t5 BEGIN
-    DELETE FROM t6 WHERE t6.x REGEXP old.a;
-  END;
+#  CREATE TRIGGER t5tr AFTER DELETE ON t5 BEGIN
+#    DELETE FROM t6 WHERE t6.x REGEXP old.a;
+#  END;
 
-  INSERT INTO t5 VALUES ('^a.*'), ('^b.*'), ('^c.*');
-  INSERT INTO t6 VALUES ('eab'), ('abc'), ('bcd'), ('cde'), ('dea');
+#  INSERT INTO t5 VALUES ('^a.*'), ('^b.*'), ('^c.*');
+#  INSERT INTO t6 VALUES ('eab'), ('abc'), ('bcd'), ('cde'), ('dea');
 
-  DELETE FROM t5;
-  SELECT * FROM t6;
-} {eab dea}
+#  DELETE FROM t5;
+#  SELECT * FROM t6;
+#} {eab dea}
 
 # 2021-06-04 Forum https://sqlite.org/forum/forumpost/9104f0d9e7
 #
@@ -144,5 +142,88 @@ do_execsql_test 4.15 {SELECT 'a c' REGEXP '[^a-z]{2}'} {0}
 do_execsql_test 4.16 {SELECT '   ' REGEXP '[^a-z]{2}'} {1}
 do_execsql_test 4.17 {SELECT 'abc' REGEXP '\W{1,1}'} {0}
 do_execsql_test 4.18 {SELECT 'abc' REGEXP '\W{1}'} {0}
+
+do_execsql_test 5.0 {
+  SELECT 'abc' REGEXP 'a{1,999}bc';
+} 1
+do_catchsql_test 5.1 {
+  SELECT 'abc' REGEXP 'a{1,25000}bc';
+} {1 {REGEXP pattern too big}}
+do_execsql_test 5.2 {
+  SELECT 'abc' REGEXP 'a{999}bc';
+} 0
+do_catchsql_test 5.3 {
+  SELECT 'abc' REGEXP 'a{25000}bc';
+} {1 {REGEXP pattern too big}}
+
+# A backslash at the end of the pattern is an error.  Formerly it
+# was treated as an end-of-string anchor.
+#
+do_catchsql_test 6.0 {
+  SELECT 'x' REGEXP '\';
+} {1 {unknown \ escape}}
+do_catchsql_test 6.1 {
+  SELECT 'abc' REGEXP 'b\';
+} {1 {unknown \ escape}}
+do_catchsql_test 6.2 {
+  SELECT 'ab' REGEXP 'b\';
+} {1 {unknown \ escape}}
+do_execsql_test 6.3 {
+  SELECT 'a\' REGEXP 'a\\', 'a' REGEXP 'a\\';
+} {1 0}
+
+# Open-ended repetition X{m,}, formerly rejected with "n less than m".
+# https://sqlite.org/bugs/info/381937eb159a616b
+#
+do_execsql_test 7.1 {SELECT 'aaaa' REGEXP 'a{2,}'} {1}
+do_execsql_test 7.2 {SELECT 'a' REGEXP 'a{2,}'} {0}
+do_execsql_test 7.3 {SELECT 'aa' REGEXP '^a{2,}$'} {1}
+do_execsql_test 7.4 {SELECT 'a' REGEXP '^a{2,}$'} {0}
+do_execsql_test 7.5 {SELECT 'aaaaaaaaaa' REGEXP '^a{2,}$'} {1}
+do_execsql_test 7.6 {SELECT 'a' REGEXP '^a{1,}$'} {1}
+do_execsql_test 7.7 {SELECT '' REGEXP '^a{1,}$'} {0}
+do_execsql_test 7.8 {SELECT '' REGEXP '^a{0,}$'} {1}
+do_execsql_test 7.9 {SELECT 'aaa' REGEXP '^a{0,}$'} {1}
+do_execsql_test 7.10 {SELECT 'aab' REGEXP '^a{0,}$'} {0}
+do_execsql_test 7.11 {SELECT 'abab' REGEXP '^(ab){2,}$'} {1}
+do_execsql_test 7.12 {SELECT 'ab' REGEXP '^(ab){2,}$'} {0}
+do_execsql_test 7.13 {SELECT 'ababab' REGEXP '^(ab){2,}$'} {1}
+do_execsql_test 7.14 {SELECT 'ab' REGEXP '^a{0,}b'} {1}
+do_execsql_test 7.15 {SELECT 'xay' REGEXP 'a{,}y'} {1}
+do_catchsql_test 7.16 {SELECT 'a' REGEXP 'a{2,1}'} {1 {n less than m in '{m,n}'}}
+do_catchsql_test 7.17 {SELECT 'a' REGEXP 'a{2,0}'} {1 {n less than m in '{m,n}'}}
+do_execsql_test 7.18 {SELECT 'x' REGEXP 'a{,}b'} {0}
+
+# "$" is a zero-width assertion like "^".  It may be followed by another
+# assertion or by an optional or repeated term, and a group that ends
+# with it may be repeated.
+# https://sqlite.org/bugs/info/b74f0d777960717f
+#
+do_execsql_test 8.1 {SELECT 'x' REGEXP '^x$$'} {1}
+do_execsql_test 8.2 {SELECT 'x' REGEXP 'x$$$'} {1}
+do_execsql_test 8.3 {SELECT 'xy' REGEXP 'x$$'} {0}
+do_execsql_test 8.4 {SELECT 'x' REGEXP 'x$y*'} {1}
+do_execsql_test 8.5 {SELECT 'x' REGEXP 'x$y?'} {1}
+do_execsql_test 8.6 {SELECT 'xy' REGEXP 'x$y?'} {0}
+do_execsql_test 8.7 {SELECT 'x' REGEXP 'x$|y'} {1}
+do_execsql_test 8.8 {SELECT 'x' REGEXP 'x($)+'} {1}
+do_execsql_test 8.9 {SELECT 'x' REGEXP '(x$)+'} {1}
+do_execsql_test 8.10 {SELECT 'x' REGEXP '(x$)*'} {1}
+do_execsql_test 8.11 {SELECT 'x' REGEXP '(x$){2}'} {0}
+do_execsql_test 8.12 {SELECT 'xx' REGEXP '(x$){2}'} {0}
+do_execsql_test 8.13 {SELECT 'xx' REGEXP '(x$)+'} {1}
+do_execsql_test 8.14 {SELECT 'xx' REGEXP '^(x$)+'} {0}
+do_execsql_test 8.15 {SELECT '' REGEXP '$'} {1}
+do_execsql_test 8.16 {SELECT 'abc' REGEXP '$'} {1}
+do_execsql_test 8.17 {SELECT 'abc' REGEXP 'c$'} {1}
+do_execsql_test 8.18 {SELECT 'abc' REGEXP 'b$'} {0}
+do_execsql_test 8.19 {SELECT 'abc' REGEXP '^$'} {0}
+do_execsql_test 8.20 {SELECT '' REGEXP '^$'} {1}
+do_execsql_test 8.21 {SELECT '' REGEXP '$^'} {1}
+do_execsql_test 8.22 {SELECT 'abc' REGEXP 'abc$()'} {1}
+do_execsql_test 8.23 {SELECT 'ab' REGEXP '(a|$)b'} {1}
+do_execsql_test 8.24 {SELECT 'abc' REGEXP '(^|$)c'} {0}
+do_execsql_test 8.25 {SELECT 'x' REGEXP 'x$.'} {0}
+do_execsql_test 8.26 {SELECT 'x' REGEXP 'x$.?'} {1}
 
 finish_test

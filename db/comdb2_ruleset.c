@@ -42,9 +42,10 @@ extern int patternCompare(const u8*,const u8*,const struct compareInfo*,u32);
 /* ================ END CODE STOLEN FROM "sqlite/src/func.c" ================ */
 
 /* =========== BEGIN CODE STOLEN FROM "sqlite/ext/misc/regexp.c" ============ */
-extern const char *re_compile(void**,const char*,int);
-extern int re_match(void*,const unsigned char*,int);
-extern void re_free(void*);
+extern const char *sqlite3re_compile(void**,const char*,int,int);
+extern int sqlite3re_maxnfa(int);
+extern int sqlite3re_match(void*,const unsigned char*,int);
+extern void sqlite3re_free(void*);
 /* ============ END CODE STOLEN FROM "sqlite/ext/misc/regexp.c" ============= */
 
 static uint64_t gbl_ruleset_generation = 0;
@@ -77,7 +78,7 @@ static int regexp_match(
   const char *zStr1,
   const char *zStr2
 ){
-  if( re_match((void *)zStr2, (const unsigned char *)zStr1, -1) ){
+  if( sqlite3re_match((void *)zStr2, (const unsigned char *)zStr1, -1) ){
     return RULESET_S_TRUE;
   }else{
     return RULESET_S_FALSE;
@@ -581,11 +582,15 @@ static int recompile_regexp(
   const char *zErr;
 
   if( *ppRe!=NULL ){
-    re_free(*ppRe);
+    sqlite3re_free(*ppRe);
     *ppRe = NULL;
   }
-  zErr = re_compile(ppRe, zPattern, noCase);
+  zErr = sqlite3re_compile(ppRe, zPattern,
+                    sqlite3re_maxnfa(SQLITE_MAX_LIKE_PATTERN_LENGTH), noCase);
   if( zErr!=NULL ){
+    /* sqlite3re_compile() can return an error with *ppRe still allocated. */
+    sqlite3re_free(*ppRe);
+    *ppRe = NULL;
     if( pzErr!=NULL ) *pzErr = zErr;
     return EINVAL;
   }
@@ -601,23 +606,23 @@ static void comdb2_free_ruleset_item_criteria_cache(
 ){
   if( cache==NULL ) return;
   if( cache->pOriginHostRe!=NULL ){
-    re_free(cache->pOriginHostRe);
+    sqlite3re_free(cache->pOriginHostRe);
     cache->pOriginHostRe = NULL;
   }
   if( cache->pOriginTaskRe!=NULL ){
-    re_free(cache->pOriginTaskRe);
+    sqlite3re_free(cache->pOriginTaskRe);
     cache->pOriginTaskRe = NULL;
   }
   if( cache->pUserRe!=NULL ){
-    re_free(cache->pUserRe);
+    sqlite3re_free(cache->pUserRe);
     cache->pUserRe = NULL;
   }
   if( cache->pSqlRe!=NULL ){
-    re_free(cache->pSqlRe);
+    sqlite3re_free(cache->pSqlRe);
     cache->pSqlRe = NULL;
   }
   if( cache->pIdentityRe!=NULL ){
-    re_free(cache->pIdentityRe);
+    sqlite3re_free(cache->pIdentityRe);
     cache->pIdentityRe = NULL;
   }
 }
@@ -670,7 +675,7 @@ int comdb2_load_ruleset_item_criteria(
           snprintf(zError, nError,
                    "%s:%d, bad %s regular expression '%s': %s",
                    zFileName, lineNo, zField, zTok, zReErr);
-          re_free(cache->pOriginHostRe);
+          sqlite3re_free(cache->pOriginHostRe);
           cache->pOriginHostRe = NULL;
           rc = EINVAL;
           goto done;
@@ -707,7 +712,7 @@ int comdb2_load_ruleset_item_criteria(
           snprintf(zError, nError,
                    "%s:%d, bad %s regular expression '%s': %s",
                    zFileName, lineNo, zField, zTok, zReErr);
-          re_free(cache->pOriginTaskRe);
+          sqlite3re_free(cache->pOriginTaskRe);
           cache->pOriginTaskRe = NULL;
           rc = EINVAL;
           goto done;
@@ -744,7 +749,7 @@ int comdb2_load_ruleset_item_criteria(
           snprintf(zError, nError,
                    "%s:%d, bad %s regular expression '%s': %s",
                    zFileName, lineNo, zField, zTok, zReErr);
-          re_free(cache->pUserRe);
+          sqlite3re_free(cache->pUserRe);
           cache->pUserRe = NULL;
           rc = EINVAL;
           goto done;
@@ -781,7 +786,7 @@ int comdb2_load_ruleset_item_criteria(
           snprintf(zError, nError,
                    "%s:%d, bad %s regular expression '%s': %s",
                    zFileName, lineNo, zField, zTok, zReErr);
-          re_free(cache->pSqlRe);
+          sqlite3re_free(cache->pSqlRe);
           cache->pSqlRe = NULL;
           rc = EINVAL;
           goto done;
@@ -851,7 +856,7 @@ int comdb2_load_ruleset_item_criteria(
             if (recompile_regexp(zTok, noCase, &cache->pIdentityRe, &zReErr) != 0) {
                 snprintf(zError, nError, "%s:%d, bad %s regular expression '%s': %s", zFileName, lineNo, zField, zTok,
                          zReErr);
-                re_free(cache->pIdentityRe);
+                sqlite3re_free(cache->pIdentityRe);
                 cache->pIdentityRe = NULL;
                 rc = EINVAL;
                 goto done;
@@ -1167,7 +1172,7 @@ int comdb2_load_ruleset_fp(struct ruleset **pRules, FILE *fp, const char *zFileN
                                 recompile_regexp(criteria->zOriginHost, noCase, &cache->pOriginHostRe, &zReErr) != 0) {
                                 snprintf(zError, sizeof(zError), "%s:%d, bad %s regular expression '%s': %s", zFileName,
                                          lineNo, "originHost", criteria->zOriginHost, zReErr);
-                                re_free(cache->pOriginHostRe);
+                                sqlite3re_free(cache->pOriginHostRe);
                                 cache->pOriginHostRe = NULL;
                                 goto failure;
                             }
@@ -1176,7 +1181,7 @@ int comdb2_load_ruleset_fp(struct ruleset **pRules, FILE *fp, const char *zFileN
                                 recompile_regexp(criteria->zOriginTask, noCase, &cache->pOriginTaskRe, &zReErr) != 0) {
                                 snprintf(zError, sizeof(zError), "%s:%d, bad %s regular expression '%s': %s", zFileName,
                                          lineNo, "originTask", criteria->zOriginTask, zReErr);
-                                re_free(cache->pOriginTaskRe);
+                                sqlite3re_free(cache->pOriginTaskRe);
                                 cache->pOriginTaskRe = NULL;
                                 goto failure;
                             }
@@ -1185,7 +1190,7 @@ int comdb2_load_ruleset_fp(struct ruleset **pRules, FILE *fp, const char *zFileN
                                 recompile_regexp(criteria->zUser, noCase, &cache->pUserRe, &zReErr) != 0) {
                                 snprintf(zError, sizeof(zError), "%s:%d, bad %s regular expression '%s': %s", zFileName,
                                          lineNo, "user", criteria->zUser, zReErr);
-                                re_free(cache->pUserRe);
+                                sqlite3re_free(cache->pUserRe);
                                 cache->pUserRe = NULL;
                                 goto failure;
                             }
@@ -1194,7 +1199,7 @@ int comdb2_load_ruleset_fp(struct ruleset **pRules, FILE *fp, const char *zFileN
                                 recompile_regexp(criteria->zSql, noCase, &cache->pSqlRe, &zReErr) != 0) {
                                 snprintf(zError, sizeof(zError), "%s:%d, bad %s regular expression '%s': %s", zFileName,
                                          lineNo, "sql", criteria->zSql, zReErr);
-                                re_free(cache->pSqlRe);
+                                sqlite3re_free(cache->pSqlRe);
                                 cache->pSqlRe = NULL;
                                 goto failure;
                             }
@@ -1203,7 +1208,7 @@ int comdb2_load_ruleset_fp(struct ruleset **pRules, FILE *fp, const char *zFileN
                                 recompile_regexp(criteria->zIdentity, noCase, &cache->pIdentityRe, &zReErr) != 0) {
                                 snprintf(zError, sizeof(zError), "%s:%d, bad %s regular expression '%s': %s", zFileName,
                                          lineNo, "identity", criteria->zIdentity, zReErr);
-                                re_free(cache->pIdentityRe);
+                                sqlite3re_free(cache->pIdentityRe);
                                 cache->pIdentityRe = NULL;
                                 goto failure;
                             }
