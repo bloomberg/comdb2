@@ -16,7 +16,7 @@ set testdir [file dirname $argv0]
 source $testdir/tester.tcl
 
 do_test regexp1-1.1 {
-#load_static_extension db regexp
+  #load_static_extension db regexp
   db eval {
     CREATE TABLE t1(x INTEGER PRIMARY KEY, y TEXT);
     INSERT INTO t1 VALUES(1, 'For since by man came death,');
@@ -186,31 +186,25 @@ do_execsql_test regexp1-2.8 {
          'abc*def+ghi.jkl[mno]pqr' REGEXP 'l\[mno\]p'
 } {1 1 1 1 1}
 
-# Comdb2 modification
-#do_test regexp1-2.9 {
-#  set v1 "abc\ndef"
-#  db eval {SELECT $v1 REGEXP '^abc\ndef$'}
-#} {1}
-#do_test regexp1-2.10 {
-#  set v1 "abc\adef"
-#  db eval {SELECT $v1 REGEXP '^abc\adef$'}
-#} {1}
-#do_test regexp1-2.11 {
-#  set v1 "abc\tdef"
-#  db eval {SELECT $v1 REGEXP '^abc\tdef$'}
-#} {1}
-#do_test regexp1-2.12 {
-#  set v1 "abc\rdef"
-#  db eval {SELECT $v1 REGEXP '^abc\rdef$'}
-#} {1}
-#do_test regexp1-2.13 {
-#  set v1 "abc\fdef"
-#  db eval {SELECT $v1 REGEXP '^abc\fdef$'}
-#} {1}
-#do_test regexp1-2.14 {
-#  set v1 "abc\vdef"
-#  db eval {SELECT $v1 REGEXP '^abc\vdef$'}
-#} {1}
+# Comdb2 modification: no Tcl variable binding, use char()
+do_execsql_test regexp1-2.9 {
+  SELECT 'abc' || char(10) || 'def' REGEXP '^abc\ndef$'
+} {1}
+do_execsql_test regexp1-2.10 {
+  SELECT 'abc' || char(7) || 'def' REGEXP '^abc\adef$'
+} {1}
+do_execsql_test regexp1-2.11 {
+  SELECT 'abc' || char(9) || 'def' REGEXP '^abc\tdef$'
+} {1}
+do_execsql_test regexp1-2.12 {
+  SELECT 'abc' || char(13) || 'def' REGEXP '^abc\rdef$'
+} {1}
+do_execsql_test regexp1-2.13 {
+  SELECT 'abc' || char(12) || 'def' REGEXP '^abc\fdef$'
+} {1}
+do_execsql_test regexp1-2.14 {
+  SELECT 'abc' || char(11) || 'def' REGEXP '^abc\vdef$'
+} {1}
 do_execsql_test regexp1-2.15 {
   SELECT 'abc\def' REGEXP '^abc\\def',
          'abc(def' REGEXP '^abc\(def',
@@ -305,6 +299,86 @@ do_execsql_test regexp1-6.7 {SELECT 'xabc' REGEXP '(^abc|def)';} {0}
 do_execsql_test regexp1-6.8 {SELECT 'def' REGEXP '(^abc|def)';} {1}
 do_execsql_test regexp1-6.9 {SELECT 'xdef' REGEXP '(^abc|def)';} {1}
 
+# 2022-11-17
+# https://sqlite.org/forum/forumpost/3ffe058b04
+#
+do_execsql_test regexp1-7.1 {
+  SELECT char(0x61,0x7ff,0x62) REGEXP char(0x7ff);
+} 1
+do_execsql_test regexp1-7.2 {
+  SELECT char(0x61,0x800,0x62) REGEXP char(0x800);
+} 1
+do_execsql_test regexp1-7.3 {
+  SELECT char(0x61,0xabc,0x62) REGEXP char(0xabc);
+} 1
+do_execsql_test regexp1-7.4 {
+  SELECT char(0x61,0xfff,0x62) REGEXP char(0xfff);
+} 1
+do_execsql_test regexp1-7.5 {
+  SELECT char(0x61,0x1000,0x62) REGEXP char(0x1000);
+} 1
+do_execsql_test regexp1-7.10 {
+  SELECT char(0x61,0xffff,0x62) REGEXP char(0xffff);
+} 1
+do_execsql_test regexp1-7.11 {
+  SELECT char(0x61,0x10000,0x62) REGEXP char(0x10000);
+} 1
+do_execsql_test regexp1-7.12 {
+  SELECT char(0x61,0x10ffff,0x62) REGEXP char(0x10ffff);
+} 1
 
+# Comdb2 modification: typed columns, explicit id instead of rowid
+do_execsql_test regexp1-8.0 {
+  CREATE TABLE t2(id INTEGER, a TEXT);
+  INSERT INTO t2 VALUES(1, 'abc-def');
+  SELECT length(a) FROM t2;
+} {7}
+
+do_execsql_test regexp1-8.1 {
+  SELECT id FROM t2 WHERE a REGEXP '[1-5]';
+} {}
+do_execsql_test regexp1-8.2 {
+  SELECT id FROM t2 WHERE a REGEXP '[1\-5]';
+} {1}
+do_execsql_test regexp1-8.3 {
+  SELECT id FROM t2 WHERE a REGEXP '[x\-]';
+} {1}
+do_catchsql_test regexp1-8.4 {
+  SELECT id FROM t2 WHERE a REGEXP '[x-]';
+} {1 {unclosed '['}}
+do_execsql_test regexp1-8.5 {
+  SELECT id FROM t2 WHERE a REGEXP '-';
+} {1}
+do_execsql_test regexp1-8.6 {
+  SELECT id FROM t2 WHERE a REGEXP '\-';
+} {1}
+
+# Bug 3be6ff5c623b978a: A leading "^" anchors only the first alternative
+# of a top-level "|", not all of them.
+#
+do_execsql_test regexp1-9.1 {
+  SELECT 'xb' REGEXP '^a|b',  'xb' REGEXP 'b|^a',
+         'xb' REGEXP '(^a)|b', 'xc' REGEXP '^(a|b)|c';
+} {1 1 1 1}
+do_execsql_test regexp1-9.2 {
+  SELECT 'ab' REGEXP '^a|b', 'xa' REGEXP '^a|b', 'xa' REGEXP '^a|^b',
+         'b' REGEXP '^a|^b', 'xb' REGEXP '^a|^b';
+} {1 0 0 1 0}
+do_execsql_test regexp1-9.3 {
+  SELECT 'http://x' REGEXP '^https?:|\.pdf$',
+         'a.pdf' REGEXP '^https?:|\.pdf$',
+         'a.pdfx' REGEXP '^https?:|\.pdf$',
+         'x http:' REGEXP '^https?:|\.pdf$';
+} {1 1 0 0}
+
+# Patterns anchored by "^" with no top-level "|"
+do_execsql_test regexp1-9.4 {
+  SELECT 'abc' REGEXP '^ab', 'xabc' REGEXP '^ab', 'abc' REGEXP '^(ab|x)c',
+         'xc' REGEXP '^(ab|x)c', 'yxc' REGEXP '^(ab|x)c', '' REGEXP '^',
+         'b' REGEXP '^a*b', 'xb' REGEXP '^a*b', 'ab' REGEXP '^+a';
+} {1 0 1 1 0 1 1 0 1}
+do_execsql_test regexp1-9.5 {
+  SELECT regexpi('^a|b', 'XB'), regexpi('^a|b', 'XA'), regexpi('^a', 'AX');
+} {1 0 1}
 
 finish_test
