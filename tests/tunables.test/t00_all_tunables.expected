@@ -96,6 +96,7 @@
 (name='btpf_cu_gap', description='How close a cursor should be (pages) to the prefaulted limit before prefaulting again', type='INTEGER', value='5', read_only='N')
 (name='btpf_enabled', description='Enables index pages read ahead', type='BOOLEAN', value='OFF', read_only='N')
 (name='btpf_min_th', description='Preload pages only if the tree has heigth less than this parameter', type='INTEGER', value='1', read_only='N')
+(name='btpf_on_miss', description='Start read ahead only after a cursor reads a leaf page from disk', type='BOOLEAN', value='ON', read_only='N')
 (name='btpf_pg_gap', description='Min. number of records to the page limit before read ahead', type='INTEGER', value='0', read_only='N')
 (name='btpf_wndw_inc', description='Increment factor for the number of pages read ahead', type='INTEGER', value='1', read_only='N')
 (name='btpf_wndw_max', description='Maximum number of pages read ahead', type='INTEGER', value='1000', read_only='N')

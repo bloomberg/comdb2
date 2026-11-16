@@ -51,6 +51,7 @@ typedef struct bdb_state_tag bdb_state_type;
 
 extern int gbl_prefault_udp;
 extern __thread int send_prefault_udp;
+__thread int btpf_leaf_io;
 extern __thread DB *prefault_dbp;
 
 extern int db_is_exiting(void);
@@ -1199,10 +1200,14 @@ __memp_fget(dbmfp, pgnoaddr, flags, addrp)
 	}
 
 	ret = __memp_fget_internal(dbmfp, pgnoaddr, flags, addrp, &did_io);
+
+	h = *(PAGE **)addrp;
+	if (ret == 0 && TYPE(h) == P_LBTREE)
+		btpf_leaf_io = did_io;
+
 	if (ret || !did_io || !prefault_dbp || !prefault_dbp->log_filename)
 		goto out;
 
-	h = *(PAGE **)addrp;
 	if (TYPE(h) != P_LBTREE) 
 		goto out;
 
