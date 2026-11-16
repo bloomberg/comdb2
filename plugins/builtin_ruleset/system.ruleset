@@ -1,5 +1,6 @@
 version 2
 pool systemsqlpool threads 32
+pool physrepsqlpool threads 64
 
 # sql_logfill - select lsn, generation, payload from comdb2_transaction_logs(?, ?, ?, ?)",
 rule 1 action SET_POOL
@@ -21,3 +22,10 @@ rule 3 fingerprint x'512ec5eacc7776e1878a42258b635124'
 rule 4 action SET_POOL
 rule 4 pool systemsqlpool
 rule 4 fingerprint x'7549f81f7876a39f5b218547590760e2'
+
+# physrep log streaming and lsn matching against its source; sql_logfill
+# selects explicit columns, so it stays in systemsqlpool
+rule 5 action SET_POOL
+rule 5 pool physrepsqlpool
+rule 5 mode REGEXP NOCASE
+rule 5 sql ^select ([*]|generation) from ([(]select lsn from )?comdb2_transaction_logs([ (]|$)

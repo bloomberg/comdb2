@@ -346,6 +346,7 @@ static inline int find_my_range(DB_LOGC *logc, DB_LSN *lowest, DB_LSN *highest)
 
 static inline int find_parent_range(cdb2_hndl_tp *repl_db, DB_LSN *lowest, DB_LSN *highest)
 {
+    /* builtin ruleset rule 5 matches this text to route it to physrepsqlpool */
     char *sql_cmd = "select * from "
                     "(select lsn from comdb2_transaction_logs('{0:0}','{0:0}', 0x0) limit 1),"
                     "(select lsn from comdb2_transaction_logs('{0:0}','{0:0}', 0x4) limit 1)";
@@ -434,6 +435,7 @@ static int physrep_source_generation(cdb2_hndl_tp *repl_db, unsigned int file, u
      * checkpoints: recovering a copy emits one above the cluster's
      * generation.  The base-rectype compare survives future format tags.
      */
+    /* builtin ruleset rule 5 matches this text to route it to physrepsqlpool */
     snprintf(sql_cmd, sizeof(sql_cmd),
              "select generation from comdb2_transaction_logs('{%u:%u}', '{%u:%u}', 4) "
              "where generation is not null and rectype %% 1000 != %d limit 1",
@@ -521,6 +523,7 @@ LOG_INFO find_match_lsn(void *in_bdb_state, cdb2_hndl_tp *repl_db, LOG_INFO star
         }
 
         match_current = 0;
+        /* builtin ruleset rule 5 matches this text to route it to physrepsqlpool */
         snprintf(sql_cmd, sizeof(sql_cmd), "select * from comdb2_transaction_logs('{%d:%d}','{%d:%d}', 0)",
                  start_info.file, start_info.offset, start_info.file, start_info.offset);
 
@@ -692,6 +695,7 @@ int physrep_find_last_match(void *in_bdb_state, cdb2_hndl_tp *repl_db, LOG_INFO 
         goto done;
     }
 
+    /* builtin ruleset rule 5 matches this text to route it to physrepsqlpool */
     snprintf(sql_cmd, sizeof(sql_cmd), "select * from comdb2_transaction_logs('{%u:%u}','{%u:%u}', 0)", match_info.file,
              match_info.offset, my_end.file, my_end.offset);
 
