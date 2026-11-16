@@ -2399,6 +2399,16 @@ int verify_master_leases_int(bdb_state_type *bdb_state, const char *func, uint32
         return 1;
     }
 
+    /* No sanctioned nodes: like elections, keep the sitting master (its commits are never
+     * durable then, since the commit wait has no cluster to count) */
+    if (total_nodes == 0) {
+        if (verify_trace && (now = time(NULL)) != lastpr) {
+            logmsg(LOGMSG_USER, "%s master-lease return good because the sanctioned list is empty\n", __func__);
+            lastpr = now;
+        }
+        return 1;
+    }
+
     Pthread_mutex_lock(&(bdb_state->master_lease_lk));
     for (i = 0; i < comcount; i++) {
         struct hostinfo *h = retrieve_hostinfo(comlist[i]);

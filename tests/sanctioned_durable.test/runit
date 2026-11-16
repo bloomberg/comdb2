@@ -182,7 +182,7 @@ sleep 2
 line=$(insert_and_trace 3)
 echo "$line" | grep -q "durable-nodes=$cluster_size durable-acked=$cluster_size" || failexit "unexpected trace after re-adding $unsanctioned: $line"
 
-# With no sanctioned nodes nothing counts: no commit is durable and no lease quorum is held
+# With no sanctioned nodes no commit is durable; like elections, the sitting master keeps its leases
 function readd_all
 {
     for node in ${nodes[@]}; do
@@ -200,7 +200,7 @@ done
 line=$(insert_and_trace 4)
 echo "$line" | grep -q "durable-nodes=0 durable-acked=0" || failexit "commit was durable with no sanctioned nodes: $line"
 line=$(lease_check)
-echo "$line" | grep -q "failed: we have 0 current leases from 0 nodes" || failexit "master kept a lease quorum with no sanctioned nodes: $line"
+echo "$line" | grep -q "master-lease return good because the sanctioned list is empty" || failexit "master lost its leases with no sanctioned nodes: $line"
 readd_all
 trap - EXIT
 sleep 2
