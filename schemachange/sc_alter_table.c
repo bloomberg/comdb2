@@ -530,7 +530,6 @@ int do_alter_table(struct ireq *iq, struct schema_change_type *s,
         Pthread_mutex_unlock(&csc2_subsystem_mtx);
 
         if (!newdb) {
-            Pthread_mutex_unlock(&csc2_subsystem_mtx);
             if (local_lock)
                 unlock_schema_lk();
             rc = SC_CSC2_ERROR;

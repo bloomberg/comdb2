@@ -18,6 +18,7 @@
 #include "tag.h"
 #include "dynschematypes.h"
 #include "dynschemaload.h"
+extern pthread_mutex_t csc2_subsystem_mtx;
 
 static dbtable *newdb_from_schema(struct dbenv *env, const char *tblname, int dbnum);
 static int init_check_constraints(dbtable *tbl);
@@ -99,6 +100,10 @@ int populate_db_with_alt_schema(struct dbenv *dbenv, struct dbtable *db,
 {
     int rc;
 
+    /* the csc2 parser state is global; callers of create_new_dbtable() hold
+     * this too, so a merge and a concurrent alter cannot parse at once */
+    Pthread_mutex_lock(&csc2_subsystem_mtx);
+
     dyns_init_globals();
 
     rc = dyns_load_schema_string(csc2, dbenv->envname, db->tablename);
@@ -118,6 +123,7 @@ int populate_db_with_alt_schema(struct dbenv *dbenv, struct dbtable *db,
 
 done:
     dyns_cleanup_globals();
+    Pthread_mutex_unlock(&csc2_subsystem_mtx);
     return rc;
 }
 
