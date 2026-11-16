@@ -159,6 +159,7 @@ extern int gbl_fdb_track;
 extern int gbl_selectv_rangechk;
 extern int gbl_enable_internal_sql_stmt_caching;
 
+int gbl_sql_range_dta_probe_max_misses = 16;
 unsigned long long gbl_sql_deadlock_reconstructions = 0;
 unsigned long long gbl_sql_deadlock_failures = 0;
 
@@ -6915,8 +6916,25 @@ int sqlite3BtreeMovetoUnpacked(BtCursor *pCur, /* The cursor to be moved */
             pCur->rrn = 2;
             pCur->genid = genid;
         } else {
-            rc = ddguard_bdb_cursor_find(thd, pCur, pCur->bdbcur, &genid,
-                                         sizeof(genid), 0, bias, &bdberr);
+            /* Probe next data row for an index in the genid order */
+            int do_find = 1;
+            if (pCur->dta_probe && pCur->genid && pCur->dta_probe_misses <= gbl_sql_range_dta_probe_max_misses) {
+                bdberr = 0;
+                rc = ddguard_bdb_cursor_move(pCur, 0, &bdberr, CNEXT, NULL, 0);
+                if (rc == SQLITE_COMDB2SCHEMA)
+                    goto done;
+                if (bdberr != BDBERR_NOERROR) {
+                    do_find = 0; /* probed but error */
+                } else if (rc == IX_FND && pCur->bdbcur->genid(pCur->bdbcur) == genid) {
+                    do_find = 0; /* probed and found */
+                    pCur->dta_probe_hits++;
+                } else {
+                    do_find = 1; /* probed but not found */
+                    pCur->dta_probe_misses++;
+                }
+            }
+            if (do_find)
+                rc = ddguard_bdb_cursor_find(thd, pCur, pCur->bdbcur, &genid, sizeof(genid), 0, bias, &bdberr);
 
             if ((pCur->ixnum == -1 && rc == IX_FND) ||
                 (pCur->ixnum >= 0 && rc != IX_EMPTY && rc >= 0)) {
@@ -12836,6 +12854,7 @@ static void sqlite3BtreeCursorHint_TableCursor(BtCursor *pCur, BtCursor *pTableC
         return;
     assert(pCur->db == pTableCsr->db);
     pCur->pCursorHintTableCursor = pTableCsr;
+    pTableCsr->dta_probe = gbl_sql_range_dta_probe_max_misses > 0 && !pCur->is_equality;
 }
 
 static void sqlite3BtreeCursorHint_Range(BtCursor *pCur, const Expr *pExpr)

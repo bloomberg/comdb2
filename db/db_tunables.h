@@ -2934,6 +2934,10 @@ REGISTER_TUNABLE("nudge_replication_when_idle",
                  "If we haven't seen any replication events in a while, request some (default: 100)", TUNABLE_INTEGER,
                  &gbl_nudge_replication_when_idle, 0, NULL, NULL, NULL, NULL);
 
+REGISTER_TUNABLE("sql_range_dta_probe_max_misses",
+                 "Max number of misses from probing the next row for a Seek (Default: 16). "
+                 "After that probing is off on the cursor. Set it to 0 to disable next-probing",
+                 TUNABLE_INTEGER, &gbl_sql_range_dta_probe_max_misses, 0, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("sql_row_delay_msecs", "Add this delay before sending back a row, for every row (default: 0)",
                  TUNABLE_INTEGER, &gbl_sql_row_delay_msecs, 0, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("thread_wait_sec", "Wait that many seconds for each thread to exit during a clean exit (default: 5)",
