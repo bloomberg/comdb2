@@ -1021,6 +1021,10 @@ REGISTER_TUNABLE("osql_verify_retry_max",
                  "Retry a transaction on a verify error this many times (see "
                  "optimistic concurrency control). (Default: 499)",
                  TUNABLE_INTEGER, &gbl_osql_verify_retries_max, 0, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("osql_replay_coherent_wait_ms",
+                 "Before replaying a verify-failed transaction, wait this long for an incoherent node to become "
+                 "coherent, then fail it.  (Default: 5000)",
+                 TUNABLE_INTEGER, &gbl_osql_replay_coherent_wait_ms, 0, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("override_cachekb", NULL, TUNABLE_INTEGER, &db->override_cacheszkb, READONLY, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("page_compact_latency_ms", NULL, TUNABLE_INTEGER, &gbl_pg_compact_latency_ms, READONLY, NULL, NULL,
                  NULL, NULL);

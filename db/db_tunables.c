@@ -149,6 +149,7 @@ extern int gbl_mem_nice;
 extern int gbl_notimeouts;
 extern int gbl_watchdog_disable_at_start;
 extern int gbl_osql_verify_retries_max;
+extern int gbl_osql_replay_coherent_wait_ms;
 extern int gbl_dump_history_on_too_many_verify_errors;
 extern int gbl_page_latches;
 extern int gbl_pb_connectmsg;

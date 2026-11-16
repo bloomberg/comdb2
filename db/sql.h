@@ -195,6 +195,7 @@ typedef struct osqlstate {
     int total_queries; /* statements dispatched in the most recent clean replay iteration */
     int in_replay_nested;
     int replay;  /* set this when a session is replayed, used by sorese */
+    int replay_incoherent_start_ms; /* when a replay began waiting for coherence, 0 if not */
     int sent_column_data; /* set this if we've already sent the column data */
 
     /* XXX for debugging */

@@ -690,6 +690,7 @@
 (name='osql_bkoff_netsend_lmt', description='', type='INTEGER', value='300000', read_only='Y')
 (name='osql_force_local', description='osql_force_local', type='BOOLEAN', value='OFF', read_only='N')
 (name='osql_odh_blob', description='Send ODH'd blobs to master. (Default: ON)', type='BOOLEAN', value='ON', read_only='N')
+(name='osql_replay_coherent_wait_ms', description='Before replaying a verify-failed transaction, wait this long for an incoherent node to become coherent, then fail it.  (Default: 5000)', type='INTEGER', value='5000', read_only='N')
 (name='osql_simulate_send_error', description='osql_simulate_send_error', type='BOOLEAN', value='OFF', read_only='N')
 (name='osql_verbose_clear', description='osql_verbose_clear', type='BOOLEAN', value='OFF', read_only='N')
 (name='osql_verbose_history_replay', description='osql_verbose_history_replay', type='BOOLEAN', value='OFF', read_only='N')
