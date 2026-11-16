@@ -1,0 +1,67 @@
+#!/usr/bin/env bash
+bash -n "$0" || exit 1
+set -x
+source ${TESTSROOTDIR}/tools/runit_common.sh
+
+nodes=($CLUSTER)
+if [[ ${#nodes[@]} -lt 5 ]]; then
+    echo "This test requires at least 5 nodes"
+    exit 0
+fi
+
+ROUNDS=${STALE_ROUNDS:-15}
+LOGS=${TESTDIR}/logs/${DBNAME}
+cdb2sql ${CDB2_OPTIONS} ${DBNAME} default "create table t (i int primary key)" || failexit "create"
+
+# One writer per node, each on its own id range
+dur=$((ROUNDS * 20 + 10))
+k=1; pids=""
+for node in $CLUSTER; do
+    ${TESTSBUILDDIR}/stalewriter ${DBNAME} $node $((k * 100000000)) $dur > writer.$node.out 2>&1 &
+    pids="$pids $!"; k=$((k + 1))
+done
+
+# Each round one replica sits the election out, so the others decide on timeout and can win on their
+# own vote2; the winner then sleeps before upgrading while the rest elect a newer master
+for ((r = 1; r <= ROUNDS; r++)); do
+    master=$(getmaster)
+    sitout=$(for node in $CLUSTER; do [[ $node != $master ]] && echo $node; done | shuf -n 1)
+    cdb2sql ${CDB2_OPTIONS} --host $sitout ${DBNAME} "put tunable 'debug_elect_lose_round' 1"
+    echo "$(date +%T) round $r downgrading $master, $sitout sits out"
+    cdb2sql ${CDB2_OPTIONS} --host $master ${DBNAME} "exec procedure sys.cmd.send('downgrade')"
+    sleep 20
+done
+wait $pids
+
+# Let the cluster settle on one master
+for i in $(seq 1 60); do
+    m=$(for node in $CLUSTER; do cdb2sql --tabs ${CDB2_OPTIONS} --host $node ${DBNAME} "select host from comdb2_cluster where is_master='Y'" 2>/dev/null; done | sort -u)
+    [[ $(echo "$m" | wc -w) == 1 ]] && break
+    sleep 1
+done
+sleep 10
+master=$(getmaster)
+cdb2sql --tabs ${CDB2_OPTIONS} --host $master ${DBNAME} "select i from t order by i" > final.txt || failexit "final select"
+
+cat writer.*.out > writes.txt
+awk '$1 == "I" && $3 == 0 {print $2}' writes.txt | sort > acked.txt
+awk '$1 == "D" {print $2}' writes.txt | sort > deltried.txt
+awk '$1 == "D" && $3 == 0 {print $2}' writes.txt | sort > deleted.txt
+comm -23 acked.txt deltried.txt > mustexist.txt
+sort final.txt > final.sorted
+comm -23 mustexist.txt final.sorted > lost.txt
+comm -12 deleted.txt final.sorted > resurrected.txt
+grep STALEREAD writes.txt > stalereads.txt
+
+ownvote=$(cat ${LOGS}.*.db 2>/dev/null | grep -c "won the election on our own vote")
+refused=$(cat ${LOGS}.*.db 2>/dev/null | grep -c "not upgrading to stale gen")
+echo "own-vote2 wins $ownvote, stale upgrades refused $refused, acked $(wc -l < acked.txt), final $(wc -l < final.txt)," \
+     "lost $(wc -l < lost.txt), resurrected $(wc -l < resurrected.txt), stalereads $(wc -l < stalereads.txt)"
+
+bad=0
+for f in lost resurrected stalereads; do
+    [[ -s $f.txt ]] || continue
+    bad=1; echo "== $f"; head -5 $f.txt
+done
+[[ $bad == 1 ]] && failexit "lost $(wc -l < lost.txt) resurrected $(wc -l < resurrected.txt) stalereads $(wc -l < stalereads.txt)"
+echo "Success"

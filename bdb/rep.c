@@ -1154,6 +1154,8 @@ static void abort_election_on_exit(bdb_state_type *bdb_state)
 
 int gbl_elect_priority_bias = 0;
 int gbl_debug_elect_lose_round = 0;
+int gbl_debug_own_vote_upgrade_delay_ms = 0;
+int gbl_debug_dupmaster_delay_ms = 0;
 /* Test hook: let a node that can't vote hold elections anyway */
 int gbl_debug_unsanctioned_elect = 0;
 
@@ -1397,6 +1399,12 @@ elect_again:
     if (rc == DB_REP_NEWMASTER) {
         /* We won on our own vote2, so no NEWMASTER reaches process_berkdb: upgrade here as it would */
         logmsg(LOGMSG_WARN, "elect_thread: won the election on our own vote, upgrading to gen %d\n", newgen);
+        if (gbl_debug_own_vote_upgrade_delay_ms) {
+            /* Test hook: a slow writelock wait, so peers can elect a newer master meanwhile */
+            logmsg(LOGMSG_WARN, "elect_thread: debug_own_vote_upgrade_delay_ms sleeping %d ms\n",
+                   gbl_debug_own_vote_upgrade_delay_ms);
+            poll(NULL, 0, gbl_debug_own_vote_upgrade_delay_ms);
+        }
         BDB_WRITELOCK_REP("upgrade");
         uint32_t gen;
         bdb_state->dbenv->get_rep_gen(bdb_state->dbenv, &gen);
@@ -4390,6 +4398,12 @@ static int process_berkdb(bdb_state_type *bdb_state, char *host, DBT *control, D
         logmsg(LOGMSG_WARN, "rep_process_message: got DUPMASTER from %s, "
                 "I think master is %s.  dowgrading and calling for election\n",
                 host, oldmaster);
+        if (gbl_debug_dupmaster_delay_ms) {
+            /* Test hook: keep a stale master up past its commit deferral */
+            logmsg(LOGMSG_WARN, "debug_dupmaster_delay_ms sleeping %d ms before downgrade\n",
+                   gbl_debug_dupmaster_delay_ms);
+            poll(NULL, 0, gbl_debug_dupmaster_delay_ms);
+        }
         rc = bdb_downgrade(bdb_state, 0, NULL);
         break;
 

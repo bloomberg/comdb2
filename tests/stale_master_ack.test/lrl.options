@@ -1,0 +1,13 @@
+dtastripe 1
+# As repeated_downgrades: parallel rep and decoupled logputs have caused crashes under downgrades
+setattr REP_PROCESSORS 0
+setattr REP_WORKERS 0
+decoupled_logputs off
+sql_tranlevel_default blocksock
+durable_lsns off
+replicant_retry_on_not_durable on
+hide_non_durable_rcode off
+# An own-vote2 winner waits before upgrading, so the others elect a newer master meanwhile;
+# the stale master then sits on DUPMASTER past its commit deferral
+debug_own_vote_upgrade_delay_ms 8000
+debug_dupmaster_delay_ms 4000

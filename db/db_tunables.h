@@ -1781,6 +1781,11 @@ REGISTER_TUNABLE("debug_elect_lose_round",
                  "Fail this node's next election round once another node is master (at most 30 seconds), "
                  "as a timeout would.  (Default: off)",
                  TUNABLE_BOOLEAN, &gbl_debug_elect_lose_round, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("debug_own_vote_upgrade_delay_ms",
+                 "Sleep this long between winning on our own vote2 and upgrading.  (Default: 0)", TUNABLE_INTEGER,
+                 &gbl_debug_own_vote_upgrade_delay_ms, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("debug_dupmaster_delay_ms", "Sleep this long before downgrading on DUPMASTER.  (Default: 0)",
+                 TUNABLE_INTEGER, &gbl_debug_dupmaster_delay_ms, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("debug_unsanctioned_elect",
                  "Let this node hold elections even if it is not sanctioned, so tests can check that its votes are "
                  "dropped.  (Default: off)",

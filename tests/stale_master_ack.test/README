@@ -1,0 +1,4 @@
+A node that wins an election on its own vote2 but upgrades late can become a second master next to a
+newer one. Its commits must not count the newer master's acks as durable, or rc-0 writes are later
+truncated. One writer per node inserts, reads back and deletes unique ids while the master is downgraded
+repeatedly; the test fails on a lost insert, a resurrected delete or a stale read. Needs 5 nodes.

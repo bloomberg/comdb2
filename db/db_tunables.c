@@ -318,6 +318,8 @@ extern int gbl_master_req_waitms;
 extern int gbl_commit_delay_trace;
 extern int gbl_elect_priority_bias;
 extern int gbl_debug_elect_lose_round;
+extern int gbl_debug_own_vote_upgrade_delay_ms;
+extern int gbl_debug_dupmaster_delay_ms;
 extern char *gbl_debug_net_drop_from;
 extern int gbl_debug_net_drop_secs;
 int debug_net_drop_from_update(void *context, void *value);
