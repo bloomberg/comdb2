@@ -9031,10 +9031,15 @@ done_delete:
 
         lclgenid = bdb_genid_to_host_order(dt.genid);
 
+        /* The SELECTV check only validates the transaction on the master:
+           don't send UDP prefault hints for the pages it reads */
+        int saved_prefault_udp = send_prefault_udp;
+        send_prefault_udp = 0;
         if (gbl_selectv_writelock)
             rc = ix_check_genid_wl(iq, trans, dt.genid, &bdberr);
         else
             rc = ix_check_genid(iq, trans, dt.genid, &bdberr);
+        send_prefault_udp = saved_prefault_udp;
 
         if (gbl_enable_osql_logging) {
             uuidstr_t us;

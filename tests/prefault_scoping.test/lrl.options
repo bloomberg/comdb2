@@ -1,0 +1,10 @@
+# The master hints only btree leaf pages it reads from disk: keep the cache much
+# smaller than the filler table, so that scanning the filler evicts the pages
+# of the tables under test (the default minimum cache is 64 MB)
+cachekbmin 8192
+cache 8 mb
+# Uncompressed rows, so that the table sizes below hold
+init_with_compr none
+# The test reads "udp prefault async hints queued" as the count of hints
+enable_prefault_udp
+udp_prefault_async 1
