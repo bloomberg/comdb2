@@ -2399,6 +2399,16 @@ int verify_master_leases_int(bdb_state_type *bdb_state, const char *func, uint32
         return 1;
     }
 
+    /* No sanctioned nodes: like elections, keep the sitting master (its commits are never
+     * durable then, since the commit wait has no cluster to count) */
+    if (total_nodes == 0) {
+        if (verify_trace && (now = time(NULL)) != lastpr) {
+            logmsg(LOGMSG_USER, "%s master-lease return good because the sanctioned list is empty\n", __func__);
+            lastpr = now;
+        }
+        return 1;
+    }
+
     Pthread_mutex_lock(&(bdb_state->master_lease_lk));
     for (i = 0; i < comcount; i++) {
         struct hostinfo *h = retrieve_hostinfo(comlist[i]);
@@ -3967,9 +3977,14 @@ void bdb_set_seqnum(void *in_bdb_state)
 
     if (rc == 0 && lastlsn.file > 0) {
         struct hostinfo *h = retrieve_hostinfo(bdb_state->repinfo->myhost_interned);
+        /* Periodic seqnums carry our commit generation too: with generations on the master
+         * changes coherency only on seqnums whose commit generation is its own */
+        uint32_t commit_gen = 0;
+        bdb_get_commit_genid_generation(bdb_state, NULL, &commit_gen);
         Pthread_mutex_lock(&(bdb_state->seqnum_info->lock));
         h->seqnum.lsn = lastlsn;
         h->seqnum.generation = mygen;
+        h->seqnum.commit_generation = commit_gen;
 
         if (gbl_set_seqnum_trace && (now = time(NULL)) - lastpr) {
             logmsg(LOGMSG_USER, "%s line %d set %s seqnum to %d:%d gen %d\n",
