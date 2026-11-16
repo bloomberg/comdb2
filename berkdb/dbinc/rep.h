@@ -26,6 +26,7 @@ typedef struct __rep {
 	char*		master_id;	/* ID of the master site. */
 	u_int32_t	egen;		/* Replication election generation. */
 	u_int32_t	gen;		/* Replication generation number. */
+	u_int32_t	vote2_egen;	/* Highest egen we sent a vote2 in: ignore masters from older elections */
 	u_int32_t	recover_gen;	/* Last generation number in log. */
 	u_int32_t	ignore_gen;  /* Enforce coordination on distributed truncate */
 	u_int32_t	committed_gen;  /* Last generation number written to a commit record */

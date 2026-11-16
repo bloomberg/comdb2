@@ -1398,6 +1398,21 @@ elect_again:
         /* We won on our own vote2, so no NEWMASTER reaches process_berkdb: upgrade here as it would */
         logmsg(LOGMSG_WARN, "elect_thread: won the election on our own vote, upgrading to gen %d\n", newgen);
         BDB_WRITELOCK_REP("upgrade");
+        uint32_t gen;
+        bdb_state->dbenv->get_rep_gen(bdb_state->dbenv, &gen);
+        if (gen > newgen) {
+            /* We accepted a newer master while waiting: upgrading would take the gen backwards */
+            logmsg(LOGMSG_WARN, "elect_thread: not upgrading to stale gen %d, current gen is %u\n", newgen, gen);
+            BDB_RELLOCK();
+            goto give_up;
+        }
+        uint32_t vote2_egen;
+        if (bdb_state->dbenv->rep_refuse_upgrade(bdb_state->dbenv, newgen, &vote2_egen)) {
+            logmsg(LOGMSG_WARN, "elect_thread: not upgrading to gen %d, our vote2 promised egen %u\n", newgen,
+                   vote2_egen);
+            BDB_RELLOCK();
+            goto give_up;
+        }
         rc = bdb_upgrade(bdb_state, newgen, &done);
         BDB_RELLOCK();
         if (rc != 0) {
@@ -4322,6 +4337,15 @@ static int process_berkdb(bdb_state_type *bdb_state, char *host, DBT *control, D
             /* I'm upgrading and this thread could be holding logical locks:
              * abort sql threads waiting on logical locks */
             BDB_WRITELOCK_REP("upgrade");
+            uint32_t vote2_egen;
+            int refuse = bdb_state->dbenv->rep_refuse_upgrade(bdb_state->dbenv, egen, &vote2_egen);
+            if (refuse) {
+                /* A later gen or a promise to a later election: stay a replicant */
+                logmsg(LOGMSG_WARN, "NEWMASTER: not upgrading to gen %d (%s), vote2 egen %u\n", egen,
+                       refuse == 1 ? "stale gen" : "vote2 promise", vote2_egen);
+                BDB_RELLOCK();
+                break;
+            }
             /* we need to upgrade */
             rc = bdb_upgrade(bdb_state, egen, &done);
 

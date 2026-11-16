@@ -1202,6 +1202,43 @@ __rep_get_gen(dbenv, genp)
 }
 
 /*
+ * __rep_refuse_upgrade --
+ *
+ *	Refuse to become master of newgen if we're on a later gen or promised a later
+ *	election (vote2); then drop our claim so we're a replicant with no master.
+ *	Returns 1 for a stale gen, 2 for the promise, 0 to go ahead.
+ *
+ * PUBLIC: int __rep_refuse_upgrade __P((DB_ENV *, u_int32_t, u_int32_t *));
+ */
+int
+__rep_refuse_upgrade(dbenv, newgen, vote2_egenp)
+	DB_ENV *dbenv;
+	u_int32_t newgen;
+	u_int32_t *vote2_egenp;
+{
+	DB_REP *db_rep;
+	REP *rep;
+	int ret = 0;
+
+	db_rep = dbenv->rep_handle;
+	rep = db_rep->region;
+
+	MUTEX_LOCK(dbenv, db_rep->rep_mutexp);
+	*vote2_egenp = rep->vote2_egen;
+	if (rep->gen > newgen)
+		ret = 1;
+	else if (rep->vote2_egen > newgen)
+		ret = 2;
+	if (ret) {
+		F_CLR(rep, REP_F_MASTERELECT);
+		if (rep->master_id == rep->eid)
+			rep->master_id = db_eid_invalid;
+	}
+	MUTEX_UNLOCK(dbenv, db_rep->rep_mutexp);
+	return ret;
+}
+
+/*
  * __rep_get_log_gen --
  *
  *	Get the 'log' generation number from a replicated environment.
