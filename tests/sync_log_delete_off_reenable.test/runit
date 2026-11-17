@@ -1,7 +1,8 @@
-# TODO consolidate all leak regression tests into one
-
 #!/usr/bin/env bash
 bash -n "$0" || exit 1
+
+# 'sync log-delete off N' must re-enable log deletion after N minutes, without deadlocking.
+# Checks bdb's logdeleteage: -1 (never) while held, and not -1 once the timer fires.
 
 dbnm=$1
 
@@ -10,12 +11,64 @@ set -e
 # Make sure we talk to the same host
 host=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default 'SELECT comdb2_host()'`
 
+function failexit
+{
+    echo "Failed: $1"
+    exit 1
+}
 
-# Turn off log deletion and enable it back in 1 minute.
-cdb2sql $dbnm --host $host 'exec procedure sys.cmd.send("sync log-delete off 1")'
+# The bdb attributes the log deletion thread acts on: "logdeleteage logdeletelowfilenum"
+function logdel_state
+{
+    cdb2sql --tabs ${CDB2_OPTIONS} $dbnm --host $host "select value from comdb2_tunables where lower(name) in ('logdeleteage', 'logdeletelowfilenum') order by lower(name)" | tr '\n' ' '
+}
 
-# Give it 5 extra seconds here to paper over slow machines.
+function send
+{
+    cdb2sql ${CDB2_OPTIONS} $dbnm --host $host "exec procedure sys.cmd.send(\"$1\")" >/dev/null || failexit "send '$1'"
+}
+
+# held: both off ("-1 0"); enabled: exactly the state before any hold
+function expect_age
+{
+    local st
+    st=$(logdel_state) || failexit "can't read the log deletion state ($2)"
+    if [[ "$1" == "held" ]]; then
+        [[ "$st" == "-1 0 " ]] || failexit "log deletion state is '$st', expected '-1 0' ($2)"
+    else
+        [[ "$st" == "$initial" ]] || failexit "log deletion not re-enabled: '$st', expected '$initial' ($2)"
+    fi
+}
+
+initial=$(logdel_state) || failexit "can't read the initial log deletion state"
+echo "initial log deletion state: $initial"
+
+# Twice in a row: the timer re-enables deletion in bdb
+for i in 1 2; do
+    send "sync log-delete off 1"
+    expect_age held "pass $i, after off 1"
+    # Give it 5 extra seconds here to paper over slow machines.
+    sleep 65
+    expect_age enabled "pass $i, after the timer"
+done
+
+# A newer, longer hold replaces the pending timer instead of being ended by it
+send "sync log-delete off 1"
+send "sync log-delete off 3"
 sleep 65
+expect_age held "off 1 then off 3, after the first timer"
 
-# Do it again.
-cdb2sql $dbnm --host $host 'exec procedure sys.cmd.send("sync log-delete off 1")'
+# An untimed 'off' cancels the pending timer
+send "sync log-delete off 1"
+send "sync log-delete off"
+sleep 65
+expect_age held "off 1 then off, after the timer"
+
+send "sync log-delete on"
+expect_age enabled "after on"
+
+# A re-enable time that overflows is rejected instead of firing at once
+send "sync log-delete off 99999999"
+expect_age enabled "after an oversized off"
+
+echo "Success"

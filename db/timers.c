@@ -164,6 +164,19 @@ int comdb2_cantim(int parm)
     return remove_timer(parm, 1);
 }
 
+/* Remove every pending timer for parm under one lock; returns how many were removed */
+int comdb2_cantim_all(int parm)
+{
+    int n = 0;
+    Pthread_mutex_lock(&timerlk);
+    while (remove_timer(parm, 0) == 0)
+        n++;
+    if (n)
+        Pthread_cond_signal(&timerwait);
+    Pthread_mutex_unlock(&timerlk);
+    return n;
+}
+
 int comdb2_timer(int ms, int parm)
 {
     return new_timer(ms, parm, 1, 1);
@@ -201,8 +214,8 @@ void *timer_thread(void *p)
 
             ts = now;
             ts.tv_sec += nexttrap / 1000;
-            ts.tv_nsec += ((nexttrap % 1000) * 1000);
-            if (ts.tv_nsec > 1000000000) {
+            ts.tv_nsec += ((nexttrap % 1000) * 1000000);
+            if (ts.tv_nsec >= 1000000000) {
                 ts.tv_sec += ts.tv_nsec / 1000000000;
                 ts.tv_nsec = ts.tv_nsec % 1000000000;
             }
@@ -215,8 +228,9 @@ void *timer_thread(void *p)
 
             timer_func(&waitft_parm);
             remove_timer(waitft_parm.parm, 0);
-            if (!timers[0].oneshot) {
-                new_timer(timers[0].ms, waitft_parm.parm, 0, 0);
+            /* Re-arm from the fired timer (t), not the new heap root */
+            if (!t.oneshot) {
+                new_timer(t.ms, waitft_parm.parm, 0, 0);
             }
         }
         Pthread_mutex_unlock(&timerlk);

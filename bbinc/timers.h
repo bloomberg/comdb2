@@ -25,6 +25,7 @@ struct timer_parm /*sent from timserv */
 };
 
 int comdb2_cantim(int parm);
+int comdb2_cantim_all(int parm);
 int comdb2_timer(int ms, int parm);
 int comdb2_timprm(int ms, int parm);
 
