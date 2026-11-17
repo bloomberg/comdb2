@@ -525,6 +525,8 @@
 (name='log_cursor_cache', description='Cache log cursors', type='BOOLEAN', value='OFF', read_only='N')
 (name='log_debug_ctrace_threshold', description='Limit trace about log file deletion to this many events.', type='INTEGER', value='20', read_only='N')
 (name='log_delete_age', description='Log deletion policy', type='INTEGER', value='0', read_only='Y')
+(name='log_delete_disabled_secs', description='Seconds since log deletion was turned off with 'sync log-delete off', 0 if it is on.', type='INTEGER', value='0', read_only='Y')
+(name='log_delete_disabled_warn_interval', description='While log deletion is turned off, log how long it has been off every this many seconds. 0 to disable. (Default: 300)', type='INTEGER', value='300', read_only='N')
 (name='log_delete_low_headroom_breaktime', description='Try to delete logs this many times if the filesystem is getting full before giving up.', type='INTEGER', value='10', read_only='N')
 (name='log_fstsnd_triggers', description='Log all fstsnd triggers to file', type='BOOLEAN', value='OFF', read_only='N')
 (name='logdelete_run_interval', description='', type='INTEGER', value='30', read_only='N')

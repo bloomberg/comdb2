@@ -367,6 +367,8 @@ extern int gbl_replicated_truncate_timeout;
 extern int gbl_match_on_ckp;
 extern int gbl_verbose_set_sc_in_progress;
 extern int gbl_logdelete_lock_trace;
+extern int gbl_log_delete_disabled_since;
+extern int gbl_log_delete_disabled_warn_interval;
 extern int gbl_debug_block_comdb2ar;
 extern int gbl_debug_pause_delete_files;
 extern int gbl_online_recovery;
@@ -1192,6 +1194,23 @@ static int log_delete_now_update(void *context, void *unused)
     comdb2_tunable *tunable = (comdb2_tunable *)context;
     *(int *)tunable->var = 0;
     return 0;
+}
+
+static void *log_delete_disabled_secs_value(void *context)
+{
+    /* Per thread, so concurrent comdb2_tunables readers don't share it */
+    static __thread int val;
+    int since = gbl_log_delete_disabled_since;
+    val = since ? comdb2_time_epoch() - since : 0;
+    return &val;
+}
+
+/* There is no variable behind log_delete_disabled_secs, so setting it (from
+   the lrl or env tunables, where READONLY isn't enforced) must fail here. */
+static int log_delete_disabled_secs_update(void *context, void *value)
+{
+    logmsg(LOGMSG_ERROR, "log_delete_disabled_secs is read-only\n");
+    return 1;
 }
 
 static int hostname_update(void *context, void *value)

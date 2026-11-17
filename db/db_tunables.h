@@ -762,6 +762,14 @@ REGISTER_TUNABLE("lock_dba_user",
                  NULL, NULL, NULL);
 REGISTER_TUNABLE("log_delete_age", "Log deletion policy", TUNABLE_INTEGER,
                  &db->log_delete_age, READONLY, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("log_delete_disabled_secs",
+                 "Seconds since log deletion was turned off with 'sync log-delete off', 0 if it is on.",
+                 TUNABLE_INTEGER, NULL, READONLY, log_delete_disabled_secs_value, NULL, log_delete_disabled_secs_update,
+                 NULL);
+REGISTER_TUNABLE("log_delete_disabled_warn_interval",
+                 "While log deletion is turned off, log how long it has been off every this many "
+                 "seconds. 0 to disable. (Default: 300)",
+                 TUNABLE_INTEGER, &gbl_log_delete_disabled_warn_interval, 0, NULL, NULL, NULL, NULL);
 /* The following 3 tunables have been marked internal as we do not want them
  * to be listed via comdb2_tunables system table. log_delete_age's value
  * should be sufficient to reflect on the current log deletion policy. */

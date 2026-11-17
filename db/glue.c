@@ -3259,6 +3259,12 @@ void backend_sync_stat(struct dbenv *dbenv)
     }
 }
 
+/* Epoch at which log deletion was explicitly turned off ("sync log-delete off"),
+   0 while it is on. Set when the state reaches bdb, so it reflects what the log
+   deletion thread acts on. */
+int gbl_log_delete_disabled_since = 0;
+int gbl_log_delete_disabled_warn_interval = 300;
+
 /* just update the sync config */
 /* *This function acquires the log delete lock */
 void backend_update_sync(struct dbenv *dbenv)
@@ -3267,6 +3273,15 @@ void backend_update_sync(struct dbenv *dbenv)
         return; /*skip */
 
     logdelete_lock(__func__, __LINE__);
+
+    /* Written under logdelete_lk; read without it by comdb2_tunables and the
+       log deletion thread */
+    if (!dbenv->log_delete) {
+        if (gbl_log_delete_disabled_since == 0)
+            gbl_log_delete_disabled_since = comdb2_time_epoch();
+    } else {
+        gbl_log_delete_disabled_since = 0;
+    }
 
     bdb_attr_set(dbenv->bdb_attr, BDB_ATTR_SYNCTRANSACTIONS, dbenv->log_sync);
     bdb_attr_set(dbenv->bdb_attr, BDB_ATTR_LOGDELETEAGE,
