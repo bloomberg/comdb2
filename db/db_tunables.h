@@ -2450,6 +2450,38 @@ REGISTER_TUNABLE("ufid_add_on_collect", "Add to ufid-hash on collect.  (Default:
 
 REGISTER_TUNABLE("collect_before_locking", "Collect a transaction from the log before acquiring locks.  (Default: on)",
                  TUNABLE_BOOLEAN, &gbl_collect_before_locking, 0, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("rep_retry_keep_collected",
+                 "Keep a replicated transaction's collected log records across deadlock retries, instead of "
+                 "collecting it from the log again on every retry.  (Default: on)",
+                 TUNABLE_BOOLEAN, &gbl_rep_retry_keep_collected, 0, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("rep_retry_backoff_after",
+                 "Retry a kept replicated transaction this many times without a pause before backing off.  "
+                 "(Default: 2)",
+                 TUNABLE_INTEGER, &gbl_rep_retry_backoff_after, 0, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("rep_retry_backoff_base_us",
+                 "First backoff, in microseconds, before retrying a kept replicated transaction; doubles on each "
+                 "retry.  (Default: 100)",
+                 TUNABLE_INTEGER, &gbl_rep_retry_backoff_base_us, 0, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("rep_retry_backoff_max_us",
+                 "Longest backoff, in microseconds, before retrying a kept replicated transaction; 0 disables the "
+                 "backoff.  (Default: 250)",
+                 TUNABLE_INTEGER, &gbl_rep_retry_backoff_max_us, 0, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("rep_retry_trace",
+                 "Trace each replicated transaction that lost a deadlock: retries, time, backoff, collect time and "
+                 "lock waits.  (Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_rep_retry_trace, 0, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("rep_exclusive_after_retries",
+                 "After a replicated transaction loses this many deadlocks, ask SQL readers to release their page "
+                 "locks and wait until it holds its locks; 0 disables.  (Default: 20)",
+                 TUNABLE_INTEGER, &gbl_rep_exclusive_after_retries, 0, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("rep_exclusive_after_ms",
+                 "After a replicated transaction has been losing deadlocks for this many milliseconds, ask SQL "
+                 "readers to release their page locks and wait until it holds its locks; 0 disables.  (Default: 200)",
+                 TUNABLE_INTEGER, &gbl_rep_exclusive_after_ms, 0, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("rep_exclusive_max_wait_ms",
+                 "Longest a SQL reader waits, in milliseconds, after stepping aside for a replicated transaction.  "
+                 "(Default: 1000)",
+                 TUNABLE_INTEGER, &gbl_rep_exclusive_max_wait_ms, 0, NULL, NULL, NULL, NULL);
 
 REGISTER_TUNABLE("debug_ddlk", "Generate random deadlocks.  (Default: 0)", TUNABLE_INTEGER, &gbl_ddlk,
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);

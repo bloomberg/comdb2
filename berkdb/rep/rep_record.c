@@ -125,6 +125,7 @@ int __rep_set_last_locked(DB_ENV *dbenv, DB_LSN *lsn);
 
 extern void fsnapf(FILE *, void *, int);
 static int reset_recovery_processor(struct __recovery_processor *rp);
+static void return_processor(DB_ENV *dbenv, struct __recovery_processor *rp);
 
 #else
 
@@ -2735,6 +2736,227 @@ berkdb_get_max_rep_retries()
 	return max_replication_trans_retries;
 }
 
+/* Keep a transaction's collected log records across deadlock retries */
+int gbl_rep_retry_keep_collected = 1;
+
+/* Backoff before retrying a kept transaction (see rep_retry_backoff) */
+int gbl_rep_retry_backoff_after = 2;
+int gbl_rep_retry_backoff_base_us = 100;
+int gbl_rep_retry_backoff_max_us = 250;
+
+/* Trace each replicated transaction that lost a deadlock */
+int gbl_rep_retry_trace = 0;
+
+/*
+ * Pause before retrying a transaction that lost a deadlock and kept its
+ * collected log records.  Collecting again used to put a gap between attempts,
+ * long enough for readers to move off the pages replication wants; without it
+ * replication retries straight into the same readers and loses far more
+ * deadlocks.  The first rep_retry_backoff_after retries go at once (most
+ * cycles clear by themselves); after that the pause doubles from
+ * rep_retry_backoff_base_us up to rep_retry_backoff_max_us, and is drawn
+ * from 50-100% of that so it does not keep landing at the same point of the
+ * readers' periodic waiter checks.  The locks are already released, so the
+ * pause blocks no one; it is skipped if the bdb lock is wanted.
+ *
+ * Returns the microseconds slept.
+ */
+static uint64_t
+rep_retry_backoff(int retry)
+{
+	int after = gbl_rep_retry_backoff_after;
+	int base_us = gbl_rep_retry_backoff_base_us;
+	int max_us = gbl_rep_retry_backoff_max_us;
+	uint64_t base, max, us;
+	int shift;
+
+	if (max_us <= 0 || base_us <= 0 || retry <= after)
+		return 0;
+	base = base_us;
+	max = max_us;
+
+	shift = retry - after - 1;
+	us = shift >= 20 ? max : base << shift;
+	if (us > max)
+		us = max;
+	us = us / 2 + rand() % (us / 2 + 1);
+
+	if (us == 0 || bdb_the_lock_desired())
+		return 0;
+
+	usleep(us);
+	return us;
+}
+
+/*
+ * Readers step aside for replication.
+ *
+ * A transaction that keeps losing deadlocks to readers is losing to readers
+ * scanning in both directions (and holding inner join cursors while the outer
+ * one moves), so no lock order can avoid them.  Once it has lost
+ * rep_exclusive_after_retries of them, or has been losing them for
+ * rep_exclusive_after_ms (an attempt that waits on readers before it loses can
+ * take long enough that the count comes too late), the replication thread
+ * raises this flag; SQL readers on this node see it at their next safe point (a cursor
+ * move, a row emit, a sort), drop their page locks -- keeping their curtran and
+ * table locks -- and wait for it to go down, at most rep_exclusive_max_wait_ms.
+ * Replication lowers it as soon as it holds all the transaction's locks, so
+ * readers are held off only while it takes them; after that they just queue on
+ * those locks.  Transactions that take the schema lock are left out: readers
+ * waiting here keep their table read locks, which such a transaction needs.
+ *
+ * Each raise starts a new generation; a reader steps aside at most once per
+ * generation, so a raise that outlives the wait cannot stall readers twice.
+ */
+int gbl_rep_exclusive_after_retries = 20;
+int gbl_rep_exclusive_after_ms = 200;
+int gbl_rep_exclusive_max_wait_ms = 1000;
+
+static pthread_mutex_t rep_excl_lk = PTHREAD_MUTEX_INITIALIZER;
+static pthread_cond_t rep_excl_cd = PTHREAD_COND_INITIALIZER;
+static int rep_excl_flag;	/* written under rep_excl_lk */
+static u_int32_t rep_excl_gen;	/* written under rep_excl_lk */
+
+/* Reader side, for the rep-retry trace */
+u_int64_t gbl_rep_exclusive_yields;
+u_int64_t gbl_rep_exclusive_wait_us;
+u_int64_t gbl_rep_exclusive_timeouts;
+
+static void
+rep_exclusive_set(void)
+{
+	Pthread_mutex_lock(&rep_excl_lk);
+	if (!rep_excl_flag) {
+		u_int32_t gen = rep_excl_gen + 1;
+		__atomic_store_n(&rep_excl_gen, gen ? gen : 1, __ATOMIC_RELAXED);
+		__atomic_store_n(&rep_excl_flag, 1, __ATOMIC_RELEASE);
+	}
+	Pthread_mutex_unlock(&rep_excl_lk);
+}
+
+static void
+rep_exclusive_clear(void)
+{
+	if (!__atomic_load_n(&rep_excl_flag, __ATOMIC_ACQUIRE))
+		return;
+	Pthread_mutex_lock(&rep_excl_lk);
+	if (rep_excl_flag) {
+		__atomic_store_n(&rep_excl_flag, 0, __ATOMIC_RELEASE);
+		Pthread_cond_broadcast(&rep_excl_cd);
+	}
+	Pthread_mutex_unlock(&rep_excl_lk);
+}
+
+/* For readers: the current generation if replication wants them out of the
+ * way, else 0.  Unlocked; a stale answer costs one needless or one missed step
+ * aside. */
+u_int32_t
+rep_exclusive_wanted(void)
+{
+	if (!__atomic_load_n(&rep_excl_flag, __ATOMIC_ACQUIRE))
+		return 0;
+	return __atomic_load_n(&rep_excl_gen, __ATOMIC_RELAXED);
+}
+
+/* For readers, with their page locks already dropped: wait until generation
+ * gen is over, or rep_exclusive_max_wait_ms has passed.
+ *
+ * Readers wait here holding the bdb read lock, and do not stop for a wanted
+ * bdb write lock.  They cannot delay a master swing: the replication thread
+ * holds the bdb read lock for as long as it is in the retry loop
+ * (berkdb_receive_rtn), so whoever wants the write lock is already waiting on
+ * it, and the flag goes down before that read lock is released.  A NEWMASTER
+ * is processed by the replication thread itself, after the loop. */
+void
+rep_exclusive_wait(u_int32_t gen)
+{
+	struct timespec ts;
+	int maxms = gbl_rep_exclusive_max_wait_ms;
+	int timedout = 0, rc;
+	u_int64_t start = bb_berkdb_fasttime();
+
+	if (maxms <= 0)
+		return;
+
+	clock_gettime(CLOCK_REALTIME, &ts);
+	ts.tv_sec += maxms / 1000;
+	ts.tv_nsec += (long)(maxms % 1000) * 1000000;
+	if (ts.tv_nsec >= 1000000000) {
+		ts.tv_sec++;
+		ts.tv_nsec -= 1000000000;
+	}
+
+	Pthread_mutex_lock(&rep_excl_lk);
+	while (rep_excl_flag && rep_excl_gen == gen) {
+		/* Anything but a wakeup ends the wait: never spin on an error */
+		if ((rc = pthread_cond_timedwait(&rep_excl_cd, &rep_excl_lk, &ts)) != 0) {
+			timedout = (rc == ETIMEDOUT);
+			break;
+		}
+	}
+	Pthread_mutex_unlock(&rep_excl_lk);
+
+	__atomic_add_fetch(&gbl_rep_exclusive_yields, 1, __ATOMIC_RELAXED);
+	__atomic_add_fetch(&gbl_rep_exclusive_wait_us, bb_berkdb_fasttime() - start, __ATOMIC_RELAXED);
+	if (timedout)
+		__atomic_add_fetch(&gbl_rep_exclusive_timeouts, 1, __ATOMIC_RELAXED);
+}
+
+/* One replicated transaction's way through the deadlock retry loop, for the
+ * rep-retry trace */
+struct rep_retry_track {
+	int trace;		/* rep_retry_trace, sampled at the start */
+	int stats;		/* thread stats on at the start: ts0 is valid */
+	u_int64_t start_us;
+	u_int64_t backoff_us;
+	int escalated_at;	/* retry that raised the step-aside flag, or 0 */
+	struct berkdb_thread_stats ts0;
+	u_int64_t yields0, rwait0, rtmo0;
+};
+
+static void
+rep_retry_track_start(struct rep_retry_track *tr)
+{
+	memset(tr, 0, sizeof(*tr));
+	if (!(tr->trace = gbl_rep_retry_trace))
+		return;
+	tr->start_us = bb_berkdb_fasttime();
+	if ((tr->stats = gbl_bb_berkdb_enable_thread_stats))
+		tr->ts0 = *bb_berkdb_get_thread_stats();
+	tr->yields0 = __atomic_load_n(&gbl_rep_exclusive_yields, __ATOMIC_RELAXED);
+	tr->rwait0 = __atomic_load_n(&gbl_rep_exclusive_wait_us, __ATOMIC_RELAXED);
+	tr->rtmo0 = __atomic_load_n(&gbl_rep_exclusive_timeouts, __ATOMIC_RELAXED);
+}
+
+/* Trace a transaction that lost at least one deadlock, however it ended */
+static void
+rep_retry_track_end(struct rep_retry_track *tr, DB_LSN *lsn, int ret, int retries)
+{
+	u_int64_t collect_us = 0, wait_us = 0;
+	unsigned waits = 0;
+
+	if (!tr->trace || retries == 0)
+		return;
+	if (tr->stats && gbl_bb_berkdb_enable_thread_stats) {
+		struct berkdb_thread_stats *t = bb_berkdb_get_thread_stats();
+		collect_us = t->rep_collect_time_us - tr->ts0.rep_collect_time_us;
+		wait_us = t->lock_wait_time_us - tr->ts0.lock_wait_time_us;
+		waits = t->n_lock_waits - tr->ts0.n_lock_waits;
+	}
+	logmsg(LOGMSG_USER, "rep-retry lsn %u:%u ret %d retries %d "
+		"time-ms %.1f backoff-ms %.1f collect-ms %.1f "
+		"lock-waits %u wait-ms %.1f escalated-at %d "
+		"reader-yields %" PRIu64 " reader-wait-ms %.1f "
+		"reader-timeouts %" PRIu64 "\n",
+		lsn->file, lsn->offset, ret, retries,
+		(bb_berkdb_fasttime() - tr->start_us) / 1000.0,
+		tr->backoff_us / 1000.0, collect_us / 1000.0, waits,
+		wait_us / 1000.0, tr->escalated_at,
+		__atomic_load_n(&gbl_rep_exclusive_yields, __ATOMIC_RELAXED) - tr->yields0,
+		(__atomic_load_n(&gbl_rep_exclusive_wait_us, __ATOMIC_RELAXED) - tr->rwait0) / 1000.0,
+		__atomic_load_n(&gbl_rep_exclusive_timeouts, __ATOMIC_RELAXED) - tr->rtmo0);
+}
+
 static inline int
 logical_rectype(int rectype)
 {
@@ -3991,6 +4213,14 @@ gap_check:		use_range = 0;
 		if (!F_ISSET(rep, REP_F_LOGSONLY)) {
 			num_retries = 0;
 			LTDESC *ltrans = NULL;
+			/* Set by __rep_process_txn_concurrent when the txn lost a deadlock
+			 * taking its locks: its processor, with the txn already collected,
+			 * for the next attempt to reuse. */
+			struct __recovery_processor *keep_rp = NULL;
+			uint64_t first_deadlock_us = 0;
+			struct rep_retry_track track;
+
+			rep_retry_track_start(&track);
 
 			do {
 				extern int gbl_slow_rep_process_txn_maxms;
@@ -4035,12 +4265,19 @@ gap_check:		use_range = 0;
 					ret =
 						__rep_process_txn_concurrent(dbenv,
 						rp, rec, &ltrans, rp->lsn, max_lsn,
-						commit_gen, rep_gen, dbenv->prev_commit_lsn);
+						commit_gen, rep_gen, dbenv->prev_commit_lsn,
+						&keep_rp);
 				} else {
 					ret =
 						__rep_process_txn(dbenv, rp, rec,
 						&ltrans, max_lsn, commit_gen, rep_gen);
 				}
+
+				/* A processor is kept only to retry a lost deadlock; any
+				 * other outcome has already returned it.  The exits below
+				 * (the end of the loop, and DB_LOCK_DEADLOCK_CUSTOM) release
+				 * one that is still kept; nothing caps the retries. */
+				assert(keep_rp == NULL || ret == DB_LOCK_DEADLOCK);
 
 				/* Always release locks in order.  This is probably too conservative. */
 				if (ret != DB_LOCK_DEADLOCK && ret != DB_LOCK_DEADLOCK_CUSTOM)
@@ -4066,11 +4303,34 @@ gap_check:		use_range = 0;
 						dbenv->replicant_use_minwrite_noread = 0;
 						disabled_minwrite_noread = 1;
 					}
+					/* Lost too many, or for too long: have the readers step
+					 * aside.  Taking the locks lowers the flag, so a deadlock
+					 * after that (applying) raises it again, as a new
+					 * generation.  While it stays up it stays one generation:
+					 * a reader that waited it out to rep_exclusive_max_wait_ms
+					 * is not held off a second time for this transaction. */
+					if (num_retries == 1)
+						first_deadlock_us = bb_berkdb_fasttime();
+					int after_retries = gbl_rep_exclusive_after_retries;
+					int after_ms = gbl_rep_exclusive_after_ms;
+					if ((after_retries > 0 && num_retries >= after_retries) ||
+						(after_ms > 0 && (bb_berkdb_fasttime() - first_deadlock_us) >=
+						 (uint64_t)after_ms * 1000)) {
+						if (!track.escalated_at)
+							track.escalated_at = num_retries;
+						rep_exclusive_set();
+					}
+					if (keep_rp)
+						track.backoff_us += rep_retry_backoff(num_retries);
 				} else {
 					if (disabled_minwrite_noread)
 						dbenv->replicant_use_minwrite_noread = 1;
 
 					if (ret == DB_LOCK_DEADLOCK_CUSTOM) {
+						rep_exclusive_clear();
+						if (keep_rp)
+							return_processor(dbenv, keep_rp);
+						rep_retry_track_end(&track, &rp->lsn, ret, num_retries);
 						ret = DB_LOCK_DEADLOCK;
 						goto err;
 					}
@@ -4082,6 +4342,13 @@ gap_check:		use_range = 0;
 				 * deadlock may be a rep_handle_dead and we need to give the watcher
 				 * thread a chance to fix it. */
 			} while (ret == DB_LOCK_DEADLOCK);
+
+			/* Only a deadlock leaves a processor kept, and a deadlock retries */
+			if (keep_rp)
+				return_processor(dbenv, keep_rp);
+			rep_exclusive_clear();
+
+			rep_retry_track_end(&track, &rp->lsn, ret, num_retries);
 		}
 		/* Now flush the log unless we're running TXN_NOSYNC. */
 		if (ret == 0 && !F_ISSET(dbenv, DB_ENV_TXN_NOSYNC))
@@ -5174,6 +5441,10 @@ __rep_process_txn_int(dbenv, rctl, rec, ltrans, maxlsn, commit_gen, rep_gen, loc
 
 		if (!dontlock) {
 			if (txn_rl_args->lflags & DB_TXN_SCHEMA_LOCK) {
+				/* Readers that step aside can hold the schema read
+				 * lock (a prepare moves cursors): lower the flag
+				 * before waiting on it */
+				rep_exclusive_clear();
 				if (gbl_replicant_poll_on_sc)
 					poll(NULL, 0, 100);
 				wrlock_schema_lk();
@@ -5254,6 +5525,9 @@ __rep_process_txn_int(dbenv, rctl, rec, ltrans, maxlsn, commit_gen, rep_gen, loc
 		rep->committed_lsn = rctl->lsn;
 		MUTEX_UNLOCK(dbenv, db_rep->rep_mutexp);
 		if (lflags & DB_TXN_SCHEMA_LOCK) {
+			/* Readers that step aside can hold the schema read lock (a
+			 * prepare moves cursors): lower the flag before waiting on it */
+			rep_exclusive_clear();
 			if (lockid == 0) {
 				if (gbl_replicant_poll_on_sc)
 					poll(NULL, 0, 100);
@@ -5406,6 +5680,9 @@ __rep_process_txn_int(dbenv, rctl, rec, ltrans, maxlsn, commit_gen, rep_gen, loc
 			line = __LINE__;
 			goto err;
 		}
+
+		/* Holding all the locks: readers can stop stepping aside */
+		rep_exclusive_clear();
 
 		// The LSN passed to `set_commit_context` becomes the new modsnap start lsn
 		//
@@ -5900,15 +6177,26 @@ berkdb_dumptrans(DB_ENV *dbenv)
 	Pthread_mutex_unlock(&dbenv->recover_lk);
 }
 
+/*
+ * Drop a processor's locks and its txnlist, but keep its collected log records
+ * (lc) and client info.
+ *
+ * reset_recovery_processor uses this before freeing the rest.  On its own it
+ * is for a transaction that lost a deadlock taking its locks: the transaction
+ * did not change, so the retry can reuse lc instead of collecting it again.
+ * The lc cache hands a transaction out only once, so without this every retry
+ * reads the whole transaction back from the log.  A processor kept this way
+ * stays off both processor lists until the retry loop passes it back in, or
+ * hands it to return_processor.
+ */
 static int
-reset_recovery_processor(rp)
+drop_processor_locks(rp)
 	struct __recovery_processor *rp;
 {
-	DB_ENV *dbenv;
+	DB_ENV *dbenv = rp->dbenv;
 	DB_LOCKREQ req;
 	int ret = 0, t_ret;
 
-	dbenv = rp->dbenv;
 	if (rp->lockid != DB_LOCK_INVALIDID) {
 		memset(&req, 0, sizeof(req));
 		req.op = DB_LOCK_PUT_ALL;
@@ -5929,21 +6217,48 @@ reset_recovery_processor(rp)
 		rp->txninfo = NULL;
 	}
 
+	return ret;
+}
+
+static int
+reset_recovery_processor(rp)
+	struct __recovery_processor *rp;
+{
+	DB_ENV *dbenv = rp->dbenv;
+	int ret;
+
+	ret = drop_processor_locks(rp);
+
 	if (rp->clientinfo != NULL) {
 		bdb_clientinfo_free(rp->clientinfo);
 		rp->clientinfo = NULL;
 	}
 
 	lc_free(dbenv, rp, &rp->lc);
+	rp->collected = 0;
 
 	return ret;
+}
+
+/* Reset a processor that is on neither processor list (just taken off the
+ * inactive list, or kept by the retry loop) and put it back on the inactive
+ * list. */
+static void
+return_processor(dbenv, rp)
+	DB_ENV *dbenv;
+	struct __recovery_processor *rp;
+{
+	reset_recovery_processor(rp);
+	Pthread_mutex_lock(&dbenv->recover_lk);
+	listc_abl(&dbenv->inactive_transactions, rp);
+	Pthread_mutex_unlock(&dbenv->recover_lk);
 }
 
 extern int gbl_force_serial_on_writelock;
 
 static inline int
 __rep_process_txn_concurrent_int(dbenv, rctl, rec, ltrans, ctrllsn, maxlsn,
-	commit_gen, rep_gen, prev_commit_lsn)
+	commit_gen, rep_gen, prev_commit_lsn, keep)
 	DB_ENV *dbenv;
 	REP_CONTROL *rctl;
 	DBT *rec;
@@ -5953,11 +6268,12 @@ __rep_process_txn_concurrent_int(dbenv, rctl, rec, ltrans, ctrllsn, maxlsn,
 	uint32_t *commit_gen;
 	uint32_t rep_gen;
 	DB_LSN prev_commit_lsn;
+	struct __recovery_processor **keep;
 {
 	DBT *lock_dbt, lsn_lock_dbt, lock_dbt_mem = {0};
 	char *dist_txnid = NULL;
 	int collect_before_locking = gbl_collect_before_locking;
-	DB_LOGC *logc;
+	DB_LOGC *logc = NULL;
 	DB_LSN prev_lsn;
 	DB_REP *db_rep;
 	DB_LOCK lsnlock;
@@ -5973,7 +6289,7 @@ __rep_process_txn_concurrent_int(dbenv, rctl, rec, ltrans, ctrllsn, maxlsn,
 	__txn_xa_regop_args *prep_args = NULL;
 	u_int32_t lockid = DB_LOCK_INVALIDID, rectype = 0;
 	int ret, t_ret, throwdeadlock = 0;
-	void *txninfo;
+	void *txninfo = NULL;
 	struct __recovery_processor *rp;
 	int had_serializable_records = 0;
 	void *pglogs = NULL;
@@ -5982,9 +6298,27 @@ __rep_process_txn_concurrent_int(dbenv, rctl, rec, ltrans, ctrllsn, maxlsn,
 	int dontlock = 0;
 	int endianize = 0;
 
-	Pthread_mutex_lock(&dbenv->recover_lk);
-	rp = listc_rtl(&dbenv->inactive_transactions);
-	Pthread_mutex_unlock(&dbenv->recover_lk);
+	/* A retry of a transaction that lost a deadlock taking its locks: the
+	 * retry loop kept its processor, with the transaction already collected
+	 * (see drop_processor_locks).  Ours again now; on a deadlock we hand
+	 * it back below. */
+	struct __recovery_processor *kept = keep ? *keep : NULL;
+	if (keep)
+		*keep = NULL;
+
+	if (kept) {
+		rp = kept;
+		assert(rp->collected);
+		assert(log_compare(&rp->commit_lsn, &ctrllsn) == 0);
+		assert(rp->lockid == DB_LOCK_INVALIDID);
+		/* Even if collect_before_locking was turned off since: lc is full,
+		 * and collecting after locking would append to it. */
+		collect_before_locking = 1;
+	} else {
+		Pthread_mutex_lock(&dbenv->recover_lk);
+		rp = listc_rtl(&dbenv->inactive_transactions);
+		Pthread_mutex_unlock(&dbenv->recover_lk);
+	}
 	/* If we can't reuse a processor, create one.  Should probably be
 	 * in its own routine.  */
 	if (rp == NULL) {
@@ -6004,8 +6338,9 @@ __rep_process_txn_concurrent_int(dbenv, rctl, rec, ltrans, ctrllsn, maxlsn,
 		rp->num_fileids = 0;
 		rp->lockid = DB_LOCK_INVALIDID;
 	}
-	/* See if recovery_memsize was changed - recreate the processor's mspace if so */
-	if (rp->mspsize != dbenv->recovery_memsize) {
+	/* See if recovery_memsize was changed - recreate the processor's mspace if so.
+	 * Not for a kept processor: its collected records live in that mspace. */
+	if (!kept && rp->mspsize != dbenv->recovery_memsize) {
 		comdb2ma msp;
 		int sz;
 
@@ -6045,14 +6380,16 @@ bad_resize:	;
 	rp->prev_commit_lsn = prev_commit_lsn;
 	rp->num_busy_workers = 0;
 	rp->dbenv = dbenv;
-	rp->lc.nlsns = 0;
-	rp->lc.memused = 0;
 	rp->txninfo = NULL;
 	rp->context = 0;
-	if ((ret= __os_malloc(dbenv, sizeof(LISTC_T(UTXNID)), &rp->lc.child_utxnids) != 0)) {
-		goto err;
+	if (!kept) {
+		rp->lc.nlsns = 0;
+		rp->lc.memused = 0;
+		if ((ret= __os_malloc(dbenv, sizeof(LISTC_T(UTXNID)), &rp->lc.child_utxnids) != 0)) {
+			goto err;
+		}
+		listc_init(rp->lc.child_utxnids, offsetof(UTXNID, lnk));
 	}
-	listc_init(rp->lc.child_utxnids, offsetof(UTXNID, lnk));
 
 	db_rep = dbenv->rep_handle;
 	rep = db_rep->region;
@@ -6083,10 +6420,11 @@ bad_resize:	;
 		if ((ret =
 			__txn_regop_rowlocks_read(dbenv, rec->data,
 				&txn_rl_args)) != 0)
-			return (ret);
+			goto early_out;
 		if (txn_rl_args->opcode != TXN_COMMIT) {
 			__os_free(dbenv, txn_rl_args);
-			return (0);
+			ret = 0;
+			goto early_out;
 		}
 
 		args = txn_rl_args;
@@ -6152,10 +6490,11 @@ bad_resize:	;
 		 * really a commit and not an abort!
 		 */
 		if ((ret = __txn_regop_read(dbenv, rec->data, &txn_args)) != 0)
-			return (ret);
+			goto early_out;
 		if (txn_args->opcode != TXN_COMMIT) {
 			__os_free(dbenv, txn_args);
-			return (0);
+			ret = 0;
+			goto early_out;
 		}
 
 		args = txn_args;
@@ -6182,10 +6521,11 @@ bad_resize:	;
 		if ((ret =
 			__txn_regop_gen_read(dbenv, rec->data,
 				&txn_gen_args)) != 0)
-			return (ret);
+			goto early_out;
 		if (txn_gen_args->opcode != TXN_COMMIT) {
 			__os_free(dbenv, txn_gen_args);
-			return (0);
+			ret = 0;
+			goto early_out;
 		}
 
 		args = txn_gen_args;
@@ -6206,7 +6546,7 @@ bad_resize:	;
 	} else if (rectype == DB___txn_dist_commit) {
 		if ((ret = __txn_dist_commit_read(dbenv, rec->data, &txn_dist_commit_args)) != 0) {
 			logmsg(LOGMSG_DEBUG, "%s failed at line %d\n", __func__, __LINE__);
-			return (ret);
+			goto early_out;
 		}
 		args = txn_dist_commit_args;
 		rp->context = txn_dist_commit_args->context;
@@ -6241,7 +6581,7 @@ bad_resize:	;
 
 		if ((ret =
 			__txn_xa_regop_read(dbenv, rec->data, &prep_args)) != 0)
-			return (ret);
+			goto early_out;
 		prev_lsn = prep_args->prev_lsn;
 		utxnid = prep_args->txnid->utxnid;
 		lock_dbt = &prep_args->locks;
@@ -6270,7 +6610,10 @@ bad_resize:	;
 		}
 	}
 
-	if (collect_before_locking) {
+	if (collect_before_locking && kept) {
+		/* Collected, sorted and its client info moved, by an earlier attempt */
+		had_serializable_records = rp->lc.had_serializable_records;
+	} else if (collect_before_locking) {
 		rp->lc.want_clientinfo = gbl_log_clientinfo;
 		if ((ret = __rep_collect_txn_txnid(dbenv, &prev_lsn, &rp->lc,
 				&had_serializable_records, rp, txnid)) != 0) {
@@ -6284,6 +6627,8 @@ bad_resize:	;
 			__rep_lsn_cmp);
 		rp->clientinfo = rp->lc.clientinfo;
 		rp->lc.clientinfo = NULL;
+		rp->lc.had_serializable_records = had_serializable_records;
+		rp->collected = 1;
 	}
 
 	if (utxnid) {
@@ -6293,6 +6638,12 @@ bad_resize:	;
 		}
 		Pthread_mutex_unlock(&dbenv->utxnid_lock);
 	}
+	/* Readers that step aside can hold the schema read lock (a prepare moves
+	 * cursors) and keep their table read locks, which a schema-lock transaction
+	 * needs: lower the flag before waiting on either */
+	if (get_schema_lk)
+		rep_exclusive_clear();
+
 	/* Serialize before acquiring schemalk so DEBUG_SCHEMA_LK works correctly */
 	if (get_schema_lk && !dontlock) {
 		ret = wait_for_running_transactions(dbenv);
@@ -6366,6 +6717,9 @@ bad_resize:	;
 	gbl_rep_lock_time_ms = 0;
 	if (ret != 0)
 		goto err;
+
+	/* Holding all the locks: readers can stop stepping aside */
+	rep_exclusive_clear();
 
 	if (ret == 0 && rp->context && !throwdeadlock) {
 		set_commit_context(rp->context, commit_gen,
@@ -6510,10 +6864,7 @@ bad_resize:	;
 			__rep_process_txn_int(dbenv, rctl, rec, ltrans, maxlsn,
 			commit_gen, rep_gen, lockid, rp, &rp->lc);
 
-		reset_recovery_processor(rp);
-		Pthread_mutex_lock(&dbenv->recover_lk);
-		listc_abl(&dbenv->inactive_transactions, rp);
-		Pthread_mutex_unlock(&dbenv->recover_lk);
+		return_processor(dbenv, rp);
 
 		return ret;
 	}
@@ -6631,11 +6982,14 @@ err:
 	else
 		__os_free(dbenv, prep_args);
 
-	reset_recovery_processor(rp);
-
-	Pthread_mutex_lock(&dbenv->recover_lk);
-	listc_abl(&dbenv->inactive_transactions, rp);
-	Pthread_mutex_unlock(&dbenv->recover_lk);
+	if (ret == DB_LOCK_DEADLOCK && keep && rp->collected &&
+		gbl_rep_retry_keep_collected) {
+		/* Retried by the caller: keep the collected transaction for it */
+		drop_processor_locks(rp);
+		*keep = rp;
+	} else {
+		return_processor(dbenv, rp);
+	}
 
 	if (logc != NULL && (t_ret = __log_c_close(logc)) != 0 && ret == 0)
 		ret = t_ret;
@@ -6653,13 +7007,22 @@ err:
 		debug_dump_lsns(ctrllsn, &rp->lc, ret);
 
 	return (ret);
+
+early_out:
+	/* Out before anything but the processor and the locker were set up: a
+	 * commit record that is not a commit, or one we could not read.  Both go
+	 * back, the processor with whatever an earlier attempt kept in it. */
+	if (lockid != DB_LOCK_INVALIDID)
+		rp->lockid = lockid;
+	return_processor(dbenv, rp);
+	return (ret);
 }
 
 // PUBLIC: int __rep_process_txn_concurrent __P((DB_ENV *, REP_CONTROL *, DBT *, LTDESC **,
-// PUBLIC:	 DB_LSN, DB_LSN, uint32_t *, uint32_t, DB_LSN));
+// PUBLIC:	 DB_LSN, DB_LSN, uint32_t *, uint32_t, DB_LSN, struct __recovery_processor **));
 int
 __rep_process_txn_concurrent(dbenv, rctl, rec, ltrans, ctrllsn, maxlsn,
-	commit_gen, rep_gen, prev_commit_lsn)
+	commit_gen, rep_gen, prev_commit_lsn, keep)
 	DB_ENV *dbenv;
 	REP_CONTROL *rctl;
 	DBT *rec;
@@ -6669,12 +7032,14 @@ __rep_process_txn_concurrent(dbenv, rctl, rec, ltrans, ctrllsn, maxlsn,
 	uint32_t *commit_gen;
 	uint32_t rep_gen;
 	DB_LSN prev_commit_lsn;
+	struct __recovery_processor **keep;
 {
 	static int lastpr = 0;
 	int now;
 	if (!gbl_rep_process_txn_time) {
 		return __rep_process_txn_concurrent_int(dbenv, rctl, rec,
-			ltrans, ctrllsn, maxlsn, commit_gen, rep_gen, prev_commit_lsn);
+			ltrans, ctrllsn, maxlsn, commit_gen, rep_gen, prev_commit_lsn,
+			keep);
 	} else {
 		int rc;
 		long long usecs;
@@ -6684,7 +7049,7 @@ __rep_process_txn_concurrent(dbenv, rctl, rec, ltrans, ctrllsn, maxlsn,
 		rep_process_txn_cnt++;
 		getbbtime(&start);
 		rc = __rep_process_txn_concurrent_int(dbenv, rctl, rec, ltrans,
-			ctrllsn, maxlsn, commit_gen, rep_gen, prev_commit_lsn);
+			ctrllsn, maxlsn, commit_gen, rep_gen, prev_commit_lsn, keep);
 		getbbtime(&end);
 		usecs = diff_bbtime(&end, &start);
 		rep_process_txn_usc += usecs;

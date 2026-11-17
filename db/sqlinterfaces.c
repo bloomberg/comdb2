@@ -2917,6 +2917,8 @@ static const char *rlocks_reason_str(rlocks_reason_t reason)
         return "slow reader";
     case RLOCKS_REASON_SORT:
         return "page-lock waiter seen from inside a sort";
+    case RLOCKS_REASON_REP_EXCLUSIVE:
+        return "replication asked readers to step aside";
     default:
         return "unknown";
     }
@@ -5893,6 +5895,9 @@ int sbuf_is_local(COMDB2BUF *sb)
 int recover_deadlock_evbuffer(struct sqlclntstate *clnt)
 {
     int waiters = -1, lock_desired = -1;
+    int rc;
+    if (clnt_rep_exclusive_yield(clnt, &rc))
+        return rc;
     if ((waiters = bdb_curtran_has_waiters(thedb->bdb_env, clnt->dbtran.cursor_tran)) == 0
         && (lock_desired = bdb_lock_desired(thedb->bdb_env)) == 0
     ){

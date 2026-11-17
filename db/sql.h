@@ -768,6 +768,10 @@ struct sqlclntstate {
     int pagelock_release_first_ms; /* when this waiter was first seen */
     int dbg_pagelock_releases;     /* count, for trace/diagnostics */
 
+    /* Last generation of replication's step-aside flag this request stepped
+       aside for (see clnt_rep_exclusive_yield); at most once per generation. */
+    uint32_t rep_excl_gen_seen;
+
     /* Cached answer to "who is waiting on me", so a scan does not take a
        locker-partition lock on every single cursor move just to be told "nobody"
        again.  Refreshed no more than once per pagelock_probe_interval_us; see
@@ -1611,6 +1615,7 @@ int sqlite3LockStmtTables(sqlite3_stmt *pStmt);
 int sqlite3UnlockStmtTablesRemotes(struct sqlclntstate *clnt);
 void sql_remote_schema_changed(struct sqlclntstate *clnt, sqlite3_stmt *pStmt);
 int release_locks_on_emit_row(struct sqlclntstate *clnt);
+int clnt_rep_exclusive_yield(struct sqlclntstate *clnt, int *rc);
 
 /* bdb_curtran_has_waiters plus sampled timing of the probe itself */
 int probe_curtran_has_waiters(struct sqlclntstate *clnt);
