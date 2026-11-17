@@ -1641,7 +1641,9 @@ void *rep_catchup_add_thread(void *arg)
     bdb_state_type *bdb_state = arg;
     thread_started("rep_catchup_add");
     bdb_thread_event(bdb_state, BDBTHR_EVENT_START);
-    add_thread_int(bdb_state, 1);
+    /* No new-master delay: incoherent_wait replicants become coherent only once they apply a
+     * commit on the master's generation, and the colease thread already paces these */
+    add_thread_int(bdb_state, 0);
     bdb_thread_event(bdb_state, BDBTHR_EVENT_DONE);
     Pthread_mutex_lock(&lk);
     rep_catchup_add_running = 0;
@@ -2821,8 +2823,12 @@ static int bdb_wait_for_seqnum_from_node_nowait_int(bdb_state_type *bdb_state,
     Pthread_mutex_lock(&(bdb_state->seqnum_info->lock));
     host_seqnum = &h->seqnum;
 
+    /* A node on an older generation may still hold a stale master's commits */
+    uint32_t mygen;
+    bdb_state->dbenv->get_rep_gen(bdb_state->dbenv, &mygen);
+
     /*fprintf(stderr, "calling bdb_seqnum_compare\n");*/
-    if (bdb_seqnum_compare(bdb_state, host_seqnum, master_seqnum) >= 0) {
+    if (host_seqnum->generation == mygen && bdb_seqnum_compare(bdb_state, host_seqnum, master_seqnum) >= 0) {
         /*fprintf(stderr, "compared >=, returning\n");*/
         if (gbl_set_coherent_state_trace) {
             logmsg(LOGMSG_USER,
