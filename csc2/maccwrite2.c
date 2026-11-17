@@ -20,9 +20,6 @@ void write_init_control();
 void write_comdb2_init_control(int i);
 void dump_symbol(int, int);
 int case_first(int tidx, int symb);
-extern int get_union_size(int un);
-extern int get_idx_case_size(int idx);
-extern int get_prev_sym(int idx);
 
 int offsetpad(int off, int idx, int tbl);
 int largest_idx(int tidx, int unionnum);
