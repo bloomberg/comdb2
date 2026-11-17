@@ -63,8 +63,9 @@ extern int db_is_exiting(void);
  * Reset at every statement start and end.
  *
  * With rep_write_hints_written_rows (on by default) a data page is remembered
- * only when an osql write ships the row on it (__memp_rwh_mark_op, called from
- * db/osqlsqlthr.c): the last data page the thread read before the write.
+ * only when an osql update or delete ships the row on it (__memp_rwh_mark_op,
+ * called from db/osqlsqlthr.c): the page the row's cursor read it from.  An
+ * insert remembers none: the master chooses where the new row goes.
  * Index and blob leaves are remembered as they are read. The data pages of rows
  * the statement only scanned, e.g. those its WHERE clause rejected, are not
  * hinted.
@@ -72,36 +73,53 @@ extern int db_is_exiting(void);
 extern int gbl_rep_write_hints;
 int gbl_rep_write_hints_written_rows = 1;
 int bb_berkdb_fingerprint_rtstats_is_sql(void);
-#define	RWH_MAX	32
-#define	RWH_FT	8
+#define	RWH_MAX	DB_RWH_MAX
 static __thread struct {
 	u_int8_t ufid[DB_FILE_ID_LEN];
 	u_int32_t pgno;
 } rwh_pg[RWH_MAX];
 static __thread int rwh_n;
-/* the last data page read (rep_write_hints_written_rows) */
-static __thread u_int8_t rwh_dpg_ufid[DB_FILE_ID_LEN];
-static __thread u_int32_t rwh_dpg_pgno;
-static __thread int rwh_dpg_set;
-/* whether a file is a table data file (not an index or a blob file), by handle */
-static __thread DB_MPOOLFILE *rwh_ft_mfp[RWH_FT];
-static __thread int rwh_ft_isdata[RWH_FT], rwh_ft_next;
-
+/*
+ * Whether a file name is a table data file (not an index or a blob file): its
+ * extension (after the last '.', so neither a directory nor a table name with a
+ * '.' can match) is "data" or "datas<N>" (versioned names), or "dta" or
+ * "dtas<N>" (legacy names; legacy blob files are "dta<N>" and "dta<N>s<N>").
+ */
 static int
-rwh_is_data(DB_MPOOLFILE *dbmfp)
+rwh_name_is_data(const char *fn)
 {
-	const char *fn;
-	int i;
+	const char *ext;
 
-	for (i = 0; i < RWH_FT; i++)
-		if (rwh_ft_mfp[i] == dbmfp)
-			return (rwh_ft_isdata[i]);
-	fn = __memp_fn(dbmfp);
-	i = rwh_ft_next++ % RWH_FT;
-	rwh_ft_mfp[i] = dbmfp;
-	rwh_ft_isdata[i] = fn != NULL &&
-	    (strstr(fn, ".data") != NULL || strstr(fn, ".dta") != NULL);
-	return (rwh_ft_isdata[i]);
+	if (fn == NULL || (ext = strrchr(fn, '.')) == NULL)
+		return (0);
+	ext++;
+	if (strcmp(ext, "data") == 0 || strcmp(ext, "dta") == 0)
+		return (1);
+	if (strncmp(ext, "datas", 5) == 0)
+		ext += 5;
+	else if (strncmp(ext, "dtas", 4) == 0)
+		ext += 4;
+	else
+		return (0);
+	if (*ext == '\0')
+		return (0);
+	while (*ext >= '0' && *ext <= '9')
+		ext++;
+	return (*ext == '\0');
+}
+
+/*
+ * __memp_rwh_init --
+ *	Remember in a handle whether its file is a table data file.  Called by
+ *	__memp_fopen before the handle can be shared, so readers need no
+ *	synchronization.
+ *
+ * PUBLIC: void __memp_rwh_init __P((DB_MPOOLFILE *));
+ */
+void
+__memp_rwh_init(DB_MPOOLFILE *dbmfp)
+{
+	dbmfp->rwh_class = rwh_name_is_data(__memp_fn(dbmfp)) ? 1 : 2;
 }
 
 static void
@@ -124,29 +142,23 @@ rwh_note(DB_MPOOLFILE *dbmfp, db_pgno_t pgno, PAGE *h)
 {
 	static const u_int8_t nofileid[DB_FILE_ID_LEN];
 
-	if ((rwh_n >= RWH_MAX && !gbl_rep_write_hints_written_rows) ||
-	    TYPE(h) != P_LBTREE || IS_REP_MASTER(dbmfp->dbenv) ||
+	if (rwh_n >= RWH_MAX || TYPE(h) != P_LBTREE || IS_REP_MASTER(dbmfp->dbenv) ||
 	    !bb_berkdb_fingerprint_rtstats_is_sql())
 		return;
 	/* temporary files (e.g. SQL temp tables) have no UFID: the master can't use them */
 	if (memcmp(dbmfp->fileid, nofileid, DB_FILE_ID_LEN) == 0)
 		return;
-	if (gbl_rep_write_hints_written_rows && rwh_is_data(dbmfp)) {
-		memcpy(rwh_dpg_ufid, dbmfp->fileid, DB_FILE_ID_LEN);
-		rwh_dpg_pgno = pgno;
-		rwh_dpg_set = 1;
-	} else
+	if (!gbl_rep_write_hints_written_rows || dbmfp->rwh_class != 1)
 		rwh_add(dbmfp->fileid, pgno);
 }
 
-/* An osql write: remember the data page of the row it writes (rep_write_hints_written_rows) */
+/* An osql update or delete of the row on this page of the data file with this
+ * UFID: remember the page (rep_write_hints_written_rows) */
 void
-__memp_rwh_mark_op(void)
+__memp_rwh_mark_op(const u_int8_t *ufid, u_int32_t pgno)
 {
-	if (rwh_dpg_set) {
-		rwh_add(rwh_dpg_ufid, rwh_dpg_pgno);
-		rwh_dpg_set = 0;
-	}
+	if (ufid != NULL && gbl_rep_write_hints_written_rows)
+		rwh_add(ufid, pgno);
 }
 
 /* Copy up to max of this thread's pages as (UFID, pgno in network order) and forget all of them */
@@ -162,10 +174,9 @@ __memp_rwh_take(u_int8_t *buf, int max)
 		buf[DB_FILE_ID_LEN + 1] = rwh_pg[i].pgno >> 16;
 		buf[DB_FILE_ID_LEN + 2] = rwh_pg[i].pgno >> 8;
 		buf[DB_FILE_ID_LEN + 3] = rwh_pg[i].pgno;
-		buf += DB_FILE_ID_LEN + 4;
+		buf += DB_RWH_PAIR_LEN;
 	}
 	rwh_n = 0;
-	rwh_dpg_set = 0;
 	return (n);
 }
 

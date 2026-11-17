@@ -201,6 +201,8 @@ int bdb_get_lsn_context_from_timestamp(bdb_state_type *bdb_state,
 int bdb_get_context_from_lsn(bdb_state_type *bdb_state, void *lsnp,
                              unsigned long long *ret_context, int *bdberr);
 
+unsigned int bdb_cursor_dtapage(bdb_cursor_ifn_t *, unsigned long long genid);
+
 int bdb_direct_count(bdb_cursor_ifn_t *, int ixnum, int64_t *count, int is_snapcur, uint32_t last_commit_lsn_file, uint32_t last_commit_lsn_offset, uint32_t last_checkpoint_lsn_file, uint32_t last_checkpoint_lsn_offset);
 
 #endif

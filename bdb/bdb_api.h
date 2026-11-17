@@ -2087,6 +2087,7 @@ void udp_stats(unsigned int *sent_udp, unsigned int *fail_udp,
 
 extern struct thdpool *gbl_udppfault_thdpool;
 int udppfault_thdpool_init(void);
+void udppfault_thdpool_wait_exit(void);
 
 extern struct thdpool *gbl_pgcompact_thdpool;
 int pgcompact_thdpool_init(void);

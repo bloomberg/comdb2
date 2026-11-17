@@ -5349,6 +5349,7 @@ int enqueue_touch_page(DB_MPOOLFILE *mpf, db_pgno_t pgno)
     return rc;
 }
 
+int db_is_exiting(void);
 static void udppfault_do_work_pp(struct thdpool *pool, void *work,
                                  void *thddata, int op)
 {
@@ -5356,6 +5357,9 @@ static void udppfault_do_work_pp(struct thdpool *pool, void *work,
 
     switch (op) {
     case THD_RUN:
+        /* a clean exit waits for these threads before freeing the DB_ENV: don't start new work then */
+        if (db_is_exiting())
+            break;
         udppfault_do_work(pool, work, thddata);
         break;
     }

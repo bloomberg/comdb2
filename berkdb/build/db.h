@@ -389,6 +389,10 @@ struct txn_properties;
 #define	DB_LOCKVERSION	1
 
 #define	DB_FILE_ID_LEN		20	/* Unique file ID length. */
+/* Replica write hints wire format (mp_fget.c __memp_rwh_take, bdb/bdb_net.c): at most
+ * DB_RWH_MAX pairs of (UFID, big-endian 32-bit pgno) per packet */
+#define	DB_RWH_MAX		32
+#define	DB_RWH_PAIR_LEN		(DB_FILE_ID_LEN + 4)
 
 /*
  * Deadlock detector modes; used in the DB_ENV structure to configure the
@@ -917,6 +921,7 @@ struct __db_mpoolfile {
 	 */
 	u_int32_t  ref;			/* Reference count. */
 	u_int32_t pinref;		/* Pinned block reference count. */
+	int	  rwh_class;		/* Replica write hints (mp_fget.c): 1 table data file, 2 other; set by __memp_fopen. */
 
 	/*
 	 * !!!

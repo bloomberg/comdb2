@@ -43,6 +43,8 @@
 #include "endian_core.h"
 #include "printformats.h"
 #include "crc32c.h"
+#include "genid.h"
+#include "compile_time_assert.h"
 #include <timer_util.h>
 #include <hostname_support.h>
 #include <thrman.h>
@@ -369,6 +371,18 @@ static void udp_bind(repinfo_type *repinfo)
 }
 struct thdpool *gbl_udppfault_thdpool = NULL;
 
+/* Clean exit: make the udppfault workers (stopped by stop_threads) skip what is still queued and wait for them to
+ * exit, so that none uses the DB_ENV after __dbenv_close frees it. No timeout: going on would free the DB_ENV under
+ * a live worker; the clean-exit alarm (exitalarmsec) aborts an exit that is stuck here. */
+void udppfault_thdpool_wait_exit(void)
+{
+    if (gbl_udppfault_thdpool == NULL)
+        return;
+    thdpool_stop(gbl_udppfault_thdpool);
+    while (thdpool_get_nthds(gbl_udppfault_thdpool) > 0)
+        poll(NULL, 0, 10);
+}
+
 int udppfault_thdpool_init(void)
 {
     gbl_udppfault_thdpool = thdpool_create("udppfaultpool", 0);
@@ -435,7 +449,14 @@ int gbl_udp_prefault_async = 0;
 int gbl_udp_prefault_async_batch = 32;
 int gbl_udp_prefault_async_poll_us = 0;
 enum { UDPPF_ASYNC_QMAX = 1024, UDPPF_ASYNC_TAKE = 64, UDPPF_BATCH_MAX = 32 };
-enum { RWH_MAX = 32, UDPPF_RWH_QMAX = 64, UDPPF_RWH_TAKE = 8 }; /* replica write hints: pairs per packet, packets */
+enum {
+    RWH_MAX = DB_RWH_MAX,
+    UDPPF_RWH_QMAX = 64,
+    UDPPF_RWH_TAKE = 8
+}; /* replica write hints: pairs per packet, packets */
+/* __memp_rwh_take() writes the pairs that send_prefault() and udp_reader() encode and decode with buf_put/buf_get */
+BB_COMPILE_TIME_ASSERT(rwh_pair_len, UDP_PREFAULT_UFID_LEN == DB_RWH_PAIR_LEN && sizeof(uint32_t) == 4);
+BB_COMPILE_TIME_ASSERT(rwh_fits_batch, (int)RWH_MAX <= (int)UDPPF_BATCH_MAX);
 struct udppf_rwh {
     int n;                                        /* (UFID, pgno) pairs */
     uint8_t buf[RWH_MAX * UDP_PREFAULT_UFID_LEN]; /* in wire format */
@@ -452,6 +473,7 @@ static struct {
 } udppf_async = {.lk = PTHREAD_MUTEX_INITIALIZER, .cd = PTHREAD_COND_INITIALIZER};
 static uint64_t udppf_async_queued, udppf_async_full, udppf_async_notmaster, udppf_async_wakeups, udppf_async_packets;
 static uint64_t udppf_async_rwh_queued, udppf_async_rwh_full, udppf_async_rwh_nomaster;
+static uint64_t rwh_sent, rwh_notsent; /* write-hint packets udp_send() sent / did not send */
 static int send_write_hints(bdb_state_type *bdb_state, const uint8_t *buf, int n);
 
 static void udppf_async_send(bdb_state_type *bdb_state, const struct udppf_hint *h, int n)
@@ -620,6 +642,20 @@ void udp_prefault_all(bdb_state_type *bdb_state, const unsigned char *ufid, unsi
  */
 int gbl_rep_write_hints = 0;
 int __memp_rwh_take(uint8_t *buf, int max);
+void __memp_rwh_mark_op(const uint8_t *ufid, uint32_t pgno);
+
+/* An osql update or delete of the row with this genid, read by cur: hint its data page */
+void bdb_rwh_mark_row(bdb_state_type *bdb_state, bdb_cursor_ifn_t *cur, unsigned long long genid)
+{
+    int stripe = get_dtafile_from_genid(genid);
+    unsigned int pgno;
+    DB *dbp;
+
+    if (cur == NULL || (pgno = bdb_cursor_dtapage(cur, genid)) == 0 || stripe < 0 ||
+        stripe >= bdb_state->attr->dtastripe || (dbp = bdb_state->dbp_data[0][stripe]) == NULL)
+        return;
+    __memp_rwh_mark_op(dbp->fileid, pgno);
+}
 
 /* Send n (UFID, pgno) pairs (wire format) to the current master in one packet; -1 if there is none to send to */
 static int send_write_hints(bdb_state_type *bdb_state, const uint8_t *buf, int n)
@@ -633,7 +669,10 @@ static int send_write_hints(bdb_state_type *bdb_state, const uint8_t *buf, int n
     new_ack_info(info, n * UDP_PREFAULT_UFID_LEN, repinfo->myhost);
     memcpy(ack_info_data(info), buf, n * UDP_PREFAULT_UFID_LEN);
     info->type = USER_TYPE_REP_WRITE_HINTS;
-    udp_send(bdb_state, info, master);
+    if (udp_send(bdb_state, info, master) > 0)
+        ATOMIC_ADD64(rwh_sent, 1);
+    else
+        ATOMIC_ADD64(rwh_notsent, 1);
     return 0;
 }
 
@@ -698,10 +737,12 @@ static void udp_reader(int fd, short what, void *arg)
 {
     bdb_state_type *bdb_state = arg;
     void *data;
-    uint8_t buff[1024] = {0};
+    /* the largest packet: a header, a host name (lrl names are < 512 bytes) and a batch of
+       hint pairs; a larger one is truncated by recvfrom() and dropped below */
+    uint8_t buff[sizeof(ack_info) + 512 + UDPPF_BATCH_MAX * UDP_PREFAULT_UFID_LEN + 512] = {0};
     ack_info *info = (ack_info *)buff;
     uint8_t *p_buf, *p_buf_end;
-    uint8_t *buff_end = buff + 1024;
+    uint8_t *buff_end = buff + sizeof(buff);
     ssize_t nrecv;
     time_t now;
     static time_t lastpr = 0;
@@ -957,6 +998,10 @@ void udp_summary(void)
            "udp prefault ufid hints skipped (file not open): %u\n"
            "udp prefault dbreg hints received: %u\n",
            pf_ufid_sent, pf_ufid_recd, pf_ufid_dropped, udp_pf_ufid_pinned, udp_pf_ufid_skipped, pf_dbreg_recd);
+    logmsg(LOGMSG_USER,
+           "udp write-hint packets sent: %" PRIu64 "\n"
+           "udp write-hint packets not sent (send failed or dropped): %" PRIu64 "\n",
+           rwh_sent, rwh_notsent);
     if (udppf_async.started)
         logmsg(LOGMSG_USER,
                "udp prefault async hints queued: %" PRIu64 "\n"
@@ -987,6 +1032,7 @@ void udp_reset(netinfo_type *netinfo)
     pf_ufid_sent = pf_ufid_recd = pf_ufid_dropped = udp_pf_ufid_pinned = udp_pf_ufid_skipped = pf_dbreg_recd = 0;
     udppf_async_queued = udppf_async_full = udppf_async_notmaster = udppf_async_wakeups = udppf_async_packets = 0;
     udppf_async_rwh_queued = udppf_async_rwh_full = udppf_async_rwh_nomaster = 0;
+    rwh_sent = rwh_notsent = 0;
     net_reset_udp_stat(netinfo);
 }
 

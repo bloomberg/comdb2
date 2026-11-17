@@ -1132,6 +1132,25 @@ static int bdb_cursor_getpageorder(bdb_cursor_ifn_t *pcur_ifn)
     return cur->pageorder;
 }
 
+/* The page of the data file that holds the row with this genid, if the cursor's
+ * berkdb cursor on the data file is positioned on that row; 0 if not */
+unsigned int bdb_cursor_dtapage(bdb_cursor_ifn_t *pcur_ifn, unsigned long long genid)
+{
+    bdb_cursor_impl_t *cur = pcur_ifn->impl;
+    unsigned long long rlgenid;
+    char *key;
+    int keylen, page, bdberr;
+
+    if (cur->type != BDBC_DT || cur->rl == NULL || cur->rl->is_at_eof(cur->rl) ||
+        cur->rl->keysize(cur->rl, &keylen, &bdberr) || keylen != sizeof(rlgenid) ||
+        cur->rl->key(cur->rl, &key, &bdberr) || cur->rl->pageindex(cur->rl, &page, NULL, &bdberr) || page <= 0)
+        return 0;
+    memcpy(&rlgenid, key, sizeof(rlgenid));
+    if (get_search_genid(cur->state, rlgenid) != get_search_genid(cur->state, genid))
+        return 0;
+    return page;
+}
+
 static int bdb_cursor_first(bdb_cursor_ifn_t *pcur_ifn, int *bdberr)
 {
     bdb_cursor_impl_t *cur = pcur_ifn->impl;

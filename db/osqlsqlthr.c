@@ -61,11 +61,18 @@ extern int gbl_partial_indexes;
 extern int gbl_expressions_indexes;
 extern int gbl_reorder_socksql_no_deadlock;
 void bdb_send_write_hints(bdb_state_type *bdb_state, int send);
-void __memp_rwh_mark_op(void);
+void bdb_rwh_mark_row(bdb_state_type *bdb_state, bdb_cursor_ifn_t *cur, unsigned long long genid);
 extern int gbl_rep_write_hints;
 
 /* Replica write hints (rep_write_hints): did the current statement ship an osql write? */
 static __thread int rwh_wrote;
+
+/* The cursor that read the row written through pCur: pCur, or the table cursor of an index cursor */
+static bdb_cursor_ifn_t *rwh_dta_cursor(struct BtCursor *pCur)
+{
+    struct BtCursor *c = pCur->ixnum == -1 ? pCur : pCur->pCursorHintTableCursor;
+    return c ? c->bdbcur : NULL;
+}
 
 /* Called at statement start and end, and before a commit */
 void osql_send_write_hints(void)
@@ -481,7 +488,7 @@ static int osql_send_del_logic(struct BtCursor *pCur, struct sql_thread *thd)
         }
     }
     if (gbl_rep_write_hints)
-        __memp_rwh_mark_op();
+        bdb_rwh_mark_row(pCur->db->handle, rwh_dta_cursor(pCur), pCur->genid);
     rwh_wrote = 1;
     osql->replicant_numops++;
     DEBUG_PRINT_NUMOPS();
@@ -616,8 +623,7 @@ static int osql_send_ins_logic(struct BtCursor *pCur, struct sql_thread *thd,
             return rc;
         }
     }
-    if (gbl_rep_write_hints)
-        __memp_rwh_mark_op();
+    /* an insert hints no data page: the master chooses where the row goes */
     rwh_wrote = 1;
     osql->replicant_numops++;
     DEBUG_PRINT_NUMOPS();
@@ -789,7 +795,7 @@ static int osql_send_upd_logic(struct BtCursor *pCur, struct sql_thread *thd,
     }
 
     if (gbl_rep_write_hints)
-        __memp_rwh_mark_op();
+        bdb_rwh_mark_row(pCur->db->handle, rwh_dta_cursor(pCur), pCur->genid);
     rwh_wrote = 1;
     osql->replicant_numops++;
     DEBUG_PRINT_NUMOPS();

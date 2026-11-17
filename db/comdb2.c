@@ -1733,6 +1733,7 @@ static void begin_clean_exit(void)
 
     comdb2_signal_timer();
     stop_threads(thedb);
+    udppfault_thdpool_wait_exit();
     set_stop_mempsync_thread();
     flush_db();
 
@@ -1798,6 +1799,7 @@ void clean_exit(void)
     bdb_exiting(thedb->static_table.handle);
 
     stop_threads(thedb);
+    udppfault_thdpool_wait_exit();
     if (!gbl_exit)
         physrep_cleanup();
     flush_db();
