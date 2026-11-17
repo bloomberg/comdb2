@@ -287,7 +287,6 @@ extern char *blankchar;
 extern struct constant constants[MAX];
 extern macc_globals_t *macc_globals;
 
-char *eos(char *);
 
 extern void OUTINIT(FILE *fil, char lang);
 extern void OUT(char *fmt, ...);
@@ -330,24 +329,11 @@ int offpad(int offset, int align);
 int wholekeysize(struct key *wk);
 char *typetxt(int t, int size);
 int numdim(int dm[6]);
-int calc_rng(int rng, int *ask);
 char *printf_type_txt(int t, int size);
 int process_array_(int dim[6], int rg[2], char *buf, int *arr, char *dim_cn[6]);
 int compute_all_data(int tidx);
 int gettable(char *tabletag);
 int compute_key_data(void);
 int yyparse();
-
-/* prototypes for routines called by maccparse.y */
-void end_union();
-void start_union(char *name);
-void end_rectypedef();
-void start_rectypedef(char *rtname);
-void start_case(char *txt);
-int add_cluster_node(int node);
-void rng_add(int i);
-void expr_assoc_name(char *name);
-void expr_clear();
-void expr_add_pc(char *sym, int op, int num);
 
 #endif
