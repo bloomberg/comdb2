@@ -15,4 +15,41 @@ if [[ "${str1}x" != "${str2}x" ]]; then
     echo "Got     : $str2"
     exit 1
 fi
+
+# Test that (un)compress functions do not leak their result buffers
+sql() {
+    cdb2sql --tabs ${CDB2_OPTIONS} $dbname default "$1"
+}
+
+sqlmem() {
+    sql "select sum(used) from comdb2_memstats where scope='sqlenginepool' and name in ('sqlite', 'SQLITE')"
+}
+
+rows=500
+blobsz=100000
+maxgrowth=$((10 * 1024 * 1024))
+
+sql "create table leak_zlib(b blob)" || exit 1
+sql "create table leak_gzip(b blob)" || exit 1
+sql "insert into leak_zlib select compress(zeroblob($blobsz)) from generate_series(1, $rows)" || exit 1
+sql "insert into leak_gzip select compress_gzip(zeroblob($blobsz)) from generate_series(1, $rows)" || exit 1
+
+for q in \
+    "select sum(length(compress(randomblob($blobsz)))) from generate_series(1, $rows)" \
+    "select sum(length(compress_zlib(randomblob($blobsz)))) from generate_series(1, $rows)" \
+    "select sum(length(compress_gzip(randomblob($blobsz)))) from generate_series(1, $rows)" \
+    "select sum(length(uncompress(b))) from leak_zlib" \
+    "select sum(length(uncompress_zlib(b))) from leak_zlib" \
+    "select sum(length(uncompress_gzip(b))) from leak_gzip"; do
+    before=$(sqlmem)
+    sql "$q" > /dev/null || exit 1
+    after=$(sqlmem)
+    growth=$((after - before))
+    echo "$q: sql memory grew by $growth bytes"
+    if [[ $growth -gt $maxgrowth ]]; then
+        echo "Memory leak detected: $q (grew by $growth bytes)"
+        exit 1
+    fi
+done
+
 exit 0

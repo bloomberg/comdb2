@@ -1149,6 +1149,43 @@ static void comdb2SnapshotLsnFunc(
 /* The code below is based on the example presented here: https://www.zlib.net/zpipe.c */
 
 #define CHUNK 32768
+
+/*
+** Append n bytes from src to the sqlite3_malloc()-ed buffer *pBuf of length
+** *pLen, growing it as needed.  On failure, the error is set on the context,
+** *pBuf is freed and reset, and non-zero is returned.
+*/
+static int zlibAppend(sqlite3_context *context, unsigned char **pBuf,
+                      unsigned int *pLen, const unsigned char *src,
+                      unsigned int n) {
+    sqlite3 *db = sqlite3_context_db_handle(context);
+    i64 newLen = (i64)*pLen + n;
+    unsigned char *p;
+
+    if (n == 0) {
+        return 0;
+    }
+    if (newLen > db->aLimit[SQLITE_LIMIT_LENGTH]) {
+        sqlite3_result_error_toobig(context);
+        goto err;
+    }
+    p = (unsigned char *)sqlite3_realloc64(*pBuf, newLen);
+    if (p == NULL) {
+        sqlite3_result_error_nomem(context);
+        goto err;
+    }
+    memcpy(p + *pLen, src, n);
+    *pBuf = p;
+    *pLen = (unsigned int)newLen;
+    return 0;
+
+err:
+    sqlite3_free(*pBuf);
+    *pBuf = NULL;
+    *pLen = 0;
+    return 1;
+}
+
 static unsigned char *compressFunc_int(sqlite3_context *context,
                                        unsigned char *uncomprData,
                                        unsigned int   uncomprLen,
@@ -1185,12 +1222,11 @@ static unsigned char *compressFunc_int(sqlite3_context *context,
             return NULL;
         }
 
-        unsigned int compr_bytes = CHUNK - stream.avail_out;
-        comprData = (comprData == NULL)
-            ? (unsigned char *)contextMalloc(context, compr_bytes)
-            : (unsigned char *)sqlite3_realloc(comprData, *comprLen + compr_bytes);
-        memcpy(comprData + *comprLen, buffer, compr_bytes);
-        *comprLen += compr_bytes;
+        if (zlibAppend(context, &comprData, comprLen, buffer,
+                       CHUNK - stream.avail_out)) {
+            deflateEnd(&stream);
+            return NULL;
+        }
     } while (stream.avail_out == 0);
 
     deflateEnd(&stream);
@@ -1233,12 +1269,11 @@ static unsigned char *uncompressFunc_int(sqlite3_context *context,
             return NULL;
         }
 
-        unsigned int uncompr_bytes = CHUNK - stream.avail_out;
-        uncomprData = (uncomprData == NULL)
-            ? (unsigned char *)contextMalloc(context, uncompr_bytes)
-            : (unsigned char *)sqlite3_realloc(uncomprData, *uncomprLen + uncompr_bytes);
-        memcpy(uncomprData + *uncomprLen, buffer, uncompr_bytes);
-        *uncomprLen += uncompr_bytes;
+        if (zlibAppend(context, &uncomprData, uncomprLen, buffer,
+                       CHUNK - stream.avail_out)) {
+            inflateEnd(&stream);
+            return NULL;
+        }
     } while (stream.avail_out == 0);
 
     inflateEnd(&stream);
@@ -1299,7 +1334,7 @@ static void compressFunc(
                                  deflateInit__);
 
     if (comprData != NULL) {
-        sqlite3_result_blob(context, comprData, comprLen, NULL);
+        sqlite3_result_blob(context, comprData, comprLen, sqlite3_free);
     }
     return;
 }
@@ -1335,7 +1370,7 @@ static void uncompressFunc(
                                      &uncomprLen, inflateInit__);
 
     if (uncomprData != NULL) {
-        sqlite3_result_blob(context, uncomprData, uncomprLen, NULL);
+        sqlite3_result_blob(context, uncomprData, uncomprLen, sqlite3_free);
     }
     return;
 }
