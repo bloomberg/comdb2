@@ -3088,6 +3088,11 @@ static int bdb_wait_for_seqnum_from_node_int(bdb_state_type *bdb_state,
     if (bdb_state->parent)
         bdb_state = bdb_state->parent;
 
+    /* A child txn's commit leaves the seqnum empty (0:0, gen 0): nothing to wait for, as in
+     * bdb_wait_for_seqnum_from_all_int.  With seqnum generations on it would be rejected (-10) */
+    if (seqnum->lsn.file == 0 && seqnum->lsn.offset == 0)
+        return 0;
+
     if (fakeincoherent) {
         node_is_rtcpu = 1;
     }
