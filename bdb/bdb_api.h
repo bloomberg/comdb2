@@ -2559,14 +2559,15 @@ void dispatch_waiting_clients(void);
 
 struct sqlclntstate;
 typedef enum {
-    RLOCKS_REASON_SI_LOCKWAIT,  /* page lock waiter on SI/serial session */
-    RLOCKS_REASON_LOCKWAIT,     /* page lock waiter on non-SI session */
-    RLOCKS_REASON_RANDOM,       /* random release (testing) */
-    RLOCKS_REASON_LOCK_DESIRED, /* global BDB write lock desired */
-    RLOCKS_REASON_EMIT_ROW,     /* waiters at row emit */
-    RLOCKS_REASON_LONG_REPWAIT, /* long rep wait at row emit */
-    RLOCKS_REASON_SLOW_READER,  /* slow reader */
-    RLOCKS_REASON_SORT,         /* page-lock waiter seen from inside a sort */
+    RLOCKS_REASON_SI_LOCKWAIT,   /* page lock waiter on SI/serial session */
+    RLOCKS_REASON_LOCKWAIT,      /* page lock waiter on non-SI session */
+    RLOCKS_REASON_RANDOM,        /* random release (testing) */
+    RLOCKS_REASON_LOCK_DESIRED,  /* global BDB write lock desired */
+    RLOCKS_REASON_EMIT_ROW,      /* waiters at row emit */
+    RLOCKS_REASON_LONG_REPWAIT,  /* long rep wait at row emit */
+    RLOCKS_REASON_SLOW_READER,   /* slow reader */
+    RLOCKS_REASON_SORT,          /* page-lock waiter seen from inside a sort */
+    RLOCKS_REASON_REP_EXCLUSIVE, /* replication asked readers to step aside */
 } rlocks_reason_t;
 int release_locks_int(rlocks_reason_t reason, const char *func, int line, struct sqlclntstate *, uint32_t rd_flags);
 /* full release: drops page locks AND the curtran (hence table locks) */

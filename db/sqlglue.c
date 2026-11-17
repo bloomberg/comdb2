@@ -3972,6 +3972,21 @@ void comdb2_sort_release_begin(void)
    btree.  At rewind the read phase is already over.  A spill made during
    OP_SorterInsert comes mid-scan, but between two rows, with the scan's
    cursors at rest -- the state cursor_move_postop releases from anyway. */
+/* Can this request drop its page locks only, and keep going?  Not for modsnap
+   (repositioning after a release is not handled) or serializable (which keeps
+   the historical full release), only with recover_deadlock_sync_dta on, and not
+   while the bdb write lock is wanted, which takes a full release instead. */
+static int clnt_pagelock_release_allowed(struct sqlclntstate *clnt)
+{
+    if (clnt->dbtran.mode == TRANLEVEL_SNAPISOL || clnt->dbtran.mode == TRANLEVEL_SERIAL)
+        return 0;
+    if (!clnt->recover_deadlock_sync_dta)
+        return 0;
+    if (bdb_lock_desired(thedb->bdb_env))
+        return 0;
+    return 1;
+}
+
 void comdb2_sort_release_check(void)
 {
     struct sql_thread *thd = pthread_getspecific(query_info_key);
@@ -3983,6 +3998,13 @@ void comdb2_sort_release_check(void)
     if (clnt->sort_pagelocks_released)
         return;
 
+    /* Any failure is left on the clnt by recover_deadlock, as below */
+    int rc;
+    if (clnt_rep_exclusive_yield(clnt, &rc)) {
+        clnt->sort_pagelocks_released = 1;
+        return;
+    }
+
     /* Mirrors cursor_move_postop: waiter checking has to be enabled at all,
        SNAPISOL repositioning after a release is not handled, SERIAL uses the
        historical full-release path, and a wanted global write lock needs
@@ -3990,11 +4012,7 @@ void comdb2_sort_release_check(void)
     extern int gbl_locks_check_waiters;
     if (!gbl_locks_check_waiters)
         return;
-    if (clnt->dbtran.mode == TRANLEVEL_SNAPISOL || clnt->dbtran.mode == TRANLEVEL_SERIAL)
-        return;
-    if (!clnt->recover_deadlock_sync_dta)
-        return;
-    if (bdb_lock_desired(thedb->bdb_env))
+    if (!clnt_pagelock_release_allowed(clnt))
         return;
 
     /* Rate-limit the probe itself: it takes a locker-partition lock, while the
@@ -4021,6 +4039,42 @@ void comdb2_sort_release_check(void)
     clnt->sort_pagelocks_released = 1;
 }
 
+/*
+ * Replication on this replicant keeps losing deadlocks to readers on one
+ * transaction and has asked them to step aside until it holds that
+ * transaction's locks (see rep_exclusive_wanted in berkdb/rep/rep_record.c).
+ * Drop page locks only -- the curtran, and with it our table read locks, stay,
+ * so no schema change can run under us -- and wait for replication to lower
+ * the flag, at most rep_exclusive_max_wait_ms.  Cursors re-position lazily, as
+ * after any page-lock release.
+ *
+ * Only where a page-lock-only release is allowed (clnt_pagelock_release_allowed).
+ * At most once per raise of the flag, so a raise that outlives the wait cannot
+ * stall a reader twice.
+ *
+ * Returns 1 if it released, with the release's rc in *rc, else 0.
+ */
+int clnt_rep_exclusive_yield(struct sqlclntstate *clnt, int *rc)
+{
+    extern uint32_t rep_exclusive_wanted(void);
+    extern void rep_exclusive_wait(uint32_t gen);
+    uint32_t gen = rep_exclusive_wanted();
+
+    *rc = 0;
+    if (!gen || gen == clnt->rep_excl_gen_seen)
+        return 0;
+    if (!clnt->dbtran.cursor_tran || !pthread_getspecific(query_info_key))
+        return 0;
+    if (!clnt_pagelock_release_allowed(clnt))
+        return 0;
+
+    clnt->rep_excl_gen_seen = gen;
+    *rc = release_locks_int(RLOCKS_REASON_REP_EXCLUSIVE, __func__, __LINE__, clnt, RECOVER_DEADLOCK_PAGELOCKS_ONLY);
+    if (*rc == 0)
+        rep_exclusive_wait(gen);
+    return 1;
+}
+
 /* Release pagelocks if the replicant is waiting on this sql thread */
 static int cursor_move_postop(BtCursor *pCur)
 {
@@ -4032,6 +4086,11 @@ static int cursor_move_postop(BtCursor *pCur)
 
     if (gbl_debug_sleep_in_cursor_move)
         poll(NULL, 0, gbl_debug_sleep_in_cursor_move);
+
+    /* Ahead of the waiter checks: replication can ask readers to step aside
+       whether or not anyone waits on this one, and with waiter checks off */
+    if (clnt_rep_exclusive_yield(clnt, &rc))
+        return rc;
 
     if (!gbl_locks_check_waiters)
         return 0;

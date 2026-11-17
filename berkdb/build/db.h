@@ -3395,6 +3395,10 @@ struct __recovery_processor {
 	void *clientinfo;
 	void *txninfo;
 	LSN_COLLECTION lc;
+	/* lc holds this transaction, collected before locking; on a deadlock the
+	 * processor is handed back to the retry loop with lc intact so the next
+	 * attempt does not collect it again.  Cleared by reset_recovery_processor. */
+	int collected;
 	pool_t *recpool;
 	LTDESC *ltrans;
 	LINKC_T(struct __recovery_processor) lnk;
