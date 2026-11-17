@@ -317,6 +317,28 @@ void *coherency_lease_thread(void *arg)
     return NULL;
 }
 
+extern int gbl_log_delete_disabled_since;
+extern int gbl_log_delete_disabled_warn_interval;
+
+static void warn_log_delete_disabled(void)
+{
+    static int last_warn = 0;
+    int since = gbl_log_delete_disabled_since;
+    int interval = gbl_log_delete_disabled_warn_interval;
+    int now;
+
+    if (since == 0 || interval <= 0)
+        return;
+
+    now = comdb2_time_epoch();
+    if (last_warn < since)
+        last_warn = since;
+    if (now - last_warn >= interval) {
+        logmsg(LOGMSG_WARN, "log file deletion disabled for %d seconds\n", now - since);
+        last_warn = now;
+    }
+}
+
 void *logdelete_thread(void *arg)
 {
     bdb_state_type *bdb_state = (bdb_state_type *)arg;
@@ -335,6 +357,9 @@ void *logdelete_thread(void *arg)
         time_t now = time(NULL);
         int run_interval = bdb_state->attr->logdelete_run_interval;
         run_interval = (run_interval <= 0 ? 30 : run_interval);
+
+        /* Before delete_log_files, which can block on the bdb lock */
+        warn_log_delete_disabled();
 
         if ((now - last_run_time) >= run_interval) {
             delete_log_files(bdb_state);

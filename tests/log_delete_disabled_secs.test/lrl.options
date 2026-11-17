@@ -1,0 +1,3 @@
+sync log-delete off
+# read-only tunable with no variable behind it: must be rejected, not crash
+log_delete_disabled_secs 0

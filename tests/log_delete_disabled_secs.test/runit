@@ -1,0 +1,79 @@
+#!/usr/bin/env bash
+bash -n "$0" || exit 1
+
+# log_delete_disabled_secs counts from startup when the db comes up with log
+# deletion turned off, and from the 'sync log-delete off' when it is turned off
+# at runtime. While it is off, a warning is logged every
+# log_delete_disabled_warn_interval seconds.
+
+dbnm=$1
+
+set -e
+
+# Make sure we talk to the same host
+host=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default 'SELECT comdb2_host()'`
+
+if [ -n "$CLUSTER" ] ; then
+    logfile="$TESTDIR/logs/$dbnm.$host.db"
+else
+    logfile="$TESTDIR/logs/$dbnm.db"
+fi
+
+sql() {
+    cdb2sql --tabs ${CDB2_OPTIONS} $dbnm --host $host "$1"
+}
+
+disabled_secs() {
+    sql "SELECT value FROM comdb2_tunables WHERE name = 'log_delete_disabled_secs'"
+}
+
+fail() {
+    echo "$@" >&2
+    exit 1
+}
+
+# lrl.options also tries to set log_delete_disabled_secs; it must be rejected
+grep "log_delete_disabled_secs is read-only" $logfile || fail "lrl setting of log_delete_disabled_secs was not rejected"
+if sql "put tunable log_delete_disabled_secs 5" 2>/dev/null; then
+    fail "put tunable log_delete_disabled_secs succeeded"
+fi
+
+# lrl.options brings the db up with log deletion turned off
+sleep 1
+secs=$(disabled_secs)
+echo "disabled since startup: $secs"
+[[ $secs -ge 1 ]] || fail "expected log deletion to be off since startup, got $secs"
+
+sql "exec procedure sys.cmd.send('sync log-delete on')"
+secs=$(disabled_secs)
+echo "after log-delete on: $secs"
+[[ $secs -eq 0 ]] || fail "expected 0 after log-delete on, got $secs"
+
+# Turn it off at runtime, and have it warn every 2 seconds
+sql "put tunable log_delete_disabled_warn_interval 2"
+lines=$(wc -l < $logfile)
+sql "exec procedure sys.cmd.send('sync log-delete off')"
+sleep 5
+secs=$(disabled_secs)
+echo "after log-delete off and 5 seconds: $secs"
+[[ $secs -ge 4 && $secs -le 15 ]] || fail "expected about 5 seconds since log-delete off, got $secs"
+
+tail -n +$((lines + 1)) $logfile | grep "log file deletion disabled for" || fail "no warning in $logfile"
+
+# A second 'off' while already off keeps the original start time
+sql "exec procedure sys.cmd.send('sync log-delete off')"
+secs=$(disabled_secs)
+echo "after second log-delete off: $secs"
+[[ $secs -ge 4 ]] || fail "second log-delete off reset the counter to $secs"
+
+sql "exec procedure sys.cmd.send('sync log-delete on')"
+secs=$(disabled_secs)
+echo "after final log-delete on: $secs"
+[[ $secs -eq 0 ]] || fail "expected 0 after log-delete on, got $secs"
+
+# No more warnings once it is back on
+lines=$(wc -l < $logfile)
+sleep 4
+if tail -n +$((lines + 1)) $logfile | grep "log file deletion disabled for"; then
+    fail "still warning after log-delete on"
+fi
