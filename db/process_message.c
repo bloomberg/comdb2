@@ -460,21 +460,27 @@ int process_sync_command(struct dbenv *dbenv, char *line, int lline, int st)
             dbenv->log_delete_age = epoch;
         } else if (tokcmp(tok, ltok, "log-delete") == 0) {
             tok = segtok(line, lline, &st, &ltok);
+            /* Cancel pending re-enable timers before changing state: an older timer must not end
+             * this hold, and one firing now finishes first (this waits on timerlk) */
             if (tokcmp(tok, ltok, "on") == 0) {
+                comdb2_cantim_all(TMEV_ENABLE_LOG_DELETE);
                 log_delete_counter_change(dbenv, LOG_DEL_ABS_ON);
-                comdb2_cantim(TMEV_ENABLE_LOG_DELETE);
             } else if (tokcmp(tok, ltok, "off") == 0) {
                 int reenab;
-                log_delete_counter_change(dbenv, LOG_DEL_ABS_OFF);
                 tok = segtok(line, lline, &st, &ltok);
                 reenab = toknum(tok, ltok);
-                if (reenab > 0) {
-                    /* re-enable log in n minutes */
-                    comdb2_timer(reenab * 1000 * 60, TMEV_ENABLE_LOG_DELETE);
-                } else {
-                    /* no re-enable requested */
-                    comdb2_cantim(TMEV_ENABLE_LOG_DELETE);
+                if (reenab > INT_MAX / (1000 * 60)) {
+                    logmsg(LOGMSG_ERROR, "log-delete off %d: too many minutes\n", reenab);
+                    break;
                 }
+                comdb2_cantim_all(TMEV_ENABLE_LOG_DELETE);
+                /* Never hold without a timer: if it can't be set, leave deletion on */
+                if (reenab > 0 && comdb2_timer(reenab * 1000 * 60, TMEV_ENABLE_LOG_DELETE) != 0) {
+                    logmsg(LOGMSG_ERROR, "log-delete off %d: can't set re-enable timer, deletion left on\n", reenab);
+                    log_delete_counter_change(dbenv, LOG_DEL_ABS_ON);
+                    break;
+                }
+                log_delete_counter_change(dbenv, LOG_DEL_ABS_OFF);
             } else {
                 logmsg(LOGMSG_USER, "must specify log-delete on or off\n");
                 break;

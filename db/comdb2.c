@@ -4673,6 +4673,9 @@ static void ttrap(struct timer_parm *parm)
            will attempt to grab timerlk one more time. So call the routine
            directly without faking a message trap. */
         log_delete_counter_change(thedb, LOG_DEL_ABS_ON);
+        /* Push it to bdb, else LOGDELETEAGE stays NEVER and no logs are deleted. This takes
+           logdelete_lk under timerlk: never call comdb2_timer/cantim while holding logdelete_lk */
+        backend_update_sync(thedb);
         break;
     case TMEV_PURGE_OLD_LONGTRN:
         (void)purge_expired_long_transactions(thedb);
