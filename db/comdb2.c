@@ -4671,8 +4671,10 @@ static void ttrap(struct timer_parm *parm)
     case TMEV_ENABLE_LOG_DELETE:
         /* We already hold timerlk. process_sync_command("sync log-delete on")
            will attempt to grab timerlk one more time. So call the routine
-           directly without faking a message trap. */
+           directly without faking a message trap. Push the new state down
+           to bdb as well, otherwise the log deletion thread never sees it. */
         log_delete_counter_change(thedb, LOG_DEL_ABS_ON);
+        backend_update_sync(thedb);
         break;
     case TMEV_PURGE_OLD_LONGTRN:
         (void)purge_expired_long_transactions(thedb);

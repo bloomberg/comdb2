@@ -1,7 +1,7 @@
-# TODO consolidate all leak regression tests into one
-
 #!/usr/bin/env bash
 bash -n "$0" || exit 1
+
+# TODO consolidate all leak regression tests into one
 
 dbnm=$1
 
@@ -10,12 +10,34 @@ set -e
 # Make sure we talk to the same host
 host=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default 'SELECT comdb2_host()'`
 
+# The bdb attributes are what the log deletion thread actually acts on
+logdel_state() {
+    cdb2sql --tabs $dbnm --host $host "SELECT value FROM comdb2_tunables WHERE name IN ('logdeleteage', 'logdeletelowfilenum') ORDER BY name" | tr '\n' ' '
+}
+
+before=$(logdel_state)
+echo "log deletion state before: $before"
 
 # Turn off log deletion and enable it back in 1 minute.
 cdb2sql $dbnm --host $host 'exec procedure sys.cmd.send("sync log-delete off 1")'
 
+off=$(logdel_state)
+echo "log deletion state while off: $off"
+if [[ "$off" != "-1 0 " ]]; then
+    echo "log deletion was not disabled" >&2
+    exit 1
+fi
+
 # Give it 5 extra seconds here to paper over slow machines.
 sleep 65
+
+# The timer must re-enable log deletion in the bdb layer, not just in dbenv
+after=$(logdel_state)
+echo "log deletion state after re-enable: $after"
+if [[ "$after" != "$before" ]]; then
+    echo "log deletion was not re-enabled: expected '$before', got '$after'" >&2
+    exit 1
+fi
 
 # Do it again.
 cdb2sql $dbnm --host $host 'exec procedure sys.cmd.send("sync log-delete off 1")'
