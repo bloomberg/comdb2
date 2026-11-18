@@ -3400,15 +3400,74 @@ int gbl_replicant_retry_on_not_durable = 0;
 int gbl_debug_force_non_durable = 0;
 int gbl_assert_no_schemalk_in_distributed_commit = 0;
 
+/* Stop leasing a node that missed this commit, and defer commits until its lease runs out */
+static void make_node_incoherent(bdb_state_type *bdb_state, struct interned_string *node, seqnum_type *seqnum,
+                                 int catchup_window, int penalize)
+{
+    struct hostinfo *h = retrieve_hostinfo(node);
+    DB_LSN nodelsn, *masterlsn;
+    uint32_t nodegen;
+    int cntbytes;
+
+    // Extract seqnum
+    Pthread_mutex_lock(&(bdb_state->seqnum_info->lock));
+    nodegen = h->seqnum.generation;
+    nodelsn = h->seqnum.lsn;
+    Pthread_mutex_unlock(&(bdb_state->seqnum_info->lock));
+
+    Pthread_mutex_lock(&(bdb_state->coherent_state_lock));
+
+    if (nodegen <= seqnum->generation && log_compare(&(seqnum->lsn), &nodelsn) >= 0) {
+        /* Only sleep on the change from COHERENT (the point where we
+         * decide to stop sending leases).  For role-change the new
+         * master marks every node as INCOHERENT_WAIT and then sleeps
+         * for the lease interval. */
+        if (h->coherent_state == STATE_COHERENT)
+            defer_commits(bdb_state, node->str, __func__);
+
+        /* Change to INCOHERENT_WAIT if we allow catchup on commit */
+        struct hostinfo *m = retrieve_hostinfo(bdb_state->repinfo->master_host_interned);
+        if (bdb_state->attr->catchup_on_commit && catchup_window) {
+            masterlsn = &m->seqnum.lsn;
+            cntbytes = subtract_lsn(bdb_state, masterlsn, &nodelsn);
+
+            set_coherent_state(bdb_state, node, (cntbytes < catchup_window) ? STATE_INCOHERENT_WAIT : STATE_INCOHERENT,
+                               __func__, __LINE__);
+        } else
+            set_coherent_state(bdb_state, node, STATE_INCOHERENT, __func__, __LINE__);
+
+        /* Start the downgrade penalty only if the node held up the commit */
+        if (penalize)
+            h->last_downgrade_time = gettimeofday_ms();
+
+        bdb_state->repinfo->skipsinceepoch = comdb2_time_epoch();
+    }
+
+    Pthread_mutex_unlock(&(bdb_state->coherent_state_lock));
+}
+
+/* A commit that stops waiting early must not leave a node that lacks it coherent */
+static void make_unacked_incoherent(bdb_state_type *bdb_state, struct interned_string **nodelist, int numnodes,
+                                    seqnum_type *seqnum, int catchup_window)
+{
+    for (int i = 0; i < numnodes; i++) {
+        struct hostinfo *h = retrieve_hostinfo(nodelist[i]);
+        Pthread_mutex_lock(&(bdb_state->seqnum_info->lock));
+        int acked = bdb_seqnum_compare(bdb_state, &h->seqnum, seqnum) >= 0;
+        Pthread_mutex_unlock(&(bdb_state->seqnum_info->lock));
+        if (!acked)
+            make_node_incoherent(bdb_state, nodelist[i], seqnum, catchup_window, 0);
+    }
+}
+
 int bdb_wait_for_seqnum_from_all_int(bdb_state_type *bdb_state, seqnum_type *seqnum, int *timeoutms, int is_final)
 {
-    int i, now, cntbytes;
+    int i, now;
     struct interned_string *nodelist[REPMAX];
     struct interned_string *connlist[REPMAX];
     int durable_lsns;
     int catchup_window;
     int do_slow_node_check = 0;
-    DB_LSN *masterlsn;
     int numnodes;
     int numwait;
     int rc;
@@ -3422,8 +3481,6 @@ int bdb_wait_for_seqnum_from_all_int(bdb_state_type *bdb_state, seqnum_type *seq
     const char *base_node = NULL;
     char str[80];
     int track_once = 1;
-    DB_LSN nodelsn;
-    uint32_t nodegen;
     int num_successfully_acked = 0;
     int total_commissioned;
     struct interned_string *durlist[REPMAX];
@@ -3534,6 +3591,7 @@ int bdb_wait_for_seqnum_from_all_int(bdb_state_type *bdb_state, seqnum_type *seq
 
             if (rc == WAIT_SEQNUM_LOCK_DESIRED || bdb_lock_desired(bdb_state)) {
                 logmsg(LOGMSG_ERROR, "%s line %d early exit because lock-is-desired\n", __func__, __LINE__);
+                make_unacked_incoherent(bdb_state, nodelist, numnodes, seqnum, catchup_window);
                 ATOMIC_ADD64(gbl_distributed_commit_count, 1);
                 ATOMIC_ADD64(gbl_not_durable_commit_count, 1);
                 return (durable_lsns ? BDBERR_NOT_DURABLE : -1);
@@ -3627,6 +3685,7 @@ got_ack:
 
         if (rc == WAIT_SEQNUM_LOCK_DESIRED || bdb_lock_desired(bdb_state)) {
             logmsg(LOGMSG_ERROR, "%s line %d early exit because lock-is-desired\n", __func__, __LINE__);
+            make_unacked_incoherent(bdb_state, nodelist, numnodes, seqnum, catchup_window);
 
             ATOMIC_ADD64(gbl_distributed_commit_count, 1);
             ATOMIC_ADD64(gbl_not_durable_commit_count, 1);
@@ -3655,47 +3714,8 @@ got_ack:
         waitms -= (end_time - begin_time);
 
         /* replication timeout: we may need to make the node incoherent */
-        if (rc != 0 && rc != -2) {
-            struct hostinfo *h = retrieve_hostinfo(nodelist[i]);
-            // Extract seqnum
-            Pthread_mutex_lock(&(bdb_state->seqnum_info->lock));
-            nodegen = h->seqnum.generation;
-            nodelsn = h->seqnum.lsn;
-            Pthread_mutex_unlock(&(bdb_state->seqnum_info->lock));
-
-            Pthread_mutex_lock(&(bdb_state->coherent_state_lock));
-
-            if (nodegen <= seqnum->generation && log_compare(&(seqnum->lsn), &nodelsn) >= 0) {
-                /* Only sleep on the change from COHERENT (the point where we
-                 * decide to stop sending leases).  For role-change the new
-                 * master marks every node as INCOHERENT_WAIT and then sleeps
-                 * for the lease interval. */
-                if (h->coherent_state == STATE_COHERENT)
-                    defer_commits(bdb_state, nodelist[i]->str, __func__);
-
-                /* Change to INCOHERENT_WAIT if we allow catchup on commit */
-                struct hostinfo *m = retrieve_hostinfo(bdb_state->repinfo->master_host_interned);
-                if (bdb_state->attr->catchup_on_commit && catchup_window) {
-                    masterlsn = &m->seqnum.lsn;
-                    cntbytes = subtract_lsn(bdb_state, masterlsn, &nodelsn);
-
-                    set_coherent_state(bdb_state, nodelist[i],
-                                       (cntbytes < catchup_window)
-                                           ? STATE_INCOHERENT_WAIT
-                                           : STATE_INCOHERENT,
-                                       __func__, __LINE__);
-                } else
-                    set_coherent_state(bdb_state, nodelist[i], STATE_INCOHERENT,
-                                       __func__, __LINE__);
-
-                /* Record the downgrade time */
-                h->last_downgrade_time = gettimeofday_ms();
-
-                bdb_state->repinfo->skipsinceepoch = comdb2_time_epoch();
-            }
-
-            Pthread_mutex_unlock(&(bdb_state->coherent_state_lock));
-        }
+        if (rc != 0 && rc != -2)
+            make_node_incoherent(bdb_state, nodelist[i], seqnum, catchup_window, 1);
     }
 
 done_wait:
