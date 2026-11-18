@@ -2324,10 +2324,61 @@ error:
     return luaL_error(L, "attempt to emit row without defining columns");
 }
 
+/* Run a dbtable:insert() against a remote table through fdb push.
+ * Called after prepare returned SQLITE_SCHEMA_PUSH_REMOTE_WRITE; the push
+ * connector is in clnt->fdb_push.  The lua table with the row is at index 2.
+ */
+static int dbtable_insert_push(Lua lua, SP sp, const char *sql, int ncols)
+{
+    fdb_push_connector_t *push = sp->clnt->fdb_push;
+    struct errstat err = {0};
+    int rc;
+
+    sp->rc = 0; /* clear SQLITE_SCHEMA_PUSH_REMOTE_WRITE left by prepare */
+
+    if (!push) {
+        luabb_error(lua, sp, "missing fdb push connector in stmt: %s", sql);
+        return -1;
+    }
+
+    /* drop any params cloned from the clnt; install ours, one per column */
+    fdb_push_clear_params(push);
+    if (ncols > 0) {
+        struct param_data *params = calloc(ncols, sizeof(struct param_data));
+        if (!params) {
+            luabb_error(lua, sp, "out of memory preparing stmt: %s", sql);
+            return -1;
+        }
+        fdb_push_set_params(push, params);
+        fdb_push_set_nparams(push, ncols);
+    }
+
+    lua_pushnil(lua);
+    int pos = 1;
+    while (lua_next(lua, 2)) {
+        lua_pushinteger(lua, pos++);
+        /* on error, sp->error is already set */
+        if (fdb_push_bind_int(lua, push, NULL, 5, 4) != 0)
+            return sp->rc ? sp->rc : -1;
+        lua_pop(lua, 2);
+    }
+    lua_pop(lua, 1); /* Keep just dbtable on stack. */
+
+    rc = handle_fdb_push_write(sp->clnt, &err, 0, NULL, sql);
+    sp->rc = rc;
+    if (rc == -2) {
+        luabb_error(lua, sp, "remote does not support push write in stmt: %s", sql);
+    } else if (rc) {
+        luabb_error(lua, sp, "%s in stmt: %s", err.errstr, sql);
+    }
+    return rc;
+}
+
 static int dbtable_insert(Lua lua)
 {
     SP sp = getsp(lua);
     int rc, nargs;
+    int ncols = 0;
     strbuf *columns, *params, *sql;
 
     nargs = lua_gettop(lua);
@@ -2354,6 +2405,7 @@ static int dbtable_insert(Lua lua)
         strbuf_append(columns, quoted_col);
         sqlite3_free(quoted_col);
         strbuf_appendf(params, "?,");
+        ncols++;
         lua_pop(lua, 1);
     }
     strbuf_del(columns, 1);
@@ -2376,6 +2428,13 @@ static int dbtable_insert(Lua lua)
     db_reset(lua);
     sqlite3_stmt *stmt = NULL;
     rc = lua_prepare_sql(sp, sqlstr, &stmt);
+    if (rc == SQLITE_SCHEMA_PUSH_REMOTE_WRITE) {
+        /* remote table: the write runs on the remote db */
+        rc = dbtable_insert_push(lua, sp, sqlstr, ncols);
+        free(sqlstr);
+        lua_pushinteger(lua, rc);
+        return 1;
+    }
     free(sqlstr);
     if (rc != 0) goto out;
 
@@ -2445,6 +2504,22 @@ static int dbtable_copyfrom(Lua lua)
     db_reset(lua);
     sqlite3_stmt *stmt = NULL;
     int rc = lua_prepare_sql(sp, strbuf_buf(sql), &stmt);
+    if (rc == SQLITE_SCHEMA_PUSH_REMOTE_WRITE) {
+        /* remote destination: the write runs on the remote db */
+        struct errstat err = {0};
+        /* the stmt has no parameters; drop any cloned from the clnt */
+        fdb_push_clear_params(sp->clnt->fdb_push);
+        rc = handle_fdb_push_write(sp->clnt, &err, 0, NULL, strbuf_buf(sql));
+        sp->rc = rc;
+        if (rc == -2) {
+            luabb_error(lua, sp, "remote does not support push write in stmt: %s", strbuf_buf(sql));
+        } else if (rc) {
+            luabb_error(lua, sp, "%s in stmt: %s", err.errstr, strbuf_buf(sql));
+        }
+        strbuf_free(sql);
+        lua_pushinteger(lua, rc);
+        return 1;
+    }
     strbuf_free(sql);
     if (rc != 0) {
         return rc;

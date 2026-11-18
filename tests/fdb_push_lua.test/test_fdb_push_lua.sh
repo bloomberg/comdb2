@@ -452,6 +452,139 @@ EOF
 $R "SELECT * FROM t WHERE id=502" >> $output 2>&1
 
 # ============================================================
+# Test 20: dbtable:insert into a remote table
+# ============================================================
+echo "Test 20: dbtable:insert remote" >> $output
+
+$S - >> $output 2>&1 <<EOF
+create procedure test_dbtable_insert version 'test20' {
+local function main()
+    local rc = db:table("LOCAL_${a_remdbname}.t"):insert({id = 600, b1 = 'dbtable'})
+    if rc ~= 0 then return rc, db:error() end
+end
+}\$\$
+exec procedure test_dbtable_insert()
+EOF
+
+# Verify
+$R "SELECT * FROM t WHERE id=600" >> $output 2>&1
+
+# ============================================================
+# Test 21: dbtable:insert remote with various types and NULL
+# ============================================================
+echo "Test 21: dbtable:insert remote types and NULL" >> $output
+
+$S - >> $output 2>&1 <<EOF
+create procedure test_dbtable_types version 'test21' {
+local function main()
+    local tbl = db:table("LOCAL_${a_remdbname}.t2")
+    local rc = tbl:insert({i = 601, r = 1.5, s = 'types'})
+    if rc ~= 0 then return rc, db:error() end
+    rc = tbl:insert({i = 602, r = db:null(), s = db:null()})
+    if rc ~= 0 then return rc, db:error() end
+end
+}\$\$
+exec procedure test_dbtable_types()
+EOF
+
+# Verify
+$R "SELECT i, r, s FROM t2 WHERE i IN (601, 602) ORDER BY i" >> $output 2>&1
+
+# ============================================================
+# Test 22: repeated dbtable:insert in one SP ships each row's values
+# ============================================================
+echo "Test 22: dbtable:insert remote loop" >> $output
+
+$S - >> $output 2>&1 <<EOF
+create procedure test_dbtable_loop version 'test22' {
+local function main()
+    local tbl = db:table("LOCAL_${a_remdbname}.t")
+    for i = 610, 612 do
+        local rc = tbl:insert({id = i, b1 = 'dbt' .. i})
+        if rc ~= 0 then return rc, db:error() end
+    end
+end
+}\$\$
+exec procedure test_dbtable_loop()
+EOF
+
+# Verify
+$R "SELECT * FROM t WHERE id >= 610 AND id <= 612 ORDER BY id" >> $output 2>&1
+
+# ============================================================
+# Test 23: mix local and remote dbtable:insert in same SP
+# ============================================================
+echo "Test 23: dbtable:insert mix local and remote" >> $output
+
+$S - >> $output 2>&1 <<EOF
+create procedure test_dbtable_mix version 'test23' {
+local function main()
+    local rc = db:table("t"):insert({id = 620, b1 = 'local'})
+    if rc ~= 0 then return rc, db:error() end
+    rc = db:table("LOCAL_${a_remdbname}.t"):insert({id = 620, b1 = 'remote'})
+    if rc ~= 0 then return rc, db:error() end
+    rc = db:table("t"):insert({id = 621, b1 = 'local2'})
+    if rc ~= 0 then return rc, db:error() end
+end
+}\$\$
+exec procedure test_dbtable_mix()
+EOF
+
+# Verify local
+cdb2sql ${SRC_CDB2_OPTIONS} --tabs --host $mach $a_dbname "SELECT * FROM t WHERE id IN (620, 621) ORDER BY id" >> $output 2>&1
+# Verify remote
+$R "SELECT * FROM t WHERE id=620" >> $output 2>&1
+
+# ============================================================
+# Test 24: dbtable:insert remote error reports the remote error
+# ============================================================
+echo "Test 24: dbtable:insert remote error" >> $output
+
+# duplicate key on remote (id 600 inserted by test 20)
+$S - >> /dev/null 2>&1 <<EOF
+create procedure test_dbtable_error version 'test24' {
+local function main()
+    local rc = db:table("LOCAL_${a_remdbname}.t"):insert({id = 600, b1 = 'dup'})
+    if rc ~= 0 then
+        return rc, "dbtable push failed: " .. db:error()
+    end
+end
+}\$\$
+EOF
+out=$($Q "exec procedure test_dbtable_error()" 2>&1)
+echo "$out" | grep -q "dbtable push failed"
+if [[ $? -ne 0 ]] ; then
+    echo "FAILED: expected error from dbtable push write, got: $out" >> $output
+    exit 1
+fi
+echo "$out" | grep -q "unknown error"
+if [[ $? -eq 0 ]] ; then
+    echo "FAILED: dbtable push write error not reported, got: $out" >> $output
+    exit 1
+fi
+echo "got expected error" >> $output
+
+# ============================================================
+# Test 25: dbtable:copyfrom into a remote table
+# ============================================================
+echo "Test 25: dbtable:copyfrom remote" >> $output
+
+# t2 has no keys; copy row 99 (test 5) onto itself
+$S - >> $output 2>&1 <<EOF
+create procedure test_dbtable_copyfrom version 'test25' {
+local function main()
+    local tbl = db:table("LOCAL_${a_remdbname}.t2")
+    local rc = tbl:copyfrom(tbl, "i = 99")
+    if rc ~= 0 then return rc, db:error() end
+end
+}\$\$
+exec procedure test_dbtable_copyfrom()
+EOF
+
+# Verify
+$R "SELECT count(*) FROM t2 WHERE i=99" >> $output 2>&1
+
+# ============================================================
 # Validate results
 # ============================================================
 echo "Testcase passed." >> $output
