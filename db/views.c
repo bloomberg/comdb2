@@ -2984,7 +2984,9 @@ int timepart_reconfigure_retention(const char *name, int new_retention, int is_m
         }
         nnames = ndrop; /* so the error path below frees any partial names[] */
         for (i = 0; i < ndrop; i++) {
-            names[i] = strdup(old_order[i].tblname);
+            /* drop by table name: the original table is a shard only by alias */
+            struct dbtable *db = get_dbtable_by_name(old_order[i].tblname);
+            names[i] = strdup(db ? db->tablename : old_order[i].tblname);
             if (!names[i]) {
                 errstat_set_rcstrf(err, rc = VIEW_ERR_MALLOC, "malloc %s %d", __func__, __LINE__);
                 goto done_locked;
