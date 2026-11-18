@@ -330,9 +330,9 @@ __fop_file_remove_recover(dbenv, dbtp, lsnp, op, info)
 	if (DB_UNDO(op)) {
 		/* On the backward pass, we leave a note for the child txn. */
 		if ((ret = __db_txnlist_update(dbenv,
-		    info, argp->child, cstat, NULL)) == TXN_NOTFOUND)
+		    info, argp->child, 0, cstat, NULL)) == TXN_NOTFOUND)
 			ret = __db_txnlist_add(dbenv,
-			    info, argp->child, cstat, NULL);
+			    info, argp->child, 0, cstat, NULL);
 		if (ret != 0)
 			goto out;
 	} else if (DB_REDO(op)) {

@@ -75,6 +75,8 @@ union __txnlist_union {
         u_int32_t txnid;
         u_int32_t generation;
         int32_t status;
+        /* Not part of the hash key (which ends at status): tells apart txns reusing a 32-bit txnid. */
+        u_int64_t utxnid;
     } t;
     struct {
         u_int32_t ntxns;
