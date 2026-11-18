@@ -565,6 +565,7 @@ extern int gbl_debug_sleep_in_summarize;
 extern int gbl_debug_sleep_in_trigger_info;
 extern int gbl_replicant_retry_on_not_durable;
 extern int gbl_debug_force_non_durable;
+extern int gbl_debug_commit_wait_lock_desired;
 extern int gbl_debug_fail_commit_restart;
 extern int gbl_debug_query_plan_no_curtran_sleep_ms;
 extern int gbl_debug_sc_invalidate_ixschema_sleep_ms;

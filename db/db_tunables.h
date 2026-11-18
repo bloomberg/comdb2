@@ -2681,6 +2681,10 @@ REGISTER_TUNABLE("replicant_retry_on_not_durable", "Replicant retries non-durabl
 
 REGISTER_TUNABLE("debug_force_non_durable", "Debug tunable which makes all commits not durable.  (Default: off)",
                  TUNABLE_BOOLEAN, &gbl_debug_force_non_durable, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("debug_commit_wait_lock_desired",
+                 "Treat this many commit waits on a node that misses a 1s ack window as lock-desired.  "
+                 "(Default: 0)",
+                 TUNABLE_INTEGER, &gbl_debug_commit_wait_lock_desired, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 
 REGISTER_TUNABLE(
     "debug_fail_commit_restart",

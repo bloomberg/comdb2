@@ -3398,6 +3398,7 @@ int gbl_ignore_final_non_durable_retry = 1;
 
 int gbl_replicant_retry_on_not_durable = 0;
 int gbl_debug_force_non_durable = 0;
+int gbl_debug_commit_wait_lock_desired = 0;
 int gbl_assert_no_schemalk_in_distributed_commit = 0;
 
 /* Stop leasing a node that missed this commit, and defer commits until its lease runs out */
@@ -3589,6 +3590,12 @@ int bdb_wait_for_seqnum_from_all_int(bdb_state_type *bdb_state, seqnum_type *seq
             rc = bdb_wait_for_seqnum_from_node_int(bdb_state, seqnum,
                     nodelist[i], 1000, __LINE__, fake_incoherent);
 
+            /* Test hook: a node missing its first ack window counts as lock-desired */
+            if (gbl_debug_commit_wait_lock_desired && rc == -999) {
+                gbl_debug_commit_wait_lock_desired--;
+                rc = WAIT_SEQNUM_LOCK_DESIRED;
+            }
+
             if (rc == WAIT_SEQNUM_LOCK_DESIRED || bdb_lock_desired(bdb_state)) {
                 logmsg(LOGMSG_ERROR, "%s line %d early exit because lock-is-desired\n", __func__, __LINE__);
                 make_unacked_incoherent(bdb_state, nodelist, numnodes, seqnum, catchup_window);
@@ -3681,7 +3688,14 @@ got_ack:
                    "waiting for NEWSEQ from node %s of >= <%s> timeout %d\n",
                    nodelist[i]->str, lsn_to_str(str, &(seqnum->lsn)), waitms);
 
-        rc = bdb_wait_for_seqnum_from_node_int(bdb_state, seqnum, nodelist[i], waitms, __LINE__, fake_incoherent);
+        /* Test hook: a node missing a 1s ack window counts as lock-desired */
+        int hook = gbl_debug_commit_wait_lock_desired > 0;
+        rc = bdb_wait_for_seqnum_from_node_int(bdb_state, seqnum, nodelist[i], hook && waitms > 1000 ? 1000 : waitms,
+                                               __LINE__, fake_incoherent);
+        if (hook && rc == -999) {
+            gbl_debug_commit_wait_lock_desired--;
+            rc = WAIT_SEQNUM_LOCK_DESIRED;
+        }
 
         if (rc == WAIT_SEQNUM_LOCK_DESIRED || bdb_lock_desired(bdb_state)) {
             logmsg(LOGMSG_ERROR, "%s line %d early exit because lock-is-desired\n", __func__, __LINE__);

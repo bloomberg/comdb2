@@ -1,0 +1,55 @@
+#!/usr/bin/env bash
+bash -n "$0" || exit 1
+
+# A commit that stops waiting for a slow replicant because the bdb lock is
+# desired (as in a downgrade) must not leave that replicant coherent without
+# the commit: the client's read-back on that replicant has to see its own write.
+
+. ${TESTSROOTDIR}/tools/cluster_utils.sh
+. ${TESTSROOTDIR}/tools/runit_common.sh
+
+[[ -z "$CLUSTER" ]] && { echo "requires a cluster"; exit 0; }
+
+function admin
+{
+    $CDB2SQL_EXE $CDB2_OPTIONS -admin --tabs $DBNAME --host $1 "$2"
+}
+
+function slow_apply
+{
+    admin $1 "put tunable slow_rep_process_txn_minms $2"
+    admin $1 "put tunable slow_rep_process_txn_maxms $(( $2 + 1 ))"
+    admin $1 "put tunable slow_rep_process_txn_freq 0"
+}
+
+$CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "create table t (i int primary key)" || failexit "create table"
+sleep 5
+
+master=$(get_master)
+replicant=$(echo $CLUSTER | tr ' ' '\n' | grep -vx $master | head -1)
+
+checked=0
+for id in 1 2 3; do
+    slow_apply $replicant 3000
+    # The commit stops waiting once the replicant misses its first ack window
+    admin $master "put tunable debug_commit_wait_lock_desired 1"
+
+    printf "set hasql on\nset transaction snapshot isolation\ninsert into t values ($id)\nselect count(*) from t where i = $id\n" |
+        $CDB2SQL_EXE $CDB2_OPTIONS --tabs $DBNAME --host $replicant - > out.$id 2>&1 &
+    pid=$!
+    # Let the replicant catch up once the commit has stopped waiting
+    sleep 2
+    slow_apply $replicant 0
+    wait $pid
+    out=$(cat out.$id)
+    echo "attempt $id master $master replicant $replicant: $(echo $out)"
+    # An error is not a stale read
+    if ! echo "$out" | grep -q "failed with rc"; then
+        [[ "$(echo "$out" | grep -x "[0-9]*")" == "1" ]] || failexit "read-back on $replicant missed acked insert $id: $out"
+        checked=$((checked + 1))
+    fi
+    sleep 5
+done
+[[ $checked -gt 0 ]] || failexit "no attempt got a result to check"
+
+echo "Success"
