@@ -15,6 +15,53 @@
 local max_verify_retries = 10
 local max_topology_depth = 32
 
+-- Sources that have caught up to the requester; a source behind it forces a needless rewind.
+local function ahead_of(prefix, pfile, poffset)
+    return " (" .. prefix .. "file > " .. pfile .. " OR (" .. prefix .. "file = " .. pfile .. " AND " ..
+           prefix .. "offset >= " .. poffset .. ")) "
+end
+
+-- Fanout-limited candidate query; cover_t0/cover_c filter tier-0 and downstream nodes (no leading AND).
+local function fanout_cte(source_dbname, source_hosts, not_requester, depth_cap, cover_t0, cover_c,
+                          physrep_fanout, physrep_max_candidates)
+    return ("WITH RECURSIVE " ..
+            "    tiers (dbname, host, tier) AS " ..
+            "        (SELECT dbname, host, 0 " ..
+            "             FROM comdb2_physreps " ..
+            "             WHERE dbname = '" .. source_dbname .. "' AND " ..
+            "                   host IN (" .. source_hosts .. ") AND " .. cover_t0 ..
+            "         UNION ALL " ..
+            "         SELECT p.dbname, p.host, t.tier+1  " ..
+            "             FROM comdb2_physrep_connections p, tiers t, comdb2_physreps c" ..
+            "             WHERE p.source_dbname = t.dbname AND p.source_host = t.host " .. not_requester .. depth_cap ..
+            "             AND p.dbname = c.dbname AND p.host = c.host AND " .. cover_c ..
+            "             AND (c.last_keepalive > (NOW() - cast (600 as sec)))), " ..
+            "    child_count (dbname, host, tier, cnt) AS " ..
+            "        (SELECT t.dbname, t.host, t.tier, count (*) c" ..
+            "             FROM tiers t LEFT OUTER JOIN comdb2_physrep_connections p " ..
+            "                 ON t.dbname = p.source_dbname AND t.host = p.source_host " ..
+            "             GROUP BY t.dbname, t.host HAVING COUNT(*) < " .. physrep_fanout .. " ) " ..
+            "SELECT c.tier, c.dbname, c.host FROM child_count c, comdb2_physreps p " ..
+            "    WHERE c.dbname = p.dbname AND c.host = p.host AND (p.state IS NULL OR lower(p.state) NOT IN ('pending', 'inactive'))" ..
+            "    ORDER BY tier, cnt, random() " ..
+            "    LIMIT " .. physrep_max_candidates)
+end
+
+-- Returns rc and the rows of cte.
+local function collect(cte)
+    local rows = {}
+    print("physrep_register_replicant: sql = " .. cte)
+    local rs, rc = db:exec(cte)
+    if rc == 0 and rs then
+        local row = rs:fetch()
+        while row do
+            table.insert(rows, {tier = row.tier, dbname = row.dbname, host = row.host})
+            row = rs:fetch()
+        end
+    end
+    return rc, rows
+end
+
 -- Returns the commit rc and the candidate rows, which are emitted only once the commit succeeds.
 local function register(dbname, hostname, pfile, poffset, source_dbname, source_hosts, tunables)
     local candidates = {}
@@ -98,21 +145,22 @@ local function register(dbname, hostname, pfile, poffset, source_dbname, source_
                  "    LIMIT " .. physrep_max_candidates)
     end
 
-    print("physrep_register_replicant: sql = " .. cte)
-    local rs
-    rs, rc = db:exec(cte)
-    local foundrow = 0
+    -- Preferred pass: only sources whose position is at or past the requester's LSN.
+    local covers_t0 = ahead_of("", pfile, poffset)
+    local covers_c = ahead_of("c.", pfile, poffset)
+    if firstfile == 1 then
+        covers_t0 = covers_t0 .. " AND firstfile IS NOT NULL AND firstfile <= " .. pfile
+        covers_c = covers_c .. " AND c.firstfile IS NOT NULL AND c.firstfile <= " .. pfile
+    end
+    rc, candidates = collect(fanout_cte(source_dbname, source_hosts, not_requester, depth_cap, covers_t0, covers_c,
+                                        physrep_fanout, physrep_max_candidates))
+    if rc == 0 and #candidates == 0 then
+        print("physrep_register_replicant: no source at or past " .. pfile .. ":" .. poffset .. ", widening")
+        rc, candidates = collect(cte)
+    end
+    local foundrow = (#candidates > 0) and 1 or 0
 
     if (rc == 0) then
-        if rs then
-            local row = rs:fetch()
-            while row do
-                foundrow = 1
-                table.insert(candidates, {tier = row.tier, dbname = row.dbname, host = row.host})
-                row = rs:fetch()
-            end
-        end
-
         if (foundrow == 0) then
             print("physrep_register_replicant: found no candidates, running without fanout '" .. source_dbname .. "' source-hosts '" .. source_hosts .. "'")
 
@@ -163,21 +211,12 @@ local function register(dbname, hostname, pfile, poffset, source_dbname, source_
                          "    LIMIT " .. physrep_max_candidates)
             end
         
-            rs, rc = db:exec(cte)
+            rc, candidates = collect(cte)
             if rc ~= 0 then
                 db:rollback()
                 return rc, {}
             end
-
-            foundrow = 0
-            if rs then
-                local row = rs:fetch()
-                while row do
-                    foundrow = 1
-                    table.insert(candidates, {tier = row.tier, dbname = row.dbname, host = row.host})
-                    row = rs:fetch()
-                end
-            end
+            foundrow = (#candidates > 0) and 1 or 0
         end
 
         if (foundrow == 0) then
