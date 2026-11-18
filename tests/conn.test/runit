@@ -158,9 +158,26 @@ function cleanup {
     wait ${exit_pids[*]}
 }
 
+function stop_clients {
+    # PIDS are the local 'timeout' and 'ssh' wrappers, not the clients.
+    # SIGTERM makes timeout pass the signal on to its conn (SIGKILL would
+    # orphan it), and killing ssh -n leaves the remote conn running, so
+    # kill those on each node by command line.
+    kill ${PIDS[*]} 2> /dev/null
+    local -r pattern="$TESTSBUILDDIR/conn [0-9]+ [0-9]+ $DBNAME "
+    local kill_pids=()
+    for h in $CLUSTER; do
+        $SSH $h "pkill -9 -f '$pattern'" &
+        kill_pids+=($!)
+    done
+    wait ${kill_pids[*]}
+    sleep 1
+    kill -9 ${PIDS[*]} 2> /dev/null
+}
+
 function failed {
     echo "failed - $1"
-    kill -9 ${PIDS[*]}
+    stop_clients
     cleanup
     failexit "conn failED"
 }
