@@ -4489,6 +4489,32 @@ int fdb_cursor_access(BtCursor *pCur, int how)
 }
 
 /**
+ * Check remote access control (SET REMOTE) for a table accessed by a
+ * statement pushed to a remote db, where no local cursor will check it;
+ * "how" is a mask of fdb_access_type, all of which are required
+ * Returns -1 and sets "err" if access control enabled and access denied
+ *         0 otherwise
+ *
+ */
+int fdb_push_access_check(sqlclntstate *clnt, const char *dbname, const char *tblname, int how, char *err, int errlen)
+{
+    if (!clnt->fdb_state.access)
+        return 0;
+
+    /* match the name checked by fdb_cursor_access, i.e. fdb->dbname */
+    dbname = _strip_class_prefix(dbname);
+
+    for (int type = ACCESS_REMOTE_READ; type <= ACCESS_REMOTE_WRITE; type <<= 1) {
+        if ((how & type) && fdb_access_control_check(clnt->fdb_state.access, dbname, tblname, type)) {
+            snprintf(err, errlen, "%s denied to %s.%s", (type == ACCESS_REMOTE_READ) ? "READ" : "WRITE", dbname,
+                     tblname);
+            return -1;
+        }
+    }
+    return 0;
+}
+
+/**
  * Check if master table access if local or remote
  *
  */
