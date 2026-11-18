@@ -409,6 +409,9 @@ int physrep_source_covers_me(void *in_bdb_state, cdb2_hndl_tp *repl_db)
     }
 
     rc = have_overlap(&parent_lowest, &parent_highest, &my_lowest, &my_highest);
+    /* Overlapping but ending before us: usable only by rewinding records it will likely send again. */
+    if (rc == 1 && log_compare(&parent_highest, &my_highest) < 0)
+        rc = PHYSREP_SOURCE_BEHIND;
 
     if (gbl_physrep_debug) {
         physrep_logmsg(LOGMSG_USER, "%s: parent-range {%d:%d}-{%d:%d}, my-range {%d:%d}-{%d:%d}, covers=%d\n", __func__,

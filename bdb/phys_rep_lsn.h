@@ -35,7 +35,8 @@ int find_log_timestamp(struct bdb_state_tag *, time_t time, unsigned int *file,
                        unsigned int *offset);
 
 /* Best-effort probe: does the connected source cover our current log range?
- * Returns 1 (covers), 0 (no overlap), or -1 (unknown/transient). */
+ * Returns 1 (covers), 0 (no overlap), 2 (overlaps but ends before us), or -1 (unknown/transient). */
+#define PHYSREP_SOURCE_BEHIND 2
 int physrep_source_covers_me(void *bdb_state, struct cdb2_hndl *repl_db);
 
 LOG_INFO find_match_lsn(void *bdb_state, struct cdb2_hndl *repl_db, LOG_INFO start_info);
