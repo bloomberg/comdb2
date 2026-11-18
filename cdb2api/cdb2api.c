@@ -1596,7 +1596,7 @@ static ssl_mode ssl_string_to_mode(const char *s, int *nid_dbname)
         return SSL_VERIFY_HOSTNAME;
     if (strncasecmp(SSL_MODE_VERIFY_DBNAME, s,
                     sizeof(SSL_MODE_VERIFY_DBNAME) - 1) == 0) {
-        s += sizeof(SSL_MODE_VERIFY_DBNAME);
+        s += sizeof(SSL_MODE_VERIFY_DBNAME) - 1;
         if (nid_dbname != NULL) {
             cdb2_skipws(s);
             *nid_dbname = (*s != '\0') ? OBJ_txt2nid(s) : cdb2_nid_dbname;
@@ -5668,11 +5668,11 @@ static int is_chunk_set_command(const char *set_command)
     cdb2_skipws(p);
     if (strncasecmp(p, "transaction", 11) != 0)
         return 0;
-    p += sizeof("TRANSACTION");
+    p += sizeof("TRANSACTION") - 1;
     cdb2_skipws(p);
     if (strncasecmp(p, "chunk", 5) != 0)
         return 0;
-    p += sizeof("CHUNK");
+    p += sizeof("CHUNK") - 1;
     cdb2_skipws(p);
     return strncasecmp(p, "throttle", 8) != 0;
 }
@@ -5702,7 +5702,7 @@ static void process_set_local(cdb2_hndl_tp *hndl, const char *set_command)
     cdb2_skipws(p);
 
     if (strncasecmp(p, "hasql", 5) == 0) {
-        p += sizeof("HASQL");
+        p += sizeof("HASQL") - 1;
         cdb2_skipws(p);
         if (strncasecmp(p, "on", 2) == 0)
             hndl->is_hasql = 1;
@@ -5712,7 +5712,7 @@ static void process_set_local(cdb2_hndl_tp *hndl, const char *set_command)
     }
 
     if (strncasecmp(p, "admin", 5) == 0) {
-        p += sizeof("ADMIN");
+        p += sizeof("ADMIN") - 1;
         cdb2_skipws(p);
         if (strncasecmp(p, "on", 2) == 0)
             hndl->is_admin = 1;
@@ -5738,33 +5738,33 @@ static int process_ssl_set_command(cdb2_hndl_tp *hndl, const char *cmd)
     cdb2_skipws(p);
 
     if (strncasecmp(p, "SSL_MODE", sizeof("SSL_MODE") - 1) == 0) {
-        p += sizeof("SSL_MODE");
+        p += sizeof("SSL_MODE") - 1;
         cdb2_skipws(p);
         hndl->c_sslmode = ssl_string_to_mode(p, &hndl->nid_dbname);
     } else if (strncasecmp(p, SSL_CERT_PATH_OPT,
                            sizeof(SSL_CERT_PATH_OPT) - 1) == 0) {
-        p += sizeof(SSL_CERT_PATH_OPT);
+        p += sizeof(SSL_CERT_PATH_OPT) - 1;
         cdb2_skipws(p);
         free(hndl->sslpath);
         hndl->sslpath = strdup(p);
         if (hndl->sslpath == NULL)
             rc = ENOMEM;
     } else if (strncasecmp(p, SSL_CERT_OPT, sizeof(SSL_CERT_OPT) - 1) == 0) {
-        p += sizeof(SSL_CERT_OPT);
+        p += sizeof(SSL_CERT_OPT) - 1;
         cdb2_skipws(p);
         free(hndl->cert);
         hndl->cert = strdup(p);
         if (hndl->cert == NULL)
             rc = ENOMEM;
     } else if (strncasecmp(p, SSL_KEY_OPT, sizeof(SSL_KEY_OPT) - 1) == 0) {
-        p += sizeof(SSL_KEY_OPT);
+        p += sizeof(SSL_KEY_OPT) - 1;
         cdb2_skipws(p);
         free(hndl->key);
         hndl->key = strdup(p);
         if (hndl->key == NULL)
             rc = ENOMEM;
     } else if (strncasecmp(p, SSL_CA_OPT, sizeof(SSL_CA_OPT) - 1) == 0) {
-        p += sizeof(SSL_CA_OPT);
+        p += sizeof(SSL_CA_OPT) - 1;
         cdb2_skipws(p);
         free(hndl->ca);
         hndl->ca = strdup(p);
@@ -5772,7 +5772,7 @@ static int process_ssl_set_command(cdb2_hndl_tp *hndl, const char *cmd)
             rc = ENOMEM;
 #if HAVE_CRL
     } else if (strncasecmp(p, SSL_CRL_OPT, sizeof(SSL_CRL_OPT) - 1) == 0) {
-        p += sizeof(SSL_CRL_OPT);
+        p += sizeof(SSL_CRL_OPT) - 1;
         cdb2_skipws(p);
         free(hndl->crl);
         hndl->crl = strdup(p);
@@ -5781,14 +5781,14 @@ static int process_ssl_set_command(cdb2_hndl_tp *hndl, const char *cmd)
 #endif /* HAVE_CRL */
     } else if (strncasecmp(p, "SSL_SESSION_CACHE",
                            sizeof("SSL_SESSION_CACHE") - 1) == 0) {
-        p += sizeof("SSL_SESSION_CACHE");
+        p += sizeof("SSL_SESSION_CACHE") - 1;
         cdb2_skipws(p);
         hndl->cache_ssl_sess = (strncasecmp(p, "ON", 2) == 0);
         if (hndl->cache_ssl_sess)
             cdb2_set_ssl_sessions(hndl, cdb2_get_ssl_sessions(hndl));
     } else if (strncasecmp(p, SSL_MIN_TLS_VER_OPT,
                            sizeof(SSL_MIN_TLS_VER_OPT) - 1) == 0) {
-        p += sizeof(SSL_MIN_TLS_VER_OPT);
+        p += sizeof(SSL_MIN_TLS_VER_OPT) - 1;
         cdb2_skipws(p);
         hndl->min_tls_ver = atof(p);
     } else {

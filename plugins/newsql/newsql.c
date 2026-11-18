@@ -2099,7 +2099,7 @@ int process_set_commands(struct sqlclntstate *clnt, CDB2SQLQUERY *sql_query)
 #endif
             } else if (strncasecmp(sqlstr, "groupconcatmemlimit",
                                    sizeof("groupconcatmemlimit") - 1) == 0) {
-                sqlstr += sizeof("groupconcatmemlimit");
+                sqlstr += sizeof("groupconcatmemlimit") - 1;
                 int sz = strtol(sqlstr, &endp, 10);
                 if (endp != sqlstr && sz >= 0)
                     clnt->group_concat_mem_limit = sz;
