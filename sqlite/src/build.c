@@ -282,11 +282,13 @@ void sqlite3FinishCoding(Parse *pParse){
         pParse->rc = SQLITE_SCHEMA_PUSH_REMOTE;
         return;
       }
+      if( pParse->nErr ) return; /* remote access denied */
       if( comdb2_check_push_remote_write(pParse) ){
         pParse->rc = SQLITE_SCHEMA_PUSH_REMOTE_WRITE;
         return;
       }
-      if( pParse->nErr ) return; /* write can be neither pushed nor local */
+      /* remote access denied, or write can be neither pushed nor local */
+      if( pParse->nErr ) return;
       if( comdb2_check_parallel(pParse) ){
         pParse->rc = SQLITE_SCHEMA_DOHSQL;
         return;

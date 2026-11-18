@@ -356,4 +356,102 @@ if [ $grew -gt 10000000 ]; then
     exit 1
 fi
 
+# SET REMOTE access control must hold for pushed reads and writes
+echo "Test SET REMOTE with push"
+R=LOCAL_${a_remdbname}
+
+# run sql in one session, expect it to succeed (ok) or be denied (denied)
+remote_access() {
+    local exp=$1 name=$2
+    local out
+    out=`cdb2sql -s ${SRC_CDB2_OPTIONS} --host $mach $a_dbname - 2>&1`
+    local rc=$?
+    echo "$name: rc=$rc $out"
+    if [[ $exp == "denied" ]]; then
+        if [[ $rc -eq 0 ]] || ! echo "$out" | grep -qi "denied"; then
+            echo "$name: expected access denied" >&2
+            exit 1
+        fi
+    elif [[ $rc -ne 0 ]]; then
+        echo "$name: expected success" >&2
+        exit 1
+    fi
+}
+
+remote_access ok "per-table read, granted table" << EOF
+set remote read ${a_remdbname}.t
+select count(*) from $R.t
+EOF
+
+remote_access denied "per-table read, other table" << EOF
+set remote read ${a_remdbname}.t
+select count(*) from $R.t2
+EOF
+
+remote_access ok "whole-db read" << EOF
+set remote read ${a_remdbname}
+select count(*) from $R.t2
+EOF
+
+remote_access denied "read-only, insert" << EOF
+set remote read ${a_remdbname}
+insert into $R.t values (100, 'denied')
+EOF
+
+remote_access ok "per-table write, insert" << EOF
+set remote write ${a_remdbname}.t
+insert into $R.t values (101, 'allowed')
+EOF
+
+remote_access denied "read-only, update" << EOF
+set remote read ${a_remdbname}
+update $R.t set b1='denied' where id=101
+EOF
+
+remote_access denied "read-only, delete" << EOF
+set remote read ${a_remdbname}
+delete from $R.t where id=101
+EOF
+
+remote_access denied "per-table write, other table" << EOF
+set remote read ${a_remdbname}
+set remote write ${a_remdbname}.t
+insert into $R.t2(i) values (101)
+EOF
+
+remote_access ok "per-table write, delete" << EOF
+set remote read ${a_remdbname}
+set remote write ${a_remdbname}.t
+delete from $R.t where id=101
+EOF
+
+remote_access ok "whole-db write, insert" << EOF
+set remote write ${a_remdbname}
+insert into $R.t values (102, 'allowed')
+EOF
+
+remote_access ok "whole-db read write, delete" << EOF
+set remote read ${a_remdbname}
+set remote write ${a_remdbname}
+delete from $R.t where id=102
+EOF
+
+remote_access denied "deny all" << EOF
+set remote
+select count(*) from $R.t
+EOF
+
+# a denied write after an allowed one in the same transaction
+remote_access denied "transaction, denied write" << EOF
+set remote write ${a_remdbname}.t
+begin
+insert into $R.t values (103, 'txn')
+insert into $R.t2(i) values (103)
+rollback
+EOF
+
+remote_access ok "db alive after denied transaction" << EOF
+select count(*) from $R.t where id=103
+EOF
+
 echo "Testcase passed."
