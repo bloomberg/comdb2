@@ -3239,14 +3239,14 @@ again:
         return 0;
     }
 
-    /* on our way out and this node hasn't acked: nothing is going to arrive,
-     * so don't burn the full replication timeout waiting for it */
+    /* on our way out and this node hasn't acked: nothing is going to arrive, so
+     * time out now; the caller defers and marks it incoherent as for any timeout */
     if (bdb_state->exiting) {
         Pthread_mutex_unlock(&(bdb_state->seqnum_info->lock));
         if (bdb_state->attr->wait_for_seqnum_trace) {
             logmsg(LOGMSG_USER, PR_LSN " %s exiting, not waiting\n", PARM_LSN(seqnum->lsn), host->str);
         }
-        return 1;
+        return -999;
     }
 
     /* this node may have been decommissioned, in which case we
