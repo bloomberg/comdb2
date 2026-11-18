@@ -318,6 +318,10 @@ REGISTER_TUNABLE("debug_locked_internal_sql_delay_ms",
                  &gbl_debug_locked_internal_sql_delay_ms, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("debug_disttxn_trace", "Print disttxn debug information.  (Default: off)", TUNABLE_BOOLEAN,
                  &gbl_debug_disttxn_trace, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("debug_reuse_txnid",
+                 "Test only: the next transaction reuses the last 32-bit txnid without a recycle record.  "
+                 "(Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_debug_reuse_txnid, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("debug_fail_push_write_on_replay", "Fail pushed writes on the first N verify replays.  (Default: 0)",
                  TUNABLE_INTEGER, &gbl_debug_fail_push_write_on_replay, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL,
                  NULL);

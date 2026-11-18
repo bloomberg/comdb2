@@ -98,6 +98,8 @@ extern int gbl_fullrecovery;
 extern int gbl_recovery_gen;
 extern int gbl_reproduce_ckp_bug;
 int gbl_recovery_ckp = 1;
+/* Test only: the next txn reuses the last txnid without a recycle record, then this clears. */
+int gbl_debug_reuse_txnid = 0;
 
 #else
 
@@ -689,7 +691,11 @@ __txn_begin_int_int(txn, prop, we_start_at_this_lsn, flags)
 	/* Place transaction on active transaction list. */
 	SH_TAILQ_INSERT_HEAD(&region->active_txn, td, links, __txn_detail);
 
-	id = prepared_txnid ? prepared_txnid : ++region->last_txnid;
+	if (!prepared_txnid && gbl_debug_reuse_txnid && region->last_txnid >= TXN_MINIMUM) {
+		gbl_debug_reuse_txnid = 0;
+		id = region->last_txnid;
+	} else
+		id = prepared_txnid ? prepared_txnid : ++region->last_txnid;
 
 	++region->stat.st_nbegins;
 	if (++region->stat.st_nactive > region->stat.st_maxnactive)
