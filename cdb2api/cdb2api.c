@@ -8196,6 +8196,17 @@ static int cdb2_get_dbhosts(cdb2_hndl_tp *hndl)
     if (rc != 0)
         goto after_callback;
 
+    if (strcasecmp(hndl->type, "configured") == 0 && hndl->num_hosts > 0) {
+        /* A proxy listed this database's hosts on CDB2_BEFORE_DISCOVERY. get_connection_int() uses them
+         * as they are, but CDB2_MASTER handles skip it and land here, where the comdb2db lookup below would
+         * discard them and ask comdb2db for a "configured" cluster it cannot have. Skip comdb2db, but still
+         * dbinfo the hosts to get their ports and master. */
+        if (!hndl->max_call_time)
+            set_max_call_time(hndl);
+        rc = 0;
+        goto retry;
+    }
+
     if (strcasecmp(hndl->type, "local") == 0) {
         hndl->num_hosts = 1;
         strcpy(hndl->hosts[0], "localhost");
