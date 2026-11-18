@@ -86,6 +86,11 @@ REGISTER_TUNABLE("analyze_new_indexes",
                  "an index, so the new index has good stats as soon as it is "
                  "visible. (Default: on)",
                  TUNABLE_BOOLEAN, &gbl_analyze_new_indexes, 0, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("sc_analyze_required",
+                 "Fail a schema change that builds an index if analyzing the "
+                 "table fails or cannot run, instead of proceeding without "
+                 "fresh stats. (Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_sc_analyze_required, 0, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("sc_analyze_threads",
                  "Size of the dedicated sql pool used by the schema-change "
                  "inline analyze. (Default: 2)",

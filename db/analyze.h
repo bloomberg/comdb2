@@ -124,20 +124,24 @@ void cleanup_stats(COMDB2BUF *sb);
 
 int do_analyze(char *tbl, int percent, const char *trigger);
 
+extern int gbl_analyze_new_indexes;
+extern int gbl_sc_analyze_required;
+
 /**
- * Collect statistics for indexes built by an in-flight schema change, using
- * the pre-commit newdb.  Must be called after the records are converted and
- * before the schema change is finalized, so the stats transaction commits --
- * and therefore replicates -- ahead of the schema change itself.
+ * Analyze every index of a table whose in-flight schema change built an index,
+ * using the pre-commit newdb.  Must be called after the records are converted
+ * and before the schema change is finalized, so the stats transaction commits
+ * -- and therefore replicates -- ahead of the schema change itself.
  *
- * new_ix has newdb->nix entries; a non-zero entry marks an index that this
- * schema change built.  Only those are analyzed -- reused indexes hold no data
- * in newdb and their existing statistics remain valid.
+ * ix_plan has newdb->nix entries: -1 marks an index this schema change built,
+ * read from newdb; any other value is the olddb index it reuses, read from
+ * olddb.
  *
- * Never fails the schema change: returns 0 even when stats could not be
- * collected.
+ * Returns 0 if the stats were committed or analyze is deliberately off for the
+ * table; otherwise non-zero, with *why set to the reason.  Whether that fails
+ * the schema change is up to the caller (sc_analyze_required).
  */
-int analyze_new_indexes(struct dbtable *newdb, const char *new_ix);
+int analyze_new_indexes(struct dbtable *newdb, struct dbtable *olddb, const int *ix_plan, const char **why);
 
 /* Get analyze_abort_requested variable state */
 int get_analyze_abort_requested();

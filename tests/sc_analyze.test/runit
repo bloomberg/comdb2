@@ -136,14 +136,23 @@ dump_stats
 # ALTER TABLE adding an index does the same
 # ---------------------------------------------------------------------------
 echo "=== ALTER ADD INDEX ==="
+ixa_before=$(runtabs "select stat from sqlite_stat1 where tbl='t1' and idx like '\$IXA_%'")
 run "alter table t1 { schema { int a  cstring b[32]  int c }
                       keys { dup \"IXA\" = a
                              dup \"IXB\" = b } }" > /dev/null
 assert_stats_present t1 IXB "ALTER ADD INDEX populated stats"
 assert_no_dotnew_stats "ALTER ADD INDEX"
-# Adding an index must not disturb the statistics of indexes it did not
-# rebuild -- those hold no data in newdb and their stats are still good.
-assert_stats_present t1 IXA "ALTER ADD INDEX left IXA stats intact"
+# The whole table is analyzed, including IXA, which is reused: it holds no
+# data in newdb yet, so it has to be read from the old table.  Same data, so
+# the same stats -- an empty read would lose them.
+assert_stats_present t1 IXA "ALTER ADD INDEX refreshed IXA stats"
+ixa_after=$(runtabs "select stat from sqlite_stat1 where tbl='t1' and idx like '\$IXA_%'")
+if [ "$ixa_after" != "$ixa_before" ]; then
+    echo "FAIL: reused IXA stats changed: '$ixa_before' -> '$ixa_after'"
+    dump_stats
+    exit 1
+fi
+echo "ok: reused IXA stats read from the old table ($ixa_after)"
 dump_stats
 
 # ---------------------------------------------------------------------------
@@ -159,14 +168,18 @@ run "alter table t1 { schema { int a  cstring b[32]  int c }
                              dup \"IXB\" = b + a } }" > /dev/null
 assert_stats_present t1 IXB "altered index has stats"
 assert_stats_present t1 IXA "altering IXB left IXA stats intact"
-# NB: the pre-alter row survives under the index's previous sqlite name
-# ($IXB_<oldcrc>).  That is pre-existing behavior -- altering an index has
-# always orphaned its old-name row, and a later full ANALYZE reaps it via the
-# cdb2.<tbl>.sav cycle.  It is invisible to the planner, which looks the index
-# up by its current name.
+# Altering the definition renames the index ($IXB_<crc> covers the columns).
+# Analyzing the whole table moves all of t1's rows aside to cdb2.t1.sav, as a
+# full ANALYZE does, so the old name's row no longer sits under t1.
+nixb=$(stat_rows_like t1 IXB)
+if [ "$nixb" != "1" ]; then
+    echo "FAIL: expected one IXB stat row after the alter, got $nixb"
+    dump_stats
+    exit 1
+fi
+echo "ok: old IXB row moved aside, not left under t1"
 
-# pick the current definition's row: it has one more value than the old one
-after=$(runtabs "select stat from sqlite_stat1 where tbl='t1' and idx like '\$IXB_%' order by length(stat) desc limit 1")
+after=$(runtabs "select stat from sqlite_stat1 where tbl='t1' and idx like '\$IXB_%'")
 echo "stat after: $after"
 
 # (b) yields two integers, (b,a) yields three -- the stats describe the new
@@ -237,6 +250,10 @@ assert_stats_absent t2 IXZ "tunable off: no stats collected"
 sendtocluster "put tunable analyze_new_indexes 1" > /dev/null
 run "create index ixy on t2(b)" > /dev/null
 assert_stats_present t2 IXY "tunable back on: stats collected"
+# t2 was never analyzed and IXZ was built with the tunable off.  Creating IXY
+# analyzes the whole table, so IXZ gets stats too instead of being the one
+# index the planner has to guess about.
+assert_stats_present t2 IXZ "existing unanalyzed index got stats too"
 
 # ---------------------------------------------------------------------------
 # Plan quality, the reason for the feature.  t3 has a selective, analyzed
@@ -287,6 +304,64 @@ setup_t3
 run "create index status on t3(status)" > /dev/null
 assert_stats_present t3 STATUS "tunable on: new index has stats"
 check_plan CUST "tunable on: the planner keeps the selective index"
+
+# ---------------------------------------------------------------------------
+# A full rebuild has no schema-change plan: convert writes every index into
+# newdb, so the whole table is analyzed from there.  The indexes here were
+# built with the feature off, so the stats can only come from the rebuild.
+# sc_analyze_required must not treat the missing plan as a failure.
+# ---------------------------------------------------------------------------
+echo "=== REBUILD (no plan) ==="
+sendtocluster "put tunable analyze_new_indexes 0" > /dev/null
+run "drop table if exists t5" > /dev/null
+run "create table t5(a int, b int)" > /dev/null
+run "insert into t5 select value, value % 7 from generate_series(1, 100)" > /dev/null
+run "create index t5a on t5(a)" > /dev/null
+run "create index t5b on t5(b)" > /dev/null
+assert_stats_absent t5 T5A "indexes built with the feature off have no stats"
+
+sendtocluster "put tunable analyze_new_indexes 1" > /dev/null
+sendtocluster "put tunable sc_analyze_required 1" > /dev/null
+if ! run "rebuild t5" > /dev/null; then
+    echo "FAIL: REBUILD failed with sc_analyze_required on"
+    exit 1
+fi
+sendtocluster "put tunable sc_analyze_required 0" > /dev/null
+assert_stats_present t5 T5A "REBUILD analyzed t5a"
+assert_stats_present t5 T5B "REBUILD analyzed t5b"
+
+# ---------------------------------------------------------------------------
+# sc_analyze_required: if the analyze cannot run, the schema change fails
+# instead of proceeding without stats.  Disabling sampling makes it unable to
+# run, since reused indexes can only be read through their samples.
+# ---------------------------------------------------------------------------
+echo "=== sc_analyze_required ==="
+run "drop table if exists t4" > /dev/null
+run "create table t4(a int, b int)" > /dev/null
+run "insert into t4 select value, value % 7 from generate_series(1, 100)" > /dev/null
+sendtocluster "exec procedure sys.cmd.send('analyze nosample')" > /dev/null
+
+run "create index t4a on t4(a)" > /dev/null
+if [ "$(runtabs "select count(*) from comdb2_keys where tablename='t4' and keyname='T4A'")" != "1" ]; then
+    echo "FAIL: required off: CREATE INDEX should succeed without stats"
+    exit 1
+fi
+assert_stats_absent t4 T4A "required off: index created without stats"
+
+sendtocluster "put tunable sc_analyze_required 1" > /dev/null
+out=$(run "create index t4b on t4(b)" 2>&1)
+if [ $? -eq 0 ] || ! echo "$out" | grep -q "Cannot analyze table t4: sampling is disabled"; then
+    echo "FAIL: required on: CREATE INDEX should fail when analyze cannot run: $out"
+    exit 1
+fi
+if [ "$(runtabs "select count(*) from comdb2_keys where tablename='t4' and keyname='T4B'")" != "0" ]; then
+    echo "FAIL: required on: failed CREATE INDEX left the index behind"
+    exit 1
+fi
+echo "ok: required on: schema change failed and the index was not created"
+
+sendtocluster "put tunable sc_analyze_required 0" > /dev/null
+sendtocluster "exec procedure sys.cmd.send('analyze sample')" > /dev/null
 
 echo "SUCCESS"
 exit 0

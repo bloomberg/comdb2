@@ -366,42 +366,68 @@ static void check_for_idx_rename(struct dbtable *newdb, struct dbtable *olddb)
     }
 }
 
-/* Mark the indexes this schema change built, and gather statistics for them
- * before we finalize.
+/* If this schema change built any index, gather statistics for the whole
+ * table before we finalize.
  *
  * ix_plan[ixnum] == -1 means the index was built rather than reused, which
  * covers CREATE INDEX, ALTER ADD INDEX, REBUILD INDEX, and any altered
  * definition (cmp_index_int rejects an inexact match, forcing a rebuild).
- * Reused indexes are deliberately excluded: they hold no data in newdb yet --
- * their files are adopted by pointer swap at finalize -- and their existing
- * statistics are still valid.
+ * Every index is analyzed, not only the built ones, so the table's statistics
+ * stay consistent; reused indexes are read from olddb, since their files only
+ * move into newdb at finalize.
  *
- * Without a plan we cannot tell which indexes are new, so we do not guess.
+ * Without a plan the schema change is a full rebuild (forced rebuild,
+ * time-partition data moves, or a fallback when the plan cannot be used):
+ * convert writes every index into newdb, so all of them are read from there.
+ *
+ * If the analyze fails or cannot run, the schema change proceeds without fresh
+ * stats, unless sc_analyze_required is set, in which case it fails.
  */
-static void analyze_sc_new_indexes(struct dbtable *newdb)
+static int analyze_sc_table(struct schema_change_type *s, struct dbtable *newdb, struct dbtable *olddb)
 {
-    char new_ix[MAXINDEX] = {0};
+    const char *why = NULL;
+    int all_built[MAXINDEX];
+    const int *ix_plan;
     int nnew = 0;
 
     if (!newdb || newdb->nix <= 0 || newdb->nix > MAXINDEX)
-        return;
+        return 0;
 
-    if (!newdb->plan) {
-        ctrace("%s: skip %s (no schema-change plan)\n", __func__, newdb->tablename);
-        return;
-    }
-
-    for (int ixnum = 0; ixnum < newdb->nix; ixnum++) {
-        if (newdb->plan->ix_plan[ixnum] == -1) {
-            new_ix[ixnum] = 1;
-            nnew++;
+    if (newdb->plan) {
+        ix_plan = newdb->plan->ix_plan;
+        for (int ixnum = 0; ixnum < newdb->nix; ixnum++) {
+            if (ix_plan[ixnum] == -1)
+                nnew++;
         }
+        if (!nnew) {
+            ctrace("%s: skip %s (no indexes were built)\n", __func__, newdb->tablename);
+            return 0;
+        }
+    } else {
+        for (int ixnum = 0; ixnum < newdb->nix; ixnum++)
+            all_built[ixnum] = -1;
+        ix_plan = all_built;
     }
 
-    if (nnew)
-        analyze_new_indexes(newdb, new_ix);
-    else
-        ctrace("%s: skip %s (no indexes were built)\n", __func__, newdb->tablename);
+    if (!gbl_analyze_new_indexes)
+        return 0;
+
+    if (s->resume) {
+        ctrace("%s: skip %s (resumed schema change)\n", __func__, newdb->tablename);
+        why = "the schema change was resumed";
+    } else if (analyze_new_indexes(newdb, olddb, ix_plan, &why) == 0) {
+        return 0;
+    }
+    if (!why)
+        why = "analyze failed";
+
+    if (gbl_sc_analyze_required) {
+        sc_client_error(s, "Cannot analyze table %s: %s", newdb->tablename, why);
+        return SC_INTERNAL_ERROR;
+    }
+    logmsg(LOGMSG_WARN, "%s: proceeding with schema change on %s without fresh stats: %s\n", __func__, newdb->tablename,
+           why);
+    return 0;
 }
 
 static int do_merge_table(struct ireq *iq, struct schema_change_type *s,
@@ -485,6 +511,7 @@ int do_alter_table(struct ireq *iq, struct schema_change_type *s,
 {
     struct dbtable *db;
     int rc;
+    int analyze_failed = 0;
     int bdberr = 0;
     struct dbtable *newdb = NULL;
     int datacopy_odh = 0;
@@ -840,12 +867,23 @@ convert_records:
         sc_printf(s, "[%s] ...slept for %d\n", db->tablename, s->convert_sleep);
     }
 
+    /* If we built any index, gather stats for the table while we still hold
+     * the pre-commit newdb.  This commits its own transaction, which --
+     * because we have not finalized yet -- replicates ahead of the schema
+     * change, so no replicant can see the new index before its stats.  A
+     * failure only fails the schema change if sc_analyze_required is set. */
+    if (!rc) {
+        rc = analyze_sc_table(s, newdb, db);
+        analyze_failed = (rc != 0);
+    }
+
 errout:
     if (rc && rc != SC_MASTER_DOWNGRADE) {
         /* For live schema change, MUST do this before trying to remove
          * the .new tables or you get crashes */
-        if (gbl_sc_abort || db->sc_abort || iq->sc_should_abort ||
-            rc == SC_ABORTED) {
+        if (analyze_failed) {
+            sc_errf(s, "analyze of the new table failed\n");
+        } else if (gbl_sc_abort || db->sc_abort || iq->sc_should_abort || rc == SC_ABORTED) {
             sc_errf(s, "convert_all_records aborted\n");
         } else {
             sc_errf(s, "convert_all_records failed\n");
@@ -877,14 +915,6 @@ errout:
     /* check for rename outside of taking schema lock */
     /* handle renaming sqlite_stat1 entries for idx */
     check_for_idx_rename(s->newdb, s->db);
-
-    /* Gather stats for any index we just built, while we still hold the
-     * pre-commit newdb.  This commits its own transaction, which -- because we
-     * have not finalized yet -- replicates ahead of the schema change, so no
-     * replicant can see the new index before its stats.  Skipped on resume;
-     * never fails the schema change. */
-    if (!s->resume)
-        analyze_sc_new_indexes(s->newdb);
 
     return SC_OK;
 

@@ -1,3 +1,8 @@
 table t1 t1.csc2
 table t2 t2.csc2
 table t3 t3.csc2
+
+# Some of these tests plant statistics by hand and expect them to survive a
+# later CREATE INDEX.  Analyzing the table during that schema change would
+# replace them, so keep the old behavior; sc_analyze.test covers the feature.
+analyze_new_indexes off
