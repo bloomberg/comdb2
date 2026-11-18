@@ -12961,6 +12961,20 @@ void sqlite3BtreeCursorHint(BtCursor *pCur, int eHintType, ...)
     va_end(ap);
 }
 
+extern int gbl_rep_write_hints, gbl_rep_write_hints_written_blob_rows;
+void bdb_rwh_mark_blobs(bdb_state_type *bdb_state, unsigned long long genid, unsigned int mask);
+
+/* Replica write hints (rep_write_hints_written_blob_rows): OP_RowSetAdd of a two-pass DELETE selects the row with this
+ * rowid (its genid) for deletion; pTab is the statement's cursor on the target table (pScanIdx is unused).  The first
+ * pass can fetch the blobs of many more rows before the second pass deletes this one: hint the saved leaves of its
+ * blobs now, while the ring of recent blob fetches still has them. */
+void comdb2_rwh_rowset_add(BtCursor *pTab, BtCursor *pScanIdx, i64 rowid)
+{
+    if (gbl_rep_write_hints && gbl_rep_write_hints_written_blob_rows && pTab &&
+        pTab->cursor_class == CURSORCLASS_TABLE && pTab->db && pTab->db->numblobs > 0)
+        bdb_rwh_mark_blobs(pTab->db->handle, (unsigned long long)rowid, ~0U);
+}
+
 BtCursor *sqlite3BtreeCursorHintTblCsr(BtCursor *pCsr)
 {
     return pCsr->pCursorHintTableCursor;

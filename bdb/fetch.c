@@ -91,6 +91,9 @@ static DB_TXN *resolve_db_txn(bdb_state_type *bdb_state, tran_type *tran)
 
 /* This function is called in two ways: one wants it to fetch all of the blobs.
  * Another wants to fetch only a single blob. */
+extern int gbl_rep_write_hints, gbl_rep_write_hints_written_blob_rows;
+void __memp_rwh_blob_save(DB *dbp, const void *tbl, u_int32_t pgno, u_int64_t genid, int blobno);
+
 static int bdb_fetch_blobs_by_rrn_and_genid_int_int(
     bdb_state_type *bdb_state, tran_type *tran, int rrn,
     unsigned long long ingenid, int numblobs, int *dtafilenums,
@@ -316,6 +319,12 @@ static int bdb_fetch_blobs_by_rrn_and_genid_int_int(
 
                 rc = bdb_cget_unpack_blob(bdb_state, dbcp, &dbt_key, &dbt_data, &args->ver, DB_SET, args->fn_malloc,
                                           args->fn_free);
+                if (rc == 0 && gbl_rep_write_hints && gbl_rep_write_hints_written_blob_rows) {
+                    int pg, ix;
+                    if (dbcp->c_get_pageindex(dbcp, &pg, &ix) == 0 && pg > 0)
+                        __memp_rwh_blob_save(dbp, bdb_state, pg, get_search_genid(bdb_state, ingenid),
+                                             dtafilenums[blobn] - 1);
+                }
 
                 if ((rc2 = dbcp->c_close(dbcp)) != 0) {
                     logmsg(LOGMSG_ERROR, "%s: error closing a temporary cursor %d\n", __func__, rc2);

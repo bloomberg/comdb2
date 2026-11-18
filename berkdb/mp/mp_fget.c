@@ -109,8 +109,41 @@ rwh_name_is_data(const char *fn)
 }
 
 /*
+ * Whether a file name is a blob file: its extension is "blob" or "blobs<N>"
+ * (versioned names), or "dta<N>" or "dta<N>s<N>" with N > 0 (legacy names).
+ */
+static int
+rwh_name_is_blob(const char *fn)
+{
+	const char *ext;
+
+	if (fn == NULL || (ext = strrchr(fn, '.')) == NULL)
+		return (0);
+	ext++;
+	if (strcmp(ext, "blob") == 0)
+		return (1);
+	if (strncmp(ext, "blobs", 5) == 0) {
+		ext += 5;
+		if (*ext == '\0')
+			return (0);
+	} else if (strncmp(ext, "dta", 3) == 0 && ext[3] >= '1' && ext[3] <= '9') {
+		for (ext += 3; *ext >= '0' && *ext <= '9'; ext++)
+			;
+		if (*ext != 's')
+			return (*ext == '\0');
+		if (*++ext == '\0')
+			return (0);
+	} else
+		return (0);
+	while (*ext >= '0' && *ext <= '9')
+		ext++;
+	return (*ext == '\0');
+}
+
+/*
  * __memp_rwh_init --
- *	Remember in a handle whether its file is a table data file.  Called by
+ *	Remember in a handle whether its file is a table data file, a blob file
+ *	or another file.  Called by
  *	__memp_fopen before the handle can be shared, so readers need no
  *	synchronization.
  *
@@ -119,7 +152,9 @@ rwh_name_is_data(const char *fn)
 void
 __memp_rwh_init(DB_MPOOLFILE *dbmfp)
 {
-	dbmfp->rwh_class = rwh_name_is_data(__memp_fn(dbmfp)) ? 1 : 2;
+	const char *fn = __memp_fn(dbmfp);
+
+	dbmfp->rwh_class = rwh_name_is_data(fn) ? 1 : rwh_name_is_blob(fn) ? 4 : 2;
 }
 
 static void
@@ -137,6 +172,8 @@ rwh_add(const u_int8_t *ufid, u_int32_t pgno)
 	rwh_pg[rwh_n++].pgno = pgno;
 }
 
+extern int gbl_rep_write_hints_written_blob_rows;
+
 static void
 rwh_note(DB_MPOOLFILE *dbmfp, db_pgno_t pgno, PAGE *h)
 {
@@ -144,6 +181,8 @@ rwh_note(DB_MPOOLFILE *dbmfp, db_pgno_t pgno, PAGE *h)
 
 	if (rwh_n >= RWH_MAX || TYPE(h) != P_LBTREE || IS_REP_MASTER(dbmfp->dbenv) ||
 	    !bb_berkdb_fingerprint_rtstats_is_sql())
+		return;
+	if (dbmfp->rwh_class == 4 && gbl_rep_write_hints_written_blob_rows)
 		return;
 	/* temporary files (e.g. SQL temp tables) have no UFID: the master can't use them */
 	if (memcmp(dbmfp->fileid, nofileid, DB_FILE_ID_LEN) == 0)
@@ -161,6 +200,70 @@ __memp_rwh_mark_op(const u_int8_t *ufid, u_int32_t pgno)
 		rwh_add(ufid, pgno);
 }
 
+/*
+ * With rep_write_hints_written_blob_rows (off by default) a blob leaf is not
+ * remembered as it is read either.  Instead, each blob record the statement
+ * fetches is saved as (blob file UFID, leaf page, table, genid, blob number)
+ * in a per-thread ring of the RWH_BLOB_MAX most recent fetches
+ * (__memp_rwh_blob_save, called from bdb/fetch.c), reset with the hint list.
+ * An osql delete of a row, or an update that changes one of its blobs,
+ * remembers the saved leaves of those blobs of that row (__memp_rwh_blob_mark):
+ * the old-blob leaves the master's block processor reads.  A blob an update
+ * leaves unchanged is not hinted if the master surely skips it (inplace blob
+ * optimization; see db/osqlsqlthr.c).  The written row's blobs are fetched
+ * right before its write (in an UPDATE's write loop, or by a one-pass DELETE's
+ * WHERE clause), so a few recent fetches are enough.  A two-pass DELETE
+ * remembers them when its first pass selects the row (OP_RowSetAdd).
+ */
+int gbl_rep_write_hints_written_blob_rows = 0;
+#define	RWH_BLOB_MAX	64
+static __thread struct {
+	u_int8_t ufid[DB_FILE_ID_LEN];
+	const void *tbl;
+	u_int64_t genid;
+	u_int32_t pgno;
+	int blobno;
+} rwh_blob[RWH_BLOB_MAX];
+static __thread u_int32_t rwh_blob_n;	/* fetches saved since the reset */
+
+/* A replica SQL thread fetched blob blobno of the row with (search) genid of table tbl from leaf pgno of blob file dbp */
+void
+__memp_rwh_blob_save(DB *dbp, const void *tbl, u_int32_t pgno, u_int64_t genid, int blobno)
+{
+	static const u_int8_t nofileid[DB_FILE_ID_LEN];
+	u_int32_t i;
+
+	if (!gbl_rep_write_hints || !gbl_rep_write_hints_written_blob_rows || dbp == NULL ||
+	    IS_REP_MASTER(dbp->dbenv) || !bb_berkdb_fingerprint_rtstats_is_sql() ||
+	    memcmp(dbp->fileid, nofileid, DB_FILE_ID_LEN) == 0)
+		return;
+	if (rwh_blob_n > 0) {
+		i = (rwh_blob_n - 1) % RWH_BLOB_MAX;
+		if (rwh_blob[i].genid == genid && rwh_blob[i].pgno == pgno && rwh_blob[i].tbl == tbl &&
+		    memcmp(rwh_blob[i].ufid, dbp->fileid, DB_FILE_ID_LEN) == 0)
+			return;
+	}
+	i = rwh_blob_n++ % RWH_BLOB_MAX;
+	memcpy(rwh_blob[i].ufid, dbp->fileid, DB_FILE_ID_LEN);
+	rwh_blob[i].tbl = tbl;
+	rwh_blob[i].genid = genid;
+	rwh_blob[i].pgno = pgno;
+	rwh_blob[i].blobno = blobno;
+}
+
+/* An osql delete, or update, of the row with (search) genid of table tbl reads the old value of the blobs set in
+ * mask (bit n: blob n): remember the saved leaves of those blobs */
+void
+__memp_rwh_blob_mark(const void *tbl, u_int64_t genid, u_int32_t mask)
+{
+	u_int32_t i, n = rwh_blob_n < RWH_BLOB_MAX ? rwh_blob_n : RWH_BLOB_MAX;
+
+	for (i = 0; i < n; i++)
+		if (rwh_blob[i].genid == genid && rwh_blob[i].tbl == tbl && rwh_blob[i].blobno >= 0 &&
+		    rwh_blob[i].blobno < 32 && (mask & (1U << rwh_blob[i].blobno)))
+			rwh_add(rwh_blob[i].ufid, rwh_blob[i].pgno);
+}
+
 /* Copy up to max of this thread's pages as (UFID, pgno in network order) and forget all of them */
 int
 __memp_rwh_take(u_int8_t *buf, int max)
@@ -168,6 +271,7 @@ __memp_rwh_take(u_int8_t *buf, int max)
 	int i, n;
 
 	n = rwh_n < max ? rwh_n : max;
+	rwh_blob_n = 0;
 	for (i = 0; i < n; i++) {
 		memcpy(buf, rwh_pg[i].ufid, DB_FILE_ID_LEN);
 		buf[DB_FILE_ID_LEN] = rwh_pg[i].pgno >> 24;

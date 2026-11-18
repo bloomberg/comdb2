@@ -1,0 +1,239 @@
+#!/usr/bin/env bash
+bash -n "$0" || exit 1
+
+# Replica write hints for the blob leaves of the rows a statement writes
+# (rep_write_hints_written_blob_rows).
+#
+# With the tunable on, a replica does not hint every blob leaf its SQL
+# statement reads.  It saves the blob records it fetches (leaf page, row genid,
+# blob number) and hints the saved leaves of a row's blobs only when the master
+# will read their old value: when a DELETE ships the row, or when an UPDATE
+# ships it and changes that blob.  A blob an UPDATE leaves unchanged is skipped
+# by the master, so it is not hinted.  INSERTs hint no blob leaf.
+#
+# Every case runs on the replicant R twice, with the tunable on and off (set on
+# R at runtime), and compares the write-hint pages that reach the master
+# ("udp prefault ufid hints pinned + skipped + dropped") with R's write-hint
+# packets.  UDP is lossy, so "at least" bounds allow a quarter of the pages to
+# be lost; "at most" bounds are exact.
+#
+# Table bt has two non-NULL blobs b and c.  Per statement a single-row write
+# located by primary key hints the data page and the primary key leaf, plus:
+#   A  UPDATE leaving both blobs unchanged: no blob leaf (off: b's and c's)
+#   B  UPDATE b = f(b): b's leaf, not c's (off: both)
+#   C  DELETE whose WHERE reads b: b's leaf (off: the same)
+#   D  UPDATE of a blobless table with a subquery reading bt's blob: no blob
+#      leaf (off: bt's)
+#   E  INSERT ... SELECT copying blobs: no blob leaf (off: the source's)
+#   F  UPDATE of one row after a scan whose WHERE reads 20 rows' blobs: no blob
+#      leaf (off: up to 20)
+#   G  ROLLBACK of an UPDATE b = f(b): data unchanged
+#   H  UPDATE leaving the blob unchanged of a table without inplace updates
+#      (the master rewrites the blob under the new genid): its leaf (off: the
+#      same)
+#   I  two-pass DELETE (correlated subquery) scanning 280 rows' blobs and
+#      deleting 9 rows read early in the scan: their blob leaves, although
+#      later fetches pushed them out of the ring of recent blob fetches
+# Every case ends with identical data on every node.
+
+DBNAME=$1
+[[ -z "$DBNAME" ]] && { echo "Usage: $0 <dbname>"; exit 1; }
+[[ -z "$CLUSTER" ]] && { echo "Test only suitable for a clustered setup"; exit 0; }
+
+W=${TMPDIR:-/tmp}/rwhblob.$$
+mkdir -p $W
+
+function fail
+{
+    echo "FAIL: $*"
+    exit 1
+}
+
+function sqlh
+{
+    local h=$1
+    shift
+    ${CDB2SQL_EXE} ${CDB2_OPTIONS} --tabs --host $h ${DBNAME} "$@"
+}
+
+function send
+{
+    sqlh $1 "exec procedure sys.cmd.send('$2')"
+}
+
+function current_master
+{
+    sqlh $1 "select host from comdb2_cluster where is_master='Y'"
+}
+
+function put_tunable
+{
+    sqlh $1 "put tunable $2 $3" > /dev/null || fail "put tunable $2 $3 on $1"
+    [[ "$(sqlh $1 "select value from comdb2_tunables where name = '$2'")" == "$4" ]] || fail "$2 is not $4 on $1"
+}
+
+function counter
+{
+    send $1 "udp stat" | awk -F': ' -v k="$2" '$1 == k { s += $2 } END { print s + 0 }'
+}
+
+# hint pages the master received, write-hint packets R produced
+function master_pages
+{
+    echo $(( $(counter ${master} "udp prefault ufid hints pinned") + $(counter ${master} "udp prefault ufid hints skipped (file not open)") + $(counter ${master} "udp prefault ufid hints dropped (queue full)") ))
+}
+
+function r_packets
+{
+    echo $(( $(counter ${origin} "udp prefault async write-hint packets queued") + $(counter ${origin} "udp prefault async write-hint packets dropped (queue full)") + $(counter ${origin} "udp prefault async write-hint packets dropped (no master)") ))
+}
+
+function wait_caught_up
+{
+    local i out
+    for ((i = 0; i < 600; i++)); do
+        out=$(sqlh ${master} "select count(*) from comdb2_cluster c, comdb2_cluster m where m.is_master = 'Y' and (c.logfile != m.logfile or c.logoffset != m.logoffset)")
+        [[ "$out" == "0" ]] && return 0
+        sleep 0.5
+    done
+    fail "replicants did not catch up with the master"
+}
+
+function settle
+{
+    local i last="" now
+    wait_caught_up
+    for ((i = 0; i < 40; i++)); do
+        now=$(master_pages)
+        [[ -n "$last" && "$now" == "$last" ]] && return 0
+        last="$now"
+        sleep 0.5
+    done
+}
+
+function check_data
+{
+    local n v ref=""
+    wait_caught_up
+    for n in ${nodes}; do
+        v="$(sqlh $n "select count(*) || ':' || sum(v) || ':' || sum(length(b)) || ':' || sum(length(c)) from bt") $(sqlh $n "select count(*) || ':' || sum(v) from t") $(sqlh $n "select count(*) || ':' || sum(length(b)) from bt2") $(sqlh $n "select count(*) || ':' || sum(v) from bi")" || fail "query failed on $n"
+        [[ -z "$ref" ]] && ref="$v"
+        [[ "$v" == "$ref" ]] || fail "data on $n differs: '$v' vs '$ref'"
+    done
+    echo "data on every node: $ref"
+}
+
+# run <case> <on|off> <file> : statements in one session on R; sets PAGES and PACKETS
+function run
+{
+    local c=$1 mode=$2 f=$3 p0 k0 out
+    put_tunable ${origin} rep_write_hints_written_blob_rows $([[ $mode == on ]] && echo 1 || echo 0) $([[ $mode == on ]] && echo ON || echo OFF)
+    settle
+    p0=$(master_pages); k0=$(r_packets)
+    out=$(${CDB2SQL_EXE} ${CDB2_OPTIONS} -s --host ${origin} ${DBNAME} - < $f 2>&1) || fail "$c $mode: statements failed: $(echo "$out" | tail -3)"
+    echo "$out" | grep -i -E "error|fail" && fail "$c $mode: statement errors"
+    settle
+    PAGES=$(( $(master_pages) - p0 )); PACKETS=$(( $(r_packets) - k0 ))
+    echo "$c $mode: $(grep -c . $f) statements, R packets $PACKETS, master hint pages $PAGES"
+}
+
+# both <case> <file> : run with the tunable on (<file>), then off (<file>.off); ON/OFF pages, ONK/OFFK packets
+function both
+{
+    run $1 on $2; ON=$PAGES; ONK=$PACKETS
+    run $1 off $2.off; OFF=$PAGES; OFFK=$PACKETS
+    check_data
+}
+
+# at_least <case> <what> <got> <expected> : got >= 3/4 of expected (UDP loss)
+function at_least
+{
+    (( $3 * 4 >= $4 * 3 )) || fail "$1: $2 = $3, expected about $4"
+}
+
+nodes=$(echo ${CLUSTER} | tr ' ' '\n' | sort | xargs)
+first=$(echo ${nodes} | cut -d' ' -f1)
+master=$(current_master ${first})
+[[ -n "${master}" ]] || fail "no master"
+origin=$(for n in ${nodes}; do [[ $n != ${master} ]] && echo $n; done | head -1)
+[[ -n "${origin}" ]] || fail "need a replicant"
+echo "master ${master}, R ${origin}"
+
+# bt: 6000 rows, blobs b and c of 200 bytes; sk = id % 300 (20 rows per value), sb = 1 for one row per value
+sqlh ${master} "create table bt(id int primary key, sk int, sb int, v int, b blob, c blob)" || fail "create bt"
+sqlh ${master} "create index bt_sk on bt(sk)" || fail "create bt_sk"
+for ((s = 1; s <= 6000; s += 2000)); do
+    sqlh ${master} "insert into bt select value, value % 300, case when value / 300 = 10 then 1 else 0 end, value, randomblob(200), randomblob(200) from generate_series($s, $((s + 1999)))" > /dev/null || fail "load bt"
+done
+sqlh ${master} "create table t(id int primary key, v int)" || fail "create t"
+sqlh ${master} "insert into t select value, value from generate_series(1, 6000)" > /dev/null || fail "load t"
+sqlh ${master} "create table bt2(id int primary key, v int, b blob)" || fail "create bt2"
+sqlh ${master} "create table bi(id int primary key, v int, b blob) options ipu off" || fail "create bi"
+sqlh ${master} "insert into bi select value, value, randomblob(200) from generate_series(1, 2000)" > /dev/null || fail "load bi"
+check_data
+
+N=40
+# A: UPDATE leaving the blobs unchanged
+for i in $(seq $N); do echo "update bt set v = v + 1 where id = $(( 37 * i ))"; done > $W/a; cp $W/a $W/a.off
+both A $W/a
+(( ONK == N && OFFK == N )) || fail "A: $ONK / $OFFK packets for $N statements"
+(( ON <= 2 * N )) || fail "A on: $ON pages, at most 2 per statement (data page + primary key leaf)"
+at_least A "on pages" $ON $((2 * N))
+(( OFF >= ON + N )) || fail "A: off $OFF pages, expected b's and c's leaves too (on $ON)"
+
+# B: UPDATE b = f(b): b's leaf, not c's
+for i in $(seq $N); do echo "update bt set b = cast(b || x'01' as blob) where id = $(( 1500 + 37 * i ))"; done > $W/b; cp $W/b $W/b.off
+both B $W/b
+(( ON <= 3 * N )) || fail "B on: $ON pages, at most 3 per statement (data page, primary key leaf, b's leaf)"
+at_least B "on pages (b's leaf hinted)" $ON $((3 * N))
+(( OFF >= ON + N / 2 )) || fail "B: off $OFF pages, expected c's leaf too (on $ON)"
+
+# C: DELETE whose WHERE reads b
+for i in $(seq $N); do echo "delete from bt where id = $(( 3000 + 2 * i )) and length(b) > 0"; done > $W/c
+for i in $(seq $N); do echo "delete from bt where id = $(( 3001 + 2 * i )) and length(b) > 0"; done > $W/c.off
+both C $W/c
+(( ON <= 3 * N )) || fail "C on: $ON pages, at most 3 per statement"
+at_least C "on pages (b's leaf hinted)" $ON $((3 * N))
+(( ON + N / 4 >= OFF )) || fail "C: on $ON pages, off $OFF: the deleted rows' blob leaves were lost"
+
+# D: UPDATE of t with a subquery reading bt's blob
+for i in $(seq $N); do echo "update t set v = (select length(b) from bt where id = $(( 4000 + 13 * i ))) where id = $(( 53 * i ))"; done > $W/d; cp $W/d $W/d.off
+both D $W/d
+(( ON <= 3 * N )) || fail "D on: $ON pages, at most 3 per statement (t's data page and leaf, bt's leaf)"
+(( OFF >= ON + N / 2 )) || fail "D: off $OFF pages, expected bt's blob leaves too (on $ON)"
+
+# E: INSERT ... SELECT copying blobs
+for i in $(seq 20); do echo "insert into bt2 select id + $(( i * 100000 )), v, b from bt where id between $(( 250 * i )) and $(( 250 * i + 9 ))"; done > $W/e
+for i in $(seq 20); do echo "insert into bt2 select id + $(( i * 100000 + 50000 )), v, b from bt where id between $(( 250 * i )) and $(( 250 * i + 9 ))"; done > $W/e.off
+both E $W/e
+(( OFF >= ON + 10 )) || fail "E: off $OFF pages, expected the source's blob leaves too (on $ON)"
+
+# F: UPDATE of the one row with sb = 1 after reading the blobs of the 20 rows of a sk value
+for i in $(seq 20); do echo "update bt set v = v + 1 where sk = $(( 100 + 7 * i )) and length(b) > 0 and sb = 1"; done > $W/f; cp $W/f $W/f.off
+both F $W/f
+(( ON <= 5 * 20 )) || fail "F on: $ON pages, expected the data page and a few bt_sk leaves per statement"
+(( OFF >= ON + 3 * 20 )) || fail "F: off $OFF pages, expected the scanned rows' blob leaves too (on $ON)"
+
+# G: rollback
+printf 'begin\nupdate bt set b = cast(b || x%s as blob), v = v + 1000 where id = 5\nrollback\n' "'01'" > $W/g; cp $W/g $W/g.off
+both G $W/g
+[[ "$(sqlh ${master} "select v, length(b) from bt where id = 5" | tr '\t' ' ')" == "5 200" ]] || fail "G: rolled-back update is visible"
+
+# H: UPDATE leaving the blob unchanged, table without inplace updates
+for i in $(seq $N); do echo "update bi set v = v + 1 where id = $(( 47 * i ))"; done > $W/h; cp $W/h $W/h.off
+both H $W/h
+(( ON <= 3 * N )) || fail "H on: $ON pages, at most 3 per statement (data page, primary key leaf, b's leaf)"
+at_least H "on pages (b's leaf hinted)" $ON $((3 * N))
+
+# I: two-pass DELETE scanning 14 sk values (280 rows, their b blobs fetched), deleting the row with id / 300 = sk % 20
+# of each of the first 9.  Per statement: 9 data pages, 9 b leaves, about 4 bt_sk and t index leaves; without the
+# deleted rows' b leaves, 13.
+fi_() { local i k; for i in $(seq 5); do k=$(( $1 + 14 * (i - 1) )); echo "delete from bt where sk in ($(seq -s, $k $(( k + 13 )))) and length(b) > 0 and id / 300 = sk % 20 and id % 300 < $(( k + 9 )) and exists (select 1 from t where t.id = bt.id % 7 + 1)"; done; }
+fi_ 100 > $W/i; fi_ 170 > $W/i.off
+both I $W/i
+at_least I "on pages (the deleted rows' data pages and b leaves, and 4 index leaves)" $ON $((5 * 22))
+(( ON <= 5 * 30 )) || fail "I on: $ON pages, at most 30 per statement"
+
+put_tunable ${origin} rep_write_hints_written_blob_rows 1 ON
+check_data
+echo "Success"

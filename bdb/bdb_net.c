@@ -657,6 +657,16 @@ void bdb_rwh_mark_row(bdb_state_type *bdb_state, bdb_cursor_ifn_t *cur, unsigned
     __memp_rwh_mark_op(dbp->fileid, pgno);
 }
 
+void __memp_rwh_blob_mark(const void *tbl, uint64_t genid, uint32_t mask);
+
+/* An osql delete, or update, of the row with this genid reads the old value of the blobs in mask
+ * (rep_write_hints_written_blob_rows): hint the leaves the statement fetched them from */
+void bdb_rwh_mark_blobs(bdb_state_type *bdb_state, unsigned long long genid, unsigned int mask)
+{
+    if (mask)
+        __memp_rwh_blob_mark(bdb_state, get_search_genid(bdb_state, genid), mask);
+}
+
 /* Send n (UFID, pgno) pairs (wire format) to the current master in one packet; -1 if there is none to send to */
 static int send_write_hints(bdb_state_type *bdb_state, const uint8_t *buf, int n)
 {

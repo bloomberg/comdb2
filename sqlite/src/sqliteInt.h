@@ -4291,6 +4291,9 @@ int sqlite3WhereOkOnePass(WhereInfo*, int*);
 #define ONEPASS_SINGLE   1        /* ONEPASS valid for a single row update */
 #define ONEPASS_MULTI    2        /* ONEPASS is valid for multiple rows */
 int sqlite3WhereUsesDeferredSeek(WhereInfo*);
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+void comdb2_rwh_rowset_add(BtCursor *pTab, BtCursor *pScanIdx, i64 rowid);
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 void sqlite3ExprCodeLoadIndexColumn(Parse*, Index*, int, int, int);
 int sqlite3ExprCodeGetColumn(Parse*, Table*, int, int, int, u8);
 void sqlite3ExprCodeGetColumnOfTable(Vdbe*, Table*, int, int, int);

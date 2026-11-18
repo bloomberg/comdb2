@@ -74,6 +74,37 @@ static bdb_cursor_ifn_t *rwh_dta_cursor(struct BtCursor *pCur)
     return c ? c->bdbcur : NULL;
 }
 
+void bdb_rwh_mark_blobs(bdb_state_type *bdb_state, unsigned long long genid, unsigned int mask);
+extern int gbl_rep_write_hints_written_blob_rows;
+
+/* Whether upd_record (db/record.c) surely skips the old value of a blob an update leaves unchanged: inplace blobs and
+ * their optimization on (read-only settings, assumed the same as the master's), and an inplace update that keeps the
+ * genid (table with inplace updates); no check constraint or blob index, which read it.  It reads it anyway during a
+ * live schema change or for a trigger on a blob field, which a replica does not know. */
+static int rwh_master_skips_unchanged_blob(struct dbtable *db)
+{
+    return gbl_inplace_blobs && gbl_inplace_blob_optimization && bdb_have_ipu(db->handle) &&
+           db->n_check_constraints == 0 && !db->ix_blob && !db->schema->ix_blob;
+}
+
+/* The blobs of the row an osql update (or, with no updCols, a delete) ships whose old value the master reads
+ * (rep_write_hints_written_blob_rows): upd_record (db/record.c) may skip a blob that updCols marks unchanged, and
+ * changes every other one; a delete deletes them all */
+static unsigned int rwh_upd_blobs(struct dbtable *db, int *updCols)
+{
+    unsigned int mask = 0;
+    int i, idx;
+
+    if (updCols && !rwh_master_skips_unchanged_blob(db))
+        updCols = NULL;
+    for (i = 0; i < db->numblobs && i < 32; i++) {
+        idx = updCols ? get_schema_blob_field_idx(db, ".ONDISK", i) : -1;
+        if (updCols == NULL || idx < 0 || idx >= updCols[0] || updCols[idx + 1] != -1)
+            mask |= 1U << i;
+    }
+    return mask;
+}
+
 /* Called at statement start and end, and before a commit */
 void osql_send_write_hints(void)
 {
@@ -489,6 +520,8 @@ static int osql_send_del_logic(struct BtCursor *pCur, struct sql_thread *thd)
     }
     if (gbl_rep_write_hints)
         bdb_rwh_mark_row(pCur->db->handle, rwh_dta_cursor(pCur), pCur->genid);
+    if (gbl_rep_write_hints && gbl_rep_write_hints_written_blob_rows && pCur->db->numblobs > 0)
+        bdb_rwh_mark_blobs(pCur->db->handle, pCur->genid, rwh_upd_blobs(pCur->db, NULL));
     rwh_wrote = 1;
     osql->replicant_numops++;
     DEBUG_PRINT_NUMOPS();
@@ -796,6 +829,8 @@ static int osql_send_upd_logic(struct BtCursor *pCur, struct sql_thread *thd,
 
     if (gbl_rep_write_hints)
         bdb_rwh_mark_row(pCur->db->handle, rwh_dta_cursor(pCur), pCur->genid);
+    if (gbl_rep_write_hints && gbl_rep_write_hints_written_blob_rows && pCur->db->numblobs > 0)
+        bdb_rwh_mark_blobs(pCur->db->handle, pCur->genid, rwh_upd_blobs(pCur->db, updCols));
     rwh_wrote = 1;
     osql->replicant_numops++;
     DEBUG_PRINT_NUMOPS();
