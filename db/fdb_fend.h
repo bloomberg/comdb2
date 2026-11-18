@@ -306,6 +306,16 @@ char *fdb_get_alias(const char **p_tablename);
 void fdb_stat_alias(void);
 
 /**
+ * Check remote access control (SET REMOTE) for a table accessed by a
+ * statement pushed to a remote db; "how" is a mask of fdb_access_type
+ * Returns -1 and sets "err" if access control enabled and access denied
+ *         0 otherwise
+ *
+ */
+int fdb_push_access_check(struct sqlclntstate *clnt, const char *dbname, const char *tblname, int how, char *err,
+                          int errlen);
+
+/**
  * Check if master table access if local or remote
  *
  */

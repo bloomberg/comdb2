@@ -243,26 +243,32 @@ static int _access_control_add(fdb_access_t *acc, enum fdb_access_type type,
     fdb_access_elem_t *it, *tmp;
 
     it = calloc(1, sizeof(*it));
+    if (!it)
+        return -1;
     it->type = type;
     it->fullname = fullname;
 
     it->tblname = strchr(it->fullname, '.');
     if (it->tblname) {
+        it->tblname[0] = '\0';
+        it->dbname = strdup(it->fullname);
         if (it->tblname[1] == '\0') {
-            it->dbname = strdup(fullname);
+            /* "dbname." means the whole db */
             it->tblname = NULL;
         } else {
-            it->tblname[0] = '\0';
-            it->dbname = strdup(it->fullname);
             it->tblname[0] = '.';
             it->tblname++;
         }
     } else {
         it->dbname = strdup(fullname);
     }
+    if (!it->dbname) {
+        free(it);
+        return -1;
+    }
 
-    /* does it already exist ? */
-    tmp = hash_find_readonly(acc->wlst_bydbname, &it->dbname);
+    /* does it already exist ? per table rights do not extend a per db entry */
+    tmp = it->tblname ? NULL : hash_find_readonly(acc->wlst_bydbname, &it->dbname);
     if (tmp) {
         tmp->type |= type; /* maybe redundant */
     free:
