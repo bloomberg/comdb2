@@ -15,7 +15,9 @@
  */
 
 #include <assert.h>
+#include <stddef.h>
 #include <stdint.h>
+#include <stdlib.h>
 #include <unistd.h>
 #include <sql.h>
 #include <bdb_int.h>
@@ -197,7 +199,10 @@ struct comdb2_metrics_store {
     int64_t blob_cache_shrunk_bytes;
 };
 
+/* Published metric values. Writers fill a private copy and publish it under
+ * stats_lk; readers copy it out under stats_lk (see metrics_snapshot()). */
 static struct comdb2_metrics_store stats;
+static pthread_mutex_t stats_lk = PTHREAD_MUTEX_INITIALIZER;
 
 /*
   List of (almost) all comdb2 stats.
@@ -575,37 +580,36 @@ extern int64_t gbl_sql_serializable_requests;
 extern int64_t gbl_sql_snapshot_requests;
 extern int64_t gbl_sql_snapshot_asof_requests;
 
-static void update_sqllogfill_metrics()
+static void update_sqllogfill_metrics(struct comdb2_metrics_store *s)
 {
-    sql_logfill_metrics(&stats.sql_logfill_applied_records, &stats.sql_logfill_applied_bytes,
-                        &stats.sql_logfill_sql_finds, &stats.sql_logfill_sql_nexts, &stats.sql_logfill_queue_size,
-                        &stats.sql_logfill_queue_blocks);
+    sql_logfill_metrics(&s->sql_logfill_applied_records, &s->sql_logfill_applied_bytes, &s->sql_logfill_sql_finds,
+                        &s->sql_logfill_sql_nexts, &s->sql_logfill_queue_size, &s->sql_logfill_queue_blocks);
 }
 
-static void update_fastsql_metrics()
+static void update_fastsql_metrics(struct comdb2_metrics_store *s)
 {
-    stats.fastsql_execute_inline_params = gbl_fastsql_execute_inline_params;
-    stats.fastsql_set_isolation_level = gbl_fastsql_set_isolation_level;
-    stats.fastsql_set_timeout = gbl_fastsql_set_timeout;
-    stats.fastsql_set_info = gbl_fastsql_set_info;
-    stats.fastsql_execute_inline_params_tz = gbl_fastsql_execute_inline_params_tz;
-    stats.fastsql_set_heartbeat = gbl_fastsql_set_heartbeat;
-    stats.fastsql_pragma = gbl_fastsql_pragma;
-    stats.fastsql_reset = gbl_fastsql_reset;
-    stats.fastsql_execute_replaceable_params = gbl_fastsql_execute_replaceable_params;
-    stats.fastsql_set_sql_debug = gbl_fastsql_set_sql_debug;
-    stats.fastsql_grab_dbglog = gbl_fastsql_grab_dbglog;
-    stats.fastsql_set_user = gbl_fastsql_set_user;
-    stats.fastsql_set_password = gbl_fastsql_set_password;
-    stats.fastsql_set_endian = gbl_fastsql_set_endian;
-    stats.fastsql_execute_replaceable_params_tz = gbl_fastsql_execute_replaceable_params_tz;
-    stats.fastsql_get_effects = gbl_fastsql_get_effects;
-    stats.fastsql_set_planner_effort = gbl_fastsql_set_planner_effort;
-    stats.fastsql_set_remote_access = gbl_fastsql_set_remote_access;
-    stats.fastsql_osql_max_trans = gbl_fastsql_osql_max_trans;
-    stats.fastsql_set_datetime_precision = gbl_fastsql_set_datetime_precision;
-    stats.fastsql_sslconn = gbl_fastsql_sslconn;
-    stats.fastsql_execute_stop = gbl_fastsql_execute_stop;
+    s->fastsql_execute_inline_params = gbl_fastsql_execute_inline_params;
+    s->fastsql_set_isolation_level = gbl_fastsql_set_isolation_level;
+    s->fastsql_set_timeout = gbl_fastsql_set_timeout;
+    s->fastsql_set_info = gbl_fastsql_set_info;
+    s->fastsql_execute_inline_params_tz = gbl_fastsql_execute_inline_params_tz;
+    s->fastsql_set_heartbeat = gbl_fastsql_set_heartbeat;
+    s->fastsql_pragma = gbl_fastsql_pragma;
+    s->fastsql_reset = gbl_fastsql_reset;
+    s->fastsql_execute_replaceable_params = gbl_fastsql_execute_replaceable_params;
+    s->fastsql_set_sql_debug = gbl_fastsql_set_sql_debug;
+    s->fastsql_grab_dbglog = gbl_fastsql_grab_dbglog;
+    s->fastsql_set_user = gbl_fastsql_set_user;
+    s->fastsql_set_password = gbl_fastsql_set_password;
+    s->fastsql_set_endian = gbl_fastsql_set_endian;
+    s->fastsql_execute_replaceable_params_tz = gbl_fastsql_execute_replaceable_params_tz;
+    s->fastsql_get_effects = gbl_fastsql_get_effects;
+    s->fastsql_set_planner_effort = gbl_fastsql_set_planner_effort;
+    s->fastsql_set_remote_access = gbl_fastsql_set_remote_access;
+    s->fastsql_osql_max_trans = gbl_fastsql_osql_max_trans;
+    s->fastsql_set_datetime_precision = gbl_fastsql_set_datetime_precision;
+    s->fastsql_sslconn = gbl_fastsql_sslconn;
+    s->fastsql_execute_stop = gbl_fastsql_execute_stop;
 }
 
 static int64_t refresh_diskspace(struct dbenv *dbenv, tran_type *tran)
@@ -705,7 +709,7 @@ static void update_rep_logbytes_metrics(void)
 
 static time_t metrics_standing_queue_time(void);
 
-int refresh_metrics(void)
+static int fetch_metrics(struct comdb2_metrics_store *s)
 {
     int rc;
     const struct berkdb_thread_stats *pstats;
@@ -718,24 +722,22 @@ int refresh_metrics(void)
     if (db_is_exiting())
         return 1;
 
-    stats.commits = n_commits;
-    stats.blob_cache_shrinks = gbl_blob_cache_shrinks;
-    stats.blob_cache_shrunk_bytes = gbl_blob_cache_shrunk_bytes;
-    stats.fstraps = n_fstrap;
-    stats.nonsql = n_fstrap                  /* legacy protocol over socketrequest */
-                   + n_qtrap                 /* legacy protocol */
-                   + gbl_legacy_requests_all /* legacy protocol over cdb2api */
-                   - n_dbinfo;
-    stats.retries = n_retries;
-    stats.sql_cost = gbl_nsql_steps + gbl_nnewsql_steps;
-    stats.sql_count = gbl_nsql + gbl_nnewsql;
-    stats.sql_ssl_count = gbl_nnewsql_ssl;
-    stats.current_connections = net_get_num_current_non_appsock_accepts(thedb->handle_sibling) + active_appsock_conns;
-    stats.active_connections = get_active_connections();
+    s->commits = n_commits;
+    s->blob_cache_shrinks = gbl_blob_cache_shrinks;
+    s->blob_cache_shrunk_bytes = gbl_blob_cache_shrunk_bytes;
+    s->fstraps = n_fstrap;
+    s->nonsql = n_fstrap                  /* legacy protocol over socketrequest */
+                + n_qtrap                 /* legacy protocol */
+                + gbl_legacy_requests_all /* legacy protocol over cdb2api */
+                - n_dbinfo;
+    s->retries = n_retries;
+    s->sql_cost = gbl_nsql_steps + gbl_nnewsql_steps;
+    s->sql_count = gbl_nsql + gbl_nnewsql;
+    s->sql_ssl_count = gbl_nnewsql_ssl;
+    s->current_connections = net_get_num_current_non_appsock_accepts(thedb->handle_sibling) + active_appsock_conns;
+    s->active_connections = get_active_connections();
 
-    rc = bdb_get_lock_counters(thedb->bdb_env, &stats.deadlocks,
-                               &stats.locks_aborted, &stats.lockwaits,
-                               &stats.lockrequests);
+    rc = bdb_get_lock_counters(thedb->bdb_env, &s->deadlocks, &s->locks_aborted, &s->lockwaits, &s->lockrequests);
     if (rc) {
         logmsg(LOGMSG_ERROR, "failed to refresh statistics (%s:%d)\n", __FILE__,
                __LINE__);
@@ -745,37 +747,37 @@ int refresh_metrics(void)
     {
         struct lock_role_stats role;
         bdb_get_lock_role_counters(&role);
-        stats.lockwait_reader_us = role.reader_wait_us;
-        stats.lockwait_reader_count = role.reader_waits;
-        stats.lockwait_writer_us = role.writer_wait_us;
-        stats.lockwait_writer_count = role.writer_waits;
-        stats.lockwait_repl_us = role.repl_wait_us;
-        stats.lockwait_repl_count = role.repl_waits;
-        stats.lockwait_other_us = role.other_wait_us;
-        stats.lockwait_other_count = role.other_waits;
+        s->lockwait_reader_us = role.reader_wait_us;
+        s->lockwait_reader_count = role.reader_waits;
+        s->lockwait_writer_us = role.writer_wait_us;
+        s->lockwait_writer_count = role.writer_waits;
+        s->lockwait_repl_us = role.repl_wait_us;
+        s->lockwait_repl_count = role.repl_waits;
+        s->lockwait_other_us = role.other_wait_us;
+        s->lockwait_other_count = role.other_waits;
 
         extern uint64_t gbl_rdlk_total_us, gbl_rdlk_unlock_us, gbl_rdlk_release_us, gbl_rdlk_sleep_us,
             gbl_rdlk_reacquire_us, gbl_rdlk_revalidate_us, gbl_rdlk_count, gbl_rdlk_pagelocks_only_count,
             gbl_sync_dta_us, gbl_sync_dta_count;
-        stats.release_locks_total_us = ATOMIC_LOAD64(gbl_rdlk_total_us);
-        stats.release_locks_unlock_us = ATOMIC_LOAD64(gbl_rdlk_unlock_us);
-        stats.release_locks_putcurtran_us = ATOMIC_LOAD64(gbl_rdlk_release_us);
-        stats.release_locks_sleep_us = ATOMIC_LOAD64(gbl_rdlk_sleep_us);
-        stats.release_locks_reacquire_us = ATOMIC_LOAD64(gbl_rdlk_reacquire_us);
-        stats.release_locks_revalidate_us = ATOMIC_LOAD64(gbl_rdlk_revalidate_us);
-        stats.release_locks_count = ATOMIC_LOAD64(gbl_rdlk_count);
-        stats.release_locks_pagelocks_only_count = ATOMIC_LOAD64(gbl_rdlk_pagelocks_only_count);
-        stats.sync_dta_us = ATOMIC_LOAD64(gbl_sync_dta_us);
-        stats.sync_dta_count = ATOMIC_LOAD64(gbl_sync_dta_count);
+        s->release_locks_total_us = ATOMIC_LOAD64(gbl_rdlk_total_us);
+        s->release_locks_unlock_us = ATOMIC_LOAD64(gbl_rdlk_unlock_us);
+        s->release_locks_putcurtran_us = ATOMIC_LOAD64(gbl_rdlk_release_us);
+        s->release_locks_sleep_us = ATOMIC_LOAD64(gbl_rdlk_sleep_us);
+        s->release_locks_reacquire_us = ATOMIC_LOAD64(gbl_rdlk_reacquire_us);
+        s->release_locks_revalidate_us = ATOMIC_LOAD64(gbl_rdlk_revalidate_us);
+        s->release_locks_count = ATOMIC_LOAD64(gbl_rdlk_count);
+        s->release_locks_pagelocks_only_count = ATOMIC_LOAD64(gbl_rdlk_pagelocks_only_count);
+        s->sync_dta_us = ATOMIC_LOAD64(gbl_sync_dta_us);
+        s->sync_dta_count = ATOMIC_LOAD64(gbl_sync_dta_count);
 
         extern uint64_t gbl_probe_us, gbl_probes, gbl_probes_timed;
-        stats.lockprobe_us = ATOMIC_LOAD64(gbl_probe_us);
-        stats.lockprobe_count = ATOMIC_LOAD64(gbl_probes);
-        stats.lockprobe_sampled = ATOMIC_LOAD64(gbl_probes_timed);
+        s->lockprobe_us = ATOMIC_LOAD64(gbl_probe_us);
+        s->lockprobe_count = ATOMIC_LOAD64(gbl_probes);
+        s->lockprobe_sampled = ATOMIC_LOAD64(gbl_probes_timed);
     }
 
-    rc = bdb_get_bpool_counters(thedb->bdb_env, &stats.cache_hits, &stats.cache_misses, &stats.leaf_cache_hits,
-                                &stats.leaf_cache_misses, NULL, NULL, &stats.rw_evicts);
+    rc = bdb_get_bpool_counters(thedb->bdb_env, &s->cache_hits, &s->cache_misses, &s->leaf_cache_hits,
+                                &s->leaf_cache_misses, NULL, NULL, &s->rw_evicts);
     if (rc) {
         logmsg(LOGMSG_ERROR, "failed to refresh statistics (%s:%d)\n", __FILE__,
                __LINE__);
@@ -783,9 +785,9 @@ int refresh_metrics(void)
     }
 
     pstats = bdb_get_process_stats();
-    stats.preads = pstats->n_preads;
-    stats.pwrites = pstats->n_pwrites;
-    stats.lock_wait_time_us = pstats->lock_wait_time_us;
+    s->preads = pstats->n_preads;
+    s->pwrites = pstats->n_pwrites;
+    s->lock_wait_time_us = pstats->lock_wait_time_us;
 
     /* Lets a concurrent session act exactly when a sort's blocking window opens,
        instead of guessing at it with a sleep. */
@@ -794,38 +796,38 @@ int refresh_metrics(void)
         /* Read finished first: it only ever trails started, so sampling it
            earlier keeps started-minus-finished from going briefly negative when
            a sort completes between the two reads. */
-        stats.sorter_rewinds_finished = ATOMIC_LOAD64(gbl_sorter_rewinds_finished);
-        stats.sorter_rewinds_started = ATOMIC_LOAD64(gbl_sorter_rewinds_started);
+        s->sorter_rewinds_finished = ATOMIC_LOAD64(gbl_sorter_rewinds_finished);
+        s->sorter_rewinds_started = ATOMIC_LOAD64(gbl_sorter_rewinds_started);
     }
 
     /* connections stats */
-    stats.connections = net_get_num_accepts(thedb->handle_sibling);
-    stats.connection_timeouts = net_get_num_accept_timeouts(thedb->handle_sibling);
+    s->connections = net_get_num_accepts(thedb->handle_sibling);
+    s->connection_timeouts = net_get_num_accept_timeouts(thedb->handle_sibling);
 
-    int64_t total_reqs = stats.sql_count + stats.nonsql;
-    stats.connection_to_sql_ratio = (total_reqs > 0) ? (stats.connections/(double)total_reqs) : 0;
+    int64_t total_reqs = s->sql_count + s->nonsql;
+    s->connection_to_sql_ratio = (total_reqs > 0) ? (s->connections / (double)total_reqs) : 0;
 
     /* cache hit rate (total) and leaf-page hit rate */
-    int64_t th = stats.cache_hits, tm = stats.cache_misses;
-    stats.cache_hit_rate = (th + tm) ? 100 * ((double)th / ((double)th + (double)tm)) : 100.0;
-    int64_t lh = stats.leaf_cache_hits, lm = stats.leaf_cache_misses;
-    stats.leaf_cache_hit_rate = (lh + lm) ? 100 * ((double)lh / ((double)lh + (double)lm)) : 100.0;
+    int64_t th = s->cache_hits, tm = s->cache_misses;
+    s->cache_hit_rate = (th + tm) ? 100 * ((double)th / ((double)th + (double)tm)) : 100.0;
+    int64_t lh = s->leaf_cache_hits, lm = s->leaf_cache_misses;
+    s->leaf_cache_hit_rate = (lh + lm) ? 100 * ((double)lh / ((double)lh + (double)lm)) : 100.0;
 
-    stats.memory_ulimit = 0;
-    stats.memory_usage = 0;
-    stats.threads = 0;
+    s->memory_ulimit = 0;
+    s->memory_usage = 0;
+    s->threads = 0;
 #ifdef _LINUX_SOURCE
     /* memory */
     struct rlimit rl;
     rc = getrlimit(RLIMIT_AS, &rl);
     if (rc == 0) {
         if (rl.rlim_cur == RLIM_INFINITY)
-            stats.memory_ulimit = 0;
+            s->memory_ulimit = 0;
         else
-            stats.memory_ulimit = rl.rlim_cur / (1024*1024);
+            s->memory_ulimit = rl.rlim_cur / (1024 * 1024);
     }
     else {
-        stats.memory_ulimit = 0;
+        s->memory_ulimit = 0;
     }
     FILE *f = fopen("/proc/self/stat", "r");
     if (f) {
@@ -842,134 +844,171 @@ int refresh_metrics(void)
                     "%*u %*d %*d %*d %*d %ld %*d %*u %lu",
                     &num_threads, &vmsize);
         if (rc == 2) {
-            stats.threads = num_threads;
-            stats.memory_usage = vmsize / (1024*1024);
+            s->threads = num_threads;
+            s->memory_usage = vmsize / (1024 * 1024);
         }
     }
-    stats.cpu_percent = gbl_cpupercent;
+    s->cpu_percent = gbl_cpupercent;
 #endif
-    stats.service_time = time_metric_average(thedb->service_time);
-    stats.weighted_queue_depth = weighted_queue_depth;
+    s->service_time = time_metric_average(thedb->service_time);
+    s->weighted_queue_depth = weighted_queue_depth;
     if (gbl_track_weighted_queue_metrics_separately)
-        stats.queue_depth = time_metric_average(thedb->queue_depth);
+        s->queue_depth = time_metric_average(thedb->queue_depth);
     else
-        stats.queue_depth = stats.weighted_queue_depth;
-    stats.concurrent_sql = time_metric_average(thedb->concurrent_queries);
-    stats.sql_queue_time = time_metric_average(thedb->sql_queue_time);
-    stats.sql_queue_timeouts = get_all_sql_pool_timeouts();
-    stats.handle_buf_queue_time =
-        time_metric_average(thedb->handle_buf_queue_time);
-    stats.concurrent_connections = time_metric_average(thedb->connections);
-    stats.watchdog_time = time_metric_average(thedb->watchdog_time);
-    stats.distributed_commits = gbl_distributed_commit_count;
-    stats.not_durable_commits = gbl_not_durable_commit_count;
-    stats.incoherent_slow_skips = gbl_incoherent_slow_skips;
-    stats.inmem_repdb_memory = gbl_inmem_repdb_memory;
-    stats.physrep_metadb_sql_count = gbl_physrep_metadb_sql_count;
-    stats.physrep_no_viable_source = gbl_physrep_no_viable_source;
-    stats.forwarded_block_reqs = gbl_forwarded_block_reqs;
-    stats.rep_logbytes_last_minute = rep_logbytes_last_minute;
-    stats.sql_socksql_requests = gbl_sql_socksql_requests;
-    stats.sql_read_committed_requests = gbl_sql_read_committed_requests;
-    stats.sql_serializable_requests = gbl_sql_serializable_requests;
-    stats.sql_snapshot_requests = gbl_sql_snapshot_requests;
-    stats.sql_snapshot_asof_requests = gbl_sql_snapshot_asof_requests;
+        s->queue_depth = s->weighted_queue_depth;
+    s->concurrent_sql = time_metric_average(thedb->concurrent_queries);
+    s->sql_queue_time = time_metric_average(thedb->sql_queue_time);
+    s->sql_queue_timeouts = get_all_sql_pool_timeouts();
+    s->handle_buf_queue_time = time_metric_average(thedb->handle_buf_queue_time);
+    s->concurrent_connections = time_metric_average(thedb->connections);
+    s->watchdog_time = time_metric_average(thedb->watchdog_time);
+    s->distributed_commits = gbl_distributed_commit_count;
+    s->not_durable_commits = gbl_not_durable_commit_count;
+    s->incoherent_slow_skips = gbl_incoherent_slow_skips;
+    s->inmem_repdb_memory = gbl_inmem_repdb_memory;
+    s->physrep_metadb_sql_count = gbl_physrep_metadb_sql_count;
+    s->physrep_no_viable_source = gbl_physrep_no_viable_source;
+    s->forwarded_block_reqs = gbl_forwarded_block_reqs;
+    s->rep_logbytes_last_minute = rep_logbytes_last_minute;
+    s->sql_socksql_requests = gbl_sql_socksql_requests;
+    s->sql_read_committed_requests = gbl_sql_read_committed_requests;
+    s->sql_serializable_requests = gbl_sql_serializable_requests;
+    s->sql_snapshot_requests = gbl_sql_snapshot_requests;
+    s->sql_snapshot_asof_requests = gbl_sql_snapshot_asof_requests;
     struct global_stats gstats = {0};
 
     global_request_stats(&gstats);
 
-    stats.page_reads = gstats.page_reads;
-    stats.page_writes = gstats.page_writes;
-    stats.failed_page_reads = gstats.failed_page_reads;
-    stats.failed_page_writes = gstats.failed_page_writes;
-    stats.fsyncs = gstats.fsyncs;
-    stats.mempgets = gstats.mempgets;
-    stats.page_bytes_read = gstats.page_bytes_read;
-    stats.page_bytes_written = gstats.page_bytes_written;
-    stats.failed_page_bytes_read = gstats.failed_page_bytes_read;
-    stats.failed_page_bytes_written = gstats.failed_page_bytes_written;
+    s->page_reads = gstats.page_reads;
+    s->page_writes = gstats.page_writes;
+    s->failed_page_reads = gstats.failed_page_reads;
+    s->failed_page_writes = gstats.failed_page_writes;
+    s->fsyncs = gstats.fsyncs;
+    s->mempgets = gstats.mempgets;
+    s->page_bytes_read = gstats.page_bytes_read;
+    s->page_bytes_written = gstats.page_bytes_written;
+    s->failed_page_bytes_read = gstats.failed_page_bytes_read;
+    s->failed_page_bytes_written = gstats.failed_page_bytes_written;
 
     int master =
         bdb_whoismaster((bdb_state_type *)thedb->bdb_env) == gbl_myhostname ? 1
                                                                             : 0;
-    stats.ismaster = master;
-    stats.last_checkpoint_ms = gbl_last_checkpoint_ms;
-    stats.total_checkpoint_ms = gbl_total_checkpoint_ms;
-    stats.checkpoint_count = gbl_checkpoint_count;
-    stats.rcache_hits = rcache_hits;
-    stats.rcache_misses = rcache_miss;
-    stats.last_election_ms = gbl_last_election_time_ms;
-    stats.total_election_ms = gbl_total_election_time_ms;
-    stats.election_count = gbl_election_count;
-    stats.last_election_time = gbl_election_time_completed;
+    s->ismaster = master;
+    s->last_checkpoint_ms = gbl_last_checkpoint_ms;
+    s->total_checkpoint_ms = gbl_total_checkpoint_ms;
+    s->checkpoint_count = gbl_checkpoint_count;
+    s->rcache_hits = rcache_hits;
+    s->rcache_misses = rcache_miss;
+    s->last_election_ms = gbl_last_election_time_ms;
+    s->total_election_ms = gbl_total_election_time_ms;
+    s->election_count = gbl_election_count;
+    s->last_election_time = gbl_election_time_completed;
     unsigned int sent, failed_send, received;
     udp_stats(&sent, &failed_send, &received);
-    stats.udp_sent = sent;
-    stats.udp_failed_send = failed_send;
-    stats.udp_received = received;
-    bdb_get_txn_stats(thedb->bdb_env, &stats.active_transactions,
-                      &stats.maxactive_transactions, &stats.total_commits,
-                      &stats.total_aborts);
-    stats.denied_appsock_connections = gbl_denied_appsock_connection_count;
-    if (bdb_lock_stats(thedb->bdb_env, &stats.locks))
-        stats.locks = 0;
-    stats.temptable_created = gbl_temptable_created;
-    stats.temptable_create_reqs = gbl_temptable_create_reqs;
-    stats.temptable_spills = gbl_temptable_spills;
+    s->udp_sent = sent;
+    s->udp_failed_send = failed_send;
+    s->udp_received = received;
+    bdb_get_txn_stats(thedb->bdb_env, &s->active_transactions, &s->maxactive_transactions, &s->total_commits,
+                      &s->total_aborts);
+    s->denied_appsock_connections = gbl_denied_appsock_connection_count;
+    if (bdb_lock_stats(thedb->bdb_env, &s->locks))
+        s->locks = 0;
+    s->temptable_created = gbl_temptable_created;
+    s->temptable_create_reqs = gbl_temptable_create_reqs;
+    s->temptable_spills = gbl_temptable_spills;
 
-    stats.net_drops = get_hosts_metric("replication", NET_DROPS);
+    s->net_drops = get_hosts_metric("replication", NET_DROPS);
 
-    bdb_rep_deadlocks(thedb->bdb_env, &stats.rep_deadlocks);
+    bdb_rep_deadlocks(thedb->bdb_env, &s->rep_deadlocks);
 
-    stats.weighted_standing_queue_time = metrics_weighted_standing_queue_time();
+    s->weighted_standing_queue_time = metrics_weighted_standing_queue_time();
     if (gbl_track_weighted_queue_metrics_separately)
-        stats.standing_queue_time = metrics_standing_queue_time();
+        s->standing_queue_time = metrics_standing_queue_time();
     else
-        stats.standing_queue_time = stats.weighted_standing_queue_time;
+        s->standing_queue_time = s->weighted_standing_queue_time;
 
 #if 0
     bdb_min_truncate(thedb->bdb_env, &min_file, &min_offset, &min_timestamp);
-    stats.minimum_truncation_file = min_file;
-    stats.minimum_truncation_offset = min_offset;
-    stats.minimum_truncation_timestamp = min_timestamp;
+    s->minimum_truncation_file = min_file;
+    s->minimum_truncation_offset = min_offset;
+    s->minimum_truncation_timestamp = min_timestamp;
 #endif
 
     if (gbl_old_column_names && query_preparer_plugin &&
         query_preparer_plugin->sqlitex_get_metrics) {
-        query_preparer_plugin->sqlitex_get_metrics(&stats.reprepares);
+        query_preparer_plugin->sqlitex_get_metrics(&s->reprepares);
     }
 
     tran_type *trans = curtran_gettran();
-    rc = bdb_get_num_sc_done(((bdb_state_type *)thedb->bdb_env), trans, (unsigned long long *)&stats.num_sc_done,
-                             &bdberr);
+    rc = bdb_get_num_sc_done(((bdb_state_type *)thedb->bdb_env), trans, (unsigned long long *)&s->num_sc_done, &bdberr);
     if (rc) {
+        curtran_puttran(trans);
         logmsg(LOGMSG_ERROR, "failed to refresh statistics (%s:%d)\n", __FILE__, __LINE__);
         return 1;
     }
-    stats.diskspace = refresh_diskspace(thedb, trans);
-    stats.vreplays = gbl_verify_tran_replays;
-    stats.nsslfullhandshakes = gbl_ssl_num_full_handshakes;
-    stats.nsslpartialhandshakes = gbl_ssl_num_partial_handshakes;
-    stats.auth_allowed = gbl_num_auth_allowed;
-    stats.auth_denied = gbl_num_auth_denied;
-    stats.legacy_requests = gbl_legacy_requests;
+    s->diskspace = refresh_diskspace(thedb, trans);
+    s->vreplays = gbl_verify_tran_replays;
+    s->nsslfullhandshakes = gbl_ssl_num_full_handshakes;
+    s->nsslpartialhandshakes = gbl_ssl_num_partial_handshakes;
+    s->auth_allowed = gbl_num_auth_allowed;
+    s->auth_denied = gbl_num_auth_denied;
+    s->legacy_requests = gbl_legacy_requests;
     curtran_puttran(trans);
 
-    update_sqllogfill_metrics();
-    update_fastsql_metrics();
-    stats.max_current_connections = time_metric_max(thedb->connections);
+    update_sqllogfill_metrics(s);
+    update_fastsql_metrics(s);
+    s->max_current_connections = time_metric_max(thedb->connections);
 
     return 0;
+}
+
+/* Fetch all values into a private copy, then publish them in one step, so
+ * concurrent readers never see a half-refreshed or transiently zeroed set. */
+int refresh_metrics(void)
+{
+    struct comdb2_metrics_store local;
+
+    Pthread_mutex_lock(&stats_lk);
+    local = stats; /* keep fields that are not refreshed (start_time) */
+    Pthread_mutex_unlock(&stats_lk);
+
+    int rc = fetch_metrics(&local);
+    if (rc)
+        return rc;
+
+    Pthread_mutex_lock(&stats_lk);
+    stats = local;
+    Pthread_mutex_unlock(&stats_lk);
+    return 0;
+}
+
+void *metrics_snapshot(void)
+{
+    struct comdb2_metrics_store *snap = malloc(sizeof(*snap));
+    if (snap == NULL)
+        return NULL;
+    Pthread_mutex_lock(&stats_lk);
+    *snap = stats;
+    Pthread_mutex_unlock(&stats_lk);
+    return snap;
+}
+
+const void *metric_snapshot_value(const void *snap, const comdb2_metric *m)
+{
+    ptrdiff_t off = (const char *)m->var - (const char *)&stats;
+    assert(off >= 0 && off < sizeof(stats));
+    return (const char *)snap + off;
 }
 
 int init_metrics(void)
 {
     time_t t;
 
-    memset(&stats, 0, sizeof(struct comdb2_metrics_store));
-
     t = time(NULL);
+    Pthread_mutex_lock(&stats_lk);
+    memset(&stats, 0, sizeof(struct comdb2_metrics_store));
     stats.start_time = (int64_t) t;
+    Pthread_mutex_unlock(&stats_lk);
     return 0;
 }
 
@@ -1031,7 +1070,6 @@ static void update_cpu_percent(void)
             last_counter = utime + stime;
          }
          else {
-            stats.cpu_percent = 0;
             time_t now = time(NULL);
             int64_t sys_ticks = (now - last_time) * hz;
 

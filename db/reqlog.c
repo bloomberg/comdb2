@@ -2513,6 +2513,27 @@ static int hash_free_element(void *elem, void *unused) {
     return 0;
 }
 
+#ifdef COMDB2_TEST
+static int dump_clientstats_exact(void *obj, void *unused)
+{
+    nodestats_t *n = obj;
+    logmsg(LOGMSG_USER, "clientstats_exact task=%s host=%s sql_queries=%u sql_queries_exact=%" PRIu64 "\n",
+           n->task ? n->task : "", n->host ? n->host : "", n->rawtotals.sql_queries,
+           ATOMIC_LOAD64(n->rawtotals.sql_queries_exact));
+    return 0;
+}
+
+/* Print the lockless sql_queries counter next to its exact twin for every
+ * client, for tests/counter_loss.test. */
+void clientstats_print_exact(void)
+{
+    Pthread_rwlock_rdlock(&clientstats_lk);
+    if (clientstats)
+        hash_for(clientstats, dump_clientstats_exact, NULL);
+    Pthread_rwlock_unlock(&clientstats_lk);
+}
+#endif
+
 void acquire_clientstats_lock(int write)
 {
     if (write) {
