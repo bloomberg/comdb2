@@ -544,9 +544,10 @@ void sqlite3DeleteFrom(
         /* Add the rowid of the row to be deleted to the RowSet */
         nKey = 1;  /* OP_DeferredSeek always uses a single rowid */
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-        /* Replica write hints: P3 = the table cursor + 1, for
-        ** comdb2_rwh_rowset_add() */
-        sqlite3VdbeAddOp3(v, OP_RowSetAdd, iRowSet, iKey, iTabCur+1);
+        /* Replica write hints: P3 = the table cursor + 1, P5 = the scan's
+        ** index cursor + 1 (0 if none), P4 = 1 (a DELETE); see update.c */
+        sqlite3VdbeAddOp4Int(v, OP_RowSetAdd, iRowSet, iKey, iTabCur+1, 1);
+        sqlite3VdbeChangeP5(v, (u16)(comdb2WhereScanIdxCur(pWInfo)+1));
 #else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
         sqlite3VdbeAddOp2(v, OP_RowSetAdd, iRowSet, iKey);
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */

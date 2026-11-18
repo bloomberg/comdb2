@@ -75,7 +75,9 @@ static bdb_cursor_ifn_t *rwh_dta_cursor(struct BtCursor *pCur)
 }
 
 void bdb_rwh_mark_blobs(bdb_state_type *bdb_state, unsigned long long genid, unsigned int mask);
-extern int gbl_rep_write_hints_written_blob_rows;
+void bdb_rwh_mark_ix_row(bdb_state_type *bdb_state, bdb_cursor_ifn_t *ixcur, unsigned long long genid,
+                         unsigned long long ixmask);
+extern int gbl_rep_write_hints_written_blob_rows, gbl_rep_write_hints_written_index_rows;
 
 /* Whether upd_record (db/record.c) surely skips the old value of a blob an update leaves unchanged: inplace blobs and
  * their optimization on (read-only settings, assumed the same as the master's), and an inplace update that keeps the
@@ -522,6 +524,11 @@ static int osql_send_del_logic(struct BtCursor *pCur, struct sql_thread *thd)
         bdb_rwh_mark_row(pCur->db->handle, rwh_dta_cursor(pCur), pCur->genid);
     if (gbl_rep_write_hints && gbl_rep_write_hints_written_blob_rows && pCur->db->numblobs > 0)
         bdb_rwh_mark_blobs(pCur->db->handle, pCur->genid, rwh_upd_blobs(pCur->db, NULL));
+    /* a one-pass DELETE shipped from an index cursor: its leaf, if the master changes that index for the row (on a
+     * table with partial indexes, those the row is in) */
+    if (gbl_rep_write_hints && gbl_rep_write_hints_written_index_rows && pCur->ixnum != -1)
+        bdb_rwh_mark_ix_row(pCur->db->handle, pCur->bdbcur, pCur->genid,
+                            (gbl_partial_indexes && pCur->db->ix_partial) ? clnt->del_keys : -1ULL);
     rwh_wrote = 1;
     osql->replicant_numops++;
     DEBUG_PRINT_NUMOPS();

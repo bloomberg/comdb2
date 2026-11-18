@@ -657,6 +657,22 @@ void bdb_rwh_mark_row(bdb_state_type *bdb_state, bdb_cursor_ifn_t *cur, unsigned
     __memp_rwh_mark_op(dbp->fileid, pgno);
 }
 
+void __memp_rwh_ix_mark(DB *dbp, uint32_t pgno);
+
+/* rep_write_hints_written_index_rows: the row with this genid of table bdb_state is being written, and ixcur is a
+ * cursor on one of its indexes: if its real berkdb cursor is on the row's entry, in an index of ixmask (those the
+ * master changes for the row), hint that leaf */
+void bdb_rwh_mark_ix_row(bdb_state_type *bdb_state, bdb_cursor_ifn_t *ixcur, unsigned long long genid,
+                         unsigned long long ixmask)
+{
+    int ix;
+    unsigned int pgno = bdb_cursor_ixpage(ixcur, genid, &ix);
+
+    if (pgno != 0 && ix >= 0 && ix < bdb_state->numix && ix < 64 && (ixmask & (1ULL << ix)) &&
+        bdb_state->dbp_ix[ix] != NULL)
+        __memp_rwh_ix_mark(bdb_state->dbp_ix[ix], pgno);
+}
+
 void __memp_rwh_blob_mark(const void *tbl, uint64_t genid, uint32_t mask);
 
 /* An osql delete, or update, of the row with this genid reads the old value of the blobs in mask

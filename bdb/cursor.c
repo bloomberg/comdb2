@@ -1151,6 +1151,29 @@ unsigned int bdb_cursor_dtapage(bdb_cursor_ifn_t *pcur_ifn, unsigned long long g
     return page;
 }
 
+/* The leaf page of the index entry the cursor's real berkdb cursor on an index is positioned on, and the index
+ * number, if that entry is the row with this genid (the first 8 bytes of an index entry's data are its row's genid,
+ * for every index type); 0 if not */
+unsigned int bdb_cursor_ixpage(bdb_cursor_ifn_t *pcur_ifn, unsigned long long genid, int *ixnum)
+{
+    bdb_cursor_impl_t *cur = pcur_ifn->impl;
+    unsigned long long rlgenid;
+    char *dta;
+    int dtalen, page, bdberr;
+
+    *ixnum = -1;
+    if (cur->type != BDBC_IX || cur->rl == NULL || cur->rl->is_at_eof(cur->rl) ||
+        cur->rl->dtasize(cur->rl, &dtalen, &bdberr) || dtalen < (int)sizeof(rlgenid) ||
+        cur->rl->dta(cur->rl, &dta, &bdberr) || dta == NULL)
+        return 0;
+    memcpy(&rlgenid, dta, sizeof(rlgenid));
+    if (get_search_genid(cur->state, rlgenid) != get_search_genid(cur->state, genid) ||
+        cur->rl->pageindex(cur->rl, &page, NULL, &bdberr) || page <= 0)
+        return 0;
+    *ixnum = cur->idx;
+    return page;
+}
+
 static int bdb_cursor_first(bdb_cursor_ifn_t *pcur_ifn, int *bdberr)
 {
     bdb_cursor_impl_t *cur = pcur_ifn->impl;

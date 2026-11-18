@@ -921,7 +921,7 @@ struct __db_mpoolfile {
 	 */
 	u_int32_t  ref;			/* Reference count. */
 	u_int32_t pinref;		/* Pinned block reference count. */
-	int	  rwh_class;		/* Replica write hints (mp_fget.c): 1 table data file, 4 blob file, 2 other; set by __memp_fopen. */
+	int	  rwh_class;		/* Replica write hints (mp_fget.c): 1 table data file, 3 index file, 4 blob file, 2 other; set by __memp_fopen. */
 
 	/*
 	 * !!!

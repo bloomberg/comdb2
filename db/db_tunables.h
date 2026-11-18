@@ -2088,6 +2088,10 @@ REGISTER_TUNABLE("rep_write_hints_written_blob_rows",
                  "With rep_write_hints, a statement hints the blob leaf pages of the rows it deletes and of the "
                  "blobs it changes only, not every blob leaf page it read. (Default: off)",
                  TUNABLE_BOOLEAN, &gbl_rep_write_hints_written_blob_rows, EXPERIMENTAL, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("rep_write_hints_written_index_rows",
+                 "With rep_write_hints, a statement hints the index leaf pages holding the entries of the rows it "
+                 "updates or deletes only, not every index leaf page it read. (Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_rep_write_hints_written_index_rows, EXPERIMENTAL, NULL, NULL, NULL, NULL);
 
 REGISTER_TUNABLE("disable_tpsc_tblvers",
                  "Disable table version checks for time partition schema "

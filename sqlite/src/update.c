@@ -552,7 +552,15 @@ void sqlite3Update(
     ** leave it in register regOldRowid.  */
     sqlite3VdbeAddOp2(v, OP_Rowid, iDataCur, regOldRowid);
     if( eOnePass==ONEPASS_OFF ){
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+      /* Replica write hints (rep_write_hints_written_index_rows): P3 = the
+      ** table cursor + 1, P5 = the scan's index cursor + 1 (0 if none), both
+      ** cursors on pTab, for OP_RowSetAdd to hint the row's index leaves. */
+      sqlite3VdbeAddOp3(v, OP_RowSetAdd, regRowSet, regOldRowid, iDataCur+1);
+      sqlite3VdbeChangeP5(v, (u16)(pWInfo ? comdb2WhereScanIdxCur(pWInfo)+1 : 0));
+#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
       sqlite3VdbeAddOp2(v, OP_RowSetAdd, regRowSet, regOldRowid);
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     }
   }else{
     /* Read the PK of the current row into an array of registers. In

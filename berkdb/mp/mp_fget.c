@@ -69,9 +69,19 @@ extern int db_is_exiting(void);
  * Index and blob leaves are remembered as they are read. The data pages of rows
  * the statement only scanned, e.g. those its WHERE clause rejected, are not
  * hinted.
+ *
+ * With rep_write_hints_written_index_rows (off by default) an index leaf is not
+ * remembered as it is read either.  Instead, the leaf a real index cursor of
+ * the target table is positioned on is remembered (__memp_rwh_ix_mark, called
+ * from bdb/bdb_net.c) if its entry is the row's (same genid): when a two-pass
+ * UPDATE or DELETE selects the row for writing (OP_RowSetAdd, before the
+ * scan's cursors close), or when a one-pass DELETE ships the row from an index
+ * cursor.  These are the old-key leaves the master's block processor reads to
+ * change the row's index entries.
  */
 extern int gbl_rep_write_hints;
 int gbl_rep_write_hints_written_rows = 1;
+int gbl_rep_write_hints_written_index_rows = 0;
 int bb_berkdb_fingerprint_rtstats_is_sql(void);
 #define	RWH_MAX	DB_RWH_MAX
 static __thread struct {
@@ -140,10 +150,28 @@ rwh_name_is_blob(const char *fn)
 	return (*ext == '\0');
 }
 
+/* Whether a file name is an index file: extension "index", or "ix<N>" (legacy) */
+static int
+rwh_name_is_index(const char *fn)
+{
+	const char *ext;
+
+	if (fn == NULL || (ext = strrchr(fn, '.')) == NULL)
+		return (0);
+	ext++;
+	if (strcmp(ext, "index") == 0)
+		return (1);
+	if (strncmp(ext, "ix", 2) != 0 || ext[2] == '\0')
+		return (0);
+	for (ext += 2; *ext >= '0' && *ext <= '9'; ext++)
+		;
+	return (*ext == '\0');
+}
+
 /*
  * __memp_rwh_init --
- *	Remember in a handle whether its file is a table data file, a blob file
- *	or another file.  Called by
+ *	Remember in a handle whether its file is a table data file, an index
+ *	file, a blob file or another file.  Called by
  *	__memp_fopen before the handle can be shared, so readers need no
  *	synchronization.
  *
@@ -154,7 +182,7 @@ __memp_rwh_init(DB_MPOOLFILE *dbmfp)
 {
 	const char *fn = __memp_fn(dbmfp);
 
-	dbmfp->rwh_class = rwh_name_is_data(fn) ? 1 : rwh_name_is_blob(fn) ? 4 : 2;
+	dbmfp->rwh_class = rwh_name_is_data(fn) ? 1 : rwh_name_is_index(fn) ? 3 : rwh_name_is_blob(fn) ? 4 : 2;
 }
 
 static void
@@ -182,7 +210,8 @@ rwh_note(DB_MPOOLFILE *dbmfp, db_pgno_t pgno, PAGE *h)
 	if (rwh_n >= RWH_MAX || TYPE(h) != P_LBTREE || IS_REP_MASTER(dbmfp->dbenv) ||
 	    !bb_berkdb_fingerprint_rtstats_is_sql())
 		return;
-	if (dbmfp->rwh_class == 4 && gbl_rep_write_hints_written_blob_rows)
+	if ((dbmfp->rwh_class == 4 && gbl_rep_write_hints_written_blob_rows) ||
+	    (dbmfp->rwh_class == 3 && gbl_rep_write_hints_written_index_rows))
 		return;
 	/* temporary files (e.g. SQL temp tables) have no UFID: the master can't use them */
 	if (memcmp(dbmfp->fileid, nofileid, DB_FILE_ID_LEN) == 0)
@@ -198,6 +227,18 @@ __memp_rwh_mark_op(const u_int8_t *ufid, u_int32_t pgno)
 {
 	if (ufid != NULL && gbl_rep_write_hints_written_rows)
 		rwh_add(ufid, pgno);
+}
+
+/* Leaf pgno of index file dbp holds the entry of a row being written: remember it
+ * (rep_write_hints_written_index_rows) */
+void
+__memp_rwh_ix_mark(DB *dbp, u_int32_t pgno)
+{
+	static const u_int8_t nofileid[DB_FILE_ID_LEN];
+
+	if (gbl_rep_write_hints && gbl_rep_write_hints_written_index_rows && !IS_REP_MASTER(dbp->dbenv) &&
+	    bb_berkdb_fingerprint_rtstats_is_sql() && memcmp(dbp->fileid, nofileid, DB_FILE_ID_LEN) != 0)
+		rwh_add(dbp->fileid, pgno);
 }
 
 /*
