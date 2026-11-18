@@ -1,0 +1,13 @@
+struct comdb2_plugin @PLUGIN_SYM@[] = {
+    {
+        "tracetest",               /* Plugin identifier */
+        "comdb2_trace test hooks", /* Plugin description */
+        COMDB2_PLUGIN_INITIALIZER, /* Plugin type */
+        1,                         /* Plugin version */
+        1,                         /* Plugin interface version */
+        0,                         /* Plugin flags */
+        tracetest_init,            /* Initialization function */
+        tracetest_destroy,         /* Destroy function */
+        &tracetest_plugin          /* Plugin-specific data */
+    },
+    {0, 0, 0, 0, 0, 0, 0, 0, 0}};

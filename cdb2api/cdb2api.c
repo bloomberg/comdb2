@@ -4733,6 +4733,12 @@ static int cdb2_send_query(cdb2_hndl_tp *hndl, cdb2_hndl_tp *event_hndl, COMDB2B
         }
     }
 
+    if (hndl && hndl->trace && hndl->trace_len > 0) {
+        sqlquery.has_trace = 1;
+        sqlquery.trace.data = (uint8_t *)hndl->trace;
+        sqlquery.trace.len = hndl->trace_len;
+    }
+
     query.sqlquery = &sqlquery;
 
     sqlquery.n_set_flags = n_set_commands - n_set_commands_sent;
@@ -6985,6 +6991,9 @@ after_callback:
         free(hndl->stmt_types);
         hndl->stmt_types = NULL;
     }
+
+    hndl->trace = NULL;
+    hndl->trace_len = 0;
 
     return rc;
 }

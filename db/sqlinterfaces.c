@@ -99,6 +99,7 @@
 #include <typessql.h>
 #include <sqlwriter.h>
 #include <crc32c.h>
+#include <comdb2_trace.h>
 
 /*
 ** WARNING: These enumeration values are not arbitrary.  They represent
@@ -1323,6 +1324,8 @@ static void sql_statement_done(struct sql_thread *thd, struct reqlogger *logger,
     }
 
     reqlog_set_vreplays(logger, clnt->verify_retries);
+    struct sql_hist_cost *tcost = is_stored_proc(clnt) ? &clnt->spcost : &h->cost;
+    reqlog_set_time(logger, tcost->time, tcost->prepTime);
 
     if (clnt->saved_rc)
         reqlog_set_error(logger, clnt->saved_errstr, clnt->saved_rc);
@@ -4697,6 +4700,8 @@ int done_cb_evbuffer(struct sqlclntstate *clnt)
         if (rc == RC_INTERNAL_RETRY) {
             return rc;
         }
+        /* replay is done; signal_clnt_as_done() kept the handle for it */
+        clnt_trace_release(clnt);
     }
     if (clnt->osql.replay != OSQL_RETRY_NONE) {
         osql_set_replay(__FILE__, __LINE__, clnt, OSQL_RETRY_NONE);
@@ -4735,9 +4740,21 @@ void clnt_set_thd(struct sqlclntstate *clnt, struct sqlthdstate *thd)
     Pthread_mutex_unlock(&clnt->sql_lk);
 }
 
+void clnt_trace_release(struct sqlclntstate *clnt)
+{
+    if (clnt->trace) {
+        gbl_trace_hooks->release(clnt->trace);
+        clnt->trace = NULL;
+    }
+}
+
 void signal_clnt_as_done(struct sqlclntstate *clnt)
 {
     struct sql_thread *thd = (clnt->thd && clnt->thd->sqlthd) ? clnt->thd->sqlthd : NULL;
+
+    /* a verify-error replay (save_cb set while in progress) keeps the trace for its commit */
+    if (clnt->osql.replay != OSQL_RETRY_DO && !clnt->save_cb)
+        clnt_trace_release(clnt);
 
     /* Clear the client from the sql thread, so that sql-dump won't see it. */
     if (thd) {
@@ -5531,6 +5548,8 @@ void cleanup_clnt(struct sqlclntstate *clnt)
         handle_sql_intrans_unrecoverable_error(clnt);
     }
     _free_set_commands(clnt);
+    /* connection torn down while still holding a handle */
+    clnt_trace_release(clnt);
     if (clnt->rawnodestats) {
         release_node_stats_ptr(clnt->rawnodestats);
         clnt->rawnodestats = NULL;
@@ -5699,18 +5718,21 @@ void reset_clnt(struct sqlclntstate *clnt, int initial)
             clnt->authz_write_tables = hash_init_str(0);
         }
     } else {
-       clnt->sql_since_reset = 0;
-       clnt->num_resets++;
-       clnt->last_reset_time = comdb2_time_epoch();
-       clnt_change_state(clnt, CONNECTION_RESET);
-       if (clnt->lastresptype != RESPONSE_TYPE__LAST_ROW && clnt->lastresptype != 0 && clnt->lastresptype != RESPONSE_TYPE__RAW_DATA) {
-           if (gbl_unexpected_last_type_warn)
-               logmsg(LOGMSG_ERROR, "Unexpected previous response type %d origin %s task %s\n",
-                      clnt->lastresptype, clnt->origin, clnt->argv0);
-           if (gbl_unexpected_last_type_abort)
-               abort();
-       }
-       reset_authz_hash(clnt, 0);
+        /* clnt reused for a new session */
+        clnt_trace_release(clnt);
+        clnt->sql_since_reset = 0;
+        clnt->num_resets++;
+        clnt->last_reset_time = comdb2_time_epoch();
+        clnt_change_state(clnt, CONNECTION_RESET);
+        if (clnt->lastresptype != RESPONSE_TYPE__LAST_ROW && clnt->lastresptype != 0 &&
+            clnt->lastresptype != RESPONSE_TYPE__RAW_DATA) {
+            if (gbl_unexpected_last_type_warn)
+                logmsg(LOGMSG_ERROR, "Unexpected previous response type %d origin %s task %s\n", clnt->lastresptype,
+                       clnt->origin, clnt->argv0);
+            if (gbl_unexpected_last_type_abort)
+                abort();
+        }
+        reset_authz_hash(clnt, 0);
     }
     clnt->allow_make_request = 0;
 

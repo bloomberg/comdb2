@@ -14,6 +14,7 @@ add_library(bdb
   bdb_osqltrn.c
   bdb_schemachange.c
   bdb_thd_io.c
+  bdb_trace.c
   bdb_verify.c
   bdblock.c
   berktest.c
