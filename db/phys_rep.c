@@ -1575,6 +1575,8 @@ static void *physrep_worker(void *args)
     char sql_cmd[sql_cmd_len];
     int do_truncate = 0;
     int source_gen_changed = 0;
+    /* Set when the source's log-cursor gen changed, i.e. it truncated its own log. */
+    int source_truncated = 0;
     int rc;
     int now;
     int is_revconn = -1;
@@ -1780,7 +1782,7 @@ repl_loop:
                 close_repl_connection(repl_db_cnct, repl_db, __func__, __LINE__);
                 goto sleep_and_retry;
             }
-            prev_info = handle_truncation(repl_db, info, source_gen_changed);
+            prev_info = handle_truncation(repl_db, info, source_gen_changed, source_gen_changed || source_truncated);
             if (prev_info.file == 0) {
                 close_repl_connection(repl_db_cnct, repl_db, __func__, __LINE__);
                 goto sleep_and_retry;
@@ -1791,6 +1793,7 @@ repl_loop:
                 physrep_logmsg(LOGMSG_USER, "%s: gen: %" PRId64 "\n", __func__, gen);
             do_truncate = 0;
             source_gen_changed = 0;
+            source_truncated = 0;
         }
 
         if (repl_db_connected == 0)
@@ -1852,6 +1855,7 @@ repl_loop:
                     }
                     close_repl_connection(repl_db_cnct, repl_db, __func__, __LINE__);
                     do_truncate = 1;
+                    source_truncated = 1;
                     first_lcgen = -1;
                     goto repl_loop;
                 }

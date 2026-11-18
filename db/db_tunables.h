@@ -2121,6 +2121,10 @@ REGISTER_TUNABLE("physrep_skip_noop_truncation",
                  "Skip the physrep rewind when the source already matches our end-of-log, i.e. when there is nothing "
                  "to unwind. (Default: on)",
                  TUNABLE_BOOLEAN, &gbl_physrep_skip_noop_truncation, 0, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("physrep_behind_source_max_wait",
+                 "Seconds a physrep waits for a source that agrees with it but is behind its end-of-log before "
+                 "rewinding to that source; 0 rewinds at once. (Default: 300)",
+                 TUNABLE_INTEGER, &gbl_physrep_behind_source_max_wait, 0, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("physrep_no_source_alarm_threshold",
                  "Consecutive no-viable-source registration cycles before physrep latches the "
                  "gbl_physrep_no_viable_source flag and logs 'PHYSREP NO VIABLE SOURCE'. (Default: 10)",

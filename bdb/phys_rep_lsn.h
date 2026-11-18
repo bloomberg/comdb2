@@ -40,6 +40,7 @@ int find_log_timestamp(struct bdb_state_tag *, time_t time, unsigned int *file,
 int physrep_source_covers_me(void *bdb_state, struct cdb2_hndl *repl_db);
 
 LOG_INFO find_match_lsn(void *bdb_state, struct cdb2_hndl *repl_db, LOG_INFO start_info);
+/* Returns 0 (agree through my_end), 1 (diverged), or PHYSREP_SOURCE_BEHIND (agree until the source's end). */
 int physrep_find_last_match(void *bdb_state, struct cdb2_hndl *repl_db, LOG_INFO match_info, LOG_INFO my_end,
                             LOG_INFO *last_match);
 int physrep_logged_gen_ahead(void *bdb_state);
