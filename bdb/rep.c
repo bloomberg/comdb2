@@ -2591,10 +2591,16 @@ static void got_new_seqnum_from_node(bdb_state_type *bdb_state,
                 logmsg(LOGMSG_USER,
                        "%s: got seqnum from %s of gen %u (high), i want %u, count=%llu\n",
                        __func__, host, seqnum->generation, mygen, count);
-            } else
-            if (bdb_state->attr->downgrade_on_seqnum_gen_mismatch &&
-                bdb_state->repinfo->master_host == bdb_state->repinfo->myhost)
-                call_for_election(bdb_state, __func__, __LINE__);
+            } else if (bdb_state->repinfo->master_host == bdb_state->repinfo->myhost) {
+                /* A node on (or promised to) a later gen: make the next election beat it, then
+                 * downgrade from the watcher */
+                bdb_state->dbenv->rep_raise_egen(bdb_state->dbenv, seqnum->generation + 1);
+                if (!bdb_state->need_to_downgrade_vote2) {
+                    logmsg(LOGMSG_USER, "vote2 backstop: deposed by %s, its gen %u > our gen %u, downgrading\n", host,
+                           seqnum->generation, mygen);
+                    bdb_state->need_to_downgrade_vote2 = 1;
+                }
+            }
             return;
         }
 
@@ -3960,6 +3966,36 @@ int get_myseqnum(bdb_state_type *bdb_state, uint8_t *p_net_seqnum)
     rep_berkdb_seqnum_type_put(&seqnum, p_buf, p_buf_end);
 
     return rc;
+}
+
+/* We refused host's gen (behind ours, or before our vote2's election): send it one seqnum at
+ * gen and no lease, so a master downgrades and the next election clears it */
+void bdb_vote2_backstop(void *in_bdb_state, char *host, uint32_t gen)
+{
+    bdb_state_type *bdb_state = in_bdb_state;
+    uint8_t p_net_seqnum[BDB_SEQNUM_TYPE_LEN];
+    seqnum_type seqnum;
+    struct hostinfo *me = retrieve_hostinfo(bdb_state->repinfo->myhost_interned);
+    struct hostinfo *h = retrieve_hostinfo(intern_ptr(host));
+    uint64_t now = gettimeofday_ms();
+
+    Pthread_mutex_lock(&(bdb_state->seqnum_info->lock));
+    if (now - h->last_vote2_backstop_ms < 1000) {
+        Pthread_mutex_unlock(&(bdb_state->seqnum_info->lock));
+        return;
+    }
+    h->last_vote2_backstop_ms = now;
+    seqnum = me->seqnum;
+    Pthread_mutex_unlock(&(bdb_state->seqnum_info->lock));
+
+    seqnum.generation = gen;
+    memset(&seqnum.issue_time, 0, sizeof(seqnum.issue_time));
+    seqnum.lease_ms = 0;
+    rep_berkdb_seqnum_type_put(&seqnum, p_net_seqnum, p_net_seqnum + BDB_SEQNUM_TYPE_LEN);
+    int rc = net_send_nodrop(bdb_state->repinfo->netinfo, host, USER_TYPE_BERKDB_NEWSEQ, p_net_seqnum,
+                             sizeof(seqnum_type), 1);
+    logmsg(LOGMSG_USER, "vote2 backstop: sent %s seqnum gen %u lsn %u:%u rc %d\n", host, gen, seqnum.lsn.file,
+           seqnum.lsn.offset, rc);
 }
 
 int request_copydelay(void *bdb_state_in)
@@ -6169,6 +6205,12 @@ void *watcher_thread(void *arg)
                         __FILE__, __LINE__);
             }
             bdb_state->need_to_downgrade_and_lose = 0;
+        }
+
+        if (bdb_state->need_to_downgrade_vote2) {
+            bdb_state->need_to_downgrade_vote2 = 0;
+            if (master_host == bdb_state->repinfo->myhost)
+                bdb_downgrade(bdb_state, 0, NULL);
         }
 
         /* downgrade ourselves if we are in a dupmaster situation */

@@ -515,6 +515,7 @@ struct repdb_rec {
 };
 
 pthread_mutex_t rep_candidate_lock = PTHREAD_MUTEX_INITIALIZER;
+void bdb_vote2_backstop(void *bdb_state, char *host, u_int32_t gen);
 pthread_mutex_t rep_queue_lock = PTHREAD_MUTEX_INITIALIZER;
 static pthread_cond_t queue_cond = PTHREAD_COND_INITIALIZER;
 static pthread_cond_t release_cond = PTHREAD_COND_INITIALIZER;
@@ -1343,6 +1344,10 @@ __rep_process_message(dbenv, control, rec, eidp, ret_lsnp, commit_gen, newgen, n
 				rep->stat.st_msgs_badgen);
 			lastpr = now;
 		}
+		/* A master behind our gen would be refused forever: depose it */
+		if (!gbl_is_physical_replicant)
+			bdb_vote2_backstop(dbenv->app_private, *eidp,
+			    gen > rep->vote2_egen ? gen : rep->vote2_egen);
 
 		fromline = __LINE__;
 		goto errlock;
@@ -1362,6 +1367,9 @@ __rep_process_message(dbenv, control, rec, eidp, ret_lsnp, commit_gen, newgen, n
 				"rectype=%u\n", rp->gen, *eidp, rep->vote2_egen, rp->rectype);
 			lastpr_v2 = now;
 		}
+		/* If its election is dead we'd refuse it forever: depose it */
+		bdb_vote2_backstop(dbenv->app_private, *eidp,
+		    gen > rep->vote2_egen ? gen : rep->vote2_egen);
 		fromline = __LINE__;
 		goto errlock;
 	}

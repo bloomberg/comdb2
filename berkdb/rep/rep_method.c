@@ -129,6 +129,7 @@ __rep_dbenv_create(dbenv)
 		dbenv->get_rep_gen = __rep_get_gen;
 		dbenv->get_rep_log_gen = __rep_get_log_gen;
 		dbenv->rep_refuse_upgrade = __rep_refuse_upgrade;
+		dbenv->rep_raise_egen = __rep_raise_egen;
 		dbenv->get_last_locked = __rep_get_last_locked;
 		dbenv->get_rep_limit = __rep_get_limit;
 		dbenv->set_rep_limit = __rep_set_limit;

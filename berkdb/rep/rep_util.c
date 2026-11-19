@@ -1239,6 +1239,30 @@ __rep_refuse_upgrade(dbenv, newgen, vote2_egenp)
 }
 
 /*
+ * __rep_raise_egen --
+ *
+ *	Make our next election at least egen.
+ *
+ * PUBLIC: void __rep_raise_egen __P((DB_ENV *, u_int32_t));
+ */
+void
+__rep_raise_egen(dbenv, egen)
+	DB_ENV *dbenv;
+	u_int32_t egen;
+{
+	DB_REP *db_rep;
+	REP *rep;
+
+	db_rep = dbenv->rep_handle;
+	rep = db_rep->region;
+
+	MUTEX_LOCK(dbenv, db_rep->rep_mutexp);
+	if (rep->egen < egen)
+		__rep_set_egen(dbenv, __func__, __LINE__, egen);
+	MUTEX_UNLOCK(dbenv, db_rep->rep_mutexp);
+}
+
+/*
  * __rep_get_log_gen --
  *
  *	Get the 'log' generation number from a replicated environment.
