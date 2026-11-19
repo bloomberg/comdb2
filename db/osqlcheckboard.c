@@ -460,8 +460,24 @@ static int wait_till_max_wait_or_timeout(osql_sqlthr_t *entry, int max_wait,
         if (entry->done == 1 || entry->master_changed)
             break;
 
+        /* We hold the bdb readlock here: wait in slices so a pending writelock
+         * (upgrade, rep_verify) isn't stalled for up to a second */
         int lrc = 0;
-        if ((lrc = pthread_cond_timedwait(&entry->cond, &entry->mtx, &tm_s))) {
+        do {
+            struct timespec slice;
+            clock_gettime(CLOCK_REALTIME, &slice);
+            slice.tv_nsec += 50 * 1000000;
+            if (slice.tv_nsec >= 1000000000) {
+                slice.tv_sec++;
+                slice.tv_nsec -= 1000000000;
+            }
+            if (slice.tv_sec > tm_s.tv_sec || (slice.tv_sec == tm_s.tv_sec && slice.tv_nsec >= tm_s.tv_nsec)) {
+                lrc = pthread_cond_timedwait(&entry->cond, &entry->mtx, &tm_s);
+                break;
+            }
+            lrc = pthread_cond_timedwait(&entry->cond, &entry->mtx, &slice);
+        } while (lrc == ETIMEDOUT && entry->done != 1 && !entry->master_changed && !bdb_lock_desired(thedb->bdb_env));
+        if (lrc) {
             if (ETIMEDOUT == lrc) {
                 /* normal timeout .. */
             } else {
