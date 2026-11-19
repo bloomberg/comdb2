@@ -1414,7 +1414,7 @@ void add_idx_stats(const char *tbl, const char *oldname, const char *newname)
                           "idx='%q' \n",
              newname, tbl, oldname);
     assert(sql != NULL);
-    run_internal_sql(sql);
+    run_internal_sql(sql, 1, "internal_sc_idx_stats");
     sqlite3_free(sql);
     sql = NULL;
 
@@ -1424,7 +1424,7 @@ void add_idx_stats(const char *tbl, const char *oldname, const char *newname)
                               "sqlite_stat4 WHERE tbl='%q' and idx='%q' \n",
                  newname, tbl, oldname);
         assert(sql != NULL);
-        run_internal_sql(sql);
+        run_internal_sql(sql, 1, "internal_sc_idx_stats");
         sqlite3_free(sql);
         sql = NULL;
     }

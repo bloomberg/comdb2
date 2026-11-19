@@ -6873,10 +6873,10 @@ void comdb2_set_sqlite_vdbe_dtprec(Vdbe *p)
     comdb2_set_sqlite_vdbe_dtprec_int(p, sqlthd->clnt);
 }
 
-void run_internal_sql(char *sql)
+void run_internal_sql(char *sql, int bypass_auth, const char *name)
 {
     struct sqlclntstate clnt;
-    start_internal_sql_clnt_named(&clnt, 0, "internal_sql");
+    start_internal_sql_clnt_named(&clnt, bypass_auth, name);
     clnt.sql = skipws(sql);
     int rc = dispatch_sql_query(&clnt);
     if (rc || clnt.query_rc || clnt.saved_errstr) {
