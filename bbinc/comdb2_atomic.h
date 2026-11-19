@@ -12,6 +12,16 @@
   #define ATOMIC_ADD32(mem, val) atomic_add_32_nv(&mem, val)
   #define ATOMIC_ADD64(mem, val) atomic_add_64_nv(&mem, val)
   #define ATOMIC_ADD32_PTR(mem, val) atomic_add_32_nv(mem, val)
+/* Solaris has no atomic load/store: an aligned 32-bit access is atomic, and
+ * membar_consumer/membar_producer give acquire/release ordering */
+static inline uint32_t comdb2_load32_acq(volatile uint32_t *p)
+{
+    uint32_t v = *p;
+    membar_consumer();
+    return v;
+}
+#define ATOMIC_LOAD32_ACQ(mem) comdb2_load32_acq(&(mem))
+#define ATOMIC_STORE32_REL(mem, val) (membar_producer(), (void)(*(volatile uint32_t *)&(mem) = (val)))
 #elif defined(_LINUX_SOURCE)
   #define CAS32(mem, oldv, newv) __atomic_compare_exchange_n(&mem, &oldv, newv, 0, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST)
   #define CAS64(mem, oldv, newv) __atomic_compare_exchange_n(&mem, &oldv, newv, 0, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST)
@@ -22,6 +32,8 @@
   #define ATOMIC_ADD32(mem, val) __atomic_add_fetch(&mem, val, __ATOMIC_SEQ_CST)
   #define ATOMIC_ADD64(mem, val) __atomic_add_fetch(&mem, val, __ATOMIC_SEQ_CST)
   #define ATOMIC_ADD32_PTR(mem, val) __atomic_add_fetch(mem, val, __ATOMIC_SEQ_CST)
+#define ATOMIC_LOAD32_ACQ(mem) __atomic_load_n(&(mem), __ATOMIC_ACQUIRE)
+#define ATOMIC_STORE32_REL(mem, val) __atomic_store_n(&(mem), val, __ATOMIC_RELEASE)
 #else
   #error "Missing atomic primitives"
 #endif
