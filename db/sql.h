@@ -673,6 +673,16 @@ enum remsql_type {
     IS_REMCREATE = 2
 };
 
+/* remote db: source of a pushed statement, SET REMPUSH_* */
+struct rempush_set {
+    char *name;   /* source dbname, unqualified tables resolve here */
+    char *tier;   /* source tier */
+    char *node;   /* source node running the client transaction */
+    uuid_t txnid; /* source client transaction */
+    int has_txnid;
+    int validated; /* node checked against the source db nodes */
+};
+
 struct remsql_set {
     enum remsql_type is_remsql;
     int server_version;
@@ -681,6 +691,8 @@ struct remsql_set {
     char tablename[MAXTABLELEN];
     uuid_t uuid;
     char *srcdbname;
+    uuid_t srctxn; /* source transaction this cursor reads for, if any */
+    int has_srctxn;
     struct errstat xerr;
     uint32_t numdbs;
     char **dbnames;
@@ -1135,6 +1147,7 @@ struct sqlclntstate {
     // Latch last statement's cost for comdb2_last_cost to fetch
     int64_t last_cost;
     int disable_fdb_push;
+    int fdb_push_alias; /* the statement being prepared uses an fdb alias */
 
     /* Modsnap start point */
     uint32_t modsnap_start_lsn_file; 
@@ -1153,6 +1166,9 @@ struct sqlclntstate {
     char *externalAuthUser;
 
     struct remsql_set remsql_set;
+    struct rempush_set rempush_set;
+    uuid_t rempush_txnid;         /* source db: id of the pushed remote transaction */
+    int rempush_txnid_registered; /* source db: rempush_txnid is registered */
     int fdb_push_remote; /* cache the global on each prepare */
     int fdb_push_remote_write; /* cache the global on each prepare */
     int n_set_commands; /* save the set that comes from a begin */

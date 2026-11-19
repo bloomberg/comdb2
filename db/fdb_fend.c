@@ -254,6 +254,8 @@ struct fdb_cursor {
     uuid_t tiduuid; /* UUID/fastseed storage for transaction, if any, or 0 */
     char *node;     /* connected to where? */
     int need_ssl;   /* uses ssl */
+    uuid_t srctxn;  /* source transaction we read for, pushed statement */
+    int has_srctxn;
 };
 
 typedef struct fdb_systable_info {
@@ -2387,6 +2389,30 @@ cdb2_hndl_tp* fdb_connect(const char *dbname, enum mach_class inclass, int local
     return hndl;
 }
 
+/* connect to a specific node of a remote db */
+static cdb2_hndl_tp *fdb_connect_node(const char *dbname, const char *node, const char **outclass, int flags)
+{
+    cdb2_hndl_tp *hndl = NULL;
+    int rc;
+
+    *outclass = node;
+
+    if (gbl_foreign_metadb_config) {
+        cdb2_set_comdb2db_info(gbl_foreign_metadb_config);
+    }
+
+    rc = cdb2_open(&hndl, dbname, node, flags | CDB2_DIRECT_CPU);
+    if (rc || !hndl) {
+        logmsg(LOGMSG_ERROR, "%s: failed to open remote db %s on %s rc %d\n", __func__, dbname, node, rc);
+        return NULL;
+    }
+
+    cdb2_set_argv0(hndl, gbl_dbname);
+    cdb2_register_retry_callback(hndl, &fdb_retry_callback);
+
+    return hndl;
+}
+
 static fdb_cursor_if_t *_cursor_open_remote_cdb2api(sqlclntstate *clnt,
                                                     fdb_t *fdb, int server_version,
                                                     int flags, int version,
@@ -2423,9 +2449,19 @@ static fdb_cursor_if_t *_cursor_open_remote_cdb2api(sqlclntstate *clnt,
 
     _cursor_set_common(fdbc_if, NULL, flags, use_ssl);
 
-
-    fdbc->fcon.api.hndl = fdb_connect(fdb->dbname, fdb->class, fdb->local, &class,
-                                      CDB2_SQL_ROWS);
+    /* a pushed statement reading the source db goes back to the source node
+     * running the client transaction, and reads for that transaction
+     */
+    struct rempush_set *rempush = &clnt->rempush_set;
+    if (rempush->validated && !strcasecmp(fdb->dbname, rempush->name)) {
+        fdbc->fcon.api.hndl = fdb_connect_node(fdb->dbname, rempush->node, &class, CDB2_SQL_ROWS);
+        if (rempush->has_txnid) {
+            memcpy(fdbc->srctxn, rempush->txnid, sizeof(uuid_t));
+            fdbc->has_srctxn = 1;
+        }
+    } else {
+        fdbc->fcon.api.hndl = fdb_connect(fdb->dbname, fdb->class, fdb->local, &class, CDB2_SQL_ROWS);
+    }
     if (!fdbc->fcon.api.hndl)
         goto error;
 
@@ -2503,6 +2539,239 @@ int fdb_2pc_set(sqlclntstate *clnt, fdb_t *fdb, cdb2_hndl_tp *hndl)
         return -1;
     }
 
+    return 0;
+}
+
+/* source db: client transactions with pushed remote writes, by txnid; remote
+ * db cursors reading for one of these come back with its txnid */
+typedef struct rempush_txn {
+    uuid_t txnid;
+    sqlclntstate *clnt;
+} rempush_txn_t;
+
+static hash_t *rempush_txns;
+static pthread_mutex_t rempush_txns_mtx = PTHREAD_MUTEX_INITIALIZER;
+
+static int _rempush_txn_register(sqlclntstate *clnt)
+{
+    rempush_txn_t *txn = calloc(1, sizeof(*txn));
+    if (!txn)
+        return -1;
+    memcpy(txn->txnid, clnt->rempush_txnid, sizeof(uuid_t));
+    txn->clnt = clnt;
+
+    Pthread_mutex_lock(&rempush_txns_mtx);
+    if (!rempush_txns)
+        rempush_txns = hash_init_o(offsetof(rempush_txn_t, txnid), sizeof(uuid_t));
+    hash_add(rempush_txns, txn);
+    Pthread_mutex_unlock(&rempush_txns_mtx);
+
+    clnt->rempush_txnid_registered = 1;
+    return 0;
+}
+
+static int _rempush_txn_exists(uuid_t txnid)
+{
+    int found;
+
+    Pthread_mutex_lock(&rempush_txns_mtx);
+    found = rempush_txns && hash_find(rempush_txns, txnid) != NULL;
+    Pthread_mutex_unlock(&rempush_txns_mtx);
+
+    return found;
+}
+
+void fdb_clear_inremtrans(sqlclntstate *clnt)
+{
+    clnt->inremtrans = 0;
+
+    if (!clnt->rempush_txnid_registered)
+        return;
+
+    Pthread_mutex_lock(&rempush_txns_mtx);
+    rempush_txn_t *txn = hash_find(rempush_txns, clnt->rempush_txnid);
+    if (txn) {
+        hash_del(rempush_txns, txn);
+        free(txn);
+    }
+    Pthread_mutex_unlock(&rempush_txns_mtx);
+
+    clnt->rempush_txnid_registered = 0;
+}
+
+/**
+ * SET the source db, node and client transaction for a remote db we push
+ * writes to; unqualified tables of the pushed statements resolve to this db,
+ * read from this node
+ *
+ */
+int fdb_rempush_set(sqlclntstate *clnt, fdb_t *fdb, cdb2_hndl_tp *hndl)
+{
+    char str[256];
+    char *class = gbl_machine_class ? gbl_machine_class : gbl_myhostname;
+    int rc;
+
+    if (fdb->server_version < FDB_VER_PUSH_SRCDB)
+        return 0;
+
+    snprintf(str, sizeof(str), "SET REMPUSH_NAME %s", gbl_dbname);
+    rc = cdb2_run_statement(hndl, str);
+    if (rc) {
+        logmsg(LOGMSG_ERROR, "%s: %s failed to set rempush_name rc %d\n", __func__, fdb->dbname, rc);
+        return -1;
+    }
+
+    snprintf(str, sizeof(str), "SET REMPUSH_TIER %s", class);
+    rc = cdb2_run_statement(hndl, str);
+    if (rc) {
+        logmsg(LOGMSG_ERROR, "%s: %s failed to set rempush_tier rc %d\n", __func__, fdb->dbname, rc);
+        return -1;
+    }
+
+    snprintf(str, sizeof(str), "SET REMPUSH_NODE %s", gbl_myhostname);
+    rc = cdb2_run_statement(hndl, str);
+    if (rc) {
+        logmsg(LOGMSG_ERROR, "%s: %s failed to set rempush_node rc %d\n", __func__, fdb->dbname, rc);
+        return -1;
+    }
+
+    if (!clnt->in_client_trans)
+        return 0;
+
+    /* one txnid for the client transaction, shared by all remote dbs */
+    if (!clnt->rempush_txnid_registered) {
+        comdb2uuid(clnt->rempush_txnid);
+        if (_rempush_txn_register(clnt)) {
+            logmsg(LOGMSG_ERROR, "%s: failed to register rempush txnid\n", __func__);
+            return -1;
+        }
+    }
+
+    uuidstr_t us;
+    snprintf(str, sizeof(str), "SET REMPUSH_TXNID %s", comdb2uuidstr(clnt->rempush_txnid, us));
+    rc = cdb2_run_statement(hndl, str);
+    if (rc) {
+        logmsg(LOGMSG_ERROR, "%s: %s failed to set rempush_txnid rc %d\n", __func__, fdb->dbname, rc);
+        return -1;
+    }
+
+    return 0;
+}
+
+enum fdb_stmt_dbs fdb_stmt_uses_other_dbs(Parse *pParse, int iDb)
+{
+    Vdbe *v = pParse->pVdbe;
+    enum fdb_stmt_dbs rc = FDB_STMT_REMOTE_ONLY;
+
+    if (!v)
+        return FDB_STMT_OTHER_DBS;
+
+    /* views are expanded by now, the statement marked them */
+    if (sqlite3ParseToplevel(pParse)->readsView)
+        rc = FDB_STMT_VIEWS;
+
+    for (int i = 0; i < v->nOp; i++) {
+        Op *op = &v->aOp[i];
+        switch (op->opcode) {
+        case OP_OpenRead:
+        case OP_OpenWrite:
+        case OP_ReopenIdx:
+            /* p3 is the database; temp (1) tables belong to the client
+             * connection (lua temp tables)
+             */
+            if (op->p3 == 1)
+                return FDB_STMT_TEMPTABLES;
+            if (op->p3 != iDb && rc == FDB_STMT_REMOTE_ONLY)
+                rc = FDB_STMT_OTHER_DBS;
+            break;
+        case OP_VOpen: {
+            /* virtual tables, including system tables, are evaluated by the
+             * db running the statement; table-valued functions returning the
+             * same rows on any db are not
+             */
+            static const char *pure_tvfs[] = {"generate_series", "json_each", "json_tree"};
+            VTable *vtab = op->p4.pVtab;
+            int pure = 0;
+            for (int j = 0; vtab && vtab->pMod && vtab->pMod->zName && j < sizeof(pure_tvfs) / sizeof(pure_tvfs[0]);
+                 j++) {
+                if (!strcasecmp(vtab->pMod->zName, pure_tvfs[j]))
+                    pure = 1;
+            }
+            if (!pure)
+                return FDB_STMT_VTABS;
+            break;
+        }
+        }
+    }
+    return rc;
+}
+
+void fdb_free_rempush_set(sqlclntstate *clnt)
+{
+    free(clnt->rempush_set.name);
+    free(clnt->rempush_set.tier);
+    free(clnt->rempush_set.node);
+    bzero(&clnt->rempush_set, sizeof(clnt->rempush_set));
+}
+
+const char *fdb_rempush_srcdb(void)
+{
+    struct sql_thread *thd = pthread_getspecific(query_info_key);
+    sqlclntstate *clnt = thd ? thd->clnt : NULL;
+
+    if (!clnt)
+        return NULL;
+
+    return clnt->rempush_set.name;
+}
+
+int fdb_rempush_validate(char *err, int errlen)
+{
+    struct sql_thread *thd = pthread_getspecific(query_info_key);
+    struct rempush_set *set = &thd->clnt->rempush_set;
+    int found = 0;
+
+    if (set->validated)
+        return 0;
+
+    if (!set->node) {
+        snprintf(err, errlen, "missing rempush node for %s", set->name);
+        return -1;
+    }
+
+    /* the source db fdb, read locked; the table was resolved to it, but the
+     * table may have been attached to this engine long ago */
+    int created = 0;
+    fdb_t *fdb = _new_fdb(set->name, &created);
+    if (!fdb) {
+        snprintf(err, errlen, "rempush source db %s not found", set->name);
+        return -1;
+    }
+
+    if (fdb->local) {
+        /* a local db runs on this machine */
+        found = !strcasecmp(set->node, gbl_myhostname);
+    } else {
+        /* the cached nodes may be stale (i.e. a node was added to the source
+         * db); if the node is not one of them, refresh them once
+         */
+        for (int refresh = 0; refresh <= 1 && !found; refresh++) {
+            if (fdb_locate(fdb->dbname, fdb->class, refresh, &fdb->loc, &fdb->dbcon_mtx) != FDB_NOERR)
+                continue;
+            Pthread_mutex_lock(&fdb->dbcon_mtx);
+            found = fdb_location_has_node(fdb->loc, set->node);
+            Pthread_mutex_unlock(&fdb->dbcon_mtx);
+        }
+    }
+
+    put_fdb(fdb, FDB_PUT_NOFREE);
+
+    if (!found) {
+        snprintf(err, errlen, "rempush node %s is not a node of %s", set->node, set->name);
+        return -1;
+    }
+
+    set->validated = 1;
     return 0;
 }
 
@@ -3105,6 +3374,23 @@ done:
     return rc;
 }
 
+int fdb_server_version(const fdb_t *fdb)
+{
+    return fdb->server_version;
+}
+
+/* the remote db requires an older protocol; the sqlite engines attached
+ * it with the newer one, reload them
+ */
+static void _downgrade_fdb_version(fdb_t *fdb, int version)
+{
+    int old = fdb->server_version;
+
+    fdb->server_version = version;
+    if (version < old)
+        BDB_BUMP_DBOPEN_GEN(invalid, "fdb protocol downgrade");
+}
+
 static void _update_fdb_version(BtCursor *pCur, const char *errstr)
 {
     /* extract protocol number */
@@ -3118,7 +3404,7 @@ static void _update_fdb_version(BtCursor *pCur, const char *errstr)
            __func__, pCur->bt->fdb->dbname, protocol_version,
            pCur->bt->fdb->server_version);
 
-    pCur->bt->fdb->server_version = protocol_version;
+    _downgrade_fdb_version(pCur->bt->fdb, protocol_version);
     /* this socket is possible dirty, because the old version
      * is detected in the first replay; but we have probably sent
      * async requests already to the target.
@@ -4009,10 +4295,11 @@ static fdb_tran_t *_dtran_get_subtran_cdb2api(sqlclntstate *clnt, fdb_t *fdb,
     return tran;
 }
 
-static fdb_tran_t *fdb_trans_dtran_get_subtran(sqlclntstate *clnt,
-                                               fdb_distributed_tran_t *dtran,
-                                               fdb_t *fdb, int use_ssl,
-                                               int *created)
+/* push is set if the remote transaction runs pushed writes; otherwise this
+ * node runs the writes over remote cursors
+ */
+static fdb_tran_t *fdb_trans_dtran_get_subtran(sqlclntstate *clnt, fdb_distributed_tran_t *dtran, fdb_t *fdb,
+                                               int use_ssl, int *created, int push)
 {
     fdb_tran_t *tran;
     uuidstr_t us;
@@ -4020,13 +4307,11 @@ static fdb_tran_t *fdb_trans_dtran_get_subtran(sqlclntstate *clnt,
     tran = fdb_get_subtran(dtran, fdb);
 
     if (!tran) {
-        /* we allow remtran over cdb2api if remote allows and either:
-         * 1) standalone write and push remote write is enabled
-         * 2) socksql txn and push remote read and writes are enabled
+        /* pushed writes run over cdb2api; fdb_push_write_setup checked the
+         * remote version, the push tunables and the transaction mode;
+         * remote cursors cannot write over cdb2api
          */
-        if (fdb->server_version >= FDB_VER_WR_CDB2API && !clnt->disable_fdb_push && clnt->fdb_push_remote_write &&
-            (/*1*/!clnt->in_client_trans ||
-            (/*2*/clnt->fdb_push_remote && clnt->dbtran.mode == TRANLEVEL_SOSQL)))
+        if (push)
             tran = _dtran_get_subtran_cdb2api(clnt, fdb, use_ssl);
         else
             tran = _dtran_get_subtran(clnt, fdb, use_ssl);
@@ -4050,11 +4335,18 @@ static fdb_tran_t *fdb_trans_dtran_get_subtran(sqlclntstate *clnt,
                        comdb2uuidstr((unsigned char *)tran->tid, us),
                        fdb->dbname, tran->is_cdb2api);
         }
-        /* this is a bug, probably sharing the wrong fdb_tran after switching to 
-         * a lower version protocol
+        /* pushed writes and remote cursor writes do not share a remote
+         * transaction; fdb_push_write_setup does not let a statement get here
          */
-        if (clnt->disable_fdb_push && tran->is_cdb2api)
-            abort();
+        if (push != tran->is_cdb2api) {
+            logmsg(LOGMSG_ERROR, "%s: db \"%s\" push %d remote transaction cdb2api %d\n", __func__, fdb->dbname, push,
+                   tran->is_cdb2api);
+            clnt->fdb_state.preserve_err = 1;
+            clnt->fdb_state.xerr.errval = FDB_ERR_GENERIC;
+            snprintf(clnt->fdb_state.xerr.errstr, sizeof(clnt->fdb_state.xerr.errstr),
+                     "cannot mix pushed and local writes to %s in a transaction", fdb->dbname);
+            return NULL;
+        }
 
         if (created)
             *created = 0;
@@ -4063,8 +4355,7 @@ static fdb_tran_t *fdb_trans_dtran_get_subtran(sqlclntstate *clnt,
     return tran;
 }
 
-fdb_tran_t *fdb_trans_begin_or_join(sqlclntstate *clnt, fdb_t *fdb,
-                                    int use_ssl, int *created)
+static fdb_tran_t *_trans_begin_or_join(sqlclntstate *clnt, fdb_t *fdb, int use_ssl, int *created, int push)
 {
     fdb_distributed_tran_t *dtran;
     fdb_tran_t *tran;
@@ -4080,11 +4371,43 @@ fdb_tran_t *fdb_trans_begin_or_join(sqlclntstate *clnt, fdb_t *fdb,
         }
     }
 
-    tran = fdb_trans_dtran_get_subtran(clnt, dtran, fdb, use_ssl, created);
+    tran = fdb_trans_dtran_get_subtran(clnt, dtran, fdb, use_ssl, created, push);
 
     Pthread_mutex_unlock(&clnt->dtran_mtx);
 
     return tran;
+}
+
+fdb_tran_t *fdb_trans_begin_or_join(sqlclntstate *clnt, fdb_t *fdb, int use_ssl, int *created)
+{
+    return _trans_begin_or_join(clnt, fdb, use_ssl, created, 0);
+}
+
+fdb_tran_t *fdb_push_trans_begin_or_join(sqlclntstate *clnt, fdb_t *fdb, int *created)
+{
+    return _trans_begin_or_join(clnt, fdb, 0, created, 1);
+}
+
+enum fdb_subtran_type fdb_get_subtran_type(sqlclntstate *clnt, const char *dbname)
+{
+    enum fdb_subtran_type type = FDB_SUBTRAN_NONE;
+    fdb_tran_t *tran;
+
+    dbname = _strip_class_prefix(dbname);
+
+    Pthread_mutex_lock(&clnt->dtran_mtx);
+    if (clnt->dbtran.dtran) {
+        LISTC_FOR_EACH(&clnt->dbtran.dtran->fdb_trans, tran, lnk)
+        {
+            if (!strcasecmp(tran->fdb->dbname, dbname)) {
+                type = tran->is_cdb2api ? FDB_SUBTRAN_PUSH : FDB_SUBTRAN_LOCAL;
+                break;
+            }
+        }
+    }
+    Pthread_mutex_unlock(&clnt->dtran_mtx);
+
+    return type;
 }
 
 fdb_tran_t *fdb_trans_join(sqlclntstate *clnt, fdb_t *fdb)
@@ -5650,6 +5973,17 @@ static int _fdb_cdb2api_send_set(fdb_cursor_t *fdbc)
         return FDB_ERR_GENERIC;
     }
 
+    if (fdbc->has_srctxn) {
+        comdb2uuidstr(fdbc->srctxn, us);
+        snprintf(str, sizeof(str), "SET REMSQL_SRCTXN %s", us);
+
+        rc = cdb2_run_statement(hndl, str);
+        if (rc) {
+            logmsg(LOGMSG_ERROR, "%s failed to set source transaction rc %d\n", __func__, rc);
+            return FDB_ERR_GENERIC;
+        }
+    }
+
     return FDB_NOERR;
 }
 
@@ -5743,7 +6077,7 @@ static int _fdb_run_sql(BtCursor *pCur, char *sql)
                            " downgrading to 6 from %d\n",
                            __func__, pCur->bt->fdb->dbname,
                            pCur->bt->fdb->server_version);
-                    pCur->bt->fdb->server_version = FDB_VER_AUTH;
+                    _downgrade_fdb_version(pCur->bt->fdb, FDB_VER_AUTH);
 
                     rc = FDB_ERR_FDB_VERSION;
                     goto done;
@@ -6068,8 +6402,82 @@ int process_fdb_set_cdb2api(sqlclntstate *clnt, char *sqlstr, char *err,
             snprintf(err, errlen, "Access Error: db not allowed to connect");
             return -1;
         }
+    } else if (strncasecmp(sqlstr, "srctxn ", 7) == 0) {
+        /* a remote db reads for a client transaction that pushed a write
+         * to it from this node; the transaction must be active here */
+        sqlstr += 6;
+        sqlstr = skipws(sqlstr);
+        if (!*sqlstr) {
+            snprintf(err, errlen, "missing source transaction");
+            return -1;
+        }
+        if (uuid_parse(sqlstr, clnt->remsql_set.srctxn)) {
+            snprintf(err, errlen, "failed to parse source transaction");
+            return -1;
+        }
+        if (!_rempush_txn_exists(clnt->remsql_set.srctxn)) {
+            snprintf(err, errlen, "unknown source transaction %s", sqlstr);
+            return -1;
+        }
+        clnt->remsql_set.has_srctxn = 1;
+        if (gbl_fdb_track)
+            logmsg(LOGMSG_USER, "remsql cursor reads for source transaction %s\n", sqlstr);
     } else {
         snprintf(err, errlen, "unknown setting \"%s\"", sqlstr);
+        return -1;
+    }
+    return 0;
+}
+
+int process_fdb_set_rempush(sqlclntstate *clnt, char *sqlstr, char *err, int errlen)
+{
+    struct rempush_set *set = &clnt->rempush_set;
+    char **dst = NULL;
+
+    if (sqlstr)
+        sqlstr = skipws(sqlstr);
+
+    if (!sqlstr || !*sqlstr) {
+        snprintf(err, errlen, "missing rempush setting");
+        return -1;
+    }
+
+    if (strncasecmp(sqlstr, "name ", 5) == 0) {
+        sqlstr += 5;
+        dst = &set->name;
+    } else if (strncasecmp(sqlstr, "tier ", 5) == 0) {
+        sqlstr += 5;
+        dst = &set->tier;
+    } else if (strncasecmp(sqlstr, "node ", 5) == 0) {
+        sqlstr += 5;
+        dst = &set->node;
+    } else if (strncasecmp(sqlstr, "txnid ", 6) == 0) {
+        sqlstr = skipws(sqlstr + 6);
+        if (!*sqlstr || uuid_parse(sqlstr, set->txnid)) {
+            snprintf(err, errlen, "failed to parse rempush txnid");
+            return -1;
+        }
+        set->has_txnid = 1;
+        return 0;
+    } else {
+        snprintf(err, errlen, "failed to parse rempush option %s", sqlstr);
+        return -1;
+    }
+
+    sqlstr = skipws(sqlstr);
+    if (!*sqlstr) {
+        snprintf(err, errlen, "missing rempush value");
+        return -1;
+    }
+    free(*dst);
+    *dst = NULL;
+    GET_PCSTR(sqlstr, "rempush", *dst);
+
+    /* name or node changed, check the node again */
+    set->validated = 0;
+
+    if (dst == &set->name && !fdb_is_dbname_in_whitelist(set->name)) {
+        snprintf(err, errlen, "Access Error: db not allowed to connect");
         return -1;
     }
     return 0;

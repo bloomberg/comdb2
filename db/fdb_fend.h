@@ -75,8 +75,9 @@
 #define FDB_VER_CDB2API 7
 #define FDB_VER_WR_CDB2API 8
 #define FDB_VER_2PC_CDB2API 9
+#define FDB_VER_PUSH_SRCDB 10
 
-#define FDB_VER FDB_VER_2PC_CDB2API
+#define FDB_VER FDB_VER_PUSH_SRCDB
 
 extern int gbl_fdb_default_ver;
 
@@ -282,8 +283,18 @@ const char *fdb_table_entry_dbname(fdb_tbl_ent_t *ent);
 fdb_tbl_ent_t *fdb_clnt_cache_get_ent(sqlclntstate *clnt, int rootpage);
 
 /* transactional api */
+/* remote transaction for writes over remote cursors */
 fdb_tran_t *fdb_trans_begin_or_join(sqlclntstate *clnt, fdb_t *fdb,
                                     int use_ssl, int *created);
+/* remote transaction for pushed writes */
+fdb_tran_t *fdb_push_trans_begin_or_join(sqlclntstate *clnt, fdb_t *fdb, int *created);
+enum fdb_subtran_type {
+    FDB_SUBTRAN_NONE = 0, /* no remote transaction for this db */
+    FDB_SUBTRAN_PUSH = 1, /* remote transaction runs pushed writes */
+    FDB_SUBTRAN_LOCAL = 2 /* remote transaction runs remote cursor writes */
+};
+/* type of the remote transaction for dbname in the client transaction */
+enum fdb_subtran_type fdb_get_subtran_type(sqlclntstate *clnt, const char *dbname);
 fdb_tran_t *fdb_trans_join(sqlclntstate *clnt, fdb_t *fdb);
 int fdb_trans_commit(sqlclntstate *clnt, enum trans_clntcomm sideeffects, int *is_distributed);
 int fdb_trans_rollback(sqlclntstate *clnt);
@@ -318,6 +329,8 @@ int fdb_process_message(const char *line, int lline);
  *
  */
 int fdb_table_version(unsigned long long version);
+/* protocol version the remote db speaks */
+int fdb_server_version(const fdb_t *fdb);
 
 /**
  * Clear sqlclntstate fdb_state object
@@ -411,6 +424,30 @@ void fdb_init_disttxn(sqlclntstate *clnt);
  *
  */
 int fdb_2pc_set(sqlclntstate *clnt, fdb_t *fdb, cdb2_hndl_tp *hndl);
+
+/* source db: identify this db, node and transaction to a db we push writes to */
+int fdb_rempush_set(sqlclntstate *clnt, fdb_t *fdb, cdb2_hndl_tp *hndl);
+/* source db: pushed remote transaction ended, drop its txnid */
+void fdb_clear_inremtrans(sqlclntstate *clnt);
+/* remote db: parse SET REMPUSH_* */
+int process_fdb_set_rempush(sqlclntstate *clnt, char *sqlstr, char *err, int errlen);
+void fdb_free_rempush_set(sqlclntstate *clnt);
+/* remote db: unqualified and main tables of a pushed statement resolve to
+ * the source db; returns the source dbname, or NULL if not pushed */
+const char *fdb_rempush_srcdb(void);
+/* remote db: validate the source node after the source db was discovered */
+int fdb_rempush_validate(char *err, int errlen);
+/* source db: does the prepared statement access tables outside db iDb? */
+enum fdb_stmt_dbs {
+    FDB_STMT_REMOTE_ONLY = 0, /* only tables of db iDb */
+    FDB_STMT_OTHER_DBS = 1,   /* tables of other dbs, including this db */
+    FDB_STMT_TEMPTABLES = 2,  /* temp tables of the client connection */
+    FDB_STMT_VTABS = 3,       /* virtual tables evaluated here, i.e. not
+                                 table-valued functions like generate_series */
+    FDB_STMT_VIEWS = 4        /* views, including time partitions */
+};
+struct Parse;
+enum fdb_stmt_dbs fdb_stmt_uses_other_dbs(struct Parse *pParse, int iDb);
 
 /**
  *  Create a fdb push connector

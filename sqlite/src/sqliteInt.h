@@ -3320,6 +3320,7 @@ struct Parse {
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
   ast_t *ast;
   int preserve_update;    /* statement replacement, preserve flags */
+  u8 readsView;           /* statement reads a view (or time partition) */
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
   /**************************************************************************
