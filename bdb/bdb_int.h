@@ -290,6 +290,8 @@ struct tran_tag {
     int schema_change_txn;
     /* 1 if this is from a schema change rebuild */
     int is_sc_rebuild;
+    /* 1 if this rebuild commit stays out of the commit LSN map */
+    int sc_skip_commit_map;
     struct tran_tag *sc_parent_tran;
 
     /* Set to 1 if this txn touches a logical live sc table */
@@ -824,6 +826,7 @@ struct bdb_state_tag {
     bdb_access_t *access;
 
     char *origname; /* name before new.name shenanigans */
+    int sc_commit_map_skip; /* replacement whose converter commits are not in the commit LSN map */
 
     pthread_mutex_t exit_lock;
 

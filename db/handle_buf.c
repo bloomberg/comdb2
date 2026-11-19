@@ -42,6 +42,7 @@
 #include "intern_strings.h"
 #include "logmsg.h"
 #include "transactionstate_systable.h"
+#include "sc_logic.h"
 
 #ifdef MONITOR_STACK
 #include "comdb2_pthread_create.h"
@@ -572,6 +573,12 @@ static void *thd_req(void *vthd)
         thrman_origin(thr_self, getorigin(thd->iq));
         user_request_begin(REQUEST_TYPE_QTRAP, FLAG_REQUEST_TRACK_EVERYTHING);
         handle_ireq(thd->iq);
+        /* a schema change's commit LSN map checkpoint asked for a new master: the
+         * request is done, nothing it does needs this node to be the master */
+        if (thd->iq->sc_transfer_master) {
+            thd->iq->sc_transfer_master = 0;
+            sc_transfer_master();
+        }
         if (debug_this_request(gbl_debug_until) ||
             (gbl_who > 0 && !gbl_sdebug)) {
             struct per_request_stats *st;
