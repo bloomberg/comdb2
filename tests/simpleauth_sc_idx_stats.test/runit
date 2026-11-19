@@ -1,0 +1,53 @@
+#!/usr/bin/env bash
+bash -n "$0" || exit 1
+
+# An ALTER that only renames an index copies the index's sqlite_stat1/4 rows to
+# the new name with internal sql on the master. That copy must not be subject
+# to the database's auth policy: here anonymous Connect is denied.
+
+source ${TESTSROOTDIR}/tools/runit_common.sh
+
+dbnm=$1
+[[ -z "$dbnm" ]] && failexit "need a DB name"
+
+OP="bpi:procauth:cluster:test:user:op:bpkg:setup"
+
+sa() { ${TESTSBUILDDIR}/simpleauth_test $dbnm "$OP" "$1"; }
+
+passed=0
+failed=0
+
+echo "=== Setup: table with one key, analyzed ==="
+sa 'create table t { schema { int a } keys { dup "k1" = a } }' || failexit "create t"
+sa "insert into t select value from generate_series(1, 1000)" || failexit "insert t"
+sa "analyze t" || failexit "analyze t"
+
+out=$(sa "select count(*) as cnt from sqlite_stat1 where tbl='t' and idx like '\$K1_%'")
+echo "$out" | grep -q "(cnt=1)" || failexit "no stat1 row for k1 after analyze: $out"
+
+echo "=== Lock down: only op may connect ==="
+sa "insert into comdb2_simple_auth values('*', 'op', 'setup', '*', '*', '*') on conflict do nothing" ||
+    failexit "grant op"
+sa "delete from comdb2_simple_auth where cluster='*' and user='*' and bpkg='*' and resourcetype='*' and resourcename='*' and verb in ('*', 'Connect')" ||
+    failexit "remove wildcard rules"
+
+echo "=== Test 1: index rename keeps its stats ==="
+sa 'alter table t { schema { int a } keys { dup "k2" = a } }' || failexit "alter t"
+
+out=$(sa "select count(*) as cnt from sqlite_stat1 where tbl='t' and idx like '\$K2_%'")
+if echo "$out" | grep -q "(cnt=1)"; then
+    echo "  PASS: stat1 row copied to renamed index"
+    passed=$((passed + 1))
+else
+    echo "  FAIL: no stat1 row for renamed index k2: $out"
+    failed=$((failed + 1))
+fi
+
+echo "=== Cleanup ==="
+sa "insert into comdb2_simple_auth values('*', '*', '*', '*', '*', '*') on conflict do nothing" || true
+sa "insert into comdb2_simple_auth values('*', '*', '*', 'Connect', '*', '*') on conflict do nothing" || true
+
+echo "Results: $passed passed, $failed failed"
+[[ $failed -gt 0 ]] && failexit "$failed test(s) failed"
+echo "Success"
+exit 0
