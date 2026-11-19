@@ -65,6 +65,7 @@ static const char revid[] =
 #ifndef TESTSUITE
 
 #include <bdbglue.h>
+#include <comdb2_atomic.h>
 int rep_qstat_has_fills(void);
 int rep_qstat_has_allreq(void);
 extern int db_is_exiting(void);
@@ -2814,7 +2815,7 @@ int gbl_rep_exclusive_max_wait_ms = 1000;
 
 static pthread_mutex_t rep_excl_lk = PTHREAD_MUTEX_INITIALIZER;
 static pthread_cond_t rep_excl_cd = PTHREAD_COND_INITIALIZER;
-static int rep_excl_flag;	/* written under rep_excl_lk */
+static u_int32_t rep_excl_flag;	/* written under rep_excl_lk */
 static u_int32_t rep_excl_gen;	/* written under rep_excl_lk */
 
 /* Reader side, for the rep-retry trace */
@@ -2828,8 +2829,8 @@ rep_exclusive_set(void)
 	Pthread_mutex_lock(&rep_excl_lk);
 	if (!rep_excl_flag) {
 		u_int32_t gen = rep_excl_gen + 1;
-		__atomic_store_n(&rep_excl_gen, gen ? gen : 1, __ATOMIC_RELAXED);
-		__atomic_store_n(&rep_excl_flag, 1, __ATOMIC_RELEASE);
+		ATOMIC_STORE32_REL(rep_excl_gen, gen ? gen : 1);
+		ATOMIC_STORE32_REL(rep_excl_flag, 1);
 	}
 	Pthread_mutex_unlock(&rep_excl_lk);
 }
@@ -2837,11 +2838,11 @@ rep_exclusive_set(void)
 static void
 rep_exclusive_clear(void)
 {
-	if (!__atomic_load_n(&rep_excl_flag, __ATOMIC_ACQUIRE))
+	if (!ATOMIC_LOAD32_ACQ(rep_excl_flag))
 		return;
 	Pthread_mutex_lock(&rep_excl_lk);
 	if (rep_excl_flag) {
-		__atomic_store_n(&rep_excl_flag, 0, __ATOMIC_RELEASE);
+		ATOMIC_STORE32_REL(rep_excl_flag, 0);
 		Pthread_cond_broadcast(&rep_excl_cd);
 	}
 	Pthread_mutex_unlock(&rep_excl_lk);
@@ -2853,9 +2854,9 @@ rep_exclusive_clear(void)
 u_int32_t
 rep_exclusive_wanted(void)
 {
-	if (!__atomic_load_n(&rep_excl_flag, __ATOMIC_ACQUIRE))
+	if (!ATOMIC_LOAD32_ACQ(rep_excl_flag))
 		return 0;
-	return __atomic_load_n(&rep_excl_gen, __ATOMIC_RELAXED);
+	return ATOMIC_LOAD32_ACQ(rep_excl_gen);
 }
 
 /* For readers, with their page locks already dropped: wait until generation
@@ -2896,10 +2897,10 @@ rep_exclusive_wait(u_int32_t gen)
 	}
 	Pthread_mutex_unlock(&rep_excl_lk);
 
-	__atomic_add_fetch(&gbl_rep_exclusive_yields, 1, __ATOMIC_RELAXED);
-	__atomic_add_fetch(&gbl_rep_exclusive_wait_us, bb_berkdb_fasttime() - start, __ATOMIC_RELAXED);
+	ATOMIC_ADD64(gbl_rep_exclusive_yields, 1);
+	ATOMIC_ADD64(gbl_rep_exclusive_wait_us, bb_berkdb_fasttime() - start);
 	if (timedout)
-		__atomic_add_fetch(&gbl_rep_exclusive_timeouts, 1, __ATOMIC_RELAXED);
+		ATOMIC_ADD64(gbl_rep_exclusive_timeouts, 1);
 }
 
 /* One replicated transaction's way through the deadlock retry loop, for the
@@ -2923,9 +2924,9 @@ rep_retry_track_start(struct rep_retry_track *tr)
 	tr->start_us = bb_berkdb_fasttime();
 	if ((tr->stats = gbl_bb_berkdb_enable_thread_stats))
 		tr->ts0 = *bb_berkdb_get_thread_stats();
-	tr->yields0 = __atomic_load_n(&gbl_rep_exclusive_yields, __ATOMIC_RELAXED);
-	tr->rwait0 = __atomic_load_n(&gbl_rep_exclusive_wait_us, __ATOMIC_RELAXED);
-	tr->rtmo0 = __atomic_load_n(&gbl_rep_exclusive_timeouts, __ATOMIC_RELAXED);
+	tr->yields0 = ATOMIC_LOAD64(gbl_rep_exclusive_yields);
+	tr->rwait0 = ATOMIC_LOAD64(gbl_rep_exclusive_wait_us);
+	tr->rtmo0 = ATOMIC_LOAD64(gbl_rep_exclusive_timeouts);
 }
 
 /* Trace a transaction that lost at least one deadlock, however it ended */
@@ -2952,9 +2953,9 @@ rep_retry_track_end(struct rep_retry_track *tr, DB_LSN *lsn, int ret, int retrie
 		(bb_berkdb_fasttime() - tr->start_us) / 1000.0,
 		tr->backoff_us / 1000.0, collect_us / 1000.0, waits,
 		wait_us / 1000.0, tr->escalated_at,
-		__atomic_load_n(&gbl_rep_exclusive_yields, __ATOMIC_RELAXED) - tr->yields0,
-		(__atomic_load_n(&gbl_rep_exclusive_wait_us, __ATOMIC_RELAXED) - tr->rwait0) / 1000.0,
-		__atomic_load_n(&gbl_rep_exclusive_timeouts, __ATOMIC_RELAXED) - tr->rtmo0);
+		ATOMIC_LOAD64(gbl_rep_exclusive_yields) - tr->yields0,
+		(ATOMIC_LOAD64(gbl_rep_exclusive_wait_us) - tr->rwait0) / 1000.0,
+		ATOMIC_LOAD64(gbl_rep_exclusive_timeouts) - tr->rtmo0);
 }
 
 static inline int
