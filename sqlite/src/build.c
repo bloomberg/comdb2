@@ -286,6 +286,7 @@ void sqlite3FinishCoding(Parse *pParse){
         pParse->rc = SQLITE_SCHEMA_PUSH_REMOTE_WRITE;
         return;
       }
+      if( pParse->nErr ) return; /* write can be neither pushed nor local */
       if( comdb2_check_parallel(pParse) ){
         pParse->rc = SQLITE_SCHEMA_DOHSQL;
         return;
@@ -738,6 +739,45 @@ Table *sqlite3LocateTable(
 
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
 extern int gbl_allow_user_schema;
+extern const char *fdb_rempush_srcdb(void);
+extern int fdb_rempush_validate(char *err, int errlen);
+
+/*
+** A table of a pushed statement resolved to the source db: the source db is
+** discovered now, check that the source node is one of its nodes.
+** Also, mark statements reading views.
+*/
+static Table *rempushValidate(Parse *pParse, Table *pTab, const char *zSrcDb){
+  char zErr[256];
+  /* a remote write cannot be pushed if it reads a view (or time partition);
+  ** the remote db cannot resolve them
+  */
+  if( pTab && pTab->pSelect ) sqlite3ParseToplevel(pParse)->readsView = 1;
+  if( pTab && zSrcDb && fdb_rempush_validate(zErr, sizeof(zErr)) ){
+    sqlite3ErrorMsg(pParse, "%s", zErr);
+    return 0;
+  }
+  return pTab;
+}
+
+/*
+** Is zName a table evaluated by this db: a virtual table or table-valued
+** function, including the comdb2sys_ aliases of comdb2_ system tables and
+** the pragma_ table-valued functions, registered on first use.
+*/
+static int isLocalOnlyTable(sqlite3 *db, const char *zName){
+  if( sqlite3HashFind(&db->aModule, zName) ) return 1;
+  if( sqlite3_strnicmp(zName, "comdb2sys_", 10)==0 ){
+    char *zSys = sqlite3_mprintf("comdb2_%s", zName+10);
+    int found = zSys && sqlite3HashFind(&db->aModule, zSys)!=0;
+    sqlite3_free(zSys);
+    return found;
+  }
+  if( sqlite3_strnicmp(zName, "pragma_", 7)==0 ){
+    return sqlite3PragmaVtabRegister(db, zName)!=0;
+  }
+  return 0;
+}
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
 /*
@@ -763,16 +803,33 @@ Table *sqlite3LocateTableItem(
     zDb = p->zDatabase;
   }
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
+  /* a statement pushed from a source db: unqualified and main tables are
+  ** tables of the source db, as seen by its client; tables used by sqlite
+  ** internal parses (virtual table declarations, nested statements) are not
+  */
+  const char *zSrcDb = NULL;
+  if( (zDb==0 || (p->pSchema==0 && sqlite3StrICmp(zDb, "main")==0))
+   && !pParse->db->init.busy && !p->fg.isTabFunc
+   && pParse->eParseMode==PARSE_MODE_NORMAL && pParse->nested==0 ){
+    zSrcDb = fdb_rempush_srcdb();
+    /* table-valued functions and virtual tables are evaluated locally */
+    if( zSrcDb && isLocalOnlyTable(pParse->db, p->zName) ) zSrcDb = NULL;
+    if( zSrcDb ) zDb = zSrcDb;
+  }
   if( gbl_allow_user_schema ){
     char tblName[MAXTABLELEN];
     if (resolveTableName(pParse->db, p, zDb, tblName, sizeof(tblName))) {
         sqlite3ErrorMsg(pParse, "failed to resolve table name");
         return 0;
     }
-    return sqlite3LocateTable(pParse, flags, tblName, zDb);
+    Table *pTab = sqlite3LocateTable(pParse, flags, tblName, zDb);
+    return rempushValidate(pParse, pTab, zSrcDb);
   }
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+  Table *pTab = sqlite3LocateTable(pParse, flags, p->zName, zDb);
+  return rempushValidate(pParse, pTab, zSrcDb);
+#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   return sqlite3LocateTable(pParse, flags, p->zName, zDb);
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 }
 
 /*
