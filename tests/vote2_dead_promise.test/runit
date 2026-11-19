@@ -1,0 +1,117 @@
+#!/usr/bin/env bash
+bash -n "$0" || exit 1
+set -x
+source ${TESTSROOTDIR}/tools/runit_common.sh
+source ${TESTSROOTDIR}/tools/cluster_utils.sh
+
+# A node whose vote2 went to a winner that died keeps refusing the older master: that master must be
+# deposed once, the node must rejoin coherent, and no acked write may be lost.
+nodes=($CLUSTER)
+if [[ ${#nodes[@]} -lt 5 ]]; then
+    echo "This test requires 5 nodes"
+    exit 0
+fi
+
+ROUNDS=${DEAD_PROMISE_ROUNDS:-2}
+MAXROUNDS=10
+CUT=15
+LOGS=${TESTDIR}/logs/${DBNAME}
+cdb2sql ${CDB2_OPTIONS} ${DBNAME} default "create table t (i int primary key)" || failexit "create"
+
+function q { cdb2sql --tabs ${CDB2_OPTIONS} --host $1 ${DBNAME} "$2" 2>/dev/null; }
+
+# Print the first node of $others that started an own-vote upgrade sleep this round
+function sleeper {
+    for n in $others; do
+        [[ $(grep -c "debug_own_vote_upgrade_delay_ms sleeping" ${LOGS}.$n.db) -gt ${slept[$n]} ]] && { echo $n; return 0; }
+    done
+    return 1
+}
+
+dur=$((MAXROUNDS * 60))
+k=1; pids=""
+for node in $CLUSTER; do
+    ${TESTSBUILDDIR}/stalewriter ${DBNAME} $node $((k * 100000000)) $dur > writer.$node.out 2>&1 &
+    pids="$pids $!"; k=$((k + 1))
+done
+
+# Cut the master off so the others elect, one sitting out so the rest decide on timeout and can win on
+# their own vote2. Kill the winner while it sleeps before upgrading: the losers have promised that
+# election, which now never gets a master. A winner that comes through NEWMASTER becomes master
+# first; kill it too, but that's not a dead promise.
+dead=0; came=0
+for ((r = 1; r <= MAXROUNDS && dead < ROUNDS; r++)); do
+    old=$(getmaster)
+    others=$(for n in $CLUSTER; do [[ $n != $old ]] && echo $n; done)
+    sitout=$(echo $others | tr ' ' '\n' | shuf -n 1)
+    q $sitout "put tunable 'debug_elect_lose_round' 1"
+    declare -A slept
+    for n in $others; do
+        q $n "put tunable debug_own_vote_upgrade_delay_ms 30000"
+        slept[$n]=$(grep -c "debug_own_vote_upgrade_delay_ms sleeping" ${LOGS}.$n.db)
+    done
+    # The old master keeps its role while cut off, so it is still master when the cut ends
+    q $old "put tunable reset_on_unelectable_cluster 0"
+    q $old "put tunable debug_net_drop_secs $CUT"
+    q $old "put tunable debug_net_drop_from '$(echo $others | tr ' ' ',')'"
+    start=$(date +%s); winner=""; how=""
+    while [[ -z "$winner" && $(( $(date +%s) - start )) -lt $((CUT - 3)) ]]; do
+        # Check every log before querying: a query to a node mid-election can block
+        winner=$(sleeper) && { how=ownvote; break; }
+        for n in $others; do
+            m=$(timeout 2 cdb2sql --tabs ${CDB2_OPTIONS} --host $n ${DBNAME} \
+                "select host from comdb2_cluster where is_master='Y'" 2>/dev/null)
+            [[ "$m" == "$n" ]] && { winner=$n; how=master; break; }
+        done
+        sleep 0.1
+    done
+    # A slow query may have run past the cut: look at the logs once more
+    [[ -z "$winner" ]] && winner=$(sleeper) && how=ownvote
+    if [[ -n "$winner" ]]; then
+        ssh $winner "pkill -9 -f 'comdb2 ${DBNAME} '"
+        [[ $how == ownvote ]] && dead=$((dead + 1)) || came=$((came + 1))
+    fi
+    echo "$(date +%T) round $r: old master $old, $sitout sat out, winner ${winner:-none} ($how) killed"
+    for n in $others; do [[ $n != $winner ]] && q $n "put tunable debug_own_vote_upgrade_delay_ms 0"; done
+    left=$(( CUT + 2 - ($(date +%s) - start) )); [[ $left -gt 0 ]] && sleep $left
+
+    # Everyone still up must rejoin one master, coherent
+    ok=0
+    for i in $(seq 1 90); do
+        m=$(for n in $CLUSTER; do [[ $n != $winner ]] && q $n "select host from comdb2_cluster where is_master='Y'"; done | sort -u)
+        if [[ $(echo "$m" | wc -w) == 1 ]]; then
+            bad=$(for n in $CLUSTER; do [[ $n != $winner && $n != $m ]] && q $m "select coherent_state from comdb2_cluster where host='$n'"; done | grep -vxc coherent)
+            [[ $bad == 0 ]] && { ok=1; break; }
+        fi
+        sleep 1
+    done
+    [[ $ok == 1 ]] || failexit "round $r: nodes did not rejoin one coherent master after the cut (masters: $m)"
+    echo "$(date +%T) round $r: master $m, all up nodes coherent"
+    q $old "put tunable reset_on_unelectable_cluster 1"
+    [[ -n "$winner" ]] && kill_restart_node $winner 0
+    sleep 10
+done
+wait $pids
+
+master=$(getmaster)
+q $master "select i from t order by i" > final.txt || failexit "final select"
+cat writer.*.out > writes.txt
+awk '$1 == "I" && $3 == 0 {print $2}' writes.txt | sort > acked.txt
+awk '$1 == "D" {print $2}' writes.txt | sort > deltried.txt
+awk '$1 == "D" && $3 == 0 {print $2}' writes.txt | sort > deleted.txt
+comm -23 acked.txt deltried.txt > mustexist.txt
+sort final.txt > final.sorted
+comm -23 mustexist.txt final.sorted > lost.txt
+comm -12 deleted.txt final.sorted > resurrected.txt
+grep STALEREAD writes.txt > stalereads.txt
+
+refused=$(cat ${LOGS}.*.db* 2>/dev/null | grep -c "Ignoring rp->gen")
+deposed=$(cat ${LOGS}.*.db* 2>/dev/null | grep -c "vote2 backstop: deposed")
+echo "dead promises $dead, winners that came $came, refusals $refused, deposed $deposed, acked $(wc -l < acked.txt)," \
+     "lost $(wc -l < lost.txt), resurrected $(wc -l < resurrected.txt), stalereads $(wc -l < stalereads.txt)"
+[[ $dead -gt 0 ]] || failexit "no round left a dead promise"
+[[ $deposed -gt 0 ]] || failexit "no master was deposed"
+for f in lost resurrected stalereads; do
+    [[ -s $f.txt ]] && { echo "== $f"; head -5 $f.txt; failexit "$f $(wc -l < $f.txt)"; }
+done
+echo "Success"
