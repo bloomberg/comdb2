@@ -1,0 +1,32 @@
+#!/usr/bin/env bash
+bash -n "$0" || exit 1
+
+# Single-row inserts under maxquerytime 1 must not time out (187191061).
+# The client sleeps 1s between inserts on one connection, so the master's
+# request worker is lingering (waking once a second) when each insert arrives.
+
+dbnm=$1
+n=10
+
+cdb2sql ${CDB2_OPTIONS} $dbnm default "create table t1 (i int)" || exit 1
+
+{
+    echo "set maxquerytime 1"
+    for i in $(seq 1 $n); do
+        sleep 1
+        echo "insert into t1 values($i)"
+    done
+} | cdb2sql ${CDB2_OPTIONS} $dbnm default - > inserts.out 2>&1
+
+if grep -q "timed out\|failed" inserts.out; then
+    echo "FAILED:"
+    grep "timed out\|failed" inserts.out
+    exit 1
+fi
+
+cnt=$(cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select count(*) from t1")
+if [[ "$cnt" != "$n" ]]; then
+    echo "FAILED: expected $n rows, got $cnt"
+    exit 1
+fi
+echo "Success"

@@ -696,8 +696,7 @@ static void *thd_req(void *vthd)
                     ii++;
                     /*waitft thread will deposit a request in thd->iq*/
                     rc = pthread_cond_timedwait(&thd->wakeup, &lock, &ts);
-                } while ((thd->iq == 0 && rc == 0) ||
-                         (rc == ETIMEDOUT && ii < gbl_thd_linger && !db_is_exiting()));
+                } while (thd->iq == 0 && (rc == 0 || (rc == ETIMEDOUT && ii < gbl_thd_linger && !db_is_exiting())));
 
                 if (rc != 0 && rc != ETIMEDOUT) {
                     logmsg(LOGMSG_ERROR, "thd_req:pthread_cond_timedwait failed:%s\n",
