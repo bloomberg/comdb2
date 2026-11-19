@@ -122,6 +122,15 @@ static int _fdb_refresh_location(const char *dbname, fdb_location_t *loc)
  *
  * Retrieve the nodes from comdb2db
  */
+int fdb_location_has_node(fdb_location_t *loc, const char *node)
+{
+    for (int i = 0; loc && i < loc->nnodes; i++) {
+        if (loc->nodes[i] && !strcasecmp(node, loc->nodes[i]))
+            return 1;
+    }
+    return 0;
+}
+
 int fdb_locate(const char *dbname, enum mach_class class, int refresh,
                fdb_location_t **ploc, pthread_mutex_t *mtx)
 {

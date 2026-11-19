@@ -1,0 +1,400 @@
+#!/usr/bin/env bash
+
+# Remote writes pushed to the remote db that read tables of the source db;
+# unqualified table names must resolve to the source db, even when the
+# remote db has a table with the same name.
+#
+# DBNAME is the remote db, SECONDARY_DBNAME is the source db
+
+vars="DBNAME CDB2_CONFIG SECONDARY_DBNAME SECONDARY_CDB2_CONFIG"
+for required in $vars; do
+    if [[ -z "${!required}" ]]; then
+        echo "$required not set" >&2
+        exit 1
+    fi
+done
+
+REM="${CDB2SQL_EXE} --tabs --cdb2cfg ${CDB2_CONFIG} ${DBNAME}"
+SRC="${CDB2SQL_EXE} --tabs --cdb2cfg ${SECONDARY_CDB2_CONFIG} ${SECONDARY_DBNAME}"
+RDB="${DBNAME}"
+RTBL="${RDB}.t"
+
+failexit()
+{
+    echo "Failed: $1"
+    exit 1
+}
+
+# run sql (stdin) on source db, fail on any statement error
+# $1: name
+run()
+{
+    local out rc
+    echo "== $1"
+    out=$($SRC default - 2>&1)
+    rc=$?
+    echo "$out"
+    if [[ $rc -ne 0 ]] || echo "$out" | grep -q "failed with rc"; then
+        failexit "$1: sql failed"
+    fi
+}
+
+# $1: name, $2: expected ids in remote t
+expect_remote()
+{
+    local got
+    got=$($REM default "select id from t order by id" | xargs)
+    [[ "$got" != "$2" ]] && failexit "$1: remote t is '$got', expected '$2'"
+}
+
+# on a cluster, one source node sees the remote as an older fdb version,
+# which does not resolve source tables; the other tests run on another node
+srcnodes=($($SRC default "select host from comdb2_cluster order by host"))
+V9NODE=""
+if [[ ${#srcnodes[@]} -gt 1 ]]; then
+    V9NODE=${srcnodes[1]}
+    V9SRC="${CDB2SQL_EXE} --tabs --cdb2cfg ${SECONDARY_CDB2_CONFIG} --host ${V9NODE} ${SECONDARY_DBNAME}"
+    SRC="${CDB2SQL_EXE} --tabs --cdb2cfg ${SECONDARY_CDB2_CONFIG} --host ${srcnodes[0]} ${SECONDARY_DBNAME}"
+    # before any remote access on the node, the fdb takes it at creation
+    $V9SRC default "put tunable fdb_default_version 9" || failexit "set fdb_default_version"
+fi
+
+pushw=$($SRC default "select value from comdb2_tunables where name='foreign_db_push_remote_writes'")
+[[ "$pushw" != "ON" ]] && failexit "foreign_db_push_remote_writes is '$pushw', expected ON"
+
+$REM default "create table t(id int)" || failexit "create remote t"
+# lt exists only on the source
+$SRC default "create table lt(id int)" || failexit "create lt"
+$SRC default "insert into lt select value from generate_series(1, 3)" || failexit "populate lt"
+# t2 exists on both dbs, with different rows
+$SRC default "create table t2(id int)" || failexit "create source t2"
+$SRC default "insert into t2 select value from generate_series(1001, 1003)" || failexit "populate source t2"
+$REM default "create table t2(id int)" || failexit "create remote t2"
+$REM default "insert into t2 select value from generate_series(2001, 2003)" || failexit "populate remote t2"
+
+$REM default "create table names(n cstring(128))" || failexit "create remote names"
+RNAMES="${RDB}.names"
+
+# st is analyzed before the remote db caches the source db stats
+$SRC default "create table st(id int, k int)" || failexit "create st"
+$SRC default "create index st_k on st(k)" || failexit "create st_k"
+$SRC default "insert into st select value, value % 5 from generate_series(1, 100)" || failexit "populate st"
+$SRC default "analyze st" > /dev/null || failexit "analyze st"
+$REM default "create table rst(id int, k int)" || failexit "create rst"
+$REM default "create index rst_k on rst(k)" || failexit "create rst_k"
+$REM default "insert into rst select value, value % 7 from generate_series(1, 100)" || failexit "populate rst"
+$REM default "analyze rst" > /dev/null || failexit "analyze rst"
+# user tables named like system tables are not system tables
+$SRC default "create table comdb2foo(n cstring(128))" || failexit "create source comdb2foo"
+$SRC default "insert into comdb2foo values('src_comdb2foo')" || failexit "populate source comdb2foo"
+$REM default "create table comdb2foo(n cstring(128))" || failexit "create remote comdb2foo"
+$REM default "insert into comdb2foo values('rem_comdb2foo')" || failexit "populate remote comdb2foo"
+
+# the remote db is known after first access
+$SRC default "select count(*) from ${RTBL}" > /dev/null || failexit "remote select"
+
+run "insert into remote, select from a source-only table" <<EOF
+insert into ${RTBL} select * from lt
+EOF
+expect_remote "source-only table" "1 2 3"
+
+run "insert into remote, select from a table on both dbs" <<EOF
+insert into ${RTBL} select id from t2
+EOF
+expect_remote "table on both dbs" "1 2 3 1001 1002 1003"
+
+run "update remote, subquery on a table on both dbs" <<EOF
+update ${RTBL} set id=id+10000 where id in (select id from t2)
+EOF
+expect_remote "update subquery" "1 2 3 11001 11002 11003"
+
+run "delete remote, subquery on a source-only table" <<EOF
+delete from ${RTBL} where id in (select id from lt)
+EOF
+expect_remote "delete subquery" "11001 11002 11003"
+
+# a qualified remote table still resolves to the remote db
+run "insert into remote, select from a qualified remote table" <<EOF
+insert into ${RTBL} select id from ${RDB}.t2
+EOF
+expect_remote "qualified remote table" "2001 2002 2003 11001 11002 11003"
+
+run "client transaction, insert into remote, select from a source table" <<EOF
+begin
+insert into ${RTBL} select id from t2 where id = 1001
+insert into ${RTBL} select id + 4000 from lt where id = 1
+commit
+EOF
+expect_remote "client transaction" "1001 2001 2002 2003 4001 11001 11002 11003"
+
+# remote cursors of the client transaction came back to this source node
+# with its txnid; the source accepts them only for an active transaction
+# registered on the node, so a wrong node or txnid fails the statements above
+if ! cat ${TESTDIR}/logs/${SECONDARY_DBNAME}*.db 2>/dev/null | grep -q "remsql cursor reads for source transaction"; then
+    failexit "no remote cursor read for the source transaction"
+fi
+
+# a pushed statement names its source node; it must be a node of the source db
+rnode=$($REM default "select host from comdb2_cluster" | head -1)
+REMNODE="${CDB2SQL_EXE} --tabs --cdb2cfg ${CDB2_CONFIG} --host ${rnode} ${DBNAME}"
+
+echo "== source node is a node of the source db"
+out=$($REMNODE - 2>&1 <<EOF
+set rempush_name ${SECONDARY_DBNAME}
+set rempush_tier default
+set rempush_node ${rnode}
+select count(*) from lt
+EOF
+)
+echo "$out"
+# drop the "[statement] rc" lines
+res=$(echo "$out" | grep -v "^\[")
+[[ "$res" != "3" ]] && failexit "valid source node: expected 3 rows from source lt, got '$res'"
+
+echo "== source node is not a node of the source db"
+out=$($REMNODE - 2>&1 <<EOF
+set rempush_name ${SECONDARY_DBNAME}
+set rempush_tier default
+set rempush_node bogusnode
+select count(*) from lt
+EOF
+)
+echo "$out"
+echo "$out" | grep -q "rempush node bogusnode is not a node of" || failexit "bogus source node was not rejected"
+
+# a remote cursor naming a source transaction that is not active is rejected
+echo "== unknown source transaction"
+out=$($SRC default - 2>&1 <<EOF
+set remsql_version 10
+set remsql_srcdbname ${DBNAME}
+set remsql_srctxn 00000000-1111-2222-3333-444444444444
+select 1
+EOF
+)
+echo "$out"
+echo "$out" | grep -q "unknown source transaction" || failexit "unknown source transaction was not rejected"
+
+# the source node is still up after the statement; $1: name
+alive()
+{
+    local out
+    out=$($SRC default "select 1" 2>&1)
+    [[ "$out" != "1" ]] && failexit "$1: source node is down: $out"
+}
+
+# $1: name, $2: expected names in remote names
+expect_names()
+{
+    local got
+    got=$($REM default "select n from names order by n" | xargs)
+    [[ "$got" != "$2" ]] && failexit "$1: remote names is '$got', expected '$2'"
+    $REM default "delete from names where 1" > /dev/null
+}
+
+# a pushed write resolves system tables to the source db
+exp=$($SRC default "select name from sqlite_master where type='table' order by name" | xargs)
+run "insert into remote, select from sqlite_master" <<EOF
+insert into ${RNAMES} select name from sqlite_master where type='table'
+EOF
+expect_names "sqlite_master" "$exp"
+
+exp=$($SRC default "select distinct tbl from sqlite_stat1 order by tbl" | xargs)
+run "insert into remote, select from sqlite_stat1" <<EOF
+insert into ${RNAMES} select distinct tbl from sqlite_stat1
+EOF
+expect_names "sqlite_stat1" "$exp"
+
+run "insert into remote, select from a user table named comdb2foo" <<EOF
+insert into ${RNAMES} select n from comdb2foo
+EOF
+expect_names "comdb2foo" "src_comdb2foo"
+
+# main tables are source db tables, like unqualified tables
+$REM default "delete from t where 1" > /dev/null
+run "insert into remote, select from a main table on both dbs" <<EOF
+insert into ${RTBL} select id from main.t2
+EOF
+expect_remote "main table on both dbs" "1001 1002 1003"
+
+exp=$($SRC default "select name from sqlite_master where type='table' order by name" | xargs)
+run "insert into remote, select from main.sqlite_master" <<EOF
+insert into ${RNAMES} select name from main.sqlite_master where type='table'
+EOF
+expect_names "main.sqlite_master" "$exp"
+
+# a remote write is pushed, or it fails
+# $1: name, $2: expected error, stdin: sql
+expect_fail()
+{
+    local out
+    echo "== $1"
+    out=$($SRC default - 2>&1)
+    echo "$out"
+    echo "$out" | grep -q "$2" || failexit "$1: did not fail with '$2'"
+    alive "$1"
+}
+
+# virtual tables are evaluated by the db running the statement
+$REM default "delete from t where 1" > /dev/null
+expect_fail "insert into remote, select from comdb2_tables" "cannot read virtual tables" <<EOF
+insert into ${RNAMES} select tablename from comdb2_tables
+EOF
+expect_names "comdb2_tables" ""
+
+expect_fail "insert into remote, select from pragma_table_info" "cannot read virtual tables" <<EOF
+insert into ${RNAMES} select name from pragma_table_info('lt')
+EOF
+expect_names "pragma_table_info" ""
+
+# table-valued functions return the same rows on any db
+run "insert into remote, select from generate_series" <<EOF
+insert into ${RTBL} select value from generate_series(1, 3)
+EOF
+expect_remote "generate_series" "1 2 3"
+$REM default "delete from t where 1" > /dev/null
+
+expect_fail "client transaction, pushed write, then a virtual table" "cannot read virtual tables" <<EOF
+begin
+insert into ${RTBL} select id from lt where id = 1
+insert into ${RNAMES} select tablename from comdb2_tables
+commit
+EOF
+expect_remote "pushed write, then a virtual table" ""
+expect_names "pushed write, then a virtual table" ""
+
+expect_fail "client transaction, virtual table, then a pushed write" "cannot read virtual tables" <<EOF
+begin
+insert into ${RNAMES} select tablename from comdb2_tables
+insert into ${RTBL} select id from lt where id = 2
+commit
+EOF
+expect_remote "virtual table, then a pushed write" ""
+expect_names "virtual table, then a pushed write" ""
+
+# temp tables belong to the client connection; a stored procedure creates them
+$SRC default - > /dev/null <<'EOS'
+create procedure tmpw version 'v1' {
+local function main(rdb, tname, qual)
+    local tt, rc = db:table(tname, {{"id", "int"}})
+    if tt == nil then
+        return -201
+    end
+    tt:insert({id = 501})
+    tt:insert({id = 502})
+    local st
+    st, rc = db:exec("insert into " .. rdb .. ".t select id from " .. qual)
+    if rc ~= 0 then
+        db:emit("insert rc=" .. tostring(rc) .. " err=" .. tostring(db:error()))
+        return -202
+    end
+    return 0
+end}$$
+put default procedure tmpw 'v1'
+EOS
+
+# a remote write reading temp tables fails, for now
+# $1: name, $2: temp table name, $3: name the insert reads
+temp_case()
+{
+    local out
+    $REM default "delete from t where 1" > /dev/null
+    echo "== $1"
+    out=$($SRC default "exec procedure tmpw('${RDB}', '$2', '$3')" 2>&1)
+    echo "$out"
+    echo "$out" | grep -q "cannot read temp tables" || failexit "$1: remote write reading temp tables did not fail"
+    alive "$1"
+    expect_remote "$1" ""
+}
+temp_case "temp table" "tt" "tt"
+temp_case "temp table named like a table on both dbs" "t2" "t2"
+temp_case "temp table named like a table on both dbs, qualified" "t2" "temp.t2"
+
+# the remote db cannot resolve views and time partitions of the source db
+$SRC default "create view sv as select id from t2" || failexit "create view"
+$SRC default "create table tp(id int) partitioned by time period 'daily' retention 3 start '2024-01-01'" ||
+    failexit "create time partition"
+$SRC default "insert into tp values(1)" || failexit "populate time partition"
+$REM default "delete from t where 1" > /dev/null
+expect_fail "insert into remote, select from a view" "cannot read views" <<EOF
+insert into ${RTBL} select id from sv
+EOF
+expect_fail "insert into remote, select from a time partition" "cannot read views" <<EOF
+insert into ${RTBL} select id from tp
+EOF
+expect_remote "views" ""
+
+# the remote db does not cache pushed statements: the same sql text cached by
+# a remote db statement resolves to the source db tables when pushed; one sql
+# engine thread on the remote node serves both
+shost=$($SRC default "select comdb2_host()")
+RADM="${CDB2SQL_EXE} --admin --tabs --cdb2cfg ${CDB2_CONFIG} --host ${shost} ${DBNAME}"
+REMS="${CDB2SQL_EXE} --tabs --cdb2cfg ${CDB2_CONFIG} --host ${shost} ${DBNAME}"
+maxt=$($RADM default "select max_thds from comdb2_threadpools where name like 'sqlengine%'")
+$RADM default "exec procedure sys.cmd.send('sqlenginepool linger 1')" > /dev/null
+$RADM default "exec procedure sys.cmd.send('sqlenginepool maxt 1')" > /dev/null
+for ((i = 0; i < 30; i++)); do
+    n=$($RADM default "select num_thd from comdb2_threadpools where name like 'sqlengine%'")
+    [[ -n "$n" && $n -le 1 ]] && break
+    sleep 1
+done
+$REM default "delete from t where 1" > /dev/null
+$REMS default "insert into ${RTBL} select id from t2" > /dev/null || failexit "remote insert"
+expect_remote "remote statement" "2001 2002 2003"
+$REM default "delete from t where 1" > /dev/null
+run "insert into remote, select from a table on both dbs, after the remote ran it" <<EOF
+insert into ${RTBL} select id from t2
+EOF
+$RADM default "exec procedure sys.cmd.send('sqlenginepool maxt ${maxt}')" > /dev/null
+expect_remote "pushed statement after the remote ran it" "1001 1002 1003"
+$REM default "delete from t where 1" > /dev/null
+
+# an fdb alias is local to this db, a remote write using it fails; the next
+# remote write on the connection is pushed
+$REM default "delete from t where 1" > /dev/null
+$SRC default "put alias ralias '${RTBL}'" || failexit "put alias"
+echo "== remote write using an fdb alias, then a remote write"
+out=$($SRC default - 2>&1 <<EOF
+insert into ralias values(1)
+insert into ${RTBL} values(2)
+EOF
+)
+echo "$out"
+echo "$out" | grep -q "cannot use fdb aliases" || failexit "remote write using an fdb alias did not fail"
+alive "fdb alias"
+expect_remote "fdb alias" "2"
+$REM default "delete from t where 1" > /dev/null
+
+# a remote write in a transaction that is not socksql cannot be pushed
+expect_fail "read committed transaction, remote write" "cannot be pushed in a READ COMMITTED transaction" <<EOF
+set transaction read committed
+begin
+insert into ${RTBL} values(3)
+commit
+EOF
+expect_remote "read committed transaction" ""
+
+# a remote of an older fdb version would resolve source tables to its own
+# tables; the write fails, unless it reads only remote tables
+if [[ -n "$V9NODE" ]]; then
+    SRC=$V9SRC
+    $REM default "delete from t where 1" > /dev/null
+    expect_fail "older remote, insert into remote, select from a table on both dbs" "cannot read other dbs" <<EOF
+insert into ${RTBL} select id from t2
+EOF
+    expect_remote "older remote standalone" ""
+
+    expect_fail "older remote, client transaction, pushed write, then a source table" "cannot read other dbs" <<EOF
+begin
+insert into ${RTBL} values(5000)
+insert into ${RTBL} select id + 4000 from lt where id = 1
+commit
+EOF
+    expect_remote "older remote transaction" ""
+
+    run "older remote, insert into remote, values" <<EOF
+insert into ${RTBL} values(5000)
+EOF
+    expect_remote "older remote values" "5000"
+fi
+
+echo "SUCCESS"
