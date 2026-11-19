@@ -1719,9 +1719,13 @@ more:
 	case REP_LOG:
 		CLIENT_ONLY(rep, rp);
 		MASTER_CHECK(dbenv, *eidp, rep);
+		/* Hold the candidate lock across the check and the apply so nothing
+		 * is logged after an election reads our LSN for vote1 */
+		Pthread_mutex_lock(&rep_candidate_lock);
 		if (!IN_ELECTION_TALLY(rep)) {
 			fromline = __LINE__;
 			if (gbl_decoupled_logputs) {
+				Pthread_mutex_unlock(&rep_candidate_lock);
 				if ((ret = __rep_enqueue_log(dbenv, rp, rec, rp->gen))
 						!= 0)
 					goto errlock;
@@ -1729,8 +1733,10 @@ more:
 				fromline = __LINE__;
 				ret = __rep_apply(dbenv, rp, rec, ret_lsnp,
 								commit_gen, rep->gen, 0);
+				Pthread_mutex_unlock(&rep_candidate_lock);
 			}
 		} else {
+			Pthread_mutex_unlock(&rep_candidate_lock);
 			send_master_req(dbenv, __func__, __LINE__);
 			fromline = __LINE__;
 			goto errlock;
