@@ -1,0 +1,355 @@
+#!/usr/bin/env bash
+bash -n "$0" || exit 1
+
+# sc_commit_map_skip and merges.  A partition collapse rebuilds the aliased first
+# shard into its unpublished replacement and merges the other shards into it;
+# all their converters skip, and the collapse checkpoints once before
+# publishing.  A merge whose checkpoint fails or that is aborted at it is backed
+# out: the tables stay whole and writable, and the merge can be done again.
+# Readers see the partition until then, concurrent writes reach the result, a
+# snapshot across publication never reads a partial table, and a master that
+# downgrades during the collapse never publishes a partial one.
+
+source ${TESTSROOTDIR}/tools/runit_common.sh
+source ${TESTSROOTDIR}/tools/cluster_utils.sh
+set -o pipefail
+
+
+dbnm=$1
+N=${SC_COMMIT_MAP_ROWS:-2000}   # per shard
+SLACK=${SC_COMMIT_MAP_SLACK:-200}
+
+on() { local h=$1; shift; cdb2sql --tabs ${CDB2_OPTIONS} --host "$h" "$dbnm" "$@"; }
+# ask the cluster's own nodes: getmaster goes through the client's default route,
+# which has answered with nothing, or a host outside the cluster, under load
+master() {
+	[[ -z "$CLUSTER" ]] && { getmaster; return; }
+	local node m
+	for node in $CLUSTER; do
+		m=$(on $node "select host from comdb2_cluster where is_master='Y'" 2>/dev/null)
+		[[ -n "$m" && " $CLUSTER " == *" $m "* ]] && { echo $m; return 0; }
+	done
+	return 1
+}
+fail() { echo "FAIL: $*"; exit 1; }
+log() { if [[ -n "$CLUSTER" ]]; then echo $TESTDIR/logs/$dbnm.$1.db; else echo $TESTDIR/logs/$dbnm.db; fi; }
+entries() { on $1 "exec procedure sys.cmd.send('bdb clminfo')" | grep -oP '(?<=Entries: )[0-9]+'; }
+# commit_map bytes in use, from comdb2_memstats
+mem() { on $1 "select coalesce(sum(used), 0) from comdb2_memstats where name='commit_map'"; }
+wait_master() {
+	local m
+	for _ in $(seq 1 120); do
+		m=$(master 2>/dev/null)
+		[[ -n "$m" ]] && on $m "select 1" >/dev/null 2>&1 && { echo $m; return 0; }
+		sleep 1
+	done
+	return 1
+}
+
+NODES=${CLUSTER:-$(getmaster)}
+for node in $NODES; do
+	on $node "exec procedure sys.cmd.send('sync log-delete off 3600')" >/dev/null
+done
+trap 'for node in $NODES; do on $node "exec procedure sys.cmd.send(\"sync log-delete on\")" >/dev/null 2>&1; done' EXIT
+
+# an aliased time partition with 3 shards of N rows each; prints its shards
+mkpart() {
+	local m=$(master) s k=0
+	on $m "create table $1(a int unique, b int)" >/dev/null || fail "create $1"
+	on $m "alter table $1 partitioned by time period 'daily' retention 3 start '2025-01-01T'" >/dev/null || fail "partition $1"
+	mapfile -t SHARDS < <(on $m "select shardname from comdb2_timepartshards where name='$1' order by shardname")
+	(( ${#SHARDS[@]} == 3 )) || fail "$1 has ${#SHARDS[@]} shards"
+	for s in "${SHARDS[@]}"; do
+		on $m "insert into '$s' select value, value from generate_series($((k * N + 1)), $(((k + 1) * N)))" >/dev/null ||
+			fail "fill $s"
+		k=$((k + 1))
+	done
+}
+
+# the table is right: count, every key once, sum of b
+check() {
+	local m=$(wait_master) got
+	got=$(on $m "select count(*), count(distinct a), sum(b) from $1")
+	[[ "$got" == "$2" ]] || fail "$1: got '$got', expected '$2'"
+}
+
+# no schema change in progress on $1 (waits up to 3 minutes)
+idle() {
+	for _ in $(seq 1 180); do
+		(( $(on $1 "exec procedure sys.cmd.send('stat')" | grep -c "Schema change in progress") == 0 )) && return 0
+		sleep 1
+	done
+	return 1
+}
+
+slow() { on $(master) "exec procedure sys.cmd.send('bdb setattr SC_FORCE_DELAY $1')" >/dev/null; }
+
+echo "=== a collapse: every shard's converter skips, and the collapse checkpoints once"
+mkpart c
+m=$(master)
+skips=$(grep -c "converter commits skip the commit LSN map" "$(log $m)")
+goes=$(grep -c "converter commits go into the commit LSN map" "$(log $m)")
+ckps=$(grep -c "checkpoint is past the converter commits" "$(log $m)")
+before=$(entries $m)
+membefore=$(mem $m)
+# readers of the partition during the collapse
+( while [[ ! -f $TMPDIR/c.done ]]; do on $m "select count(*), count(distinct a) from c" 2>&1; sleep 0.2; done ) > $TMPDIR/c.reads &
+rd_pid=$!
+# a snapshot across the publication
+rm -f $TMPDIR/c.fifo; mkfifo $TMPDIR/c.fifo
+cdb2sql --tabs ${CDB2_OPTIONS} --host "$m" "$dbnm" - <$TMPDIR/c.fifo >$TMPDIR/c.snap 2>&1 &
+snap_pid=$!
+exec 9>$TMPDIR/c.fifo
+printf '%s\n' "set transaction snapshot isolation" "begin" "select count(*) from c" >&9
+slow 1
+start=$(date +%s%N)
+on $m "alter table c partitioned by none" >/dev/null || fail "collapse c"
+echo "collapse took $(( ($(date +%s%N) - start) / 1000000 )) ms"
+slow 0
+touch $TMPDIR/c.done; wait $rd_pid
+printf '%s\n' "select count(*) from c" "commit" >&9
+exec 9>&-
+wait $snap_pid
+delta=$(( $(entries $m) - before ))
+echo "map grew by $delta for $((3 * N)) rows; commit_map used $membefore -> $(mem $m) bytes"
+grep -h "converter commits\|checkpoint is past\|bdb_checkpoint_past_lsn" "$(log $m)" | tail -6
+# every shard skips into the one shared replacement, and the collapse
+# checkpoints once, past the last of them: never some shards only
+ns=$(( $(grep -c "converter commits skip the commit LSN map" "$(log $m)") - skips ))
+ng=$(( $(grep -c "converter commits go into the commit LSN map" "$(log $m)") - goes ))
+nc=$(( $(grep -c "checkpoint is past the converter commits" "$(log $m)") - ckps ))
+echo "shard converters skipping $ns, keeping their entries $ng, commit LSN map checkpoints $nc"
+(( ns == 3 && ng == 0 )) || fail "$ns shards skipped and $ng did not"
+(( nc == 1 )) || fail "$nc commit LSN map checkpoints for one collapse"
+(( delta < SLACK )) || fail "map grew by $delta although every shard skipped"
+sort $TMPDIR/c.reads | uniq -c
+# a read may fail across the publication (the table changed); it may never
+# return part of the rows
+grep -E "^[0-9]+	[0-9]+$" $TMPDIR/c.reads | grep -v "^$((3 * N))	$((3 * N))$" &&
+	fail "a reader saw the partition partially during the collapse"
+echo "snapshot across the publication:"; cat $TMPDIR/c.snap
+grep -E "^[0-9]+$" $TMPDIR/c.snap | grep -v "^$((3 * N))$" && fail "the snapshot read a partial table"
+[[ $(grep -c "^$((3 * N))$" $TMPDIR/c.snap) == 2 ]] || grep -q "was schema changed" $TMPDIR/c.snap ||
+	fail "the snapshot neither kept its view nor failed as schema changed"
+check c "$((3 * N))	$((3 * N))	$((3 * N * (3 * N + 1) / 2))"
+[[ -z "$(on $m "select shardname from comdb2_timepartshards where name='c'")" ]] || fail "c is still a partition"
+
+echo "=== writes during a collapse reach the result"
+mkpart w
+m=$(master)
+slow 1
+on $m "alter table w partitioned by none" >/dev/null 2>&1 &
+cl_pid=$!
+ins=0 del=0 upd=0
+sleep 1
+while kill -0 $cl_pid 2>/dev/null; do
+	k=$((ins + 1))
+	on $m "insert into w values($((3 * N + k)), $((3 * N + k)))" >/dev/null 2>&1 && ins=$((ins + 1))
+	on $m "delete from w where a = $((2 * k))" >/dev/null 2>&1 && del=$((del + 1))
+	on $m "update w set b = b + 1000000 where a = $((2 * k + 1))" >/dev/null 2>&1 && upd=$((upd + 1))
+done
+wait $cl_pid || fail "collapse w"
+slow 0
+echo "$ins inserts, $del deletes, $upd updates during the collapse"
+(( ins > 5 )) || fail "only $ins inserts ran during the collapse"
+m=$(wait_master)
+exp_cnt=$((3 * N + ins - del))
+got=$(on $m "select count(*), count(distinct a) from w")
+[[ "$got" == "$exp_cnt	$exp_cnt" ]] || fail "w: got '$got', expected $exp_cnt rows once each"
+for k in $(seq 1 $upd); do
+	[[ "$(on $m "select b from w where a = $((2 * k + 1))")" == "$((2 * k + 1 + 1000000))" ]] || fail "update of $((2 * k + 1)) lost"
+done
+for k in $(seq 1 $del); do
+	[[ -z "$(on $m "select a from w where a = $((2 * k))")" ]] || fail "delete of $((2 * k)) lost"
+done
+
+if [[ -n "$CLUSTER" ]]; then
+# per node: converters skipping, converters keeping entries, commit LSN map checkpoints
+declare -A rs_s rs_g rs_c
+resume_mark() {
+	local n
+	for n in $CLUSTER; do
+		rs_s[$n]=$(grep -c "converter commits skip the commit LSN map" "$(log $n)")
+		rs_g[$n]=$(grep -c "converter commits go into the commit LSN map" "$(log $n)")
+		rs_c[$n]=$(grep -c "checkpoint is past the converter commits" "$(log $n)")
+	done
+}
+# the new master $1 resumed the collapse with every shard skipping, and
+# checkpointed once
+resume_check() {
+	local n=$1
+	local s=$(( $(grep -c "converter commits skip the commit LSN map" "$(log $n)") - rs_s[$n] ))
+	local g=$(( $(grep -c "converter commits go into the commit LSN map" "$(log $n)") - rs_g[$n] ))
+	local c=$(( $(grep -c "checkpoint is past the converter commits" "$(log $n)") - rs_c[$n] ))
+	echo "new master $n: $s converters skipped, $g kept their entries, $c commit LSN map checkpoints"
+	(( s >= 3 && g == 0 )) || fail "$n resumed with $s converters skipping and $g not"
+	(( c == 1 )) || fail "$n took $c commit LSN map checkpoints for the resumed collapse"
+}
+
+echo "=== a downgrade during the conversion of a collapse"
+mkpart d
+m=$(master)
+resume_mark
+slow 1
+on $m "alter table d partitioned by none" >/dev/null 2>&1 &
+cl_pid=$!
+sleep 3
+downgrade_master
+on $m "exec procedure sys.cmd.send('bdb setattr SC_FORCE_DELAY 0')" >/dev/null 2>&1
+wait $cl_pid
+nm=$(wait_master)
+echo "old master $m, new master $nm"
+idle $nm || fail "a schema change is still running on $nm"
+resume_check $nm
+shards=$(on $nm "select count(*) from comdb2_timepartshards where name='d'")
+echo "after the downgrade: d has $shards shards"
+check d "$((3 * N))	$((3 * N))	$((3 * N * (3 * N + 1) / 2))"
+if (( shards > 0 )); then
+	# left a partition: no stale pointers, writes work and a collapse succeeds
+	on $nm "insert into d values($((3 * N + 1)), 0)" >/dev/null || fail "write to d after the downgrade"
+	on $nm "delete from d where a = $((3 * N + 1))" >/dev/null || fail "delete from d after the downgrade"
+	on $nm "alter table d partitioned by none" >/dev/null || fail "collapse d again"
+	check d "$((3 * N))	$((3 * N))	$((3 * N * (3 * N + 1) / 2))"
+fi
+
+echo "=== a downgrade while a collapse waits for its checkpoint"
+mkpart h
+m=$(master)
+resume_mark
+holds=$(grep -c "holding before the commit LSN map checkpoint" "$(log $m)")
+on $m "put tunable 'debug_sc_commit_map_checkpoint_hold' 1" >/dev/null
+on $m "alter table h partitioned by none" >/dev/null 2>&1 &
+cl_pid=$!
+for _ in $(seq 1 600); do
+	(( $(grep -c "holding before the commit LSN map checkpoint" "$(log $m)") > holds )) && break
+	sleep 0.1
+done
+(( $(grep -c "holding before the commit LSN map checkpoint" "$(log $m)") > holds )) || fail "collapse of h never held"
+downgrade_master
+on $m "put tunable 'debug_sc_commit_map_checkpoint_hold' 0" >/dev/null 2>&1
+wait $cl_pid
+nm=$(wait_master)
+echo "old master $m, new master $nm"
+idle $nm || fail "a schema change is still running on $nm"
+resume_check $nm
+shards=$(on $nm "select count(*) from comdb2_timepartshards where name='h'")
+echo "after the downgrade: h has $shards shards"
+check h "$((3 * N))	$((3 * N))	$((3 * N * (3 * N + 1) / 2))"
+if (( shards > 0 )); then
+	on $nm "alter table h partitioned by none" >/dev/null || fail "collapse h again"
+	check h "$((3 * N))	$((3 * N))	$((3 * N * (3 * N + 1) / 2))"
+fi
+
+fi
+
+# A merge, with writes running, whose commit LSN map checkpoint fails (fail) or
+# that is aborted while held at it (abort).  kind collapse: a 3-shard partition
+# collapse; kind alter: "alter table ... merge" of a second table.  Whatever
+# happened, the master is up, every row and every write is there once, writes
+# work, nothing points at a dead target, and the merge can be done again.
+merge_fails() {
+	local kind=$1 mode=$2 tbl=$3 m held=0 rc k ins=0 del=0 upd=0 base src=${3}s
+	if [[ $kind == collapse ]]; then
+		mkpart $tbl
+		base=$((3 * N))
+	else
+		on $(master) "create table $tbl(a int unique, b int)" >/dev/null || fail "create $tbl"
+		on $(master) "create table $src(a int unique, b int)" >/dev/null || fail "create $src"
+		on $(master) "insert into $tbl select value, value from generate_series(1, $N)" >/dev/null || fail "fill $tbl"
+		on $(master) "insert into $src select value, value from generate_series($((N + 1)), $((2 * N)))" >/dev/null ||
+			fail "fill $src"
+		base=$N
+	fi
+	m=$(master)
+	local barriers=$(grep -c "bdb_checkpoint_past_lsn: rc" "$(log $m)")
+	local holds=$(grep -c "holding before the commit LSN map checkpoint" "$(log $m)")
+	local fails=$(grep -c "Failed to checkpoint past the converter commits" "$(log $m)")
+	local aborts=$(grep -c "aborted before the commit LSN map checkpoint" "$(log $m)")
+	rm -f $TMPDIR/$tbl.stop
+	( k=0; while [[ ! -f $TMPDIR/$tbl.stop ]]; do
+		k=$((k + 1))
+		on $m "insert into $tbl values($((10 * N + k)), $((10 * N + k)))" >/dev/null 2>&1 && echo "ins $((10 * N + k))"
+		on $m "delete from $tbl where a = $((2 * k))" 2>/dev/null | grep -q . && echo "del $((2 * k))"
+		on $m "update $tbl set b = b + 1000000 where a = $((2 * k + 1)) and b < 1000000" >/dev/null 2>&1 && echo "upd $((2 * k + 1))"
+	done ) > $TMPDIR/$tbl.writes &
+	local wr_pid=$!
+	[[ $mode == fail ]] && on $m "put tunable 'debug_sc_commit_map_checkpoint_fail' 1" >/dev/null
+	[[ $mode == abort ]] && on $m "put tunable 'debug_sc_commit_map_checkpoint_hold' 1" >/dev/null
+	slow 1
+	if [[ $kind == collapse ]]; then
+		on $m "alter table $tbl partitioned by none" > $TMPDIR/$tbl.ddl 2>&1 &
+	else
+		on $m "alter table $tbl add column c int null, merge $src" > $TMPDIR/$tbl.ddl 2>&1 &
+	fi
+	local ddl_pid=$!
+	if [[ $mode == abort ]]; then
+		while kill -0 $ddl_pid 2>/dev/null; do
+			if (( $(grep -c "holding before the commit LSN map checkpoint" "$(log $m)") > holds )); then
+				on $m "exec procedure sys.cmd.send('scabort')" >/dev/null
+				held=1
+				break
+			fi
+			sleep 0.1
+		done
+	fi
+	wait $ddl_pid; rc=$?
+	slow 0
+	on $m "put tunable 'debug_sc_commit_map_checkpoint_fail' 0" >/dev/null 2>&1
+	on $m "put tunable 'debug_sc_commit_map_checkpoint_hold' 0" >/dev/null 2>&1
+	touch $TMPDIR/$tbl.stop; wait $wr_pid
+	ins=$(grep -c "^ins" $TMPDIR/$tbl.writes); del=$(grep -c "^del" $TMPDIR/$tbl.writes); upd=$(grep -c "^upd" $TMPDIR/$tbl.writes)
+	local nb=$(( $(grep -c "bdb_checkpoint_past_lsn: rc" "$(log $m)") - barriers ))
+	echo "$kind $mode: ddl rc $rc ($(tr '\n' ' ' < $TMPDIR/$tbl.ddl)), held $held, barrier checkpoints $nb," \
+		"$ins inserts, $del deletes, $upd updates"
+	[[ "$(on $m "select 1")" == "1" ]] || fail "$m is not answering after the $kind $mode"
+	# the fault happened, at the barrier, and failed the merge
+	(( rc != 0 )) || fail "$kind $mode: the merge succeeded"
+	if [[ $mode == fail ]]; then
+		(( $(grep -c "Failed to checkpoint past the converter commits" "$(log $m)") > fails )) ||
+			fail "$kind fail: the checkpoint did not fail"
+	else
+		(( held == 1 )) || fail "$kind abort: never held at the barrier"
+		(( $(grep -c "aborted before the commit LSN map checkpoint" "$(log $m)") > aborts )) ||
+			fail "$kind abort: not aborted at the barrier"
+	fi
+	m=$(wait_master)
+	# nothing was published: the partition, or the table to merge, is still there
+	if [[ $kind == collapse ]]; then
+		[[ -n "$(on $m "select shardname from comdb2_timepartshards where name='$tbl'")" ]] || fail "$kind $mode: published"
+	else
+		[[ "$(on $m "select count(*) from comdb2_tables where tablename='$src'")" == "1" ]] || fail "$kind $mode: published"
+	fi
+	local exp=$((base + ins - del))
+	got=$(on $m "select count(*), count(distinct a) from $tbl")
+	[[ "$got" == "$exp	$exp" ]] || fail "$kind $mode: $tbl has '$got', expected $exp rows once each"
+	for a in $(grep "^upd" $TMPDIR/$tbl.writes | cut -d' ' -f2); do
+		(( $(on $m "select b from $tbl where a = $a") >= 1000000 )) || fail "$kind $mode: update of $a lost"
+	done
+	for a in $(grep "^del" $TMPDIR/$tbl.writes | cut -d' ' -f2); do
+		[[ -z "$(on $m "select a from $tbl where a = $a")" ]] || fail "$kind $mode: delete of $a lost"
+	done
+	# writes still work, and the merge can be done again
+	on $m "insert into $tbl values($((20 * N)), 0)" >/dev/null || fail "$kind $mode: insert after"
+	on $m "delete from $tbl where a = $((20 * N))" >/dev/null || fail "$kind $mode: delete after"
+	if [[ $kind == collapse ]]; then
+		on $m "alter table $tbl partitioned by none" >/dev/null || fail "$kind $mode: collapse again"
+	else
+		on $m "alter table $tbl add column c int null, merge $src" >/dev/null || fail "$kind $mode: merge again"
+		exp=$((exp + N))
+	fi
+	got=$(on $m "select count(*), count(distinct a) from $tbl")
+	[[ "$got" == "$exp	$exp" ]] || fail "$kind $mode: after merging again $tbl has '$got', expected $exp"
+	echo "$kind $mode: backed out, merged on retry, $tbl has $exp rows"
+	do_verify $tbl
+}
+
+echo "=== a merge whose checkpoint fails, or that is aborted at it, while writes run"
+merge_fails collapse fail cf
+merge_fails collapse abort ca
+merge_fails alter fail af
+merge_fails alter abort aa
+
+for tbl in c w $([[ -n "$CLUSTER" ]] && echo d h); do
+	do_verify $tbl
+done
+echo "Passed test"

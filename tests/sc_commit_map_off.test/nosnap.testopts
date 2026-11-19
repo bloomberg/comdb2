@@ -1,0 +1,2 @@
+utxnid_log on
+disable_snapshot_isolation
