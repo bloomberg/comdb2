@@ -1290,6 +1290,14 @@ err:
 
 extern int gbl_elect_master_req_ms;
 
+/* Phase-1 waits have effectively been min(timeout/10, .5s) since 2018; keep that.
+ * Phase 2 (vote2 cast, waiting on the winner) gets the full timeout. */
+static inline u_int32_t
+__rep_phase1_wait(u_int32_t timeout)
+{
+	return (timeout > 5000000) ? 500000 : (timeout / 10 ? timeout / 10 : 1);
+}
+
 /*
  * __rep_elect --
  *	Called after master failure to hold/participate in an election for
@@ -1377,7 +1385,7 @@ __rep_elect(dbenv, nsites, priority, timeout, newgen, already_master, eidp)
 	mreq_timeout = timeout / 4;
 	if (gbl_elect_master_req_ms > 0 && mreq_timeout > gbl_elect_master_req_ms * 1000)
 		mreq_timeout = gbl_elect_master_req_ms * 1000;
-	ret = __rep_wait(dbenv, mreq_timeout, eidp, newgen, 0, REP_F_EPHASE1);
+	ret = __rep_wait(dbenv, __rep_phase1_wait(mreq_timeout), eidp, newgen, 0, REP_F_EPHASE1);
 	switch (ret) {
 	case 0:
 		/* Check if we found a master. */
@@ -1502,7 +1510,7 @@ restart:
 				early_vote2, REP_VOTE2);
 	}
 
-	ret = __rep_wait(dbenv, timeout, eidp, newgen, egen, REP_F_EPHASE1);
+	ret = __rep_wait(dbenv, __rep_phase1_wait(timeout), eidp, newgen, egen, REP_F_EPHASE1);
 	switch (ret) {
 		case 0:
 			/* Check if election complete or phase complete. */
@@ -1839,12 +1847,13 @@ __rep_wait(dbenv, timeout, eidp, outegen, inegen, flags)
 	 * Sleep repeatedly for the smaller of .5s and timeout/10.
 	 */
 	while (timeout > 0) {
-		sleeptime = (timeout > 5000000) ? (500000 * 1000) : (timeout * 1000) / 10;
+		/* sleeptime is in usecs, like timeout */
+		sleeptime = (timeout > 5000000) ? 500000 : timeout / 10;
 		if (sleeptime == 0)
-			sleeptime = 1000;
+			sleeptime = 1;
 
 		clock_gettime(CLOCK_REALTIME, &tm);
-		tm.tv_nsec += sleeptime;
+		tm.tv_nsec += (long)sleeptime * 1000;
 		while (tm.tv_nsec >= 1000000000) {
 			tm.tv_nsec -= 1000000000;
 			tm.tv_sec += 1;
