@@ -504,8 +504,13 @@ void snap_catalog_prepare(struct sqlclntstate *clnt, uint64_t *id)
             /* read the current tables until the next schema change: a table
              * changed since the start LSN fails the statement (see
              * check_snapshot_table()) */
+            logmsg(LOGMSG_WARN, "%s: cannot build the catalog as of %u:%u, reading the current tables\n", __func__,
+                   clnt->modsnap_start_lsn_file, clnt->modsnap_start_lsn_offset);
             clear_catalog(newcat);
         }
+    } else {
+        logmsg(LOGMSG_WARN, "%s: out of memory for the catalog as of %u:%u, reading the current tables\n", __func__,
+               clnt->modsnap_start_lsn_file, clnt->modsnap_start_lsn_offset);
     }
     snap_catalog_free(&cat);
     clnt->dbtran.snap_catalog = newcat;
