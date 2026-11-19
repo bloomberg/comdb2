@@ -1,0 +1,29 @@
+#!/usr/bin/env bash
+bash -n "$0" || exit 1
+
+source ${TESTSROOTDIR}/tools/runit_common.sh
+
+dbnm=$1
+tool=${TESTSBUILDDIR}/cdb2api_configured_master
+
+hosts=$($CDB2SQL_EXE --tabs ${CDB2_OPTIONS} $dbnm default "select host from comdb2_cluster" | xargs)
+[ -n "$hosts" ] || failexit "could not read the cluster's hosts"
+
+# Control: the test suite's own config.
+$tool $dbnm || failexit "suite config"
+
+# The config lists the hosts under the "configured" tier.
+cfg=${TESTDIR}/${dbnm}_configured.cfg
+grep -v -e "^${dbnm} " -e "default_type" $CDB2_CONFIG > $cfg
+echo "${dbnm} ${hosts}" >> $cfg
+echo "comdb2_config:default_type=configured" >> $cfg
+CDB2_CONFIG=$cfg $tool $dbnm || failexit "hosts listed in the config"
+
+# The hosts come on CDB2_BEFORE_DISCOVERY, as from a proxy such as prox2. The
+# config must not list them: cdb2_get_dbhosts() rereads it, which would put
+# them back.
+cfg=${TESTDIR}/${dbnm}_proxy.cfg
+grep -v "^${dbnm} " $CDB2_CONFIG > $cfg
+CDB2_CONFIG=$cfg $tool $dbnm $hosts || failexit "hosts supplied on CDB2_BEFORE_DISCOVERY"
+
+echo "Success"

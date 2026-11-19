@@ -1,0 +1,7 @@
+Verify that a CDB2_MASTER handle connects to the master when the database's
+hosts come with cluster type "configured", as a proxy such as prox2 supplies
+them on CDB2_BEFORE_DISCOVERY. CDB2_MASTER handles skip the "configured"
+shortcut in get_connection_int(), and cdb2_get_dbhosts() used to discard the
+supplied hosts and ask comdb2db for a "configured" cluster. A plain handle is
+the control, along with the suite's own config and a config that lists the
+hosts under the "configured" tier.
