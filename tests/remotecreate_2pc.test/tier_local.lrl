@@ -1,0 +1,3 @@
+# Single node: every db is reached through the local pmux
+foreign_db_resolve_local 1
+machine_class local

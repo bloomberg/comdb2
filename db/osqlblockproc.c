@@ -53,6 +53,7 @@
 #include "intern_strings.h"
 #include "sc_global.h"
 #include "sc_logic.h"
+#include "sc_schema.h"
 #include "gettimeofday_ms.h"
 #include "eventlog.h"
 #include <disttxn.h>
@@ -1536,6 +1537,106 @@ static void _sc_release_on_downgrade(struct ireq *iq, struct schema_change_type 
     free_schema_change_type(sc);
 }
 
+/* keep the sc_list for a resume: without SCDONE the abort callback frees nothing */
+void osql_sc_release_for_resume(struct ireq *iq)
+{
+    struct schema_change_type *sc = iq->sc_pending, *next;
+    iq->osql_flags &= ~OSQL_FLAGS_SCDONE;
+    iq->sc_pending = NULL;
+    iq->sc = NULL;
+    while (sc != NULL) {
+        next = sc->sc_next;
+        /* a redo creates the table anew: remove this create's btrees, as scdone_abort_cleanup does */
+        if (sc->kind == SC_ADDTABLE && sc->newdb && sc->newdb->handle && !sc->newdb_borrowed &&
+            get_dbtable_by_name(sc->tablename) != sc->newdb) {
+            iq->sc = sc;
+            delete_temp_table(iq, sc->newdb);
+            cleanup_newdb(sc->newdb);
+            sc->newdb = NULL;
+            iq->sc = NULL;
+        }
+        _sc_release_on_downgrade(iq, sc);
+        sc = next;
+    }
+}
+
+/* Take the schema lock to finalize a 2pc schema change: 0 holding it, or ERR_SC with the dist-txn failed */
+static int bplog_2pc_schemachange_lock(struct ireq *iq)
+{
+    const char *dist_txnid = iq->sorese->dist_txnid;
+    int timeoutms = gbl_disttxn_ddl_timeout_ms;
+
+    /* participants sleep twice as long, so that coordinators lock first */
+    if (gbl_debug_sleep_ddl_before_lock_ms > 0) {
+        int ms = gbl_debug_sleep_ddl_before_lock_ms * (iq->sorese->is_participant ? 2 : 1);
+        logmsg(LOGMSG_USER, "%s sleeping %d ms before taking the schema lock on debug tunable\n", __func__, ms);
+        poll(NULL, 0, ms);
+    }
+
+    /* only the pagelock commit path prepares and votes a 2pc schema change */
+    if (gbl_rowlocks) {
+        errstat_set_rcstrf(&iq->errstat, ERR_SC, "distributed schema change is not supported with rowlocks");
+        goto fail;
+    }
+
+    /* collect votes before locking, so the db is not stopped meanwhile */
+    if (iq->sorese->is_coordinator) {
+        int rcode = 0, outrc = 0;
+        char errmsg[ERRSTAT_STR_SZ] = {0};
+        if (coordinator_wait_ddl(dist_txnid, &rcode, &outrc, errmsg, sizeof(errmsg)) != ALL_PREPARED) {
+            errstat_set_rcstrf(&iq->errstat, ERR_SC, "%s", errmsg[0] ? errmsg : "distributed schema change aborted");
+            /* the wait resolved the dist-txn and told the participants */
+            iq->disttxn_failed = 1;
+            goto fail;
+        }
+    }
+
+    /* bounded wait for the schema lock, with no prepared schema change holding the sc_list pages */
+    int64_t deadline = timeoutms > 0 ? comdb2_time_epochus() / 1000 + timeoutms : 0;
+    for (;;) {
+        int wrc = disttxn_ddl_wait_none_pending(deadline, iq->sorese->is_coordinator ? dist_txnid : NULL);
+        if (wrc == EDEADLK) {
+            errstat_set_rcstrf(
+                &iq->errstat, ERR_SC,
+                "distributed schema change aborted: a prepared distributed schema change may wait for it");
+            goto fail;
+        } else if (wrc) {
+            errstat_set_rcstrf(&iq->errstat, ERR_SC,
+                               "distributed schema change timed out after %d ms waiting for a prepared distributed "
+                               "schema change",
+                               timeoutms);
+            goto fail;
+        }
+        int64_t left = deadline ? deadline - comdb2_time_epochus() / 1000 : 0;
+        if (!deadline) {
+            wrlock_schema_lk();
+        } else if (left <= 0 || wrlock_schema_timed_lk((int)left)) {
+            errstat_set_rcstrf(&iq->errstat, ERR_SC,
+                               "distributed schema change timed out after %d ms waiting for the schema lock",
+                               timeoutms);
+            goto fail;
+        }
+        /* one prepared while this waited for the lock */
+        if (!disttxn_ddl_any_pending())
+            break;
+        unlock_schema_lk();
+    }
+
+    /* mark the sc_list before finalizing: unmarked, it never voted yes */
+    if (iq->sorese->is_participant && osql_sc_list_mark(iq->scs_uuid, 0)) {
+        /* fail as a lock timeout does: back out without the lock */
+        unlock_schema_lk();
+        errstat_set_rcstrf(&iq->errstat, ERR_SC, "failed to save distributed schema change");
+        goto fail;
+    }
+    return 0;
+
+fail:
+    logmsg(LOGMSG_ERROR, "%s: %s %s\n", __func__, dist_txnid, iq->errstat.errstr);
+    abort_disttxn(iq, ERR_DIST_ABORT, ERR_BLOCK_FAILED);
+    return ERR_SC;
+}
+
 /* wait for all schema changes to finish;
  * at this point any running schema change is linked in iq->sc_pending
  */
@@ -1600,6 +1701,10 @@ int bplog_schemachange_wait(struct ireq *iq, int rc)
         sc = iq->sc;
     }
 
+    int locked = 0;
+    if (!rc && iq->sorese && iq->sorese->dist_txnid)
+        locked = !(rc = bplog_2pc_schemachange_lock(iq));
+
     if (rc) {
         /* IFF the schema changes are NOT aborted, clean in-mem structures but
          * leave persistent and replicated changes (llmeta, new btree-s) so
@@ -1635,7 +1740,8 @@ int bplog_schemachange_wait(struct ireq *iq, int rc)
 
     assert(!iq->sc_locked);
     iq->sc_locked = 1;
-    wrlock_schema_lk();
+    if (!locked)
+        wrlock_schema_lk();
 
     return rc;
 }
@@ -1695,6 +1801,51 @@ int get_schema_change_txns(struct ireq *iq, tran_type **logi,
     }
 
     return 0;
+}
+
+/* Retry a failed 2pc sc_list resume while master, with a growing wait */
+struct resume_2pc_retry {
+    uuid_t uuid;
+    int secs;
+};
+
+static void *resume_2pc_retry_thd(void *arg)
+{
+    struct resume_2pc_retry *r = arg;
+    uuidstr_t us;
+    comdb2_name_thread(__func__);
+    backend_thread_event(thedb, COMDB2_THR_EVENT_START);
+    sleep(r->secs);
+    if (!bdb_amimaster(thedb->bdb_env)) {
+        /* the new master resolves it; release our reservations */
+        logmsg(LOGMSG_INFO, "%s: not master, leaving 2pc sc list %s to the master\n", __func__,
+               comdb2uuidstr(r->uuid, us));
+        sc_2pc_resume_done(r->uuid);
+    } else if (bdb_lock_desired(thedb->bdb_env)) {
+        /* still master: try again later */
+        osql_resume_2pc_retry(r->uuid);
+    } else {
+        resume_2pc_sc_list(r->uuid);
+    }
+    free(r);
+    backend_thread_event(thedb, COMDB2_THR_EVENT_DONE);
+    return NULL;
+}
+
+/* retry the resume of the 2pc sc_list of uuid later */
+void osql_resume_2pc_retry(uuid_t uuid)
+{
+    uuidstr_t us;
+    struct resume_2pc_retry *r = malloc(sizeof(struct resume_2pc_retry));
+    if (!r) {
+        logmsg(LOGMSG_ERROR, "%s oom\n", __func__);
+        return;
+    }
+    comdb2uuidcpy(r->uuid, uuid);
+    r->secs = sc_2pc_resume_retry_secs(uuid);
+    logmsg(LOGMSG_ERROR, "%s: retrying 2pc sc list %s in %ds\n", __func__, comdb2uuidstr(uuid, us), r->secs);
+    pthread_t tid;
+    Pthread_create(&tid, &gbl_pthread_attr_detached, resume_2pc_retry_thd, r);
 }
 
 /* downgraded is set by the caller if a schema change already reported a master
@@ -1758,6 +1909,9 @@ static int _resume_sc_multiddl_txn_finalize(struct ireq *iq, int downgraded)
     }
     iq->osql_flags |= OSQL_FLAGS_SCDONE;
 
+    /* resume_sc_multiddl_txn aborts a resumed coordinator without redoing it */
+    assert(!iq->sc_resume_2pc || !iq->sc_resume_2pc->is_coordinator);
+
     /* early error takes precedence here, i.e. not being able to submit all schema changes;
      * we detect that by setting iq->errstat.errval
      * if that is 0, it means all the schema changes were submitted; in that case, we check
@@ -1782,6 +1936,14 @@ static int _resume_sc_multiddl_txn_finalize(struct ireq *iq, int downgraded)
         goto abort_sc;
     }
 
+    if (iq->sc_resume_2pc && gbl_debug_fail_2pc_redo_finalize > 0) {
+        gbl_debug_fail_2pc_redo_finalize--;
+        logmsg(LOGMSG_USER, "%s failing finalize of 2pc redo %s on debug tunable\n", __func__,
+               iq->sc_resume_2pc->dist_txnid);
+        rc = ERR_SC;
+        goto abort_sc;
+    }
+
     rc = osql_finalize_scs(iq, iq->sc_tran);
     if (rc)
         goto abort_sc;
@@ -1790,6 +1952,14 @@ static int _resume_sc_multiddl_txn_finalize(struct ireq *iq, int downgraded)
         logmsg(LOGMSG_FATAL, "%s:%d failed to commit schema change\n", __func__,
                __LINE__);
         abort();
+    }
+    iq->sc_tran = NULL;
+
+    /* a participant redoes only what its coordinator committed */
+    if (iq->sc_resume_2pc) {
+        assert(iq->sc_resume_2pc->coordinator_committed);
+        logmsg(LOGMSG_WARN, "%s: committing resumed 2pc schema change %s as participant\n", __func__,
+               iq->sc_resume_2pc->dist_txnid);
     }
 
     unlock_schema_lk();
@@ -1817,6 +1987,11 @@ static int _resume_sc_multiddl_txn_finalize(struct ireq *iq, int downgraded)
      * resume_sc_multiddl_txn_finalize_thd or resume_sc_tpt_finalize_thd) does
      * its own backend_thread_event(COMDB2_THR_EVENT_DONE) around this call,
      * so it is not repeated here. */
+    if (iq->sc_resume_2pc) {
+        sc_2pc_resume_done(iq->scs_uuid);
+        disttxn_ddl_forget_prepared(iq->sc_resume_2pc->dist_txnid);
+    }
+    sc_list_2pc_free(iq->sc_resume_2pc);
     free(iq);
     return 0;
 
@@ -1831,14 +2006,23 @@ abort_sc:
         unlock_schema_lk();
         iq->sc_locked = 0;
     }
-    if (parent_trans)
+    /* trans_abort_logical aborts parent_trans too */
+    if (parent_trans && !iq->sc_logical_tran)
         trans_abort(iq, parent_trans);
     if (iq->sc_logical_tran) {
         trans_abort_logical(iq, iq->sc_logical_tran, NULL, 0, NULL, 0);
         iq->sc_logical_tran = NULL;
     }
 
+    /* the coordinator committed: keep the sc_list for a retry */
+    if (iq->sc_resume_2pc) {
+        logmsg(LOGMSG_ERROR, "%s: redo of committed 2pc schema change %s failed\n", __func__,
+               iq->sc_resume_2pc->dist_txnid);
+        osql_sc_release_for_resume(iq);
+        osql_resume_2pc_retry(iq->scs_uuid);
+    }
     osql_postabort_handle(iq);
+    sc_list_2pc_free(iq->sc_resume_2pc);
     free(iq);
     return rc;
 }
@@ -1876,6 +2060,7 @@ void *resume_sc_multiddl_txn_finalize_thd(void *arg)
             /* failed to dispatch any sc object */
             logmsg(LOGMSG_ERROR, "Resuming sc failed with rc %d str \"%s\"\n", iq->errstat.errval, iq->errstat.errstr);
         }
+        sc_list_2pc_free(iq->sc_resume_2pc);
         free(iq);
         return NULL;
     }
@@ -1940,17 +2125,151 @@ void *resume_sc_multiddl_txn_finalize_thd(void *arg)
     return NULL;
 }
 
+/* Clear sc's table's schema change record and seed if uuid's, and record it as aborted */
+static void _sc_mark_over_if_ours(struct schema_change_type *sc, uuid_t uuid, const char *us)
+{
+    void *packed = NULL;
+    size_t packed_len = 0;
+    unsigned long long seed = 0;
+    unsigned int host = 0;
+    int bdberr = 0;
+
+    if (sc_set_running(NULL, sc, sc->tablename, 1, gbl_myhostname, time(NULL), __func__, __LINE__)) {
+        logmsg(LOGMSG_WARN, "%s uuid %s: table %s has a schema change running, leaving it\n", __func__, us,
+               sc->tablename);
+        return;
+    }
+    if (bdb_get_in_schema_change(NULL, sc->tablename, &packed, &packed_len, &bdberr) || bdberr != BDBERR_NOERROR) {
+        logmsg(LOGMSG_ERROR, "%s uuid %s: failed to read schema change record of %s, bdberr %d\n", __func__, us,
+               sc->tablename, bdberr);
+        goto done;
+    }
+    if (packed) {
+        struct schema_change_type *rec = new_schemachange_type();
+        int ours = rec && !unpack_schema_change_type(rec, packed, packed_len) && !comdb2uuidcmp(rec->uuid, uuid);
+        free_schema_change_type(rec);
+        free(packed);
+        if (!ours) {
+            logmsg(LOGMSG_WARN, "%s uuid %s: schema change record of %s is another schema change's, leaving it\n",
+                   __func__, us, sc->tablename);
+            goto done;
+        }
+    }
+    int have_seed = !bdb_get_sc_seed(thedb->bdb_env, NULL, sc->tablename, &seed, &host, &bdberr);
+    if (mark_schemachange_over(sc->tablename))
+        logmsg(LOGMSG_ERROR, "%s uuid %s: failed to mark schema change over for %s\n", __func__, us, sc->tablename);
+    else if (have_seed && bdb_set_schema_change_status(NULL, sc->tablename, seed, 0, NULL, 0, BDB_SC_ABORTED,
+                                                       "distributed schema change aborted", &bdberr))
+        logmsg(LOGMSG_ERROR, "%s uuid %s: failed to set schema change status for %s, bdberr %d\n", __func__, us,
+               sc->tablename, bdberr);
+done:
+    sc_set_running(NULL, sc, sc->tablename, 0, gbl_myhostname, time(NULL), __func__, __LINE__);
+}
+
+/* Clear what do_ddl persisted for an aborted 2pc schema change, so no per-table resume redoes it */
+void _sc_list_mark_over(sc_list_t *scl)
+{
+    uuidstr_t us;
+    comdb2uuidstr(scl->uuid, us);
+    for (int i = 0; i < scl->count; i++) {
+        int size = (i < scl->count - 1) ? scl->offsets[i + 1] - scl->offsets[i]
+                                        : scl->ser_scs_len - (scl->offsets[i] - scl->offsets[0]);
+        uint8_t *p_buf = (uint8_t *)&scl->ser_scs[scl->offsets[i] - scl->offsets[0]];
+        struct schema_change_type *sc = new_schemachange_type();
+        if (!sc) {
+            logmsg(LOGMSG_ERROR, "%s oom %d\n", __func__, __LINE__);
+            return;
+        }
+        if (!buf_get_schemachange(sc, p_buf, p_buf + size)) {
+            logmsg(LOGMSG_ERROR, "%s uuid %s failed to retrieve sc %d\n", __func__, us, i);
+        } else if (sc_kind_runs_do_ddl(sc->kind)) {
+            _sc_mark_over_if_ours(sc, scl->uuid, us);
+        }
+        free_schema_change_type(sc);
+    }
+}
+
+/* Resumed participant: drop the sc_list or redo it, per the coordinator */
+static void *resume_2pc_participant_thd(void *arg)
+{
+    sc_list_t *scl = arg;
+    sc_list_2pc_t *dist = scl->dist;
+    uuidstr_t us;
+
+    comdb2_name_thread(__func__);
+    backend_thread_event(thedb, COMDB2_THR_EVENT_START);
+    comdb2uuidstr(scl->uuid, us);
+
+    int rc;
+    /* lost mastership since the resume started: leave it to the new master, through the retry */
+    if (!bdb_amimaster(thedb->bdb_env) || bdb_lock_desired(thedb->bdb_env)) {
+        rc = LOCK_DESIRED;
+        goto done;
+    }
+    /* a prepare record (seen, or kept as voted) means it may have voted; keep that past this process */
+    if (dist->may_vote && !dist->voted && disttxn_ddl_was_prepared(dist->dist_txnid)) {
+        if (osql_sc_list_mark(scl->uuid, 1))
+            logmsg(LOGMSG_ERROR, "%s uuid %s: failed to keep that 2pc schema change %s voted\n", __func__, us,
+                   dist->dist_txnid);
+        dist->voted = 1;
+    }
+    if (!dist->may_vote) {
+        /* never voted, so the coordinator cannot have committed */
+        logmsg(LOGMSG_WARN, "%s: 2pc schema change %s never voted, aborting it\n", __func__, dist->dist_txnid);
+        disttxn_ddl_resume_aborted(dist);
+        rc = HAS_ABORTED;
+    } else if (!dist->voted &&
+               participant_withdraw_ddl_vote(dist->dist_txnid, dist->coordinator_dbname, dist->coordinator_tier)) {
+        /* an aborted prepare leaves no evidence, so it may have voted yes: withdraw the vote first */
+        logmsg(LOGMSG_WARN, "%s uuid %s: could not withdraw the vote of 2pc schema change %s from coordinator %s\n",
+               __func__, us, dist->dist_txnid, dist->coordinator_dbname);
+        rc = LOCK_DESIRED;
+    } else {
+        if (!dist->voted)
+            logmsg(LOGMSG_WARN, "%s: 2pc schema change %s has no prepare record, withdrew its vote, asking %s\n",
+                   __func__, dist->dist_txnid, dist->coordinator_dbname);
+        rc = participant_wait_resumed_ddl(dist->dist_txnid, dist->coordinator_dbname, dist->coordinator_tier);
+    }
+    if (rc == HAS_COMMITTED) {
+        /* the redo takes dist; a failure keeps the sc_list */
+        dist->coordinator_committed = 1;
+        if (resume_sc_multiddl_txn(scl, NULL))
+            logmsg(LOGMSG_ERROR, "%s uuid %s: failed to redo committed 2pc schema change\n", __func__, us);
+    } else if (rc == HAS_ABORTED) {
+        logmsg(LOGMSG_WARN, "%s: aborting resumed 2pc schema change %s as participant\n", __func__, dist->dist_txnid);
+        /* before deleting the sc_list, so a crash asks again */
+        _sc_list_mark_over(scl);
+        if (osql_delete_sc_list(scl->uuid, NULL))
+            logmsg(LOGMSG_ERROR, "%s uuid %s failed to remove sc list\n", __func__, us);
+        sc_2pc_resume_done(scl->uuid);
+        disttxn_ddl_forget_prepared(dist->dist_txnid);
+    } else {
+        logmsg(LOGMSG_WARN, "%s uuid %s: lock desired or no longer master, retrying 2pc schema change %s\n", __func__,
+               us, dist->dist_txnid);
+    }
+
+done:;
+    int retry = (rc != HAS_COMMITTED && rc != HAS_ABORTED);
+    sc_list_free(scl);
+    /* lock-desired need not mean a new master: retry */
+    if (retry)
+        osql_resume_2pc_retry(scl->uuid);
+    free(scl);
+    backend_thread_event(thedb, COMDB2_THR_EVENT_DONE);
+    return NULL;
+}
+
 /**
  * Resume schema change
  *
  */
-int resume_sc_multiddl_txn(sc_list_t *scl)
+int resume_sc_multiddl_txn(sc_list_t *scl, hash_t *tables)
 {
     LISTC_T(struct schema_change_type) scs;
     struct schema_change_type *sc, *tmp;
     int i, size;
     uuidstr_t us;
-    int rc;
+    int rc = 0;
     int resume = bdb_attr_get(thedb->bdb_attr, BDB_ATTR_SC_RESUME_AUTOCOMMIT) ?
         SC_RESUME : SC_NEW_MASTER_RESUME;
 
@@ -1974,12 +2293,68 @@ int resume_sc_multiddl_txn(sc_list_t *scl)
                    __func__, us);
             goto early_error;
         }
+        /* the caller must not also resume this table on its own */
+        if (tables && !hash_find_readonly(tables, sc->tablename)) {
+            char *name = strdup(sc->tablename);
+            if (name)
+                hash_add(tables, name);
+        }
         /* only schema changes going through do_ddl() persist state to pick up
          * (sc seed, in-schema-change record); the rest (sp, trigger, lua func)
          * have nothing to resume from and must start as new
          */
         if (sc_kind_runs_do_ddl(sc->kind))
             sc->resume = resume;
+    }
+
+    /* one resume of a 2pc sc_list at a time */
+    if (scl->dist && !scl->dist->resuming && !sc_2pc_resume_begin(scl->dist, scl->uuid)) {
+        logmsg(LOGMSG_INFO, "%s uuid %s: 2pc schema change %s is being resumed already\n", __func__, us,
+               scl->dist->dist_txnid);
+        goto free_scs;
+    }
+
+    /* still prepared (the upgrade's abort failed): the coordinator decides */
+    if (scl->dist && !scl->dist->is_coordinator && disttxn_is_prepared(scl->dist->dist_txnid)) {
+        logmsg(LOGMSG_WARN, "%s uuid %s: 2pc schema change %s is prepared, leaving it to coordinator %s\n", __func__,
+               us, scl->dist->dist_txnid, scl->dist->coordinator_dbname);
+        goto free_scs;
+    }
+
+    /* a resumed coordinator never decided: abort it */
+    if (scl->dist && scl->dist->is_coordinator) {
+        logmsg(LOGMSG_WARN, "%s uuid %s: aborting resumed 2pc schema change %s as coordinator\n", __func__, us,
+               scl->dist->dist_txnid);
+        /* in this order: a crash in between repeats the abort */
+        _sc_list_mark_over(scl);
+        if (osql_delete_sc_list(scl->uuid, NULL))
+            logmsg(LOGMSG_ERROR, "%s uuid %s failed to remove sc list\n", __func__, us);
+        disttxn_ddl_resume_aborted(scl->dist);
+        sc_2pc_resume_done(scl->uuid);
+        goto free_scs;
+    }
+
+    /* a participant asks its coordinator first, in its own thread */
+    if (scl->dist && !scl->dist->is_coordinator && !scl->dist->coordinator_committed) {
+        /* reserved until the outcome is known (sc_2pc_resume_done) */
+        LISTC_FOR_EACH(&scs, sc, scs_lnk)
+        {
+            sc_2pc_reserve_sc(scl->uuid, sc);
+        }
+        sc_list_t *own = malloc(sizeof(sc_list_t));
+        if (!own) {
+            logmsg(LOGMSG_ERROR, "%s oom %d\n", __func__, __LINE__);
+            osql_resume_2pc_retry(scl->uuid);
+            rc = ERR_SC;
+            goto free_scs;
+        }
+        *own = *scl;
+        scl->offsets = NULL;
+        scl->ser_scs = NULL;
+        scl->dist = NULL;
+        pthread_t tid;
+        Pthread_create(&tid, &gbl_pthread_attr_detached, resume_2pc_participant_thd, own);
+        goto free_scs;
     }
 
     /* this is freed in the finalizing thread resume_sc_multiddl_txn_finalize_thd */
@@ -1989,6 +2364,9 @@ int resume_sc_multiddl_txn(sc_list_t *scl)
         goto early_error;
     }
     init_fake_ireq(thedb, iq);
+    /* iq owns it from here */
+    iq->sc_resume_2pc = scl->dist;
+    scl->dist = NULL;
 
     /* this starts schema changes;
      * - the async phase is done here, though alter and merge operations
@@ -2015,12 +2393,18 @@ int resume_sc_multiddl_txn(sc_list_t *scl)
          * downgrade); remove the sc list, otherwise every new master would
          * try, and fail, to resume it again
          */
-        if (iq->osql_flags & OSQL_FLAGS_SCDONE) {
+        /* the coordinator committed: keep it */
+        if (iq->sc_resume_2pc) {
+            logmsg(LOGMSG_ERROR, "%s uuid %s: redo of committed 2pc schema change %s failed to start\n", __func__, us,
+                   iq->sc_resume_2pc->dist_txnid);
+            osql_resume_2pc_retry(scl->uuid);
+        } else if (iq->osql_flags & OSQL_FLAGS_SCDONE) {
             if (osql_delete_sc_list(scl->uuid, NULL))
                 logmsg(LOGMSG_ERROR, "%s uuid %s failed to remove sc list\n", __func__, us);
             else
                 logmsg(LOGMSG_INFO, "%s uuid %s removed sc list that cannot be resumed\n", __func__, us);
         }
+        sc_list_2pc_free(iq->sc_resume_2pc);
         free(iq);
         return -1;
     }
@@ -2046,11 +2430,19 @@ int resume_sc_multiddl_txn(sc_list_t *scl)
     return rc;
 
 early_error:
+    rc = ERR_SC;
+    /* retry the sc_list; its tables are not resumed one by one */
+    if (scl->dist) {
+        logmsg(LOGMSG_ERROR, "%s uuid %s: 2pc schema change %s failed to resume\n", __func__, us,
+               scl->dist->dist_txnid);
+        osql_resume_2pc_retry(scl->uuid);
+    }
+free_scs:
     /* free sc objects there if we fail early */
     LISTC_FOR_EACH_SAFE(&scs, sc, tmp, scs_lnk)
     {
         listc_rfl(&scs, sc);
         free_schema_change_type(sc);
     }
-    return ERR_SC;
+    return rc;
 }

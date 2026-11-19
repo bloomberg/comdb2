@@ -99,6 +99,7 @@
 #include <typessql.h>
 #include <sqlwriter.h>
 #include <crc32c.h>
+#include <disttxn.h>
 
 /*
 ** WARNING: These enumeration values are not arbitrary.  They represent
@@ -3382,6 +3383,23 @@ static struct fingerprint_track *prepare_fingerprint(struct sqlclntstate *clnt,
     return t;
 }
 
+/* with prepare_2pc_ddl_wait, a statement using a pending 2pc ddl table (prepare_2pc_ddl_table) fails */
+#define PREPARE_2PC_DDL_PENDING (-2102)
+static __thread int prepare_2pc_ddl_wait;
+static __thread char prepare_2pc_ddl_table[MAXTABLELEN + 1];
+
+/* a table of pStmt with an undecided 2pc schema change, or NULL */
+static const char *stmt_pending_2pc_ddl_table(sqlite3_stmt *pStmt)
+{
+    Vdbe *p = (Vdbe *)pStmt;
+    for (int i = 0; i < p->numTables; i++) {
+        Table *tab = p->tbls[i];
+        if (tab->tnum >= RTPAGE_START && disttxn_ddl_table_pending(tab->zName))
+            return tab->zName;
+    }
+    return NULL;
+}
+
 /**
  * Get a sqlite engine, either from cache or building a new one
  * Locks tables to prevent any schema changes for them
@@ -3485,6 +3503,15 @@ static int get_prepared_stmt_int(struct sqlthdstate *thd,
 
         thd->authState.flags = 0;
         clnt->in_sqlite_init = 0;
+        const char *pending;
+        if (rc == SQLITE_OK && rec->stmt && prepare_2pc_ddl_wait &&
+            (pending = stmt_pending_2pc_ddl_table(rec->stmt)) != NULL) {
+            strncpy(prepare_2pc_ddl_table, pending, sizeof(prepare_2pc_ddl_table) - 1);
+            prepare_2pc_ddl_table[sizeof(prepare_2pc_ddl_table) - 1] = '\0';
+            stmt_cache_free_vdbe(rec->stmt, clnt);
+            rec->stmt = NULL;
+            return PREPARE_2PC_DDL_PENDING;
+        }
         if (rc == SQLITE_OK) {
             if (!prepareOnly) rc = sqlite3LockStmtTables(rec->stmt);
         } else if (rc == SQLITE_ERROR && comdb2_get_verify_remote_schemas(clnt)) {
@@ -3533,11 +3560,27 @@ static int get_prepared_stmt_int(struct sqlthdstate *thd,
         */
         free_original_normalized_sql(clnt);
         memset(clnt->work.aFingerprint, 0, FINGERPRINTSZ);
-        _prepare_error(thd, clnt, rec, rc, err);
+        /* get_prepared_stmt reports it, unless it retries */
+        if (!prepare_2pc_ddl_wait || rc != SQLITE_ERROR || rec->stmt)
+            _prepare_error(thd, clnt, rec, rc, err);
     } else {
         clnt->verify_remote_schemas = 0;
     }
     return rc;
+}
+
+struct ddl_wait_stop_arg {
+    struct sqlclntstate *clnt;
+    int64_t start_ms;
+};
+
+/* stop waiting for a pending 2pc ddl table if the client left or its query time ran out */
+static int ddl_wait_stop(void *arg)
+{
+    struct ddl_wait_stop_arg *w = arg;
+    if (peer_dropped_connection(w->clnt))
+        return 1;
+    return w->clnt->query_timeout > 0 && comdb2_time_epochms() - w->start_ms >= w->clnt->query_timeout * 1000LL;
 }
 
 int get_prepared_stmt(struct sqlthdstate *thd, struct sqlclntstate *clnt,
@@ -3554,13 +3597,50 @@ int get_prepared_stmt(struct sqlthdstate *thd, struct sqlclntstate *clnt,
     if (gbl_sleep_5s_after_caching_table_versions) {
         sleep(5);
     }
+    /* a statement using a pending 2pc ddl table waits, without the schema lock, and prepares again */
     put_ref(&clnt->work.query_plan_ref);
-    rdlock_schema_lk();
-    int rc = get_prepared_stmt_int(thd, clnt, rec, err,
-                                   flags | PREPARE_RECREATE);
-    if (rc == 0 && gbl_fingerprint_queries && gbl_query_plans)
-        clnt->work.query_plan_ref = form_query_plan(clnt, rec->stmt);
-    unlock_schema_lk();
+    int rc;
+    struct ddl_wait_stop_arg ddl_stop = {clnt, comdb2_time_epochms()};
+    for (int tries = 0;; tries++) {
+        char table[MAXTABLELEN + 1] = {0};
+        int gen = bdb_get_dbopen_gen();
+        prepare_2pc_ddl_wait = 1;
+        rdlock_schema_lk();
+        rc = get_prepared_stmt_int(thd, clnt, rec, err, flags | PREPARE_RECREATE);
+        if (rc == 0 && gbl_fingerprint_queries && gbl_query_plans)
+            clnt->work.query_plan_ref = form_query_plan(clnt, rec->stmt);
+        unlock_schema_lk();
+        prepare_2pc_ddl_wait = 0;
+        if (rc == PREPARE_2PC_DDL_PENDING) {
+            strcpy(table, prepare_2pc_ddl_table);
+        } else if (rc == SQLITE_ERROR && rec->stmt == NULL) {
+            const char *name = strstr(sqlite3_errmsg(thd->sqldb), "no such table: ");
+            if (name) {
+                name += strlen("no such table: ");
+                if (!strncasecmp(name, "main.", 5))
+                    name += 5; /* not remdb.t */
+                size_t len = strcspn(name, " \t\n");
+                if (len < sizeof(table))
+                    memcpy(table, name, len);
+            }
+        }
+        /* retry too if a decision rebuilt the schemas since */
+        int waited = table[0] ? disttxn_ddl_table_wait(table, ddl_wait_stop, &ddl_stop) : 0;
+        if (!table[0] || (!waited && rc != PREPARE_2PC_DDL_PENDING && bdb_get_dbopen_gen() == gen))
+            break;
+        if (waited < 0 || tries >= 16) {
+            /* give up */
+            if (rc == PREPARE_2PC_DDL_PENDING) {
+                rc = SQLITE_SCHEMA;
+                errstat_set_rcstrf(err, ERR_PREPARE, "table %s has a pending distributed schema change", table);
+            }
+            break;
+        }
+        err->errval = 0;
+        err->errstr[0] = '\0';
+    }
+    if (rc == SQLITE_ERROR && rec->stmt == NULL)
+        _prepare_error(thd, clnt, rec, rc, err);
     if (gbl_stable_rootpages_test) {
         static int skip = 0;
         if (!skip) {

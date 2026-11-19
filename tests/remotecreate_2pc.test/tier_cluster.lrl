@@ -1,0 +1,4 @@
+# Cluster: 'local' only reaches this host, which need not run a 2pc master,
+# so reach every fdb and every coordinator/participant master through prod
+foreign_db_resolve_tier prod
+machine_class prod

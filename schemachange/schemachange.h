@@ -428,6 +428,20 @@ typedef struct llog_scdone {
 } llog_scdone_t;
 
 #define SESS_SC_LIST_VER 1
+#define SESS_SC_LIST_2PC_VER 2 /* has a 2pc configuration; do not downgrade while one is pending */
+
+/* 2pc configuration of a distributed schema change, saved for its resume */
+typedef struct sc_list_2pc {
+    int is_coordinator;
+    int may_vote; /* participant: unset means it never voted yes */
+    int voted;    /* participant: it prepared, so it may have voted yes */
+    char *dist_txnid;
+    char *coordinator_dbname; /* participant: its coordinator */
+    char *coordinator_tier;
+    int coordinator_committed; /* not saved: resume redoes it */
+    int resuming;              /* not saved: holds the resume of uuid until freed */
+    uuid_t uuid;
+} sc_list_2pc_t;
 
 struct sc_list {
     uuid_t uuid; /* part of the key */
@@ -436,6 +450,7 @@ struct sc_list {
     int ser_scs_len;
     int *offsets;
     char *ser_scs;
+    sc_list_2pc_t *dist; /* set for a 2pc schema change */
 };
 typedef struct sc_list sc_list_t;
 
@@ -443,6 +458,31 @@ typedef struct sc_list sc_list_t;
  * pointer fields are malloced
  */
 int sc_list_create(sc_list_t *scl, void *vscs, uuid_t uuid);
+
+/* a 2pc participant keeps its finalize's comdb2_tables lock to release it once prepared */
+int sc_lock_comdb2_tables_finalize(struct ireq *iq, bdb_state_type *handle, tran_type *tran);
+void sc_comdb2_tables_release_prepared(struct ireq *iq);
+/* a 2pc schema change backing out locks comdb2_tables in its own txn until sc_comdb2_tables_unlock */
+tran_type *sc_comdb2_tables_lock_tran(struct ireq *iq, tran_type *tran);
+void sc_comdb2_tables_unlock(struct ireq *iq);
+
+int sc_list_2pc_create(sc_list_t *scl, int is_coordinator, const char *dist_txnid, const char *coordinator_dbname,
+                       const char *coordinator_tier);
+void sc_list_free(sc_list_t *scl); /* frees the malloced fields */
+void sc_list_2pc_free(sc_list_2pc_t *dist);
+
+/* read the 2pc sc_list of uuid (or dist_txnid): 0 found, 1 none, -1 error */
+int sc_list_2pc_get(uuid_t uuid, const char *dist_txnid, sc_list_t *scl);
+
+int resume_2pc_sc_list(uuid_t uuid);
+void resume_2pc_sc_list_aborted(const char *dist_txnid);
+
+/* one resume of a 2pc sc_list at a time (begin returns 0 if one runs); retries back off until done */
+int sc_2pc_resume_begin(sc_list_2pc_t *dist, uuid_t uuid);
+int sc_2pc_resume_retry_secs(uuid_t uuid);
+void sc_2pc_resume_done(uuid_t uuid);
+void sc_2pc_reserve_sc(uuid_t uuid, struct schema_change_type *sc);
+int sc_2pc_table_reserved(const char *table);
 
 /* Returns 1 if schema changes of this kind run through do_ddl(), which is the
  * only path that marks the schema change in llmeta and, on completion, calls

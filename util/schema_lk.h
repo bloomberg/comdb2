@@ -32,6 +32,11 @@ void unlock_schema_int(const char *file, const char *func, int line);
 
 #define wrlock_schema_lk() wrlock_schema_int(__FILE__, __func__, __LINE__)
 void wrlock_schema_int(const char *file, const char *func, int line);
+#define wrlock_schema_timed_lk(ms) wrlock_schema_timed_int((ms), __FILE__, __func__, __LINE__)
+int wrlock_schema_timed_int(int timeoutms, const char *file, const char *func, int line);
+/* mark this thread's write lock as held to finalize a schema change */
+void set_sc_finalize_schema_lk(void);
+int have_sc_finalize_schema_lk(void);
 
 #define assert_wrlock_schema_lk() assert_wrlock_schema_int(__FILE__, __func__, __LINE__)
 void assert_wrlock_schema_int(const char *file, const char *func, int line);

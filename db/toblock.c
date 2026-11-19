@@ -2933,6 +2933,9 @@ __thread int waitdie_deadlock;
 
 void abort_disttxn(struct ireq *iq, int rc, int outrc)
 {
+    if (iq->disttxn_failed)
+        return;
+    iq->disttxn_failed = 1;
     if (iq->sorese->is_coordinator) {
         if (gbl_debug_disttxn_trace) {
             logmsg(LOGMSG_USER, "%s DISTTXN %s coord failing disttxn rc=%d outrc=%d\n", __func__,
@@ -2947,6 +2950,173 @@ void abort_disttxn(struct ireq *iq, int rc, int outrc)
             logmsg(LOGMSG_USER, "%s DISTTXN %s participant failing disttxn rc=%d outrc=%d\n", __func__,
                    iq->sorese->dist_txnid, rc, outrc);
         }
+    }
+}
+
+/* Vote on a finalized 2pc schema change: 0 commits, nonzero aborts, 1 if a prepared participant gave up */
+static int disttxn_ddl_vote(struct ireq *iq, tran_type *parent_trans, void *bskey, int bskeylen, struct block_err *err,
+                            int *outrc)
+{
+    char *dist_txnid = iq->sorese->dist_txnid;
+    int bdberr, rc;
+
+    if (iq->sorese->is_participant) {
+        if (gbl_debug_exit_participant_before_ddl_prepare) {
+            logmsg(LOGMSG_FATAL, "%s exiting participant before preparing schema change %s on debug tunable\n",
+                   __func__, dist_txnid);
+            _exit(1);
+        }
+        if (gbl_debug_fail_ddl_prepare == DDL_2PC_FAULT_FAIL_PREPARE) {
+            logmsg(LOGMSG_USER, "%s failing prepare of schema change %s on debug tunable\n", __func__, dist_txnid);
+            participant_has_failed(dist_txnid, iq->sorese->coordinator_dbname, iq->sorese->coordinator_master,
+                                   ERR_DIST_ABORT, ERR_BLOCK_FAILED, "Failed prepare on debug tunable");
+            return -1;
+        }
+        /* prepare waits for replicants holding the finalize schema lock */
+        set_sc_finalize_schema_lk();
+        rc = bdb_tran_prepare(thedb->bdb_env, parent_trans, dist_txnid, iq->sorese->coordinator_dbname,
+                              iq->sorese->coordinator_tier, 0, bskey, bskeylen, &bdberr);
+        if (rc != 0) {
+            logmsg(LOGMSG_ERROR, "Failed to prepare schema change %s from %s:%s: %d\n", dist_txnid,
+                   iq->sorese->coordinator_dbname, iq->sorese->coordinator_tier, rc);
+            participant_has_failed(dist_txnid, iq->sorese->coordinator_dbname, iq->sorese->coordinator_master,
+                                   ERR_NOT_DURABLE, ERR_BLOCK_FAILED, "Prepare was not durable");
+            return -1;
+        }
+        /* from here it may vote yes: a resume asks the coordinator rather than abort */
+        disttxn_ddl_note_prepared(dist_txnid);
+        /* statements naming its tables wait for the decision */
+        iq->disttxn_ddl_pending = disttxn_ddl_pending_begin(iq->sc_pending, dist_txnid, iq->sorese->coordinator_dbname);
+        /* hidden as pending: system tables may read the table list again */
+        sc_comdb2_tables_release_prepared(iq);
+        /* don't stop the db while waiting; an abort relocks to back out */
+        if (iq->sc_locked) {
+            unlock_schema_lk();
+            iq->sc_locked = 0;
+        }
+        Pthread_mutex_lock(&blklk);
+        prepared_count++;
+        Pthread_mutex_unlock(&blklk);
+        rc = participant_wait_ddl(dist_txnid, iq->sorese->coordinator_dbname, iq->sorese->coordinator_tier,
+                                  iq->sorese->coordinator_master);
+        Pthread_mutex_lock(&blklk);
+        prepared_count--;
+        Pthread_mutex_unlock(&blklk);
+        /* gave up: abort, and resume the kept sc_list */
+        if (rc == TIMED_OUT || rc == LOCK_DESIRED) {
+            snprintf(iq->errstat.errstr, ERRSTAT_STR_SZ, "distributed schema change %s waiting for coordinator",
+                     rc == TIMED_OUT ? "timed out" : "gave up mastership");
+            return 1;
+        }
+        return (rc == HAS_COMMITTED) ? 0 : -1;
+    }
+
+    assert(iq->sorese->is_coordinator);
+    /* bplog_schemachange_wait collected every yes vote before the schema lock */
+    if (coordinator_ddl_write_decision(parent_trans, dist_txnid) == 0)
+        return 0;
+    coordinator_ddl_committed(dist_txnid, -1);
+    err->errcode = ERR_DIST_ABORT;
+    *outrc = ERR_BLOCK_FAILED;
+    iq->sorese->rcout = *outrc + err->errcode;
+    snprintf(iq->errstat.errstr, ERRSTAT_STR_SZ, "failed writing to disttxn table");
+    return -1;
+}
+
+/* Back out a 2pc participant's in-memory schema holding comdb2_tables again, as its finalize did */
+static void disttxn_ddl_backout_schema(struct ireq *iq, const char *why, int unlock)
+{
+    /* the schema lock first, as finalize: sql threads lock comdb2_tables holding its read lock */
+    if (iq->sc_pending && !iq->sc_locked) {
+        wrlock_schema_lk();
+        iq->sc_locked = 1;
+    }
+    tran_type *systran = sc_comdb2_tables_lock_tran(iq, NULL);
+    if (systran && bdb_lock_tablename_write(thedb->bdb_env, "comdb2_tables", systran) != 0)
+        logmsg(LOGMSG_ERROR, "%s: failed to lock comdb2_tables\n", __func__);
+    backout_schema_changes(iq, NULL);
+    /* make sql threads reload the schema */
+    BDB_BUMP_DBOPEN_GEN(invalid, why);
+    sc_comdb2_tables_unlock(iq);
+    if (unlock && iq->sc_locked) {
+        unlock_schema_lk();
+        iq->sc_locked = 0;
+    }
+}
+
+/* Abort a (possibly prepared) 2pc schema change and its in-memory schema */
+static void disttxn_ddl_backout(struct ireq *iq, int unlock)
+{
+    trans_abort_logical(iq, iq->sc_logical_tran, NULL, 0, NULL, 0);
+    iq->sc_logical_tran = NULL;
+    disttxn_ddl_backout_schema(iq, "2pc schema change backout", unlock);
+}
+
+/* Keep the 2pc sc_list, as a downgrade does, for a resume after this request */
+static void disttxn_ddl_keep_for_resume(struct ireq *iq)
+{
+    /* reserve its tables until the outcome is known */
+    for (struct schema_change_type *sc = iq->sc_pending; sc; sc = sc->sc_next)
+        sc_2pc_reserve_sc(iq->scs_uuid, sc);
+    iq->disttxn_ddl_resume = 1;
+    osql_sc_release_for_resume(iq);
+}
+
+/* Handle the commit_rc of a 2pc schema change; with a commit lsn it is logged and only the replicant wait failed */
+static void disttxn_ddl_committed(struct ireq *iq, int commit_rc, struct block_err *err, int *outrc)
+{
+    char *dist_txnid = iq->sorese->dist_txnid;
+
+    if (!iq->sorese->is_coordinator) {
+        /* logged: final, so it must not be released for a resume */
+        if (commit_rc == 0 || iq->commit_file > 0) {
+            if (commit_rc)
+                logmsg(LOGMSG_WARN, "%s: prepared schema change %s committed, but its replicant wait failed, rc %d\n",
+                       __func__, dist_txnid, commit_rc);
+            participant_has_propagated(dist_txnid, iq->sorese->coordinator_dbname, iq->sorese->coordinator_master);
+            return;
+        }
+        logmsg(LOGMSG_ERROR, "%s: commit of prepared schema change %s failed, rc %d\n", __func__, dist_txnid,
+               commit_rc);
+        participant_ddl_commit_failed(dist_txnid);
+        /* back out the published schema, unless already backed out */
+        if (iq->sc_logical_tran)
+            disttxn_ddl_backout_schema(iq, "2pc schema change commit failed", 1);
+        disttxn_ddl_keep_for_resume(iq);
+        return;
+    }
+
+    int written = (commit_rc == 0 || iq->commit_file > 0);
+    int rc = written ? 0 : -1;
+    /* a failed reply must not run the abort cleanup on a logged commit */
+    iq->disttxn_ddl_logged = written;
+    /* unlogged: back out the published schema before the abort cleanup runs on it */
+    if (!written) {
+        logmsg(LOGMSG_ERROR, "%s: commit of coordinator schema change %s failed, rc %d\n", __func__, dist_txnid,
+               commit_rc);
+        disttxn_ddl_backout_schema(iq, "2pc coordinator schema change commit failed", 1);
+    }
+    if (written && (commit_rc || gbl_coordinator_block_until_durable)) {
+        DB_LSN commit_lsn = {.file = iq->commit_file, .offset = iq->commit_offset};
+        if (bdb_block_durable(thedb->bdb_env, &commit_lsn))
+            rc = LOCK_DESIRED;
+    }
+    if (coordinator_ddl_committed(dist_txnid, rc) == HAS_COMMITTED) {
+        if (gbl_coordinator_wait_propagate) {
+            coordinator_wait_propagate(dist_txnid);
+        } else {
+            coordinator_resolve(dist_txnid);
+        }
+    }
+    if (rc == LOCK_DESIRED) {
+        *outrc = ERR_NOT_DURABLE;
+        iq->sorese->rcout = *outrc;
+        snprintf(iq->errstat.errstr, ERRSTAT_STR_SZ, "distributed schema change outcome unknown: decision not durable");
+    } else if (rc) {
+        err->errcode = ERR_DIST_ABORT;
+        *outrc = ERR_BLOCK_FAILED;
+        iq->sorese->rcout = *outrc + err->errcode;
+        snprintf(iq->errstat.errstr, ERRSTAT_STR_SZ, "distributed schema change failed to commit, rc %d", commit_rc);
     }
 }
 
@@ -5916,10 +6086,15 @@ add_blkseq:
 
             if (rc == 0 && have_blkseq) {
                 if (iq->tranddl) {
+                    int dist_ddl = (iq->sorese && iq->sorese->dist_txnid);
+                    int dist_ddl_abort = 0;
                     if (backed_out) {
                         assert(trans == NULL);
                         if (iq->sc_logical_tran)
                             bdb_ltran_put_schema_lock(iq->sc_logical_tran);
+                        /* The schema change failed, so the distributed txn fails */
+                        if (dist_ddl)
+                            abort_disttxn(iq, err.errcode, outrc);
                     } else {
                         assert(iq->sc_tran);
                         assert(trans != NULL);
@@ -5951,15 +6126,65 @@ add_blkseq:
                             comdb2_die(0);
                         }
                         iq->sc_tran = NULL;
+
+                        if (dist_ddl)
+                            dist_ddl_abort = disttxn_ddl_vote(iq, parent_trans, bskey, bskeylen, &err, &outrc);
+                    }
+                    if (dist_ddl_abort) {
+                        disttxn_ddl_backout(iq, 0);
+                        dist_txn_abort_write_blkseq(thedb->bdb_env, bskey, bskeylen);
+                        if (!outrc)
+                            outrc = ERR_BLOCK_FAILED;
+                        if (!iq->errstat.errstr[0])
+                            snprintf(iq->errstat.errstr, ERRSTAT_STR_SZ, "distributed schema change aborted");
                     }
                     if (iq->sc_locked) {
                         unlock_schema_lk();
                         iq->sc_locked = 0;
                     }
+                    /* a prepared participant gave up: its abort restored the sc_list; keep that it voted */
+                    if (dist_ddl_abort > 0) {
+                        if (gbl_debug_exit_participant_before_voted) {
+                            /* the abort is durable, the voted mark is not */
+                            thedb->bdb_env->dbenv->log_flush(thedb->bdb_env->dbenv, NULL);
+                            logmsg(LOGMSG_FATAL,
+                                   "%s exiting participant before keeping that %s voted on debug tunable\n", __func__,
+                                   iq->sorese->dist_txnid);
+                            _exit(1);
+                        }
+                        osql_sc_list_mark(iq->scs_uuid, 1);
+                        disttxn_ddl_keep_for_resume(iq);
+                    }
                     if (iq->sc_logical_tran) {
-                        irc = trans_commit_logical(iq, iq->sc_logical_tran,
-                                                   gbl_myhostname, 0, 1, NULL,
-                                                   0, NULL, 0);
+                        /* disttxn_ddl_committed reads the commit lsn */
+                        iq->commit_file = iq->commit_offset = 0;
+                        if (dist_ddl && !backed_out && iq->sorese->is_participant &&
+                            gbl_debug_fail_ddl_prepare == DDL_2PC_FAULT_FAIL_COMMIT) {
+                            logmsg(LOGMSG_USER, "%s failing commit of prepared schema change %s on debug tunable\n",
+                                   __func__, iq->sorese->dist_txnid);
+                            disttxn_ddl_backout(iq, 1);
+                            irc = -1;
+                        } else if (dist_ddl && !backed_out && iq->sorese->is_coordinator &&
+                                   gbl_debug_fail_ddl_prepare == DDL_2PC_FAULT_FAIL_COORDINATOR_COMMIT) {
+                            /* as a commit that fails unlogged */
+                            logmsg(LOGMSG_USER, "%s failing commit of coordinator schema change %s on debug tunable\n",
+                                   __func__, iq->sorese->dist_txnid);
+                            trans_abort_logical(iq, iq->sc_logical_tran, NULL, 0, NULL, 0);
+                            irc = -1;
+                        } else
+                            irc = trans_commit_logical(iq, iq->sc_logical_tran, gbl_myhostname, 0, 1, NULL, 0, NULL, 0);
+                        if (irc == 0 && dist_ddl && !backed_out && iq->sorese->is_participant &&
+                            gbl_debug_fail_ddl_prepare == DDL_2PC_FAULT_FAIL_COMMIT_WAIT) {
+                            /* as a failed replicant wait */
+                            logmsg(LOGMSG_USER,
+                                   "%s failing the replicant wait of committed schema change %s on debug tunable\n",
+                                   __func__, iq->sorese->dist_txnid);
+                            irc = BDBERR_NOT_DURABLE;
+                        }
+                        if (dist_ddl && !backed_out) {
+                            disttxn_ddl_committed(iq, irc, &err, &outrc);
+                            irc = 0; /* handled: a not-durable wait must not fail a logged commit */
+                        }
                     }
                     /* Clear sc_running after trans_commit_logical so that
                      * replicants have the new tableversion visible before
@@ -5967,6 +6192,12 @@ add_blkseq:
                     osql_clear_sc_running(iq);
                     assert(outrc || iq->sc_running == 0);
                     iq->sc_logical_tran = NULL;
+                    /* decided: waiting statements can prepare again */
+                    disttxn_ddl_pending_end(iq->disttxn_ddl_pending);
+                    iq->disttxn_ddl_pending = NULL;
+                    /* final unless kept for a resume, which may still ask */
+                    if (dist_ddl && iq->sorese->is_participant && !iq->disttxn_ddl_resume)
+                        disttxn_ddl_forget_prepared(iq->sorese->dist_txnid);
                 } else {
                     /* TODO: Prevent 2pc txns from running in serializable isolation, as that
                      * would require holding the commit-lock in write mode long-term.  */
@@ -6185,6 +6416,8 @@ add_blkseq:
                         trans = NULL;
                     }
                     backout_and_abort_tranddl(iq, parent_trans, 0);
+                    if (iq->sorese && iq->sorese->dist_txnid && rc != RC_INTERNAL_RETRY)
+                        abort_disttxn(iq, err.errcode, outrc);
                 } else {
                     if (iq->sorese && iq->sorese->dist_txnid && rc != RC_INTERNAL_RETRY) {
                         if (iq->sorese->is_coordinator) {
@@ -6492,6 +6725,9 @@ cleanup:
     logmsg(LOGMSG_DEBUG, "%s cleanup rc %d did_replay:%d fromline:%d\n",
            __func__, outrc, did_replay, fromline);
 #endif
+    /* a failed 2pc participant may still have its comdb2_tables txn or kept lock handle */
+    sc_comdb2_tables_unlock(iq);
+
     // legacy_sndbak is being done from an SQL thread, which will hold a curtran lock, so skip this check
     if (!iq->ipc_sndbak)
         bdb_checklock(thedb->bdb_env);
@@ -6617,12 +6853,19 @@ static int toblock_main(struct javasp_trans_state *javasp_trans_handle, struct i
     if (!gbl_all_prepare_leak)
         bdb_assert_notran(thedb->bdb_env);
 
-    if (rc == 0) {
+    /* a logged 2pc schema change committed though the request reports an unknown outcome */
+    if (rc == 0 || iq->disttxn_ddl_logged) {
         osql_postcommit_handle(iq);
         handle_postcommit_bpfunc(iq);
     } else {
         osql_postabort_handle(iq);
         handle_postabort_bpfunc(iq);
+    }
+
+    /* after the cleanup above */
+    if (iq->disttxn_ddl_resume) {
+        iq->disttxn_ddl_resume = 0;
+        resume_2pc_sc_list(iq->scs_uuid);
     }
 
     if (iq->tptlock)
