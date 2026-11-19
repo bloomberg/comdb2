@@ -81,6 +81,8 @@ static int install_plugin_int(comdb2_plugin_t *new_plugin)
 
     /*
       Initialize the plugin and add it to the global list of installed plugins.
+      Static plugins are installed before the lrl files are read, so an
+      init_cb can register tunables that the lrl then sets.
     */
     if (new_plugin->init_cb && new_plugin->init_cb(NULL)) {
         logmsg(LOGMSG_ERROR, "Plugin initialization failed (%s).",
