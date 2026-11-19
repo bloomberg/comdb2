@@ -2933,6 +2933,9 @@ __thread int waitdie_deadlock;
 
 void abort_disttxn(struct ireq *iq, int rc, int outrc)
 {
+    if (iq->disttxn_failed)
+        return;
+    iq->disttxn_failed = 1;
     if (iq->sorese->is_coordinator) {
         if (gbl_debug_disttxn_trace) {
             logmsg(LOGMSG_USER, "%s DISTTXN %s coord failing disttxn rc=%d outrc=%d\n", __func__,
@@ -2947,6 +2950,80 @@ void abort_disttxn(struct ireq *iq, int rc, int outrc)
             logmsg(LOGMSG_USER, "%s DISTTXN %s participant failing disttxn rc=%d outrc=%d\n", __func__,
                    iq->sorese->dist_txnid, rc, outrc);
         }
+    }
+}
+
+/* Undo the in-memory schema that a 2pc schema change published, once its transaction is gone */
+static void disttxn_ddl_backout_schema(struct ireq *iq)
+{
+    int locked = iq->sc_locked;
+    if (!locked) {
+        wrlock_schema_lk();
+        iq->sc_locked = 1; /* backout_schema_changes locks again otherwise */
+    }
+    backout_schema_changes(iq, NULL);
+    BDB_BUMP_DBOPEN_GEN(invalid, "2pc schema change backout");
+    if (!locked) {
+        unlock_schema_lk();
+        iq->sc_locked = 0;
+    }
+}
+
+static void disttxn_ddl_set_abort(struct ireq *iq, struct block_err *err, int *outrc, const char *why)
+{
+    err->errcode = ERR_DIST_ABORT;
+    *outrc = ERR_BLOCK_FAILED;
+    iq->sorese->rcout = *outrc + err->errcode;
+    snprintf(iq->errstat.errstr, ERRSTAT_STR_SZ, "%s", why);
+}
+
+/* Handle the commit of a 2pc schema change; with a commit lsn it is logged and only the replicant wait failed */
+static void disttxn_ddl_committed(struct ireq *iq, int commit_rc, struct block_err *err, int *outrc)
+{
+    char *dist_txnid = iq->sorese->dist_txnid;
+    int written = (commit_rc == 0 || iq->commit_file > 0);
+
+    if (!written) {
+        logmsg(LOGMSG_ERROR, "%s: commit of 2pc schema change %s failed, rc %d\n", __func__, dist_txnid, commit_rc);
+        disttxn_ddl_backout_schema(iq);
+    }
+
+    if (!iq->sorese->is_coordinator) {
+        if (written)
+            participant_has_propagated(dist_txnid, iq->sorese->coordinator_dbname, iq->sorese->coordinator_master);
+        else /* toblock_main keeps the sc_list to redo it */
+            disttxn_ddl_set_abort(iq, err, outrc, "distributed schema change failed to commit");
+        return;
+    }
+
+    int rc = written ? 0 : -1;
+    /* a failed reply must not run the abort cleanup on a logged commit */
+    iq->disttxn_ddl_logged = written;
+    if (written && gbl_coordinator_sync_on_commit)
+        thedb->bdb_env->dbenv->log_flush(thedb->bdb_env->dbenv, NULL);
+    if (written && (commit_rc || gbl_coordinator_block_until_durable)) {
+        DB_LSN commit_lsn = {.file = iq->commit_file, .offset = iq->commit_offset};
+        if (bdb_block_durable(thedb->bdb_env, &commit_lsn))
+            rc = LOCK_DESIRED;
+    }
+    if (written && gbl_debug_exit_coordinator_after_commit) {
+        logmsg(LOGMSG_FATAL, "%s exiting coordinator after commit on debug tunable\n", __func__);
+        thedb->bdb_env->dbenv->log_flush(thedb->bdb_env->dbenv, NULL);
+        _exit(1);
+    }
+    if (coordinator_ddl_committed(dist_txnid, rc) == HAS_COMMITTED) {
+        if (gbl_coordinator_wait_propagate) {
+            coordinator_wait_propagate(dist_txnid);
+        } else {
+            coordinator_resolve(dist_txnid);
+        }
+    }
+    if (rc == LOCK_DESIRED) {
+        *outrc = ERR_NOT_DURABLE;
+        iq->sorese->rcout = *outrc;
+        snprintf(iq->errstat.errstr, ERRSTAT_STR_SZ, "distributed schema change outcome unknown: decision not durable");
+    } else if (rc) {
+        disttxn_ddl_set_abort(iq, err, outrc, "distributed schema change failed to commit");
     }
 }
 
@@ -5916,10 +5993,14 @@ add_blkseq:
 
             if (rc == 0 && have_blkseq) {
                 if (iq->tranddl) {
+                    int dist_ddl = (iq->sorese && iq->sorese->dist_txnid);
                     if (backed_out) {
                         assert(trans == NULL);
                         if (iq->sc_logical_tran)
                             bdb_ltran_put_schema_lock(iq->sc_logical_tran);
+                        /* The schema change failed, so the distributed txn fails */
+                        if (dist_ddl)
+                            abort_disttxn(iq, err.errcode, outrc);
                     } else {
                         assert(iq->sc_tran);
                         assert(trans != NULL);
@@ -5951,15 +6032,38 @@ add_blkseq:
                             comdb2_die(0);
                         }
                         iq->sc_tran = NULL;
+
+                        /* the coordinator's decision commits with its schema change */
+                        if (dist_ddl && iq->sorese->is_coordinator &&
+                            coordinator_ddl_write_decision(parent_trans, iq->sorese->dist_txnid)) {
+                            trans_abort_logical(iq, iq->sc_logical_tran, NULL, 0, NULL, 0);
+                            iq->sc_logical_tran = NULL;
+                            disttxn_ddl_backout_schema(iq);
+                            dist_txn_abort_write_blkseq(thedb->bdb_env, bskey, bskeylen);
+                            coordinator_ddl_committed(iq->sorese->dist_txnid, -1);
+                            disttxn_ddl_set_abort(iq, &err, &outrc, "failed writing to disttxn table");
+                        }
                     }
                     if (iq->sc_locked) {
                         unlock_schema_lk();
                         iq->sc_locked = 0;
                     }
                     if (iq->sc_logical_tran) {
+                        /* disttxn_ddl_committed reads the commit lsn */
+                        iq->commit_file = iq->commit_offset = 0;
                         irc = trans_commit_logical(iq, iq->sc_logical_tran,
                                                    gbl_myhostname, 0, 1, NULL,
                                                    0, NULL, 0);
+                        if (irc == 0 && dist_ddl && !backed_out && iq->sorese->is_participant &&
+                            (gbl_debug_2pc_ddl & DDL_2PC_DEBUG_FAIL_COMMIT_WAIT)) {
+                            logmsg(LOGMSG_USER, "%s failing the replicant wait of a 2pc commit on debug tunable\n",
+                                   __func__);
+                            irc = BDBERR_NOT_DURABLE;
+                        }
+                        if (dist_ddl && !backed_out) {
+                            disttxn_ddl_committed(iq, irc, &err, &outrc);
+                            irc = 0; /* handled: a failed replicant wait does not fail a logged commit */
+                        }
                     }
                     /* Clear sc_running after trans_commit_logical so that
                      * replicants have the new tableversion visible before
@@ -6185,6 +6289,8 @@ add_blkseq:
                         trans = NULL;
                     }
                     backout_and_abort_tranddl(iq, parent_trans, 0);
+                    if (iq->sorese && iq->sorese->dist_txnid && rc != RC_INTERNAL_RETRY)
+                        abort_disttxn(iq, err.errcode, outrc);
                 } else {
                     if (iq->sorese && iq->sorese->dist_txnid && rc != RC_INTERNAL_RETRY) {
                         if (iq->sorese->is_coordinator) {
@@ -6617,12 +6723,25 @@ static int toblock_main(struct javasp_trans_state *javasp_trans_handle, struct i
     if (!gbl_all_prepare_leak)
         bdb_assert_notran(thedb->bdb_env);
 
-    if (rc == 0) {
+    /* a logged 2pc coordinator commit is final, though the request may report an unknown outcome */
+    if (rc == 0 || iq->disttxn_ddl_logged) {
         osql_postcommit_handle(iq);
         handle_postcommit_bpfunc(iq);
     } else {
+        /* the coordinator committed: keep the sc_list for a resume to redo it */
+        if (iq->disttxn_ddl_committed) {
+            osql_sc_release_for_resume(iq);
+            participant_ddl_commit_failed(iq->sorese->dist_txnid);
+            iq->disttxn_ddl_resume = 1;
+        }
         osql_postabort_handle(iq);
         handle_postabort_bpfunc(iq);
+    }
+
+    /* after the cleanup above */
+    if (iq->disttxn_ddl_resume) {
+        iq->disttxn_ddl_resume = 0;
+        resume_2pc_sc_list(iq->scs_uuid);
     }
 
     if (iq->tptlock)
