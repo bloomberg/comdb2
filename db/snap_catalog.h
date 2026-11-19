@@ -53,6 +53,10 @@ int snap_catalog_find_view(const char *name, struct dbview **view);
 /* 1 if db is a table as a snapshot saw it before a schema change */
 int snap_catalog_is_old_table(const struct dbtable *db);
 
+/* 1 if db is a table as a snapshot saw it, and its files are gone (for
+ * example, removed by "delfiles"): a statement that uses it must fail */
+int snap_catalog_table_unavailable(const struct dbtable *db);
+
 void snap_catalog_free(struct snap_catalog **cat);
 
 #endif

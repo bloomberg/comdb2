@@ -8934,6 +8934,19 @@ static int sqlite3LockStmtTables_int(sqlite3_stmt *pStmt, int after_recovery)
             }
         }
 
+        /* the files of a table as the snapshot saw it are gone */
+        if (snap_catalog_table_unavailable(db)) {
+            logmsg(LOGMSG_ERROR, "%s: table %s: files as of %u:%u are gone\n", __func__, db->tablename,
+                   clnt->modsnap_start_lsn_file, clnt->modsnap_start_lsn_offset);
+            sqlite3_mutex_enter(sqlite3_db_mutex(p->db));
+            sqlite3VdbeError(p, "table \"%s\" as of the snapshot is not available: its files were removed",
+                             db->tablename);
+            sqlite3VdbeTransferError(p);
+            sqlite3MakeSureDbHasErr(p->db, SQLITE_OK);
+            sqlite3_mutex_leave(sqlite3_db_mutex(p->db));
+            return SQLITE_SCHEMA;
+        }
+
         /* a table as a snapshot saw it before a schema change does not
          * change, and the snapshot holds it */
         if (snap_catalog_is_old_table(db)) {
@@ -9349,6 +9362,10 @@ sqlite3BtreeCursor_cursor(Btree *pBt,      /* The btree */
      * schema change has shadows only when the statement needs them */
     int dbnum = -1;
     struct dbtable *live = NULL;
+    if (snap_catalog_table_unavailable(cur->db)) {
+        logmsg(LOGMSG_ERROR, "%s: table %s as of the snapshot has no files\n", __func__, cur->db->tablename);
+        return SQLITE_SCHEMA;
+    }
     const int old_table = snap_catalog_is_old_table(cur->db);
     if (old_table && old_table_shadows(clnt, cur->db, (sqlite3_stmt *)cur->vdbe, &dbnum, &live) != 0) {
         logmsg(LOGMSG_ERROR, "%s: no shadows for table %s\n", __func__, cur->db->tablename);

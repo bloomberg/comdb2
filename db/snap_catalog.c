@@ -25,6 +25,15 @@
  * the log that removed them is deleted, and the snapshot holds that log.  A
  * table created after the start LSN is not in the catalog.
  *
+ * The old files of a table can be gone: "delfiles" removes the files that
+ * llmeta does not name, even if the logs still do.  Such a table is in the
+ * catalog without files, so that sqlite knows it, and a statement that uses it
+ * fails (see snap_catalog_table_unavailable()).  The other tables of the
+ * catalog are not affected.  Do not fall back to the current table: it is not
+ * the table as of the start LSN, and the sc_history check of
+ * check_snapshot_table() misses the change once its row is removed
+ * ("clear_sc_history").
+ *
  * sqlite sees the catalog through its own sqlite_master entries, and
  * get_dbtable_by_name() returns its tables on the sql thread of the snapshot.
  * A write to an old table goes to shadows, as any write does, and the commit
@@ -156,14 +165,12 @@ static void close_old_table(struct dbtable *db)
     free(db);
 }
 
-/* Open table name, with sql name alias, schema csc2 and version csc2_vers,
- * as llmeta names it through tran */
-static struct dbtable *open_old_table(tran_type *tran, const char *name, const char *alias, const char *csc2,
-                                      int csc2_vers)
+/* A table with sql name alias, schema csc2 and version csc2_vers, without
+ * files */
+static struct dbtable *new_old_table(const char *name, const char *alias, const char *csc2, int csc2_vers)
 {
     struct dbtable *db = NULL;
     char tagname[MAXTABLELEN];
-    int bdberr, compr = 0, compr_blobs = 0, datacopy_odh = 0;
 
     /* the tags of the table are under a name of its own */
     snprintf(tagname, sizeof(tagname), "$snap%" PRIu64, ATOMIC_ADD64(snap_seq, 1));
@@ -180,6 +187,19 @@ static struct dbtable *open_old_table(tran_type *tran, const char *name, const c
     if (alias)
         db->sqlaliasname = strdup(alias);
     db->schema_version = csc2_vers;
+    return db;
+}
+
+/* Open table name, with sql name alias, schema csc2 and version csc2_vers,
+ * as llmeta names it through tran */
+static struct dbtable *open_old_table(tran_type *tran, const char *name, const char *alias, const char *csc2,
+                                      int csc2_vers)
+{
+    int bdberr, compr = 0, compr_blobs = 0, datacopy_odh = 0;
+
+    struct dbtable *db = new_old_table(name, alias, csc2, csc2_vers);
+    if (db == NULL)
+        return NULL;
 
     db->handle = bdb_open_snapshot(name, thedb->basedir, db->lrl, db->nix, (short *)db->ix_keylen, db->ix_dupes,
                                    db->ix_recnums, db->ix_datacopy, db->ix_datacopylen, db->ix_collattr,
@@ -220,6 +240,30 @@ static struct dbtable *open_old_table(tran_type *tran, const char *name, const c
 err:
     close_old_table(db);
     return NULL;
+}
+
+/* Table name as of a snapshot when its files do not open: sqlite knows it,
+ * and a statement that uses it fails.  Not shared: it has no files to hold
+ * open. */
+static struct snap_table *unavailable_table(const char *name, const char *alias, const char *csc2, int csc2_vers)
+{
+    struct dbtable *db = new_old_table(name, alias, csc2, csc2_vers);
+    if (db == NULL)
+        return NULL;
+    if (create_datacopy_array(db) || create_sqlmaster_record(db, NULL)) {
+        logmsg(LOGMSG_ERROR, "%s: table %s: cannot create sql schema\n", __func__, name);
+        close_old_table(db);
+        return NULL;
+    }
+    struct snap_table *st = calloc(1, sizeof(*st));
+    if (st == NULL) {
+        close_old_table(db);
+        return NULL;
+    }
+    st->name = strdup(name);
+    st->db = db;
+    st->refs = 1;
+    return st;
 }
 
 /* Return a reference to table name as llmeta names it through tran */
@@ -263,6 +307,13 @@ static struct snap_table *get_old_table(tran_type *tran, const char *name, const
 static void put_old_table(struct snap_table *st)
 {
     struct snap_table **p;
+
+    if (st->db->handle == NULL) { /* unavailable_table(): not on the list */
+        close_old_table(st->db);
+        free(st->name);
+        free(st);
+        return;
+    }
 
     Pthread_mutex_lock(&snap_tables_lk);
     if (--st->refs > 0) {
@@ -388,12 +439,14 @@ static int build_catalog(struct sqlclntstate *clnt, struct snap_catalog *cat)
 
         changed = 1;
         ent->old = get_old_table(tran, names[i], ent->alias, csc2, csc2_vers);
-        free(csc2);
         if (ent->old == NULL) {
-            logmsg(LOGMSG_ERROR, "%s: cannot open table %s as of %u:%u\n", __func__, names[i],
-                   clnt->modsnap_start_lsn_file, clnt->modsnap_start_lsn_offset);
-            goto done;
+            logmsg(LOGMSG_ERROR, "%s: cannot open table %s as of %u:%u, a statement that uses it fails\n", __func__,
+                   names[i], clnt->modsnap_start_lsn_file, clnt->modsnap_start_lsn_offset);
+            ent->old = unavailable_table(names[i], ent->alias, csc2, csc2_vers);
         }
+        free(csc2);
+        if (ent->old == NULL)
+            goto done;
         dbs[i] = ent->old->db;
     }
 
@@ -509,4 +562,9 @@ int snap_catalog_find_view(const char *name, struct dbview **view)
 int snap_catalog_is_old_table(const struct dbtable *db)
 {
     return db->tag_tablename != NULL;
+}
+
+int snap_catalog_table_unavailable(const struct dbtable *db)
+{
+    return snap_catalog_is_old_table(db) && db->handle == NULL;
 }

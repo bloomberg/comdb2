@@ -12,10 +12,20 @@ JS=$'(j=1)\n(j=2)\n(j=3)'
 n=0
 failed=0
 
-# run each line of $1; "ALLNODES <sql>" runs <sql> on every node
+# run each line of $1; "ALLNODES <sql>" runs <sql> on every node, and
+# "master <message>" sends the message to the master (lower case: the cases
+# replace T with the table)
 run_lines() {
     while IFS= read -r stmt; do
         [[ -z "$stmt" ]] && continue
+        if [[ "$stmt" == "master "* ]]; then
+            local m=$($SQL --tabs "select host from comdb2_cluster where is_master = 'Y'")
+            cdb2sql ${CDB2_OPTIONS} ${dbname} --host $m "exec procedure sys.cmd.send('${stmt#master }')" >/dev/null 2>&1 ||
+                { echo "FAIL: setup message failed: $stmt"; exit 1; }
+            # the replicants apply the file removal
+            sleep 2
+            continue
+        fi
         if [[ "$stmt" == "ALLNODES "* ]]; then
             for node in ${CLUSTER:-default}; do
                 local h="--host $node"
@@ -169,6 +179,16 @@ live write_before_change_delete "" "alter table T add k int" "delete from T wher
 live write_before_change_commit "" "alter table T add k int" "select 1" "ERR rc 2" "insert into T values(9,9)"
 live write_before_drop_delete "" "drop table T" "delete from T where i = 9" "OK" "insert into T values(9,9)"
 live write_before_drop_commit "" "drop table T" "select 1" "ERR no such table" "insert into T values(9,9)"
+# "delfiles" removes the old files of a table, which the snapshot needs: a
+# statement that reads the table fails, also when the schema change history
+# is gone, and the other tables of the snapshot are still as of its start
+GONE="ERR its files were removed"
+live delfiles "" $'truncate table T\nmaster delfiles T' "$SEL" "$GONE"
+live delfiles_clear_history "" $'truncate table T\nmaster delfiles T\nmaster clear_sc_history' "$SEL" "$GONE"
+live delfiles_other_table $'create table T_o(i int)\ninsert into T_o values(1)' \
+    $'truncate table T_o\nmaster delfiles T_o\nalter table T add k int' "$SEL" "$ROWS"
+live delfiles_other_table_read $'create table T_o(i int)\ninsert into T_o values(1)' \
+    $'truncate table T_o\nmaster delfiles T_o\nalter table T add k int' "select * from T_o" "$GONE"
 
 asof insert "insert into T values(4,4)" "$SEL" "$ROWS"
 asof add_column "alter table T add k int" "$SEL" "$ROWS"
@@ -209,5 +229,9 @@ asof rename_table_under_view "alter table T rename to T_r" "$SELV" "$ROWS" "$VIE
 asof write_old_table "rebuild T" "insert into T values(9,9)" "OK"
 asof write_old_table_new_version "alter table T add k int" "insert into T values(9,9)" "ERR rc 2"
 asof write_old_table_delete "alter table T add k int" $'insert into T values(9,9)\ndelete from T where i = 9' "OK"
+asof delfiles $'truncate table T\nmaster delfiles T' "$SEL" "$GONE"
+asof delfiles_clear_history $'truncate table T\nmaster delfiles T\nmaster clear_sc_history' "$SEL" "$GONE"
+asof delfiles_other_table $'truncate table T_o\nmaster delfiles T_o\nalter table T add k int' "$SEL" "$ROWS" \
+    $'create table T_o(i int)\ninsert into T_o values(1)'
 
 exit $failed
