@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 bash -n "$0" | exit 1
 source ${TESTSROOTDIR}/tools/runit_common.sh
+source ${TESTSROOTDIR}/tools/cluster_utils.sh
 
 # Test: change retention of a truncate time partition via
 #   ALTER TABLE <name> PARTITIONED BY TIME|MANUAL RETENTION <n>
@@ -355,6 +356,41 @@ assert_retention ltp 3
 
 echo "--- ALTER retention rejected on a legacy partition ---" >> $output
 expect_fail "alter table ltp partitioned by time retention 4" "legacy|put|PUT"
+
+################################################################################
+echo "=== Section D: a decrease that drops the original table ===" >> $output
+# td is partitioned from an existing table, which becomes a shard under an alias.
+# After two rollouts it holds the oldest data, so shrinking to 2 drops it.
+gorun "create table td(a int)"
+gorun "insert into td values(1)"
+gorun "alter table td partitioned by manual retention 3"
+assert_shards td 3
+roll td
+gorun "insert into td values(2)"
+roll td
+gorun "insert into td values(3)"
+dump_shards td "before dropping the original table"
+gorun "alter table td partitioned by manual retention 2"
+dump_shards td "after dropping the original table"
+assert_shards td 2
+assert_absent td "a = 1"
+assert_total td 2
+
+# a restarted node must load the partition without its original table
+if [ -n "$CLUSTER" ]; then
+    node=$(sqlval "select host from comdb2_cluster where is_master='N' limit 1")
+    REP_ENV_VARS="${DBDIR}/replicant_env_vars"
+    kill_restart_node $node 5 1
+    got=$(cdb2sql -tabs ${CDB2_OPTIONS} $dbnm --host $node "select count(*) from td" 2>&1)
+    [ "$got" = "2" ] || fail "restarted node $node reads '$got' rows from td, want 2"
+fi
+
+roll td
+gorun "insert into td values(4)"
+assert_present td 4
+gorun "alter table td partitioned by none"
+assert_present td 4
+gorun "drop table td"
 
 ################################################################################
 dump_state
