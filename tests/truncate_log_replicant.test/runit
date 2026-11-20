@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+bash -n "$0" || exit 1
+
+# A replicant forwards truncate_log to the master, which waits for the sender to catch up
+# before acking.  The sender must still get its ack before its 10s timeout.
+source ${TESTSROOTDIR}/tools/runit_common.sh
+source ${TESTSROOTDIR}/tools/cluster_utils.sh
+
+dbnm=$1
+[[ -z "$CLUSTER" ]] && { echo "Success"; exit 0; }
+
+cdb2sql ${CDB2_OPTIONS} $dbnm default "create table t (a int)" || failexit "create t"
+for i in $(seq 1 5); do
+    master=$(get_master)
+    replicant=$(for n in $CLUSTER; do [[ $n != $master ]] && echo $n; done | head -1)
+    lsn=$(cdb2sql -s --tabs ${CDB2_OPTIONS} $dbnm --host $master "select lsn from comdb2_transaction_logs(NULL, NULL, 4) limit 1")
+    cdb2sql ${CDB2_OPTIONS} $dbnm --host $master "insert into t values ($i)" >/dev/null || failexit "insert $i"
+    cdb2sql ${CDB2_OPTIONS} $dbnm --host $replicant "exec procedure sys.cmd.truncate_log(\"$lsn\")" || failexit "truncate $i via $replicant"
+done
+echo "Success"

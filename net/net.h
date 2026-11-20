@@ -180,6 +180,8 @@ void netinfo_lock(netinfo_type *netinfo_ptr, int seconds);
   return codes <0 are reserved by system.
 */
 int net_ack_message(void *ack_handle, int outrc);
+/* Copy a handler's ack handle so another thread can ack later; free() it after */
+void *net_ack_handle_dup(void *ack_handle);
 int net_ack_message_payload(void *ack_handle, int outrc, void *payload, 
         int payloadlen);
 
