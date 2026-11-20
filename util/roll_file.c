@@ -12,6 +12,11 @@ int roll_file(const char *file, int nkeep)
 
     from = malloc(strlen(file) + 1 + 20);
     to = malloc(strlen(file) + 1 + 20);
+    if (from == NULL || to == NULL) {
+        free(from);
+        free(to);
+        return -1;
+    }
 
     sprintf(from, "%s.%d", file, nkeep);
     unlink(from);

@@ -3082,6 +3082,11 @@ void csc2_error(const char *fmt, ...)
     int len;
     char *out;
 
+    /* Also tells the compiler fmt is set: a recoverable UBSan build otherwise
+       keeps a NULL path past its nonnull check, which -Wformat-truncation
+       reports as a null format string. */
+    if (fmt == NULL)
+        return;
     if (errors == NULL) {
         errors = strbuf_new();
         if (errors == NULL)
@@ -3111,6 +3116,8 @@ void csc2_syntax_error(const char *fmt, ...)
     int len;
     char *out;
 
+    if (fmt == NULL) /* as in csc2_error() */
+        return;
     if (syntax_errors == NULL) {
         syntax_errors = strbuf_new();
         if (syntax_errors == NULL)

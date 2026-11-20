@@ -1417,7 +1417,7 @@ char *bdb_trans(const char infile[], char outfile[])
     char *p;
     int len;
 
-    if (!infile) {
+    if (!infile || !outfile) {
         if (outfile)
             outfile[0] = '\0';
         return NULL;
