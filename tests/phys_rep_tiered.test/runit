@@ -727,7 +727,7 @@ END
                 firstNode=${node}
             else
                 lastNode=${node}
-                ssh $node "${COPYCOMDB2_EXE} -x ${COMDB2_EXE} $firstNode:${_dbdir}/${_dbname}.lrl $_dbdir $_dbdir" >> ${logFile} 2>&1 < /dev/null
+                ssh $node "comdb2ar=${COMDB2AR_EXE} ${COPYCOMDB2_EXE} -x ${COMDB2_EXE} $firstNode:${_dbdir}/${_dbname}.lrl $_dbdir $_dbdir" >> ${logFile} 2>&1 < /dev/null
                 if [ ! $? -eq 0 ]; then
                     cleanFailExit "copycomdb2 failed"
                 fi
@@ -878,7 +878,7 @@ function setup_physrep_cluster()
             logFile=$TESTDIR/logs/${_dbname}.${node}.log
 
             if [[ ${firstNode} = "" ]]; then
-                ssh $node "${COPYCOMDB2_EXE} -x ${COMDB2_EXE} -H ${_dbname} -y @${_source_host} ${_source_host}:${SOURCE_DBDIR}/${SOURCE_DBNAME}.lrl ${_dbdir} ${_dbdir}" >> ${logFile} 2>&1 </dev/null
+                ssh $node "comdb2ar=${COMDB2AR_EXE} ${COPYCOMDB2_EXE} -x ${COMDB2_EXE} -H ${_dbname} -y @${_source_host} ${_source_host}:${SOURCE_DBDIR}/${SOURCE_DBNAME}.lrl ${_dbdir} ${_dbdir}" >> ${logFile} 2>&1 </dev/null
                 if [[ ! $? -eq 0 ]]; then
                     cleanFailExit "copycomdb2 failed"
                 fi
@@ -897,7 +897,7 @@ function setup_physrep_cluster()
 
                 firstNode=${node}
             else
-                ssh $node "${COPYCOMDB2_EXE} -x ${COMDB2_EXE} $firstNode:${_dbdir}/${_dbname}.lrl $_dbdir $_dbdir" >> ${logFile} 2>&1 < /dev/null
+                ssh $node "comdb2ar=${COMDB2AR_EXE} ${COPYCOMDB2_EXE} -x ${COMDB2_EXE} $firstNode:${_dbdir}/${_dbname}.lrl $_dbdir $_dbdir" >> ${logFile} 2>&1 < /dev/null
                 if [ ! $? -eq 0 ]; then
                     cleanFailExit "copycomdb2 failed"
                 fi
@@ -965,7 +965,7 @@ function setup_alt_replicant()
 
     logFile=$TESTDIR/logs/${_repl_dbname}.log
 
-    ssh ${_alt_host} "${COPYCOMDB2_EXE} -x ${COMDB2_EXE} -H ${_repl_dbname} -y @${_cluster_host} ${_cluster_host}:${_cluster_dbdir}/${_cluster_dbname}.lrl ${_repl_dbdir} ${_repl_dbdir}" >> ${logFile} 2>&1 < /dev/null
+    ssh ${_alt_host} "comdb2ar=${COMDB2AR_EXE} ${COPYCOMDB2_EXE} -x ${COMDB2_EXE} -H ${_repl_dbname} -y @${_cluster_host} ${_cluster_host}:${_cluster_dbdir}/${_cluster_dbname}.lrl ${_repl_dbdir} ${_repl_dbdir}" >> ${logFile} 2>&1 < /dev/null
 
     if [ ! $? -eq 0 ]; then
         cleanFailExit "copycomdb2 failed"
@@ -1064,7 +1064,7 @@ function setup_physrep_replicants()
                 add_to_physrep_sources ${_altmeta_dbname} ${_altmeta_host} ${_source_dbname} ${_source_host} ${_repl_dbname} ${node}
             fi
 
-            ssh $node "${COPYCOMDB2_EXE} -x ${COMDB2_EXE} -H ${_repl_dbname} -y @${_source_host} ${_source_host}:${_source_dbdir}/${_source_dbname}.lrl ${_repl_dbdir} ${_repl_dbdir}" >> ${logFile} 2>&1 < /dev/null
+            ssh $node "comdb2ar=${COMDB2AR_EXE} ${COPYCOMDB2_EXE} -x ${COMDB2_EXE} -H ${_repl_dbname} -y @${_source_host} ${_source_host}:${_source_dbdir}/${_source_dbname}.lrl ${_repl_dbdir} ${_repl_dbdir}" >> ${logFile} 2>&1 < /dev/null
             if [ ! $? -eq 0 ]; then
                 cleanFailExit "copycomdb2 failed"
             fi
