@@ -93,6 +93,7 @@ pthread_rwlock_t views_lk;
 cron_sched_t *timepart_sched;
 
 static timepart_view_t *_get_view(timepart_views_t *views, const char *name);
+static void timepart_free_views_unlocked(timepart_views_t *views);
 static timepart_view_t *_get_view_index(timepart_views_t *views,
                                         const char *name, int *idx);
 static int _generate_new_shard_name(const char *oldname, char *newname,
@@ -199,24 +200,35 @@ timepart_views_t *timepart_views_init(struct dbenv *dbenv)
     struct errstat xerr = {0};
     const char *name = "timepart_cron";
 
-    time_cron_create(&tpt_cron, timepart_describe, timepart_event_describe);
+    /* a schema reload keeps the lock and scheduler; it requeues the events */
+    if (!timepart_sched) {
+        time_cron_create(&tpt_cron, timepart_describe, timepart_event_describe);
 
-    Pthread_rwlock_init(&views_lk, NULL);
+        Pthread_rwlock_init(&views_lk, NULL);
 
-    /* create the timepart scheduler */
-    timepart_sched = cron_add_event(NULL, name, INT_MIN, timepart_cron_kickoff,
-                                    NULL, NULL, NULL, NULL, NULL, &xerr,
-                                    &tpt_cron);
+        /* create the timepart scheduler */
+        timepart_sched =
+            cron_add_event(NULL, name, INT_MIN, timepart_cron_kickoff, NULL, NULL, NULL, NULL, NULL, &xerr, &tpt_cron);
 
-    if (timepart_sched == NULL)
-        return NULL;
+        if (timepart_sched == NULL)
+            return NULL;
+    }
 
     /* read the llmeta views, if any */
-    dbenv->timepart_views = views_create_all_views();
-
-    if (!dbenv->timepart_views) {
+    timepart_views_t *views = views_create_all_views();
+    if (!views)
         return NULL;
+    if (!dbenv->timepart_views) {
+        dbenv->timepart_views = views;
+        return views;
     }
+
+    /* reload: readers may hold the old pointer, so swap contents under views_lk */
+    Pthread_rwlock_wrlock(&views_lk);
+    timepart_free_views_unlocked(dbenv->timepart_views);
+    *dbenv->timepart_views = *views;
+    Pthread_rwlock_unlock(&views_lk);
+    free(views);
 
     return dbenv->timepart_views;
 }
@@ -572,15 +584,23 @@ static timepart_view_t *_get_view(timepart_views_t *views, const char *name)
     return _get_view_index(views, name, NULL);
 }
 
-static struct dbtable *_table_alias_fallback(timepart_view_t *view)
+static void _alias_table(timepart_view_t *view, struct dbtable *db, const char *alias)
+{
+    assert(!db->sqlaliasname);
+    db->sqlaliasname = strdup(alias);
+    hash_sqlalias_db(db, db->sqlaliasname);
+    db->timepartition_name = view->name;
+}
+
+/* alias the partition-named table to missing shard i; partitions resized
+ * before the original table was kept at shard 0 may miss another shard */
+static struct dbtable *_table_alias_fallback(timepart_view_t *view, int i)
 {
     struct dbtable *db = NULL;
     if (view->rolltype == TIMEPART_ROLLOUT_TRUNCATE) {
         db = get_dbtable_by_name(view->name);
-        if (db) {
-            /* create alias alias */
-            timepart_alias_table(view, db);
-        }
+        if (db)
+            _alias_table(view, db, view->shards[i].tblname);
     }
     return db;
 }
@@ -640,7 +660,7 @@ int views_handle_replicant_reload(void *tran, const char *name)
     for (i = 0; i < view->nshards; i++) {
         db = get_dbtable_by_name(view->shards[i].tblname);
         if (!db) {
-            struct dbtable *db2 = _table_alias_fallback(view);
+            struct dbtable *db2 = _table_alias_fallback(view, i);
             if (!db2) {
                 logmsg(LOGMSG_ERROR,
                        "%s: unable to locate shard %s for view %s\n", __func__,
@@ -1961,6 +1981,19 @@ static int _view_restart(timepart_view_t *view, struct errstat *err)
     return rc;
 }
 
+/* clear all queued rollout events, time and logical; callers requeue them.
+ * nowait leaves a running event, which may be waiting on the caller's locks */
+void views_cron_clear_queues(int nowait)
+{
+    if (timepart_sched) {
+        if (nowait)
+            cron_clear_queue_nowait(timepart_sched);
+        else
+            cron_clear_queue(timepart_sched);
+    }
+    cron_clear_queue_type(CRON_LOGICAL, nowait);
+}
+
 /**
  * Queue up the necessary events to rollout time partitions 
  * Done during restart and master swing 
@@ -1972,11 +2005,12 @@ int views_cron_restart(timepart_views_t *views)
     timepart_view_t *view;
     int i;
     int rc;
+    int first_rc = VIEW_NOERR;
     struct errstat xerr = {0};
 
     /* in case of regular master swing, clear pre-existing views event,
        we will requeue them */
-    cron_clear_queue(timepart_sched);
+    views_cron_clear_queues(0);
 
     /* Acquire BDB replock before views_lk to match the ordering used in
        _view_cron_phase1/3 (BDB_READLOCK -> views_lk).  Consistent ordering
@@ -2020,13 +2054,16 @@ int views_cron_restart(timepart_views_t *views)
             } else {
                 rc = _view_restart(view, &xerr);
             }
-            if(rc!=VIEW_NOERR)
-            {
-                goto done;
+            if (rc != VIEW_NOERR) {
+                /* the queues were cleared: still requeue the other partitions */
+                logmsg(LOGMSG_ERROR, "%s: failed to restart partition %s rc %d \"%s\"\n", __func__, view->name,
+                       xerr.errval, xerr.errstr);
+                if (first_rc == VIEW_NOERR)
+                    first_rc = rc;
             }
         }
     }
-    rc = VIEW_NOERR;
+    rc = first_rc;
 
 done:
     Pthread_rwlock_unlock(&views_lk);
@@ -2398,7 +2435,7 @@ static int _view_register_shards(timepart_views_t *views,
              * was created based on an existing table; check if there is
              * a table having the partition name, and if it is, alias it
              */
-            struct dbtable *db2 = _table_alias_fallback(view);
+            struct dbtable *db2 = _table_alias_fallback(view, i);
             if (!db2) {
                 errstat_set_rcstrf(err, rc = VIEW_ERR_EXIST,
                                    "Partition %s shard %s doesn't exist!",
@@ -2800,14 +2837,23 @@ int timepart_validate_retention_change(const char *name, int new_retention, int 
     return rc;
 }
 
+static void _reverse_shards(timepart_shard_t *shards, int lo, int hi)
+{
+    for (; lo < hi; lo++, hi--) {
+        timepart_shard_t tmp = shards[lo];
+        shards[lo] = shards[hi];
+        shards[hi] = tmp;
+    }
+}
+
 /**
  * Build a reconfigured view reflecting a new retention for a truncate
  * (TIME or MANUAL) partition, without mutating the live view.
  *
  * The shards are walked in rollout order starting right after the current
  * shard (i.e. oldest-next-to-be-recycled first), ending with the current
- * shard itself. The reconfigured ring is built so that the (unchanged)
- * current shard always ends up at the last index:
+ * shard itself. The reconfigured ring is built with the (unchanged) current
+ * shard at the last index, then rotated so the old shard 0 stays at index 0:
  *   - increase: new empty shards are prepended (consumed next, preserving
  *     history), followed by the old shards in rollout order.
  *   - decrease: the oldest shards are dropped from the front of the rollout
@@ -2880,9 +2926,8 @@ int timepart_reconfigure_retention(const char *name, int new_retention, int is_m
         goto done_locked;
     }
 
-    /* NOTE: current_shard is not persisted, it is recomputed on reload by
-     * _view_find_current_shard(); that lookup ignores never-used (INT_MAX)
-     * shards, so the array order below does not affect the ring position. */
+    /* current_shard is recomputed on reload ignoring unused shards, so the
+     * rotation below that keeps the original table at index 0 is safe */
 
     if (is_increase) {
         int nnew = new_retention - old_retention;
@@ -2959,6 +3004,19 @@ int timepart_reconfigure_retention(const char *name, int new_retention, int is_m
         }
         newview->current_shard = new_retention - 1;
         nnames = ndrop;
+    }
+
+    /* rotate the ring so the old shard 0 (possibly aliased) stays at index 0 */
+    for (i = 0; i < new_retention; i++) {
+        if (strcasecmp(newview->shards[i].tblname, view->shards[0].tblname) == 0)
+            break;
+    }
+    if (i > 0 && i < new_retention) {
+        /* rotate left by i in place: reverse both parts, then the whole */
+        _reverse_shards(newview->shards, 0, i - 1);
+        _reverse_shards(newview->shards, i, new_retention - 1);
+        _reverse_shards(newview->shards, 0, new_retention - 1);
+        newview->current_shard = new_retention - 1 - i;
     }
 
     rc = VIEW_NOERR;
@@ -3652,10 +3710,7 @@ const char *timepart_name(int i)
 
 void timepart_alias_table(timepart_view_t *view, struct dbtable *db)
 {
-    assert(!db->sqlaliasname);
-    db->sqlaliasname = strdup(view->shards[0].tblname);
-    hash_sqlalias_db(db, db->sqlaliasname);
-    db->timepartition_name = view->name;
+    _alias_table(view, db, view->shards[0].tblname);
 }
 
 int timepart_is_partition(const char *name)

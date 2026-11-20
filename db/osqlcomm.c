@@ -7631,7 +7631,16 @@ static int _process_partition_retention(struct ireq *iq)
     sc->nothrevent = 1;    /* serialize, mirrors create/rollout paths */
 
     rc = SC_OK;
-    for (i = 0; i < nnames; i++) {
+    if (is_increase) {
+        /* new shards inherit the partition's table version */
+        sc->timepartition_version = comdb2_table_version(sc->tablename);
+        if (sc->timepartition_version == (unsigned long long)-1) {
+            sc_errf(sc, "Failed to get the version of partition %s", sc->tablename);
+            iq->osql_flags |= OSQL_FLAGS_SCDONE;
+            rc = ERR_SC;
+        }
+    }
+    for (i = 0; rc == SC_OK && i < nnames; i++) {
         struct schema_change_type *cur;
 
         if (i == 0) {
@@ -7661,6 +7670,7 @@ static int _process_partition_retention(struct ireq *iq)
                 sc_errf(cur, "could not get schema for shard '%s'", names[i]);
                 if (cur != sc)
                     free_schema_change_type(cur);
+                iq->osql_flags |= OSQL_FLAGS_SCDONE;
                 rc = ERR_SC;
                 break;
             }
@@ -7708,7 +7718,14 @@ static int _process_partition_retention(struct ireq *iq)
         sc->unpublish = partition_unpublish;
         iq->osql_flags |= OSQL_FLAGS_SCDONE;
     } else {
-        /* nothing was published; no sc owns newview, so free it here */
+        /* nothing was published; no sc owns newview, so free it here, first
+         * clearing the scs that point at its name (sc itself may be freed) */
+        if (iq->sc == sc)
+            sc->timepartition_name = NULL;
+        for (struct schema_change_type *s = iq->sc_pending; s; s = s->sc_next) {
+            if (s->timepartition_name == partition_name)
+                s->timepartition_name = NULL;
+        }
         timepart_free_view(newview);
     }
 
