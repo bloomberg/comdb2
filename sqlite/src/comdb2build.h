@@ -82,7 +82,7 @@ void comdb2AddDbpad(Parse *, int);
 void comdb2AddCheckConstraint(Parse *, Expr *, const char *, const char *);
 void comdb2CreateIndex(Parse *, Token *, Token *, SrcList *, ExprList *, int,
                        Token *, Expr *, const char *, const char *, int, int,
-                       u8, int, ExprList *, int);
+                       u8, int, ExprList *, int, Token *);
 void comdb2CreateForeignKey(Parse *, ExprList *, Token *, ExprList *, int);
 void comdb2DeferForeignKey(Parse *, int);
 void comdb2DropForeignKey(Parse *, Token *);
