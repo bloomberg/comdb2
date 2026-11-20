@@ -6317,6 +6317,12 @@ int sqlite3_table_index_funcs(
   char *** pzFuncs,             /* OUTPUT: The application defined functions */
   int*nFuncs                    /* OUTPUT: The number of application defined functions used */
 );
+int sqlite3_partial_index_tzless(
+  sqlite3 *db,                  /* Connection handle */
+  const char *zTableName,       /* Table name */
+  const char *zIndexName,       /* Index name */
+  int *pTzless                  /* OUTPUT: datetime compared with a literal without timezone */
+);
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
 /*

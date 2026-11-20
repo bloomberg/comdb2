@@ -1286,6 +1286,29 @@ int sqlite3ExprReferencesUpdatedColumn(
   return w.eCode!=0;
 }
 
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+/*
+** sqlite3ExprIfFalseDup(pParse, pWhere, dest, SQLITE_JUMPIFNULL) for a
+** partial index predicate, evaluated under OP_PartIdxTz.  The predicate's
+** result goes through a register so the timezone is restored on both the
+** true and the false path before jumping to dest.
+*/
+void comdb2PartIdxWhereIfFalse(Parse *pParse, Expr *pWhere, int dest){
+  Vdbe *v = pParse->pVdbe;
+  int regTrue = sqlite3GetTempReg(pParse);
+  int lblDone = sqlite3VdbeMakeLabel(pParse);
+  sqlite3VdbeAddOp2(v, OP_Integer, 0, regTrue);
+  sqlite3VdbeAddOp1(v, OP_PartIdxTz, 1);
+  sqlite3ExprIfFalseDup(pParse, pWhere, lblDone, SQLITE_JUMPIFNULL);
+  sqlite3VdbeAddOp2(v, OP_Integer, 1, regTrue);
+  sqlite3VdbeResolveLabel(v, lblDone);
+  sqlite3VdbeAddOp1(v, OP_PartIdxTz, 0);
+  sqlite3VdbeAddOp3(v, OP_IfNot, regTrue, dest, 1);
+  VdbeCoverage(v);
+  sqlite3ReleaseTempReg(pParse, regTrue);
+}
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+
 /*
 ** Generate code to do constraint checks prior to an INSERT or an UPDATE
 ** on table pTab.
@@ -1750,8 +1773,12 @@ void sqlite3GenerateConstraintChecks(
     if( pIdx->pPartIdxWhere ){
       sqlite3VdbeAddOp2(v, OP_Null, 0, aRegIdx[ix]);
       pParse->iSelfTab = -(regNewData+1);
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+      comdb2PartIdxWhereIfFalse(pParse, pIdx->pPartIdxWhere, addrUniqueOk);
+#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
       sqlite3ExprIfFalseDup(pParse, pIdx->pPartIdxWhere, addrUniqueOk,
                             SQLITE_JUMPIFNULL);
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
       pParse->iSelfTab = 0;
     }
 

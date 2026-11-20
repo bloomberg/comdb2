@@ -4310,6 +4310,9 @@ int sqlite3ExprCodeExprList(Parse*, ExprList*, int, int, u8);
 void sqlite3ExprIfTrue(Parse*, Expr*, int, int);
 void sqlite3ExprIfFalse(Parse*, Expr*, int, int);
 void sqlite3ExprIfFalseDup(Parse*, Expr*, int, int);
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+void comdb2PartIdxWhereIfFalse(Parse*, Expr*, int);
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 Table *sqlite3FindTable(sqlite3*,const char*, const char*);
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
 Table *sqlite3FindTableCheckOnly(sqlite3*,const char*, const char*);

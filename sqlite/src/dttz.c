@@ -418,3 +418,11 @@ const char *get_clnt_tz()
   struct sql_thread *thd = pthread_getspecific(query_info_key);
   return ( thd && thd->clnt ) ? thd->clnt->tzname : NULL;
 }
+
+char *get_clnt_tzbuf(size_t *len)
+{
+  struct sql_thread *thd = pthread_getspecific(query_info_key);
+  if( !thd || !thd->clnt ) return NULL;
+  *len = sizeof(thd->clnt->tzname);
+  return thd->clnt->tzname;
+}

@@ -1,0 +1,162 @@
+#!/usr/bin/env bash
+bash -n "$0" || exit 1
+
+# A partial index predicate with a datetime literal that carries no timezone
+# must select the same rows whatever the session timezone is.  A row written
+# from one timezone and expired from another used to leave an orphaned entry
+# in the partial index.  New partial indexes can no longer use such literals;
+# existing ones keep working until they are changed.
+
+dbnm=$1
+
+INF="cast('9999-12-31T000000.000 UTC' as datetime)"
+TZLESS="{ WHERE (d = '9999-12-30T19:00:00') }"
+
+failexit() {
+    echo "FAIL: $1"
+    exit 1
+}
+
+# sql <tz> <statement...>: run statements in one session in timezone <tz>
+sql() {
+    local tz=$1
+    shift
+    { for s in "$@"; do echo "$s"; done; } |
+        COMDB2TZ=$tz cdb2sql ${CDB2_OPTIONS} -s $dbnm default - 2>&1
+}
+
+# put_tunable <name> <value>: on every node, since any of them may run the
+# writes or become master
+put_tunable() {
+    local nodes=${CLUSTER:-}
+    if [[ -z "$nodes" ]]; then
+        cdb2sql ${CDB2_OPTIONS} $dbnm default "put tunable $1 $2" >/dev/null ||
+            failexit "put tunable $1"
+        return
+    fi
+    for node in $nodes; do
+        cdb2sql ${CDB2_OPTIONS} $dbnm default --host $node "put tunable $1 $2" >/dev/null ||
+            failexit "put tunable $1 on $node"
+    done
+}
+
+verify_ok() {
+    local out
+    out=$(cdb2sql ${CDB2_OPTIONS} $dbnm default "exec procedure sys.cmd.verify('t')" 2>&1)
+    echo "$out" | grep -q "Verify succeeded"
+}
+
+# ids of the active rows, through the partial index
+active() {
+    sql America/New_York "select id from t where d = '9999-12-30T19:00:00' order by id" |
+        tr -dc '0-9\n' | tr '\n' ' '
+}
+
+# The active row has d at a sentinel, which the partial index selects with a
+# literal meant as New York time.  New indexes like this are refused now, so
+# this creates the kind of table that existed before and is grandfathered in.
+put_tunable debug.allow_tzless_partial_index 1
+cdb2sql ${CDB2_OPTIONS} $dbnm default "create table t { schema { int id datetime d }
+keys { \"pk\" = id dup \"active\" = id $TZLESS } }" >/dev/null || failexit "create table"
+put_tunable debug.allow_tzless_partial_index 0
+
+# run_case <insert tz> <writer tz> <how>: row 1 from one session, then from
+# another the writer adds row 2 and expires row 1, expires row 2 through the
+# partial index and deletes row 1.  <how> is "env" (COMDB2TZ) or "set" (set
+# timezone in the session).
+run_case() {
+    local itz=$1 wtz=$2 how=$3
+    local pre=()
+    local tag="insert $itz, writer $wtz ($how)"
+    if [[ "$how" == "set" ]]; then
+        pre=("set timezone $wtz")
+        wtz=America/New_York
+    fi
+
+    cdb2sql ${CDB2_OPTIONS} $dbnm default "truncate t" >/dev/null || failexit "truncate"
+    sql $itz "insert into t values(1, $INF)" | grep -q "rows inserted=1" || failexit "$tag: insert"
+
+    local out
+    out=$(sql $wtz "${pre[@]}" "set transaction read committed" "begin" \
+        "insert into t values(2, $INF)" \
+        "update t set d = now() where id = 1" \
+        "commit")
+    echo "$out" | grep -q "failed" && failexit "$tag: writer: $out"
+    verify_ok || failexit "$tag: verify after expiring row 1"
+    [[ "$(active)" == "2 " ]] || failexit "$tag: active '$(active)', expected '2 '"
+
+    out=$(sql $wtz "${pre[@]}" "update t set d = now() where d = $INF" "delete from t where id = 1")
+    echo "$out" | grep -q "failed" && failexit "$tag: expire/delete: $out"
+    verify_ok || failexit "$tag: verify after expire/delete"
+    [[ -z "$(active)" ]] || failexit "$tag: active '$(active)' after expire"
+    echo "ok: $tag"
+}
+
+zones="America/New_York UTC Asia/Tokyo"
+for itz in $zones; do
+    for wtz in $zones; do
+        run_case $itz $wtz env
+    done
+    run_case $itz UTC set
+done
+
+# With the tunable off, predicates follow the session timezone again and the
+# mixed-timezone case corrupts the index; make sure the test notices.
+put_tunable partial_index_fixed_tz 0
+cdb2sql ${CDB2_OPTIONS} $dbnm default "truncate t" >/dev/null
+sql America/New_York "insert into t values(1, $INF)" >/dev/null
+sql UTC "update t set d = now() where id = 1" >/dev/null
+verify_ok && failexit "tunable off: expected verify to fail"
+echo "ok: tunable off reproduces the corruption"
+
+put_tunable partial_index_fixed_tz 1
+cdb2sql ${CDB2_OPTIONS} $dbnm default "truncate t" >/dev/null || failexit "truncate"
+
+# New partial indexes must give datetime literals a timezone; t's index is
+# grandfathered and only refused once it is changed.
+expect() {
+    local want=$1 tag=$2 out
+    out=$(echo "$3" | cdb2sql ${CDB2_OPTIONS} $dbnm default - 2>&1)
+    if echo "$out" | grep -q "failed"; then
+        [[ $want == reject ]] || failexit "$tag: $out"
+        echo "$out" | grep -q "literal that has no timezone" || failexit "$tag: wrong error: $out"
+    else
+        [[ $want == ok ]] || failexit "$tag: expected it to be refused"
+    fi
+    echo "ok: $want $tag"
+}
+
+new_table() {
+    echo "create table $1 { schema { int id datetime d cstring s[32] } keys { dup \"k\" = id { where $2 } } }\$\$"
+}
+alter_t() {
+    echo "alter table t { schema { int id datetime d } keys { \"pk\" = id $1 } }\$\$"
+}
+
+expect reject "new table, no timezone" "$(new_table n1 "d = '9999-12-30T19:00:00'")"
+expect reject "new table, between" "$(new_table n2 "d between '2020-01-01' and '2021-01-01 UTC'")"
+expect reject "new table, in" "$(new_table n3 "d in ('2020-01-01T00:00:00 UTC', '2021-01-01T00:00:00')")"
+expect reject "new table, cast" "$(new_table n4 "d > cast('2020-01-01T00:00:00' as datetime)")"
+expect ok "new table, America/New_York" "$(new_table n5 "d = '9999-12-30T19:00:00 America/New_York'")"
+expect ok "new table, UTC" "$(new_table n6 "d = '9999-12-31T00:00:00 UTC'")"
+expect ok "new table, text column" "$(new_table n7 "s = '2020-01-01T00:00:00'")"
+
+expect reject "alter t, change the index columns" "$(alter_t "dup \"active\" = id + d $TZLESS")"
+expect reject "alter t, rename the index" "$(alter_t "dup \"active2\" = id $TZLESS")"
+expect reject "alter t, add a partial index without timezone" \
+    "$(alter_t "dup \"active\" = id $TZLESS dup \"active2\" = d $TZLESS")"
+expect ok "alter t, add a plain index" "$(alter_t "dup \"active\" = id $TZLESS dup \"d_plain\" = d")"
+expect ok "add column" "alter table t add column extra int"
+expect reject "create index without timezone" "create index t_tzless on t(d) where d = '9999-12-30T19:00:00'"
+expect ok "create index with timezone" "create index t_tz on t(d) where d = '9999-12-30T19:00:00 America/New_York'"
+expect ok "rebuild" "rebuild t"
+expect ok "truncate" "truncate t"
+expect ok "alter t, give the index a timezone" \
+    "$(alter_t "dup \"active\" = id { WHERE (d = '9999-12-30T19:00:00 America/New_York') }")"
+verify_ok || failexit "verify after schema changes"
+
+for tbl in t n5 n6 n7; do
+    cdb2sql ${CDB2_OPTIONS} $dbnm default "drop table $tbl" >/dev/null
+done
+
+echo "Success"

@@ -31,6 +31,7 @@
 #include <sys/types.h>
 
 #include "logmsg.h"
+#include "str0.h"
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
 
@@ -3032,9 +3033,51 @@ int sqlite3VdbeCheckFk(Vdbe *p, int deferred){
 ** lock contention, return SQLITE_BUSY.  If SQLITE_BUSY is returned, it
 ** means the close did not happen and needs to be repeated.
 */
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+extern int gbl_partial_index_fixed_tz;
+
+#define PARTIDX_TZ_VDBE 1 /* p->tzname was switched */
+#define PARTIDX_TZ_CLNT 2 /* the session tzname was switched too */
+
+/*
+** Partial index membership must not depend on the session evaluating it:
+** verify, schema change and the master's own recompute all use
+** America/New_York, so the predicate does too.  Values carry a pointer to
+** p->tzname, and conversions without one fall back to the session tzname,
+** so both are switched while the predicate runs.
+*/
+void comdb2PartIdxTz(Vdbe *p, int enter){
+  char *clnt_tz;
+  size_t len;
+  if( enter ){
+    if( !gbl_partial_index_fixed_tz || p->partIdxTzActive ) return;
+    memcpy(p->partIdxSavedTz, p->tzname, TZNAME_MAX);
+    strncpy0(p->tzname, "America/New_York", TZNAME_MAX);
+    p->partIdxTzActive = PARTIDX_TZ_VDBE;
+    if( (clnt_tz = get_clnt_tzbuf(&len))!=0 ){
+      strncpy0(p->partIdxSavedClntTz, clnt_tz, TZNAME_MAX);
+      strncpy0(clnt_tz, "America/New_York", len);
+      p->partIdxTzActive |= PARTIDX_TZ_CLNT;
+    }
+  }else if( p->partIdxTzActive ){
+    memcpy(p->tzname, p->partIdxSavedTz, TZNAME_MAX);
+    if( (p->partIdxTzActive & PARTIDX_TZ_CLNT) && (clnt_tz = get_clnt_tzbuf(&len))!=0 ){
+      strncpy0(clnt_tz, p->partIdxSavedClntTz, len);
+    }
+    p->partIdxTzActive = 0;
+  }
+}
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+
 int sqlite3VdbeHalt(Vdbe *p){
   int rc;                         /* Used to store transient return codes */
   sqlite3 *db = p->db;
+
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+  /* an error inside a partial index predicate must not leave the
+  ** statement, or the session, in the fixed timezone */
+  comdb2PartIdxTz(p, 0);
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
   /* This function contains the logic that determines if a statement or
   ** transaction will be committed or rolled back as a result of the

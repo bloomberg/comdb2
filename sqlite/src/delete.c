@@ -956,8 +956,12 @@ int sqlite3GenerateIndexKey(
     if( pIdx->pPartIdxWhere ){
       *piPartIdxLabel = sqlite3VdbeMakeLabel(pParse);
       pParse->iSelfTab = iDataCur + 1;
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+      comdb2PartIdxWhereIfFalse(pParse, pIdx->pPartIdxWhere, *piPartIdxLabel);
+#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
       sqlite3ExprIfFalseDup(pParse, pIdx->pPartIdxWhere, *piPartIdxLabel, 
                             SQLITE_JUMPIFNULL);
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
       pParse->iSelfTab = 0;
     }else{
       *piPartIdxLabel = 0;

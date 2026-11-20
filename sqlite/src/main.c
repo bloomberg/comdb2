@@ -17,6 +17,7 @@
 #include "sqliteInt.h"
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
 #include <sqlglue.h>
+#include <types.h>
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
 #ifdef SQLITE_ENABLE_FTS3
@@ -3958,6 +3959,98 @@ error_out:
     rc = SQLITE_ERROR;
   }
   sqlite3ErrorWithMsg(db, rc, (zErrMsg ? "%s" : 0), zErrMsg);
+  sqlite3DbFree(db, zErrMsg);
+  rc = sqlite3ApiExit(db, rc);
+  sqlite3_mutex_leave(db->mutex);
+  return rc;
+}
+
+/*
+** A datetime literal without a timezone is a different instant in every
+** session timezone.  Parse it in two zones that never agree: if both parse
+** and the results differ, it carries no timezone of its own.
+*/
+static int tzlessDatetimeLiteral(Expr *p){
+  dttz_t a, b;
+  const char *z;
+  p = sqlite3ExprSkipCollate(p);
+  if( p==0 || p->op!=TK_STRING ) return 0;
+  z = p->u.zToken;
+  if( str_to_dttz(z, sqlite3Strlen30(z), "UTC", &a, DTTZ_PREC_MSEC) ) return 0;
+  if( str_to_dttz(z, sqlite3Strlen30(z), "Asia/Tokyo", &b, DTTZ_PREC_MSEC) ) return 0;
+  return a.dttz_sec!=b.dttz_sec || a.dttz_frac!=b.dttz_frac;
+}
+
+static int isDatetime(Expr *p){
+  return p && sqlite3ExprAffinity(p)==SQLITE_AFF_DATETIME;
+}
+
+static int tzlessDatetimeWalk(Walker *pWalker, Expr *pExpr){
+  int i;
+  switch( pExpr->op ){
+    case TK_EQ: case TK_NE: case TK_LT: case TK_LE: case TK_GT: case TK_GE:
+    case TK_IS: case TK_ISNOT:
+      if( (tzlessDatetimeLiteral(pExpr->pLeft) && isDatetime(pExpr->pRight))
+       || (tzlessDatetimeLiteral(pExpr->pRight) && isDatetime(pExpr->pLeft)) ){
+        pWalker->eCode = 1;
+        return WRC_Abort;
+      }
+      break;
+    case TK_BETWEEN: case TK_IN:
+      if( isDatetime(pExpr->pLeft) && !ExprHasProperty(pExpr, EP_xIsSelect)
+       && pExpr->x.pList ){
+        for(i=0; i<pExpr->x.pList->nExpr; i++){
+          if( tzlessDatetimeLiteral(pExpr->x.pList->a[i].pExpr) ){
+            pWalker->eCode = 1;
+            return WRC_Abort;
+          }
+        }
+      }
+      break;
+    case TK_CAST:
+      if( isDatetime(pExpr) && tzlessDatetimeLiteral(pExpr->pLeft) ){
+        pWalker->eCode = 1;
+        return WRC_Abort;
+      }
+      break;
+  }
+  return WRC_Continue;
+}
+
+/*
+** Set *pTzless if the WHERE clause of partial index zIndexName on zTableName
+** compares a datetime with a literal that has no timezone, so that which
+** rows it selects depends on the session evaluating it.
+*/
+int sqlite3_partial_index_tzless(sqlite3 *db,            /* Connection handle */
+                                 const char *zTableName, /* Table name */
+                                 const char *zIndexName, /* Index name */
+                                 int *pTzless)           /* OUTPUT */
+{
+  Table *pTab;
+  Index *pIdx;
+  Walker w;
+  char *zErrMsg = 0;
+  int rc;
+
+  *pTzless = 0;
+  sqlite3_mutex_enter(db->mutex);
+  sqlite3BtreeEnterAll(db);
+  rc = sqlite3Init(db, &zErrMsg);
+  if( rc==SQLITE_OK ){
+    pTab = sqlite3FindTable(db, zTableName, 0);
+    for(pIdx = pTab ? pTab->pIndex : 0; pIdx; pIdx = pIdx->pNext){
+      if( sqlite3StrICmp(pIdx->zName, zIndexName) ) continue;
+      if( pIdx->pPartIdxWhere ){
+        memset(&w, 0, sizeof(w));
+        w.xExprCallback = tzlessDatetimeWalk;
+        sqlite3WalkExpr(&w, pIdx->pPartIdxWhere);
+        *pTzless = w.eCode;
+      }
+      break;
+    }
+  }
+  sqlite3BtreeLeaveAll(db);
   sqlite3DbFree(db, zErrMsg);
   rc = sqlite3ApiExit(db, rc);
   sqlite3_mutex_leave(db->mutex);

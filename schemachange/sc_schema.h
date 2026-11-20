@@ -92,4 +92,6 @@ int self_referenced_only(struct dbtable *db);
 
 void change_schemas_recover(char *table);
 
+int check_partial_index_tz(struct schema_change_type *s, struct dbtable *olddb, struct dbtable *newdb);
+
 #endif

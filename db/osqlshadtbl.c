@@ -869,7 +869,12 @@ static unsigned long long get_dirty_keys(struct sqlclntstate *clnt,
     if (prdk)
         return prdk->dirty_keys;
 
-    return 0ULL;
+    /* Never seen one, but 0 would tell the master the row is in no index at
+     * all, so it would skip every key. -1 makes it recompute membership from
+     * the record itself. */
+    logmsg(LOGMSG_ERROR, "%s: no saved %s keys for table %s seq %llx, master will recompute\n", __func__,
+           ins ? "insert" : "delete", tbl->tablename, seq);
+    return -1ULL;
 }
 
 static unsigned long long get_ins_keys(struct sqlclntstate *clnt,
