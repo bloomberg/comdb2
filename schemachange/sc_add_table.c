@@ -292,6 +292,79 @@ int finalize_add_table(struct ireq *iq, struct schema_change_type *s,
         sc_errf(s, "error verifying constraints\n");
         return -1;
     }
+
+    /*
+     * if this is the original request for a partition table add,
+     * create partition here.  Write the partition and the generic shard to
+     * llmeta before any change to in-memory state: a deadlock here must fail
+     * before that
+     */
+    if ((s->partition.type == PARTITION_ADD_TIMED ||
+         s->partition.type == PARTITION_ADD_MANUAL) && s->publish) {
+        struct errstat err = {0};
+        assert(s->newpartition);
+        rc = partition_llmeta_write(tran, s->newpartition, 0, &err);
+        if (rc) {
+            logmsg(LOGMSG_ERROR, "Failed to create partition %s rc %d \"%s\"\n",
+                   s->timepartition_name, rc, err.errstr);
+            sc_errf(s, "partition_llmeta_write failed \"add\"\n");
+            return rc == VIEW_ERR_DEADLOCK ? RC_INTERNAL_RETRY : -1;
+        }
+        /* drop partition llmeta, if we remove the partition (i.e. instead
+         * of merging another table in, in which case tablename is provided)
+         * Done only from one shard, the one that will publish results
+         */
+    } else if (s->partition.type == PARTITION_RETENTION && s->publish) {
+        /* increasing retention: persist the reconfigured (larger) ring after
+         * the last new empty shard has been created */
+        struct errstat err = {0};
+        assert(s->newpartition);
+        /* we hold the schema lock here; revalidate so a partition dropped
+         * since the alter started fails cleanly rather than having its llmeta
+         * entry recreated by the upsert below */
+        rc = timepart_validate_retention_change(s->timepartition_name, s->partition.u.tpt.retention,
+                                                s->partition.u.tpt.period == VIEW_PARTITION_MANUAL, &err);
+        if (rc) {
+            logmsg(LOGMSG_ERROR, "Cannot change retention for %s rc %d \"%s\"\n", s->timepartition_name, rc,
+                   err.errstr);
+            sc_errf(s, "%s\n", err.errstr);
+            return -1;
+        }
+        rc = partition_llmeta_write(tran, s->newpartition, 1, &err);
+        if (rc) {
+            logmsg(LOGMSG_ERROR, "Failed to update partition %s retention rc %d \"%s\"\n", s->timepartition_name, rc,
+                   err.errstr);
+            sc_errf(s, "partition_llmeta_write failed \"retention\"\n");
+            return rc == VIEW_ERR_DEADLOCK ? RC_INTERNAL_RETRY : -1;
+        }
+    } else if (s->partition.type == PARTITION_MERGE && s->partition.u.mergetable.tablename[0] == '\0') {
+        struct errstat err = {0};
+        if ((rc = partition_llmeta_delete(tran, s->timepartition_name, &err)) != 0) {
+            sc_errf(s, "Failed to remove partition llmeta %d\n", err.errval);
+            logmsg(LOGMSG_ERROR, "Failed to remove partition llmeta %d\n", err.errval);
+            return rc == VIEW_ERR_DEADLOCK ? RC_INTERNAL_RETRY : SC_INTERNAL_ERROR;
+        }
+    }
+    if (s->partition.type == PARTITION_ADD_GENSHARD) {
+        const char *alias = s->partition.u.genshard.tablename;
+        if (strncasecmp(db->tablename, alias, MAXTABLELEN) == 0)
+            alias = NULL; /* hash_sqlalias_db() below removes the alias */
+        rc = bdb_set_table_sqlalias(db->tablename, tran, (char *)alias, &bdberr);
+        if (rc) {
+            logmsg(LOGMSG_ERROR, "Failed to alias genshard table");
+            return bdberr == BDBERR_DEADLOCK ? RC_INTERNAL_RETRY : -1;
+        }
+        struct errstat err = {0};
+        if ((rc = gen_shard_llmeta_add(tran, s->partition.u.genshard.tablename, s->partition.u.genshard.numdbs,
+                    s->partition.u.genshard.dbnames, s->partition.u.genshard.numcols, s->partition.u.genshard.columns,
+                    s->partition.u.genshard.shardnames, &err)) != 0) {
+            sc_errf(s, "failed to write shard info to llmeta for shard %s. rc: %d, err: %s\n", s->partition.u.genshard.tablename, rc, err.errstr);
+            logmsg(LOGMSG_ERROR, "failed to write shard info to llmeta for shard %s. rc: %d, err: %s\n",
+                   s->partition.u.genshard.tablename, rc, err.errstr);
+            return rc == RC_INTERNAL_RETRY ? rc : -1;
+        }
+    }
+
     if (iq && iq->tranddl > 1 && populate_reverse_constraints(db)) {
         sc_errf(s, "error populating reverse constraints\n");
         return -1;
@@ -390,66 +463,11 @@ int finalize_add_table(struct ireq *iq, struct schema_change_type *s,
     }
      
 
-    /*
-     * if this is the original request for a partition table add,
-     * create partition here
-     */
-    if ((s->partition.type == PARTITION_ADD_TIMED ||
-         s->partition.type == PARTITION_ADD_MANUAL) && s->publish) {
-        struct errstat err = {0};
-        assert(s->newpartition);
-        rc = partition_llmeta_write(tran, s->newpartition, 0, &err);
-        if (rc) {
-            logmsg(LOGMSG_ERROR, "Failed to create partition %s rc %d \"%s\"\n",
-                   s->timepartition_name, rc, err.errstr);
-            sc_errf(s, "partition_llmeta_write failed \"add\"\n");
-            return -1;
-        }
-        /* drop partition llmeta, if we remove the partition (i.e. instead
-         * of merging another table in, in which case tablename is provided)
-         * Done only from one shard, the one that will publish results
-         */
-    } else if (s->partition.type == PARTITION_RETENTION && s->publish) {
-        /* increasing retention: persist the reconfigured (larger) ring after
-         * the last new empty shard has been created */
-        struct errstat err = {0};
-        assert(s->newpartition);
-        /* we hold the schema lock here; revalidate so a partition dropped
-         * since the alter started fails cleanly rather than having its llmeta
-         * entry recreated by the upsert below */
-        rc = timepart_validate_retention_change(s->timepartition_name, s->partition.u.tpt.retention,
-                                                s->partition.u.tpt.period == VIEW_PARTITION_MANUAL, &err);
-        if (rc) {
-            logmsg(LOGMSG_ERROR, "Cannot change retention for %s rc %d \"%s\"\n", s->timepartition_name, rc,
-                   err.errstr);
-            sc_errf(s, "%s\n", err.errstr);
-            return -1;
-        }
-        rc = partition_llmeta_write(tran, s->newpartition, 1, &err);
-        if (rc) {
-            logmsg(LOGMSG_ERROR, "Failed to update partition %s retention rc %d \"%s\"\n", s->timepartition_name, rc,
-                   err.errstr);
-            sc_errf(s, "partition_llmeta_write failed \"retention\"\n");
-            return -1;
-        }
-    } else if (s->partition.type == PARTITION_MERGE && s->partition.u.mergetable.tablename[0] == '\0') {
-        struct errstat err = {0};
-        if (partition_llmeta_delete(tran, s->timepartition_name, &err)) {
-            sc_errf(s, "Failed to remove partition llmeta %d\n", err.errval);
-            logmsg(LOGMSG_ERROR, "Failed to remove partition llmeta %d\n", err.errval);
-            return SC_INTERNAL_ERROR;
-        }
-    } else if (s->partition.type == PARTITION_ADD_GENSHARD) {
+    if (s->partition.type == PARTITION_ADD_GENSHARD) {
         /* NOTE: for the purpose of this test stub, we create an sql alias; the actual
          * sharding will have a view created here 
          */
         hash_sqlalias_db(db, s->partition.u.genshard.tablename);
-        rc = bdb_set_table_sqlalias(db->tablename, tran, db->sqlaliasname);
-        if (rc) {
-            hash_sqlalias_db(db, NULL);
-            logmsg(LOGMSG_ERROR, "Failed to alias genshard table");
-            return -1;
-        }
         db->numdbs = s->partition.u.genshard.numdbs;
         db->dbnames = (char **)malloc(sizeof(char*) * db->numdbs);
         for (int i = 0; i < db->numdbs; i++) {
@@ -465,17 +483,6 @@ int finalize_add_table(struct ireq *iq, struct schema_change_type *s,
         db->shardnames = (char **)malloc(sizeof(char*) * db->numdbs);
         for (int i = 0; i < db->numdbs; i++) {
             db->shardnames[i] = strdup(s->partition.u.genshard.shardnames[i]);
-        }
-        /*write to llmeta*/
-        struct errstat err = {0};
-        if (gen_shard_llmeta_add(tran, s->partition.u.genshard.tablename, s->partition.u.genshard.numdbs, 
-                    s->partition.u.genshard.dbnames, s->partition.u.genshard.numcols, s->partition.u.genshard.columns,
-                    s->partition.u.genshard.shardnames, &err)) {
-            sc_errf(s, "failed to write shard info to llmeta for shard %s. rc: %d, err: %s\n", s->partition.u.genshard.tablename, rc, err.errstr);
-            logmsg(LOGMSG_ERROR, "failed to write shard info to llmeta for shard %s. rc: %d, err: %s\n",
-                   s->partition.u.genshard.tablename, rc, err.errstr);
-            hash_sqlalias_db(db, NULL);
-            return -1;
         }
     }
 

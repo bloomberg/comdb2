@@ -1,0 +1,4 @@
+sql_tranlevel_default snapshot
+min_keep_logs_age 400
+lightweight_rename 1
+transactional_drop_plus_rename 0

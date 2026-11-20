@@ -61,6 +61,8 @@ enum view_partition_errors {
     VIEW_ERR_CREATE = -11 /* error with pthread create */
     ,
     VIEW_ERR_ALL_SHARDS = -12 /* last shard was processed */
+    ,
+    VIEW_ERR_DEADLOCK = -13 /* llmeta deadlock; abort and retry from the top level */
 };
 
 typedef struct timepart_view timepart_view_t;
@@ -198,10 +200,39 @@ int views_read_view(void *tran, const char *name, char **pstr);
 char *views_read_all_views(void);
 
 /**
+ * Read the llmeta cson representation of all the views through tran
+ *
+ */
+char *views_read_all_views_tran(void *tran);
+
+/**
  * Create in-memory view set corresponding to the llmeta saved value
  *
  */
 timepart_views_t *views_create_all_views(void);
+
+/**
+ * Create a view set from the llmeta that tran reads, for example as of a
+ * snapshot (see bdb_tran_set_llmeta_snap()).  The set does not register its
+ * shards with the tables; free it with timepart_views_free()
+ *
+ */
+timepart_views_t *views_create_all_views_tran(void *tran);
+
+/**
+ * Free a view set from views_create_all_views_tran()
+ *
+ */
+void timepart_views_free(timepart_views_t *views);
+
+/**
+ * Return the sql name of table tablename in the view set: a truncate
+ * partition made from an existing table names that table after its first
+ * shard.  Return NULL if the table keeps its own name.
+ *
+ */
+const char *timepart_views_sqlalias(timepart_views_t *views,
+                                    const char *tablename);
 
 /**
  * Serialize in-memory view repository into a CSON string
@@ -553,7 +584,9 @@ int partition_publish(tran_type *tran, struct schema_change_type *sc);
 void partition_unpublish(struct schema_change_type *sc);
 
 
-/* called for a truncate rollout before finalize commits the tran */
+/* called for a truncate rollout: the llmeta write before finalize changes the
+ * table, the callback after finalize, before it commits the tran */
+int partition_truncate_llmeta_write(tran_type *tran, struct schema_change_type *s);
 int partition_truncate_callback(tran_type *tran, struct schema_change_type *s);
 
 /* return the default value for a manual partition */

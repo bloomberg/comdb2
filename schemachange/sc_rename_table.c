@@ -69,17 +69,21 @@ int finalize_alias_table(struct ireq *iq, struct schema_change_type *s,
     bdb_lock_table_write(db->handle, tran);
     bdb_lock_tablename_write(db->handle, s->newtable, tran);
 
+    /* Write the alias before the in-memory change: a deadlock here must fail
+     * before that.  An alias to the table's own name removes the alias. */
+    const char *alias = s->newtable;
+    if (strncasecmp(db->tablename, alias, MAXTABLELEN) == 0)
+        alias = NULL;
+    int bdberr;
+    rc = bdb_set_table_sqlalias(db->tablename, tran, (char *)alias, &bdberr);
+    if (rc) {
+        sc_errf(s, "bdb_set_table_sqlalias failed rc %d bdberr %d\n", rc, bdberr);
+        return bdberr == BDBERR_DEADLOCK ? RC_INTERNAL_RETRY : rc;
+    }
+
     s->already_finalized = 1;
 
     hash_sqlalias_db(db, s->newtable);
-
-    rc = bdb_set_table_sqlalias(db->tablename, tran, db->sqlaliasname);
-    if (rc) {
-        /* undo alias */
-        sc_errf(s, "bdb_set_table_sqlalias failed rc %d\n", rc);
-        hash_sqlalias_db(db, db->tablename);
-        return rc;
-    }
 
     gbl_sc_commit_count++;
 

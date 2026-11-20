@@ -17,6 +17,7 @@
 #include <memory_sync.h>
 #include "schemachange.h"
 #include "sc_callbacks.h"
+#include "snap_catalog.h"
 #include "sc_global.h"
 #include "sc_add_table.h"
 #include "sc_schema.h"
@@ -1337,6 +1338,52 @@ int (*SCDONE_CALLBACKS[])(const char *, void *, scdone_t) = {
     &scdone_queue_file,    &scdone_rename_table,   &scdone_alias,
     &scdone_default_cons};
 
+int64_t gbl_schema_gen = 1;
+
+/* Schema changes after which a snapshot that started earlier can no longer
+ * read the table correctly.  A drop needs nothing: the table is gone. */
+static int scdone_changes_table(scdone_t type)
+{
+    switch (type) {
+    case alter:
+    case fastinit: /* also add */
+    case bulkimport:
+    case rename_table:
+    case alias_table:
+    case change_stripe:
+        return 1;
+    default:
+        return 0;
+    }
+}
+
+static void bump_table_changed_gen(struct dbtable *db)
+{
+    db->changed_gen = ATOMIC_ADD64(gbl_schema_gen, 1);
+}
+
+/* Mark the tables changed by a schema change, so that snapshot and
+ * serializable transactions that started earlier fail when they access them
+ * (see sqlite3LockStmtTables).  The caller holds the schema lock exclusively,
+ * before readers can see the change; readers check under the read lock.  Other
+ * scdone types, such as an analyze, can come without the schema lock. */
+void sc_bump_changed_gen(scdone_t type, struct dbtable *db)
+{
+    if (!scdone_changes_table(type))
+        return;
+
+    assert_wrlock_schema_lk();
+
+    if (type == change_stripe) {
+        for (int i = 0; i < thedb->num_dbs; i++)
+            bump_table_changed_gen(thedb->dbs[i]);
+        return;
+    }
+
+    if (db)
+        bump_table_changed_gen(db);
+}
+
 /* TODO fail gracefully now that inline? */
 /* called by bdb layer through a callback as a detached thread,
  * we take ownership of table string
@@ -1347,5 +1394,19 @@ int (*SCDONE_CALLBACKS[])(const char *, void *, scdone_t) = {
 int scdone_callback(bdb_state_type *bdb_state, const char table[], void *arg,
                     scdone_t type)
 {
-    return SCDONE_CALLBACKS[type](table, arg, type);
+    /* a rename passes the new name in arg */
+    char *newname = (type == rename_table && arg) ? strdup(arg) : NULL;
+
+    /* before the change is visible: the commit is already in the log */
+    snap_catalog_schema_changed();
+
+    int rc = SCDONE_CALLBACKS[type](table, arg, type);
+
+    if (rc == 0) {
+        const char *name = newname ? newname : table;
+        sc_bump_changed_gen(type, name ? get_dbtable_by_name(name) : NULL);
+    }
+
+    free(newname);
+    return rc;
 }
