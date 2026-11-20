@@ -304,6 +304,9 @@ REGISTER_TUNABLE("wait_for_prepare_seqnum", "Wait-for-seqnum for prepare records
                  &gbl_wait_for_prepare_seqnum, 0, NULL, NULL, NULL, NULL);
 
 /* 2pc debug & test tunables */
+REGISTER_TUNABLE("debug_locked_internal_sql_delay_ms",
+                 "Sleep in a schema-locked internal read before it runs.  (Default: 0)", TUNABLE_INTEGER,
+                 &gbl_debug_locked_internal_sql_delay_ms, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("debug_disttxn_trace", "Print disttxn debug information.  (Default: off)", TUNABLE_BOOLEAN,
                  &gbl_debug_disttxn_trace, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("debug_fail_push_write_on_replay", "Fail pushed writes on the first N verify replays.  (Default: 0)",
