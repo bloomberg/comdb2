@@ -105,6 +105,7 @@ extern int gbl_debug_sleep_coordinator_before_commit;
 extern int gbl_debug_sleep_on_set_read_only;
 extern int gbl_debug_wait_on_verify_off;
 extern int gbl_debug_disttxn_trace;
+extern int gbl_debug_locked_internal_sql_delay_ms;
 extern int gbl_debug_fail_push_write_on_replay;
 extern int gbl_debug_fail_push_write_on_replay_rc;
 extern int gbl_debug_fail_push_write_start;

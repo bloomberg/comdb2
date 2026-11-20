@@ -111,6 +111,8 @@
 #include "views.h"
 
 int gbl_delay_sql_lock_release_sec = 5;
+/* Test hook: sleep in a schema-locked internal read before it runs */
+int gbl_debug_locked_internal_sql_delay_ms = 0;
 
 unsigned long long get_id(bdb_state_type *);
 static void unlock_bdb_cursors(struct sql_thread *thd, bdb_cursor_ifn_t *bdbcur, int *bdberr);
@@ -14430,6 +14432,9 @@ long long run_sql_thd_return_ll(const char *query, struct sql_thread *thd, const
                            rc);
         goto cleanup;
     }
+
+    if (locktbl && gbl_debug_locked_internal_sql_delay_ms)
+        poll(NULL, 0, gbl_debug_locked_internal_sql_delay_ms);
 
     if ((rc = sqlite3_exec(sqldb, query, _some_callback, &ret, &msg)) != 0) {
         errstat_set_rcstrf(err, -1, "q:\"%.100s\" failed rc %d: \"%.50s\"",

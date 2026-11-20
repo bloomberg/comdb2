@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+bash -n "$0" || exit 1
+
+# The logical cron reads its counter under the schema lock.  Log truncates want the bdb lock
+# while it reads (a debug delay widens the read): it must not recover_deadlock and abort.
+source ${TESTSROOTDIR}/tools/runit_common.sh
+source ${TESTSROOTDIR}/tools/cluster_utils.sh
+
+dbnm=$1
+sql() { cdb2sql -s --tabs ${CDB2_OPTIONS} $dbnm default "$@"; }
+msql() { cdb2sql -s --tabs ${CDB2_OPTIONS} $dbnm --host $(get_master) "$@"; }
+
+sql "create table tp (a int) partitioned by manual retention 2 start 1" || failexit "create tp"
+sql "create table t (a int)" || failexit "create t"
+for i in $(seq 1 20); do
+    lsn=$(msql "select lsn from comdb2_transaction_logs(NULL, NULL, 4) limit 1")
+    sql "insert into t values ($i)" >/dev/null || failexit "insert $i"
+    msql "exec procedure sys.cmd.truncate_log(\"$lsn\")" >/dev/null || failexit "truncate $i"
+    sleep 0.5
+done
+for node in ${CLUSTER:-localhost}; do
+    [[ "$(cdb2sql --tabs ${CDB2_OPTIONS} $dbnm --host $node 'select 1')" == "1" ]] || failexit "$node is down"
+done
+echo "Success"
