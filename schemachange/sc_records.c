@@ -686,7 +686,26 @@ int gbl_sc_logbytes_per_second = 4 * (40 * 1024 * 1024); // 4 logs/sec
 static pthread_mutex_t sc_bps_lk = PTHREAD_MUTEX_INITIALIZER;
 static pthread_cond_t sc_bps_cd = PTHREAD_COND_INITIALIZER;
 static int64_t sc_bytes_this_second;
-static int sc_current_millisecond;
+static unsigned sc_current_millisecond;
+
+/* Call with sc_bps_lk held. Bytes written past the limit carry into the next
+ * seconds; resetting to 0 let a row bigger than the limit through every second. */
+static void roll_sc_logbytes_window(void)
+{
+    /* comdb2_time_epochms() wraps after ~24.8 days of uptime; unsigned math stays correct across it */
+    unsigned now = comdb2_time_epochms();
+    unsigned secs = (now - sc_current_millisecond) / 1000;
+    if (secs == 0)
+        return;
+    sc_current_millisecond += secs * 1000;
+    if (gbl_sc_logbytes_per_second <= 0) {
+        sc_bytes_this_second = 0;
+        return;
+    }
+    sc_bytes_this_second -= (int64_t)secs * gbl_sc_logbytes_per_second;
+    if (sc_bytes_this_second < 0)
+        sc_bytes_this_second = 0;
+}
 
 static void throttle_sc_logbytes(int estimate)
 {
@@ -696,11 +715,7 @@ static void throttle_sc_logbytes(int estimate)
     Pthread_mutex_lock(&sc_bps_lk);
     do
     {
-        int now = comdb2_time_epochms();
-        if (sc_current_millisecond < now - 1000) {
-            sc_current_millisecond = now;
-            sc_bytes_this_second = 0;
-        }
+        roll_sc_logbytes_window();
         if (gbl_sc_logbytes_per_second > 0 && sc_bytes_this_second > gbl_sc_logbytes_per_second) {
             struct timespec ts;
             clock_gettime(CLOCK_REALTIME, &ts);
@@ -716,11 +731,7 @@ static void throttle_sc_logbytes(int estimate)
 static void increment_sc_logbytes(int64_t bytes)
 {
     Pthread_mutex_lock(&sc_bps_lk);
-    int now = comdb2_time_epochms();
-    if (sc_current_millisecond < now - 1000) {
-        sc_current_millisecond = now;
-        sc_bytes_this_second = 0;
-    }
+    roll_sc_logbytes_window();
     sc_bytes_this_second += bytes;
     Pthread_mutex_unlock(&sc_bps_lk);
 }
