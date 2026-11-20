@@ -1620,6 +1620,10 @@ typedef struct udppf_rq {
     bdb_state_type *bdb_state;
     unsigned int fileid;
     unsigned int pgno;
+    int by_ufid;
+    uint8_t ufid[DB_FILE_ID_LEN];
+    uint64_t enq_us; /* CLOCK_MONOTONIC when queued (udp_prefault_max_age_us) */
+    int forward;     /* master, replica write hint: hint the replicas if the prefetch reads the page */
 } udppf_rq_t;
 
 void start_udp_reader(bdb_state_type *bdb_state);
