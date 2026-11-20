@@ -2006,6 +2006,13 @@ int net_ack_message_payload(struct ack_state_struct *handle, int outrc, void *pa
     return rc;
 }
 
+struct ack_state_struct *net_ack_handle_dup(struct ack_state_struct *handle)
+{
+    ack_state_type *ack = malloc(sizeof(ack_state_type));
+    *ack = *handle;
+    return ack;
+}
+
 int net_ack_message(struct ack_state_struct *handle, int outrc)
 {
     uint8_t ack_buf[NET_ACK_MESSAGE_TYPE_LEN], *p_buf, *p_buf_end;
