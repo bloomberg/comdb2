@@ -907,10 +907,6 @@ Display information about currently running ANALYZE SQL command, if any.
 
 Display information about the thread pool responsible for flushing dirty pages to disk.
 
-### stat reqrates
-
-Display information about request rates over the last minute, hour, and since startup.
-
 ### stat keycompr
 
 Display key compression information.

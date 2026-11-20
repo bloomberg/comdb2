@@ -904,7 +904,6 @@ malloc
 misc
 verifycheckpoints
 enable
-reqrates
 raison
 bam
 userid
