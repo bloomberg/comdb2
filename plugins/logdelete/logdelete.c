@@ -20,6 +20,7 @@
 #include <comdb2_atomic.h>
 #include "unistd.h"
 #include <errno.h>
+#include <inttypes.h>
 #include <string.h>
 #include <poll.h>
 #include <sys/socket.h>
@@ -57,22 +58,41 @@ static int copy_peer_closed(int fd)
     return 0;
 }
 
-/* If an exclusive operation (recovery, upgrade/downgrade) is waiting on a lock
- * the copy holds, release the locks so it can proceed and mark the copy aborted.
- * Returns 1 if it just aborted the copy. */
-static int copy_yield_if_blocked(bdb_state_type *bdb_state, int *locks_held, int *aborted)
+static int copy_exclusive_waiting(bdb_state_type *bdb_state)
 {
-    if (!*locks_held || !(bdb_lock_desired(bdb_state) || bdb_recoverlk_blocked(bdb_state)))
-        return 0;
-    logmsg(LOGMSG_WARN,
-           "%s: releasing copy locks, an exclusive operation is waiting; "
-           "copy will be failed\n",
-           __func__);
+    return bdb_lock_desired(bdb_state) || bdb_recoverlk_blocked(bdb_state);
+}
+
+/* If an exclusive operation (recovery, upgrade/downgrade) is waiting on a lock the
+ * copy holds, release the locks so it can proceed.  The copy stays valid unless a
+ * recovery rolls back data, which copy_complete detects via the recovery gen. */
+static void copy_yield_if_blocked(bdb_state_type *bdb_state, int *locks_held)
+{
+    if (!*locks_held || !copy_exclusive_waiting(bdb_state))
+        return;
+    logmsg(LOGMSG_WARN, "%s: releasing copy locks, an exclusive operation is waiting\n", __func__);
     bdb_unlock_recovery(bdb_state);
     bdb_rellock(bdb_state, __func__, __LINE__);
     *locks_held = 0;
-    *aborted = 1;
-    return 1;
+}
+
+/* Take the copy locks back after a yield, bdb lock then recoverlk (recovery's order).
+ * Without 'wait', skip while an exclusive op is still waiting or holds the bdb lock. */
+static void copy_retake_locks(bdb_state_type *bdb_state, int *locks_held, int wait)
+{
+    if (*locks_held)
+        return;
+    if (!wait) {
+        if (copy_exclusive_waiting(bdb_state))
+            return;
+        if (bdb_get_readlock(bdb_state, 1, "copy", __func__, __LINE__) != 0)
+            return;
+    } else {
+        bdb_get_readlock(bdb_state, 0, "copy", __func__, __LINE__);
+    }
+    bdb_readlock_recovery(bdb_state);
+    *locks_held = 1;
+    logmsg(LOGMSG_INFO, "%s: re-acquired copy locks\n", __func__);
 }
 
 static int handle_logdelete_request(comdb2_appsock_arg_t *arg)
@@ -99,7 +119,7 @@ static int handle_logdelete_request(comdb2_appsock_arg_t *arg)
     int is_v4 = (strncmp(logdelete4_plugin.name, arg->cmdline, strlen(logdelete4_plugin.name)) == 0);
     bdb_state_type *bdb_state = thedb->bdb_env;
     int locks_held = 0;
-    int aborted = 0;
+    int64_t start_recovery_gen = 0;
 
     /*
       There is no difference between log delete one and two, just that
@@ -124,11 +144,13 @@ static int handle_logdelete_request(comdb2_appsock_arg_t *arg)
     /* logdelete4: hold the bdb read lock and recoverlk in read mode for the
      * copy's duration.  That excludes recovery (which write-locks recoverlk
      * before rewinding any page) and node upgrade/downgrade (bdb write lock).
-     * Same lock order as recovery, so we cannot deadlock. */
+     * Same lock order as recovery, so we cannot deadlock.  Sample the recovery
+     * gen under the locks: any data-destroying recovery after this bumps it. */
     if (is_v4) {
         bdb_get_readlock(bdb_state, 0, "copy", __func__, __LINE__);
         bdb_readlock_recovery(bdb_state);
         locks_held = 1;
+        start_recovery_gen = bdb_destructive_recovery_gen();
     }
 
     /* Gated on is_v4 so the testcase can stall the v4 handshake while a fallback
@@ -154,7 +176,8 @@ static int handle_logdelete_request(comdb2_appsock_arg_t *arg)
 
     if (is_v4) {
         /* Poll loop: wake every copy_poll_ms to yield the locks if an exclusive
-         * operation is waiting, and to notice a disconnect.  Read timeout only:
+         * operation is waiting (and re-take them once it is done), and to notice
+         * a disconnect.  Read timeout only:
          * a write timeout here could drop the copy_complete reply on a slow
          * link and fail a copy that was actually fine. */
         int fd = cdb2buf_fileno(sb);
@@ -164,11 +187,13 @@ static int handle_logdelete_request(comdb2_appsock_arg_t *arg)
             char *lasts;
             char *tok;
 
+            /* Each request or read timeout: yield to a waiting exclusive op, or re-take after one */
+            copy_yield_if_blocked(bdb_state, &locks_held);
+            copy_retake_locks(bdb_state, &locks_held, 0);
+
             if (cdb2buf_gets(line, sizeof(line), sb) <= 0) {
                 if (copy_peer_closed(fd))
                     break;
-                /* read timeout: has an exclusive operation started waiting? */
-                copy_yield_if_blocked(bdb_state, &locks_held, &aborted);
                 continue;
             }
 
@@ -192,10 +217,14 @@ static int handle_logdelete_request(comdb2_appsock_arg_t *arg)
                 cdb2buf_printf(sb, "%s\n", recovery_command);
                 cdb2buf_flush(sb);
             } else if (strcmp(tok, "copy_complete") == 0) {
-                /* A fast copy can get here before the poll timeout ever runs, so
-                 * check once more: a waiting exclusive op is still blocked behind
-                 * our read locks. */
-                copy_yield_if_blocked(bdb_state, &locks_held, &aborted);
+                /* Holding the locks means no recovery is mid-flight, so the gen is
+                 * final.  An exclusive op waiting behind us can't have run yet. */
+                copy_retake_locks(bdb_state, &locks_held, 1);
+                int64_t end_recovery_gen = bdb_destructive_recovery_gen();
+                int aborted = (end_recovery_gen != start_recovery_gen);
+                if (aborted)
+                    logmsg(LOGMSG_WARN, "%s: recovery rolled back data during the copy (gen %" PRId64 " -> %" PRId64
+                           "), copy aborted\n", __func__, start_recovery_gen, end_recovery_gen);
                 cdb2buf_printf(sb, "%s\n", aborted ? "aborted" : "ok");
                 cdb2buf_flush(sb);
             } else {
