@@ -451,6 +451,11 @@ int stmt_cache_get(struct sqlthdstate *thd, struct sqlclntstate *clnt,
     rec->status = CACHE_DISABLED;
     if (gbl_enable_sql_stmt_caching == STMT_CACHE_NONE)
         return 0;
+    /* a pushed statement resolves tables to its source db, the sql text does
+     * not identify it
+     */
+    if (clnt->rempush_set.name)
+        return 0;
     if (gbl_enable_sql_stmt_caching == STMT_CACHE_PARAM &&
         param_count(clnt) == 0)
         return 0;
@@ -526,6 +531,9 @@ int stmt_cache_put_int(struct sqlthdstate *thd, struct sqlclntstate *clnt,
         goto cleanup;
     }
     if (distributed || clnt->conns || clnt->plugin.state) {
+        goto cleanup;
+    }
+    if (clnt->rempush_set.name) { /* pushed statement, see stmt_cache_get */
         goto cleanup;
     }
     if (thd && thd->authState.numDdls > 0) { /* NOTE: Never cache DDL. */

@@ -194,16 +194,18 @@ fi
 $S_SQL "select * from LOCAL_${a_rdbname}.t order by id" >> $output 2>&1
 check
 
-header 9 "remtran test for client transactions pre-cdb2api"
+header 9 "remtran test for client transactions pre-cdb2api fails"
 $R_SQL "put tunable fdb_default_version 6" >> $output 2>&1
+
+# remote writes are pushed, or they fail; pre-cdb2api remotes cannot run them
 
 $S_SQL <<EOF
 begin
 insert into LOCAL_${a_rdbname}.t values (200)
 commit
 EOF
-if [[ $? != 0 ]] ; then
-    echo "Failed to run insert in a client txni precdb2api"
+if [[ $? == 0 ]] ; then
+    echo "insert in a client txn precdb2api did not fail"
     exit 1
 fi
 $S_SQL "select * from LOCAL_${a_rdbname}.t order by id" >> $output 2>&1
@@ -214,8 +216,8 @@ begin
 update LOCAL_${a_rdbname}.t set id=id+1 where id=200
 commit
 EOF
-if [[ $? != 0 ]] ; then
-    echo "Failed to run update in a client txn precdb2api"
+if [[ $? == 0 ]] ; then
+    echo "update in a client txn precdb2api did not fail"
     exit 1
 fi
 $S_SQL "select * from LOCAL_${a_rdbname}.t order by id" >> $output 2>&1
@@ -226,8 +228,8 @@ begin
 delete from LOCAL_${a_rdbname}.t where id=201
 commit
 EOF
-if [[ $? != 0 ]] ; then
-    echo "Failed to run delete in a client txn precdb2api"
+if [[ $? == 0 ]] ; then
+    echo "delete in a client txn precdb2api did not fail"
     exit 1
 fi
 $S_SQL "select * from LOCAL_${a_rdbname}.t order by id" >> $output 2>&1
@@ -276,7 +278,7 @@ check
 
 $R_SQL "put tunable fdb_default_version $ver" >> $output 2>&1
 
-header 11 "remtran test for client transactions with select"
+header 11 "remtran test for client transactions with select pre-cdb2api fails"
 $R_SQL "put tunable fdb_default_version 6" >> $output 2>&1
 
 $S_SQL <<EOF
@@ -286,8 +288,8 @@ insert into LOCAL_${a_rdbname}.t values (400)
 select * from LOCAL_${a_rdbname}.t order by id
 commit
 EOF
-if [[ $? != 0 ]] ; then
-    echo "Failed to run insert in a client txn precdb2api"
+if [[ $? == 0 ]] ; then
+    echo "insert in a client txn precdb2api did not fail"
     exit 1
 fi
 $S_SQL "select * from LOCAL_${a_rdbname}.t order by id" >> $output 2>&1
@@ -300,8 +302,8 @@ update LOCAL_${a_rdbname}.t set id=id+1 where id=400
 select * from LOCAL_${a_rdbname}.t order by id
 commit
 EOF
-if [[ $? != 0 ]] ; then
-    echo "Failed to run update in a client txn precdb2api"
+if [[ $? == 0 ]] ; then
+    echo "update in a client txn precdb2api did not fail"
     exit 1
 fi
 $S_SQL "select * from LOCAL_${a_rdbname}.t order by id" >> $output 2>&1
@@ -314,8 +316,8 @@ delete from LOCAL_${a_rdbname}.t where id=401
 select * from LOCAL_${a_rdbname}.t order by id
 commit
 EOF
-if [[ $? != 0 ]] ; then
-    echo "Failed to run delete in a client txn precdb2api"
+if [[ $? == 0 ]] ; then
+    echo "delete in a client txn precdb2api did not fail"
     exit 1
 fi
 $S_SQL "select * from LOCAL_${a_rdbname}.t order by id" >> $output 2>&1

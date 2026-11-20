@@ -1899,7 +1899,7 @@ static int handle_sql_wrongstate(struct sqlthdstate *thd,
                    "sqlinterfaces: wrong sql handle state\n", 0);
 
     clnt->intrans = 0;
-    clnt->inremtrans = 0;
+    fdb_clear_inremtrans(clnt);
     reset_clnt_flags(clnt);
 
     reqlog_end_request(thd->logger, -1, __func__, __LINE__);
@@ -2101,7 +2101,7 @@ void abort_dbtran(struct sqlclntstate *clnt)
     }
 
     clnt->intrans = 0;
-    clnt->inremtrans = 0;
+    fdb_clear_inremtrans(clnt);
     sql_set_sqlengine_state(clnt, __FILE__, __LINE__,
                             SQLENG_FNSH_ABORTED_STATE);
     reset_query_effects(clnt, 0, 0);
@@ -2529,7 +2529,7 @@ int handle_sql_commitrollback(struct sqlthdstate *thd,
 
     /* we are out of transaction, mark this here */
     clnt->intrans = 0;
-    clnt->inremtrans = 0;
+    fdb_clear_inremtrans(clnt);
     clnt->dbtran.shadow_tran = NULL;
 
     if (rc == SQLITE_OK) {
@@ -3408,6 +3408,7 @@ static int get_prepared_stmt_int(struct sqlthdstate *thd,
         return handle_bad_transaction_mode(thd, clnt);
     }
     query_stats_setup(thd, clnt);
+    clnt->fdb_push_alias = 0;
     stmt_cache_get(thd, clnt, rec, flags);
     int sqlPrepFlags = 0;
 
@@ -5532,6 +5533,8 @@ void cleanup_clnt(struct sqlclntstate *clnt)
     if (clnt->ctrl_sqlengine == SQLENG_INTRANS_STATE || clnt->inremtrans) {
         handle_sql_intrans_unrecoverable_error(clnt);
     }
+    fdb_clear_inremtrans(clnt);
+    fdb_free_rempush_set(clnt);
     _free_set_commands(clnt);
     if (clnt->rawnodestats) {
         release_node_stats_ptr(clnt->rawnodestats);
@@ -5733,7 +5736,7 @@ void reset_clnt(struct sqlclntstate *clnt, int initial)
 
     if (clnt->ctrl_sqlengine != SQLENG_INTRANS_STATE)
         clnt->intrans = 0;
-    clnt->inremtrans = 0;
+    fdb_clear_inremtrans(clnt);
 
     /* start off in the default transaction mode till we're told otherwise */
     clnt->dbtran.mode = gbl_sql_tranlevel_default;
@@ -5872,6 +5875,7 @@ void reset_clnt(struct sqlclntstate *clnt, int initial)
 
     free_remsql_set(clnt);
     bzero(&clnt->remsql_set, sizeof(clnt->remsql_set));
+    fdb_free_rempush_set(clnt);
     _free_set_commands(clnt);
 }
 
