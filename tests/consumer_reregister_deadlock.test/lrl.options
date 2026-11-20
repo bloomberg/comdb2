@@ -1,0 +1,4 @@
+# roll back the way prod did (skip-recovery truncate)
+rep_skip_recovery 1
+setattr REPTIMEOUT_MINMS 2000
+setattr DOWNGRADE_PENALTY 2000

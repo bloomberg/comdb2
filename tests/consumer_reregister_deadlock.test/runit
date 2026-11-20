@@ -1,0 +1,53 @@
+#!/usr/bin/env bash
+# A consumer paused for a log rollback re-registers with the new master. It must not
+# hold the queue's trigger lock while waiting for the reply: the reply is read by the
+# replication thread, which needs that lock to un-pause consumers after the rollback.
+bash -n "$0" || exit 1
+. ${TESTSROOTDIR}/tools/runit_common.sh
+[[ -z "$CLUSTER" ]] && { echo "needs a cluster"; exit 0; }
+db=$1
+SQL="$CDB2SQL_EXE --tabs $CDB2_OPTIONS $db"
+
+$SQL default "create table t(i int)"
+$SQL default - <<'SQ'
+create procedure watcher version '1' {
+local function main()
+    local c = db:consumer()
+    while true do
+        c:get()
+        c:consume()
+    end
+end
+}$$
+SQ
+$SQL default "create lua consumer watcher on (table t for insert)"
+
+leader=$($SQL default "select host from comdb2_cluster where is_master='Y'")
+host=$($SQL default "select host from comdb2_cluster where is_master='N' limit 1")
+peer=$($SQL default "select host from comdb2_cluster where is_master='N' and host!='$host' limit 1")
+echo "leader $leader, replicant under test $host, new leader $peer"
+
+# Keep the consumer running through the master change, and hold consumers paused for a
+# few seconds while the replicant rolls back its log
+$SQL --host $host "put tunable ignore_coherency 1"
+$SQL --host $host "exec procedure sys.cmd.send('on test_trigger_reregister')"
+$SQL --host $host "exec procedure watcher()" > /dev/null 2>&1 &
+wpid=$!
+sleep 3
+
+$SQL --host $leader "exec procedure sys.cmd.send('upgrade $peer')" > /dev/null
+
+end=$((SECONDS + 60))
+while [[ $SECONDS -lt $end ]]; do
+    sleep 1
+    m=$($SQL --host $peer "select host from comdb2_cluster where is_master='Y'" 2>/dev/null)
+    [[ -z "$m" ]] && continue
+    $SQL --host $m "insert into t values(0)" > /dev/null 2>&1
+    state=$($SQL --host $m "select coherent_state from comdb2_cluster where host='$host'" 2>/dev/null)
+    [[ "$state" == "coherent" ]] && break
+done
+kill $wpid 2>/dev/null
+$SQL --host $host "exec procedure sys.cmd.send('off test_trigger_reregister')" > /dev/null 2>&1
+$SQL --host $host "put tunable ignore_coherency 0" > /dev/null 2>&1
+[[ "$state" == "coherent" ]] || failexit "$host is still $state after the master change"
+echo "Success"
