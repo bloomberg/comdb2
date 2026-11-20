@@ -155,6 +155,7 @@ void add_fake_drtest(const char *host)
         fake_drtest_hash = hash_init_str(0);
     }
     hash_add(fake_drtest_hash, strdup(host));
+    logmsg(LOGMSG_WARN, "fakedr: %s is now down (DR test)\n", host);
     Pthread_mutex_unlock(&fake_drtest_lk);
 }
 
@@ -164,6 +165,7 @@ void del_fake_drtest(const char *host)
     char *h;
     if (fake_drtest_hash && (h = hash_find(fake_drtest_hash, host))) {
         hash_del(fake_drtest_hash, h);
+        logmsg(LOGMSG_WARN, "fakedr: %s is back up\n", host);
     }
     Pthread_mutex_unlock(&fake_drtest_lk);
 }
@@ -204,10 +206,6 @@ static int is_fake_drtest(const char *host)
 static int machine_is_up_default(const char *host, int *drtest)
 {
     int is_fake = is_fake_drtest(host);
-
-    if (is_fake) {
-        logmsg(LOGMSG_WARN, "%s fakedr returning machine-down for host: %s\n", __func__, host);
-    }
 
     if (drtest) {
         *drtest = is_fake;
