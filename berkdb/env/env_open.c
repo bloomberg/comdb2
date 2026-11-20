@@ -899,6 +899,11 @@ __dbenv_close(dbenv, rep_check)
 	    (t_ret = __rep_preclose(dbenv, 1)) != 0 && ret == 0)
 		ret = t_ret;
 
+	/* __ufid_open handles, and those dropped from the ufid hash, have no other owner */
+	if ((t_ret = __db_close_recover_dbps(dbenv,
+	    NULL, NULL, NULL, 0)) != 0 && ret == 0)
+		ret = t_ret;
+
 	if (!gbl_import_mode && dbenv->db_ref != 0) {
 		__db_err(dbenv,
 		    "Database handles open during environment close");
