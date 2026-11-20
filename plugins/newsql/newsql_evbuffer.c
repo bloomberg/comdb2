@@ -478,11 +478,6 @@ static int dispatch_tagged(struct sqlclntstate *clnt)
     int rc;
     struct newsql_appdata_evbuffer *appdata = (struct newsql_appdata_evbuffer *)clnt->appdata;
 
-    struct buf_lock_t *p_slock = NULL;
-    Pthread_mutex_lock(&buf_lock);
-    p_slock = pool_getablk(p_slocks);
-    Pthread_mutex_unlock(&buf_lock);
-
     if (appdata->sqlquery == NULL || appdata->sqlquery->n_bindvars < 3 || appdata->sqlquery->bindvars[0] == NULL ||
         appdata->sqlquery->bindvars[1] == NULL || appdata->sqlquery->bindvars[1]->value.len != sizeof(int) ||
         appdata->sqlquery->bindvars[2] == NULL || appdata->sqlquery->bindvars[2]->value.len != sizeof(int)) {
@@ -491,6 +486,35 @@ static int dispatch_tagged(struct sqlclntstate *clnt)
 
     void *buf = appdata->sqlquery->bindvars[0]->value.data;
     int sz = appdata->sqlquery->bindvars[0]->value.len;
+
+    int luxref;
+    int comdbg_flags;
+    memcpy(&luxref, appdata->sqlquery->bindvars[1]->value.data, sizeof(int));
+    memcpy(&comdbg_flags, appdata->sqlquery->bindvars[2]->value.data, sizeof(int));
+    if (endianness_mismatch(clnt)) {
+        luxref = flibc_intflip(luxref);
+        comdbg_flags = flibc_intflip(comdbg_flags);
+    }
+
+    /* We're on the event thread - use the non-blocking check.  dbinfo requests are allowed on
+       incoherent nodes (they're how the proxy discovers the master), everything else is rejected.
+       Check before allocating p_slock and bigbuf so a rejected request has nothing to free. */
+    if (!bdb_try_am_i_coherent(thedb->bdb_env)) {
+        struct req_hdr hdr;
+        if (req_hdr_get(&hdr, buf, ((uint8_t *)buf) + sz, comdbg_flags) == NULL) {
+            logmsg(LOGMSG_ERROR, "%s:failed to unpack req header\n", __func__);
+            return 1;
+        }
+        if (hdr.opcode != OP_DBINFO && hdr.opcode != OP_DBINFO2) {
+            logmsg(LOGMSG_ERROR, "Rejecting tagged request %d %s on incoherent node\n", hdr.opcode, req2a(hdr.opcode));
+            return 1;
+        }
+    }
+
+    struct buf_lock_t *p_slock = NULL;
+    Pthread_mutex_lock(&buf_lock);
+    p_slock = pool_getablk(p_slocks);
+    Pthread_mutex_unlock(&buf_lock);
 
     Pthread_mutex_init(&(p_slock->req_lock), 0);
     Pthread_cond_init(&(p_slock->wait_cond), NULL);
@@ -526,27 +550,6 @@ static int dispatch_tagged(struct sqlclntstate *clnt)
         }
         clnt->origin_argv0 =
             strndup((char *)appdata->sqlquery->bindvars[3]->value.data, appdata->sqlquery->bindvars[3]->value.len);
-    }
-
-    int luxref;
-    int comdbg_flags;
-    memcpy(&luxref, appdata->sqlquery->bindvars[1]->value.data, sizeof(int));
-    memcpy(&comdbg_flags, appdata->sqlquery->bindvars[2]->value.data, sizeof(int));
-    if (endianness_mismatch(clnt)) {
-        luxref = flibc_intflip(luxref);
-        comdbg_flags = flibc_intflip(comdbg_flags);
-    }
-
-    if (!bdb_am_i_coherent(thedb->bdb_env)) {
-        struct req_hdr hdr;
-        if (req_hdr_get(&hdr, buf, ((uint8_t *)buf) + sz, comdbg_flags) == NULL) {
-            logmsg(LOGMSG_ERROR, "%s:failed to unpack req header\n", __func__);
-            return 1;
-        }
-        if (hdr.opcode != OP_DBINFO && hdr.opcode != OP_DBINFO2) {
-            logmsg(LOGMSG_ERROR, "Rejecting tagged request %d %s on incoherent node\n", hdr.opcode, req2a(hdr.opcode));
-            return 1;
-        }
     }
 
     rc = handle_buf_main2(thedb, NULL, p_slock->bigbuf, (uint8_t *)p_slock->bigbuf + 1024 * 64, 0, clnt->origin,
@@ -770,16 +773,14 @@ static void process_query(struct newsql_appdata_evbuffer *appdata)
     }
     sql_enable_heartbeat(appdata->writer);
 
-    if (incoherent) {
-        if (clnt->is_tagged) {
-            goto err;
-        } else {
-            wait_for_leader(appdata, incoherent);
-        }
-    } else if (clnt->is_tagged) {
+    /* Tagged requests go to dispatch_tagged even on an incoherent node - it lets dbinfo
+       requests through and rejects everything else. */
+    if (clnt->is_tagged) {
         if (dispatch_tagged(clnt) != 0) {
             goto err;
         }
+    } else if (incoherent) {
+        wait_for_leader(appdata, incoherent);
     } else if (dispatch_client(appdata) != 0) {
 err:    free_newsql_appdata_evbuffer(appdata);
     }
