@@ -2,6 +2,7 @@
 # Only the source tree is needed; build artifacts and VCS metadata are not.
 .git
 build/
+build-asan/
 contrib/docker/build/
 contrib/docker/volumes/
 
