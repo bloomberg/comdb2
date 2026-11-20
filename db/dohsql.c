@@ -581,7 +581,7 @@ static void donate_current_row(dohsql_t *conns, int locked)
             conns->row_src = 0;
         } else {
             /* local row; there is no use of que_free, here, but we still need
-             * to free the dummy row_t that points to the Vdbe->pResultSet
+             * to free the dummy row_t that points to the Vdbe->pResultRow
              */
             free(conns->row);
             conns->row = NULL;
@@ -1768,7 +1768,7 @@ static int _local_step(struct sqlclntstate *clnt, sqlite3_stmt *stmt,
             logmsg(LOGMSG_USER, "%p XXX: %s added local new row\n",
                    (void *)pthread_self(), __func__);
         row_t *row = calloc(1, sizeof(row_t));
-        row->unpacked = ((Vdbe *)stmt)->pResultSet;
+        row->unpacked = ((Vdbe *)stmt)->pResultRow;
         if (queue_add(conns->conns[0].que, row))
             abort();
         _move_client_row(stmt, conns, crt_idx);

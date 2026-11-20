@@ -48,7 +48,7 @@ int views_sqlite_update(timepart_views_t *views, sqlite3 *db,
         tab = sqlite3FindTableCheckOnlyNoAlias(db, view->name, NULL);
         if (tab) {
             /* paranoia */
-            if (tab->pSelect == NULL) {
+            if (!IsView(tab)) {
                 abort();
             }
 

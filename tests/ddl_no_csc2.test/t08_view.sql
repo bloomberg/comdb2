@@ -28,3 +28,10 @@ DROP VIEW aaa;
 
 SELECT * FROM comdb2_tables;
 SELECT * FROM comdb2_views;
+
+SELECT 'create views using reserved sqlite_stat names' as test;
+CREATE VIEW sqlite_stat1 AS SELECT 1;
+CREATE VIEW sqlite_stat4 AS SELECT 1;
+
+SELECT * FROM comdb2_tables;
+SELECT * FROM comdb2_views;

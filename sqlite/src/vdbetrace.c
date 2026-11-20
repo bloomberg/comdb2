@@ -26,10 +26,10 @@
 ** a host parameter.  If the text contains no host parameters, return
 ** the total number of bytes in the text.
 */
-static int findNextHostParameter(const char *zSql, int *pnToken){
+static i64 findNextHostParameter(const char *zSql, i64 *pnToken){
   int tokenType;
-  int nTotal = 0;
-  int n;
+  i64 nTotal = 0;
+  i64 n;
 
   *pnToken = 0;
   while( zSql[0] ){
@@ -76,19 +76,17 @@ char *sqlite3VdbeExpandSql(
   sqlite3 *db;             /* The database connection */
   int idx = 0;             /* Index of a host parameter */
   int nextIndex = 1;       /* Index of next ? host parameter */
-  int n;                   /* Length of a token prefix */
-  int nToken;              /* Length of the parameter token */
+  i64 n;                   /* Length of a token prefix */
+  i64 nToken;              /* Length of the parameter token */
   int i;                   /* Loop counter */
   Mem *pVar;               /* Value of a host parameter */
   StrAccum out;            /* Accumulate the output here */
 #ifndef SQLITE_OMIT_UTF16
   Mem utf8;                /* Used to convert UTF16 into UTF8 for display */
 #endif
-  char zBase[100];         /* Initial working space */
 
   db = p->db;
-  sqlite3StrAccumInit(&out, 0, zBase, sizeof(zBase), 
-                      db->aLimit[SQLITE_LIMIT_LENGTH]);
+  sqlite3StrAccumInit(&out, 0, 0, 0, db->aLimit[SQLITE_LIMIT_LENGTH]);
   if( db->nVdbeExec>1 ){
     while( *zRawSql ){
       const char *zStart = zRawSql;
@@ -125,12 +123,12 @@ char *sqlite3VdbeExpandSql(
         assert( idx>0 );
       }
       zRawSql += nToken;
-      nextIndex = idx + 1;
+      nextIndex = MAX(idx + 1, nextIndex);
       assert( idx>0 && idx<=p->nVar );
       pVar = &p->aVar[idx-1];
       if( pVar->flags & MEM_Null ){
         sqlite3_str_append(&out, "NULL", 4);
-      }else if( pVar->flags & MEM_Int ){
+      }else if( pVar->flags & (MEM_Int|MEM_IntReal) ){
         sqlite3_str_appendf(&out, "%lld", pVar->u.i);
       }else if( pVar->flags & MEM_Real ){
         sqlite3_str_appendf(&out, "%!.15g", pVar->u.r);

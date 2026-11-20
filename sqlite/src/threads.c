@@ -72,10 +72,19 @@ int sqlite3ThreadCreate(
   ** forces worker threads to run sequentially and deterministically 
   ** for testing purposes. */
   if( sqlite3FaultSim(200) ){
+    rc = 1;
+  }else{    
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+    /* Use our wrapper for consistent logging, error handling, etc.
+    ** We just abort on failure, no return code to process. */
+    Pthread_create(&p->tid, 0, xTask, pIn);
+#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+    rc = pthread_create(&p->tid, 0, xTask, pIn);
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+  }
+  if( rc ){
     p->done = 1;
     p->pOut = xTask(pIn);
-  }else{    
-    Pthread_create(&p->tid, 0, xTask, pIn);
   }
   *ppThread = p;
   return SQLITE_OK;
