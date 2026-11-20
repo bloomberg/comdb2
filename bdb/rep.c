@@ -802,6 +802,8 @@ void rep_reset_send_bytecount(void) { bytecount = 0; }
 
 extern int gbl_decoupled_logputs;
 
+__thread int bdb_sc_nodrop_logputs;
+
 int berkdb_send_rtn(DB_ENV *dbenv, const DBT *control, const DBT *rec,
                     const DB_LSN *lsnp, char *host, uint32_t flags,
                     void *usr_ptr)
@@ -1014,8 +1016,8 @@ int berkdb_send_rtn(DB_ENV *dbenv, const DBT *control, const DBT *rec,
         type[num] = USER_TYPE_BERKDB_REP;
         flag[num] = (is_logput ? NET_SEND_LOGPUT : (NET_SEND_NODROP | NET_SEND_NODELAY)) |
                     ((flags & DB_REP_NODROP) ? NET_SEND_NODROP : 0) |
-                    (bdb_state->attr->net_inorder_logputs ? NET_SEND_INORDER : 0) |
-                    (nodelay ? NET_SEND_NODELAY : 0) |
+                    ((is_logput && bdb_sc_nodrop_logputs) ? NET_SEND_NODROP : 0) |
+                    (bdb_state->attr->net_inorder_logputs ? NET_SEND_INORDER : 0) | (nodelay ? NET_SEND_NODELAY : 0) |
                     (flags & DB_REP_TRACE ? NET_SEND_TRACE : 0);
         ++num;
         rc = net_send_all(bdb_state->repinfo->netinfo, num, data, sz, type, flag);
@@ -1044,7 +1046,7 @@ int berkdb_send_rtn(DB_ENV *dbenv, const DBT *control, const DBT *rec,
         if (!is_logput)
             sendflags |= (NET_SEND_NODROP | NET_SEND_NODELAY);
 
-        if (flags & DB_REP_NODROP)
+        if ((flags & DB_REP_NODROP) || (is_logput && bdb_sc_nodrop_logputs))
             sendflags |= NET_SEND_NODROP;
 
         if (bdb_state->attr->net_inorder_logputs)
@@ -2039,6 +2041,11 @@ void bdb_all_incoherent(bdb_state_type *bdb_state)
                        __func__, __LINE__);
 
     Pthread_mutex_unlock(&(bdb_state->coherent_state_lock));
+}
+
+int bdb_rep_net_num_over_half(bdb_state_type *bdb_state, size_t *wr_max, int *num_over_low, int64_t *bytes_sent)
+{
+    return net_num_over_half(bdb_state->repinfo->netinfo, wr_max, num_over_low, bytes_sent);
 }
 
 int bdb_get_num_notcoherent(bdb_state_type *bdb_state)

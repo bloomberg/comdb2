@@ -686,7 +686,104 @@ int gbl_sc_logbytes_per_second = 4 * (40 * 1024 * 1024); // 4 logs/sec
 static pthread_mutex_t sc_bps_lk = PTHREAD_MUTEX_INITIALIZER;
 static pthread_cond_t sc_bps_cd = PTHREAD_COND_INITIALIZER;
 static int64_t sc_bytes_this_second;
-static int sc_current_millisecond;
+static unsigned sc_current_millisecond;
+
+/* Call with sc_bps_lk held. Bytes written past the limit carry into the next
+ * seconds; resetting to 0 let a row bigger than the limit through every second. */
+static void roll_sc_logbytes_window(void)
+{
+    /* comdb2_time_epochms() wraps after ~24.8 days of uptime; unsigned math stays correct across it */
+    unsigned now = comdb2_time_epochms();
+    unsigned secs = (now - sc_current_millisecond) / 1000;
+    if (secs == 0)
+        return;
+    sc_current_millisecond += secs * 1000;
+    if (gbl_sc_logbytes_per_second <= 0) {
+        sc_bytes_this_second = 0;
+        return;
+    }
+    sc_bytes_this_second -= (int64_t)secs * gbl_sc_logbytes_per_second;
+    if (sc_bytes_this_second < 0)
+        sc_bytes_this_second = 0;
+}
+
+int gbl_sc_net_backpressure = 1;
+static int64_t sc_inflight_bytes;
+static int sc_bp_ignore_until;
+
+/* Rows are shipped to replicants as they are written, and a replicant's log
+ * records are dropped once its write buffer fills. Before each row, wait while
+ * a replicant connection is over half full, or while rows that haven't
+ * committed yet would fill half a buffer. A row bigger than half a buffer
+ * goes alone and only once every connection has nearly drained, because it
+ * can overflow the buffer while it is being written. */
+static void sc_net_backpressure(struct convert_record_data *data, int64_t estimate)
+{
+    Pthread_mutex_lock(&sc_bps_lk);
+    sc_inflight_bytes -= data->bp_bytes;
+    data->bp_bytes = 0;
+    bdb_sc_nodrop_logputs = 0;
+    if (!gbl_sc_net_backpressure || estimate <= 0 || comdb2_time_epoch() < sc_bp_ignore_until) {
+        Pthread_mutex_unlock(&sc_bps_lk);
+        return;
+    }
+    int last_progress = comdb2_time_epochms();
+    int64_t last_sent = -1;
+    size_t wr_max;
+    while (1) {
+        int over_low;
+        int64_t sent;
+        int over = bdb_rep_net_num_over_half(thedb->bdb_env, &wr_max, &over_low, &sent);
+        if (wr_max == 0) {
+            Pthread_mutex_unlock(&sc_bps_lk);
+            return;
+        }
+        if (estimate > (int64_t)(wr_max / 2)) {
+            if (!over_low && sc_inflight_bytes == 0)
+                break;
+        } else if (!over && (sc_inflight_bytes == 0 || sc_inflight_bytes + estimate <= (int64_t)(wr_max / 2))) {
+            break;
+        }
+        /* Waiting behind other rows is expected. Give up only if queued bytes
+         * stop moving, so a replicant that can't drain doesn't stall the
+         * schema change. */
+        int now = comdb2_time_epochms();
+        if (sent != last_sent) {
+            last_sent = sent;
+            last_progress = now;
+        } else if ((over || over_low) && now - last_progress > 10000) {
+            sc_printf(data->s, "replicant write buffer not draining, ignoring it for 60s\n");
+            sc_bp_ignore_until = comdb2_time_epoch() + 60;
+            Pthread_mutex_unlock(&sc_bps_lk);
+            return;
+        }
+        struct timespec ts;
+        clock_gettime(CLOCK_REALTIME, &ts);
+        ts.tv_nsec += 10 * 1000 * 1000;
+        if (ts.tv_nsec >= 1000000000) {
+            ts.tv_sec++;
+            ts.tv_nsec -= 1000000000;
+        }
+        pthread_cond_timedwait(&sc_bps_cd, &sc_bps_lk, &ts);
+    }
+    sc_inflight_bytes += estimate;
+    data->bp_bytes = estimate;
+    /* the gate bounds what is queued, so these needn't be dropped to protect memory */
+    bdb_sc_nodrop_logputs = 1;
+    Pthread_mutex_unlock(&sc_bps_lk);
+}
+
+static void sc_net_backpressure_release(struct convert_record_data *data)
+{
+    bdb_sc_nodrop_logputs = 0;
+    if (data->bp_bytes == 0)
+        return;
+    Pthread_mutex_lock(&sc_bps_lk);
+    sc_inflight_bytes -= data->bp_bytes;
+    data->bp_bytes = 0;
+    Pthread_cond_broadcast(&sc_bps_cd);
+    Pthread_mutex_unlock(&sc_bps_lk);
+}
 
 static void throttle_sc_logbytes(int estimate)
 {
@@ -696,11 +793,7 @@ static void throttle_sc_logbytes(int estimate)
     Pthread_mutex_lock(&sc_bps_lk);
     do
     {
-        int now = comdb2_time_epochms();
-        if (sc_current_millisecond < now - 1000) {
-            sc_current_millisecond = now;
-            sc_bytes_this_second = 0;
-        }
+        roll_sc_logbytes_window();
         if (gbl_sc_logbytes_per_second > 0 && sc_bytes_this_second > gbl_sc_logbytes_per_second) {
             struct timespec ts;
             clock_gettime(CLOCK_REALTIME, &ts);
@@ -716,11 +809,7 @@ static void throttle_sc_logbytes(int estimate)
 static void increment_sc_logbytes(int64_t bytes)
 {
     Pthread_mutex_lock(&sc_bps_lk);
-    int now = comdb2_time_epochms();
-    if (sc_current_millisecond < now - 1000) {
-        sc_current_millisecond = now;
-        sc_bytes_this_second = 0;
-    }
+    roll_sc_logbytes_window();
     sc_bytes_this_second += bytes;
     Pthread_mutex_unlock(&sc_bps_lk);
 }
@@ -1115,6 +1204,7 @@ static int convert_record(struct convert_record_data *data)
 
         /* Estimate how many log bytes this convert thread will write, and throttle if needed.
            We'll adjust it after add_record() when we know the actual number of log bytes. */
+        sc_net_backpressure(data, estimate);
         throttle_sc_logbytes(estimate);
 
         /* if we want to distribute the data, change the destination table here */
@@ -1447,6 +1537,7 @@ cleanup:
     }
 
 cleanup_no_msg:
+    sc_net_backpressure_release(data);
     convert_record_data_cleanup(data);
     if (data->isThread)
         backend_thread_event(thedb, COMDB2_THR_EVENT_DONE);

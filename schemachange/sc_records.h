@@ -69,6 +69,7 @@ struct convert_record_data {
     unsigned n_genids_changed;
     long long nrecs, prev_nrecs, nrecskip;
     int num_records_per_trans;
+    int64_t bp_bytes; /* bytes of the current row counted in sc_inflight_bytes */
     int num_retry_errors;
     int *tagmap; // mapping of fields from -> to
     /* all the data objects point to the same single cmembers object */
