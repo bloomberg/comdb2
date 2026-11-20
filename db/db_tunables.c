@@ -704,6 +704,7 @@ extern int gbl_legacy_requests_verbose;
 extern int gbl_long_request_ms;
 extern int gbl_nonodh_queue_scan_limit;
 extern int gbl_sql_row_delay_msecs;
+extern int gbl_sql_range_dta_probe_max_misses;
 extern int gbl_thread_wait_sec;
 
 int64_t gbl_driver_ulimit = 0;
