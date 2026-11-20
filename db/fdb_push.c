@@ -425,10 +425,10 @@ static cdb2_hndl_tp *_hndl_open(sqlclntstate *clnt, int *client_redir,
                                 int n_sets, const char **sets)
 {
     fdb_push_connector_t *push = clnt->fdb_push;
-    const char *class = "default";
+    const char *class;
     if (push->local)
         class = "local";
-    else if (push->class != get_my_mach_class()) {
+    else {
         class = mach_class_class2name(push->class);
         assert(class);
     }
