@@ -1,0 +1,23 @@
+Statistics are collected for indexes built by a schema change, before that
+schema change commits.
+
+Covers:
+  - CREATE INDEX populates sqlite_stat1 with no explicit ANALYZE
+  - those statistics are visible on every node, not just the master
+  - ALTER TABLE adding an index does the same; indexes it did not rebuild
+    are read from the old table and keep the same statistics
+  - altering an index definition refreshes its statistics and moves the
+    row under its old name aside with the rest of the table's old rows
+  - an existing index that was never analyzed gets statistics when another
+    index is created
+  - a datacopy-driven rebuild does not lose existing statistics
+  - DROP INDEX does not resurrect statistics
+  - the analyze_new_indexes tunable disables the behavior
+  - a full REBUILD, which has no schema-change plan, analyzes every index
+  - with sc_analyze_required, a schema change fails if the analyze cannot
+    run; without it, the schema change proceeds without stats
+  - with stats for a new unselective index, the planner keeps using the
+    selective index; without them it switches to the new one
+
+Runs standalone or against a cluster; the per-node checks degrade to a
+single-host check when there is only one node.
