@@ -66,6 +66,7 @@ u_int32_t apply_queue_gen = 0;
 static pthread_mutex_t sql_apply_queue_lock = PTHREAD_MUTEX_INITIALIZER;
 static pthread_cond_t sql_apply_queue_cond = PTHREAD_COND_INITIALIZER;
 static LOG_INFO last_enqueued_lsn = {0};
+static DB_LSN enqueued_gap_lsn = {0};
 
 /* Signal mechanism from berkley */
 static pthread_t sql_logfill_thd;
@@ -545,23 +546,44 @@ static int request_logs_from_master(bdb_state_type *bdb_state)
 
         /* Update to most recently queued */
         if (gbl_sql_logfill_dedicated_apply_thread) {
+            int gap_enqueued = 0;
             Pthread_mutex_lock(&sql_apply_queue_lock);
             check_apply_queue_gen(firstgen);
-            if (apply_queue_head != apply_queue_tail)
+            if (apply_queue_head != apply_queue_tail) {
                 last_lsn = last_enqueued_lsn;
+                gap_enqueued = !IS_ZERO_LSN(enqueued_gap_lsn) && log_compare(&gap_lsn, &enqueued_gap_lsn) == 0;
+            }
+            BDB_RELLOCK();
+            /* Everything up to this gap is already queued: wait for the apply
+             * thread to close it rather than re-requesting the same range. */
+            if (gap_enqueued) {
+                struct timespec ts;
+                clock_gettime(CLOCK_REALTIME, &ts);
+                ts.tv_nsec += 100000000; /* 100ms */
+                if (ts.tv_nsec >= 1000000000) {
+                    ts.tv_sec += 1;
+                    ts.tv_nsec -= 1000000000;
+                }
+                pthread_cond_timedwait(&sql_apply_queue_cond, &sql_apply_queue_lock, &ts);
+                Pthread_mutex_unlock(&sql_apply_queue_lock);
+                continue;
+            }
             Pthread_mutex_unlock(&sql_apply_queue_lock);
+        } else {
+            BDB_RELLOCK();
         }
 
-        /* Release bdb-lock before querying */
-        BDB_RELLOCK();
-
+        DB_LSN query_gap_lsn = gap_lsn;
         int timeout = gbl_sql_logfill_next_timeout;
         timeout = timeout > 0 ? timeout : 10;
 
-        /* Query transaction log with BLOCK and SENTINEL flags */
+        /* Bounded by the gap and non-blocking, so the result set ends right
+         * after the gap and can be drained, keeping the connection reusable.
+         * The master already wrote everything up to the gap, so BLOCK isn't needed. */
         rc = snprintf(sql_cmd, SQL_CMD_LEN,
-                      "select lsn, generation, payload from comdb2_transaction_logs('{%u:%u}', NULL, %d, %d)",
-                      last_lsn.file, last_lsn.offset, TRANLOG_FLAGS_BLOCK | TRANLOG_FLAGS_SENTINEL, timeout);
+                      "select lsn, generation, payload from comdb2_transaction_logs('{%u:%u}', '{%u:%u}', %d, %d)",
+                      last_lsn.file, last_lsn.offset, query_gap_lsn.file, query_gap_lsn.offset, TRANLOG_FLAGS_SENTINEL,
+                      timeout);
 
         if (rc < 0 || rc >= SQL_CMD_LEN) {
             logmsg(LOGMSG_ERROR, "%s: snprintf failed, rc=%d\n", __func__, rc);
@@ -667,6 +689,9 @@ static int request_logs_from_master(bdb_state_type *bdb_state)
 
             /* Break if we have filled the gap */
             if (IS_ZERO_LSN(gap_lsn) || log_compare(&last_db_lsn, &gap_lsn) > 0) {
+                while ((rc = cdb2_next_record(hndl)) == CDB2_OK)
+                    ;
+                consumed = (rc == CDB2_OK_DONE);
                 break;
             }
 
@@ -682,6 +707,10 @@ static int request_logs_from_master(bdb_state_type *bdb_state)
 
         if (!consumed) {
             disconnect_from_master();
+        } else if (gbl_sql_logfill_dedicated_apply_thread) {
+            Pthread_mutex_lock(&sql_apply_queue_lock);
+            enqueued_gap_lsn = query_gap_lsn;
+            Pthread_mutex_unlock(&sql_apply_queue_lock);
         }
     }
     return 0;
