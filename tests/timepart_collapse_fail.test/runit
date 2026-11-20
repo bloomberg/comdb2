@@ -1,0 +1,30 @@
+#!/usr/bin/env bash
+bash -n "$0" | exit 1
+
+# A collapse whose first schema change fails must clear its sc-running state;
+# lrl.options forces that failure once via test_fail_partition_merge_sc.
+
+dbnm=$1
+CDB2="cdb2sql ${CDB2_OPTIONS} $dbnm default"
+
+fail() { echo "FAILURE: $1"; exit 1; }
+
+$CDB2 "create table t1(a int)" || fail "create t1"
+$CDB2 "insert into t1 values(1)" || fail "insert t1"
+$CDB2 "alter table t1 partitioned by manual retention 3" || fail "partition t1"
+$CDB2 "alter table t1 partitioned by none" && fail "collapse should have failed"
+
+# the db must be up, and t1 must still be usable
+cnt=$(cdb2sql -tabs ${CDB2_OPTIONS} $dbnm default "select count(*) from t1") || fail "select t1"
+[[ "$cnt" == "1" ]] || fail "t1 count $cnt"
+$CDB2 "insert into t1(a) values(2)" || fail "insert t1 after failed collapse"
+
+# a leaked running state would make the retry fail as already running
+$CDB2 "alter table t1 partitioned by none" || fail "collapse retry"
+cnt=$(cdb2sql -tabs ${CDB2_OPTIONS} $dbnm default "select count(*) from t1") || fail "select t1 after collapse"
+[[ "$cnt" == "2" ]] || fail "t1 count after collapse $cnt"
+$CDB2 "create table t2(a int)" || fail "create t2"
+$CDB2 "alter table t2 add b int" || fail "alter t2"
+
+echo "Success"
+exit 0
