@@ -17,6 +17,7 @@
 #define WNDW_INC(dbc) dbc->dbp->dbenv->attr.btpf_wndw_inc
 #define WNDW_MAX(dbc) dbc->dbp->dbenv->attr.btpf_wndw_max
 #define MIN_TH(dbc)   dbc->dbp->dbenv->attr.btpf_min_th
+#define START_AFTER(dbc) dbc->dbp->dbenv->attr.btpf_start_after
 
 typedef enum {
 	INIT,
@@ -69,8 +70,9 @@ typedef struct {
 
 typedef struct {
 	DBT *rkey;
-	DB *db;
-	DB_MPOOLFILE *mpf;
+	DB_ENV *dbenv;
+	int32_t fileid;			/* dbreg id of the file */
+	u_int8_t ufid[DB_FILE_ID_LEN];	/* to tell a reused dbreg id */
 	u_int32_t npages;
 	u_int8_t dirty;
 	btpf *pf;
