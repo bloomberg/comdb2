@@ -515,6 +515,7 @@ struct repdb_rec {
 };
 
 pthread_mutex_t rep_candidate_lock = PTHREAD_MUTEX_INITIALIZER;
+void bdb_vote2_backstop(void *bdb_state, char *host, u_int32_t gen);
 pthread_mutex_t rep_queue_lock = PTHREAD_MUTEX_INITIALIZER;
 static pthread_cond_t queue_cond = PTHREAD_COND_INITIALIZER;
 static pthread_cond_t release_cond = PTHREAD_COND_INITIALIZER;
@@ -1343,7 +1344,32 @@ __rep_process_message(dbenv, control, rec, eidp, ret_lsnp, commit_gen, newgen, n
 				rep->stat.st_msgs_badgen);
 			lastpr = now;
 		}
+		/* A master behind our gen would be refused forever: depose it */
+		if (!gbl_is_physical_replicant)
+			bdb_vote2_backstop(dbenv->app_private, *eidp,
+			    gen > rep->vote2_egen ? gen : rep->vote2_egen);
 
+		fromline = __LINE__;
+		goto errlock;
+	}
+
+	/* A master elected before an election we've since cast a vote2 in may be superseded by
+	 * that election's winner, which won't have its commits: don't follow or ack it */
+	if (!gbl_is_physical_replicant && rp->gen < rep->vote2_egen &&
+		rp->rectype != REP_VOTE1 && rp->rectype != REP_VOTE2 &&
+		rp->rectype != REP_GEN_VOTE1 && rp->rectype != REP_GEN_VOTE2 &&
+		rp->rectype != REP_ALIVE_REQ && rp->rectype != REP_NEWCLIENT &&
+		rp->rectype != REP_MASTER_REQ) {
+		static u_int32_t lastpr_v2 = 0;
+		u_int32_t now = time(NULL);
+		if (now - lastpr_v2) {
+			logmsg(LOGMSG_USER, "Ignoring rp->gen %u from %s: older than our vote2 egen %u, "
+				"rectype=%u\n", rp->gen, *eidp, rep->vote2_egen, rp->rectype);
+			lastpr_v2 = now;
+		}
+		/* If its election is dead we'd refuse it forever: depose it */
+		bdb_vote2_backstop(dbenv->app_private, *eidp,
+		    gen > rep->vote2_egen ? gen : rep->vote2_egen);
 		fromline = __LINE__;
 		goto errlock;
 	}
@@ -1719,9 +1745,13 @@ more:
 	case REP_LOG:
 		CLIENT_ONLY(rep, rp);
 		MASTER_CHECK(dbenv, *eidp, rep);
+		/* Hold the candidate lock across the check and the apply so nothing
+		 * is logged after an election reads our LSN for vote1 */
+		Pthread_mutex_lock(&rep_candidate_lock);
 		if (!IN_ELECTION_TALLY(rep)) {
 			fromline = __LINE__;
 			if (gbl_decoupled_logputs) {
+				Pthread_mutex_unlock(&rep_candidate_lock);
 				if ((ret = __rep_enqueue_log(dbenv, rp, rec, rp->gen))
 						!= 0)
 					goto errlock;
@@ -1729,8 +1759,10 @@ more:
 				fromline = __LINE__;
 				ret = __rep_apply(dbenv, rp, rec, ret_lsnp,
 								commit_gen, rep->gen, 0);
+				Pthread_mutex_unlock(&rep_candidate_lock);
 			}
 		} else {
+			Pthread_mutex_unlock(&rep_candidate_lock);
 			send_master_req(dbenv, __func__, __LINE__);
 			fromline = __LINE__;
 			goto errlock;
@@ -2541,6 +2573,9 @@ rep_verify_err:if (logc != NULL && (t_ret = __log_c_close(logc)) != 0 &&
 #endif
 			egen = rep->egen;
 			committed_gen = rep->committed_gen;
+			/* Deciding our vote2 promises this egen, self-votes included */
+			if (egen > rep->vote2_egen)
+				rep->vote2_egen = egen;
 			logmsg(LOGMSG_USER,
 					"%s line %d Setting PHASE2 clearing PHASE1\n", __func__, __LINE__);
 			F_SET(rep, REP_F_EPHASE2);

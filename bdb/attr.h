@@ -615,9 +615,7 @@ DEF_ATTR(DURABLE_LSNS, durable_lsns, BOOLEAN, 0, NULL)
 DEF_ATTR(
     DURABLE_MAXWAIT_MS, durable_maxwait_ms, MSECS, 4000,
     "Maximum time a replicant will spend waiting for an LSN to become durable.")
-DEF_ATTR(DOWNGRADE_ON_SEQNUM_GEN_MISMATCH, downgrade_on_seqnum_gen_mismatch,
-         BOOLEAN, 1, NULL)
-DEF_ATTR(ENABLE_SEQNUM_GENERATIONS, enable_seqnum_generations, BOOLEAN, 0, NULL)
+DEF_ATTR(ENABLE_SEQNUM_GENERATIONS, enable_seqnum_generations, BOOLEAN, 1, NULL)
 DEF_ATTR(ELECT_ON_MISMATCHED_MASTER, elect_on_mismatched_master, BOOLEAN, 1,
          NULL)
 DEF_ATTR(SET_REPINFO_MASTER_TRACE, set_repinfo_master_trace, BOOLEAN, 0, NULL)

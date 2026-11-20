@@ -625,6 +625,7 @@ struct hostinfo
 {
     seqnum_type seqnum;
     uint64_t last_downgrade_time;
+    uint64_t last_vote2_backstop_ms;
     uint64_t master_lease;
     int coherent_state;
     int appseqnum;
@@ -836,6 +837,7 @@ struct bdb_state_tag {
     signed char envonly;
 
     signed char need_to_downgrade_and_lose;
+    signed char need_to_downgrade_vote2;
 
     signed char rep_trace;
     signed char berkdb_rep_startupdone;

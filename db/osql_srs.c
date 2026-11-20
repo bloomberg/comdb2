@@ -27,6 +27,7 @@
 #include "fdb_fend.h"
 
 extern int gbl_osql_verify_retries_max;
+extern int gbl_osql_replay_coherent_wait_ms;
 extern int gbl_notimeouts;
 extern int blockproc2sql_error(int rc, const char *func, int line);
 
@@ -263,6 +264,8 @@ int gbl_verify_retry_backoff_ms = 50;
 int gbl_verify_retry_count_before_backoff = 3;
 int gbl_debug_fail_verify_requeue = 0;
 
+#define SQLHERR_MASTER_TIMEOUT -109
+
 /* A COMMIT that fails with a retryable error holds its error back so the retry
    can answer instead.  When the retry can't be queued, nobody else will answer,
    and the client would hear nothing until its read timeout.  A ruleset rejection
@@ -410,6 +413,20 @@ static void srs_tran_redispatch_cb(int fd, short what, void *arg)
     sqlengine_appsock_done(clnt);
 }
 
+/* Park the txn on a timer for ms, then requeue it, so it doesn't hold a SQL thread while it waits */
+static int srs_tran_park(struct sqlclntstate *clnt, int ms)
+{
+    struct timeval tv = {.tv_sec = ms / 1000, .tv_usec = (ms % 1000) * 1000};
+    clnt_change_state(clnt, CONNECTION_RETRY_WAIT);
+    /* the worker may age out while we wait; don't leave clnt pointing at its stack */
+    struct sqlthdstate *thd = clnt->thd;
+    clnt_set_thd(clnt, NULL);
+    int rc = event_base_once(get_dispatch_event_base(), -1, EV_TIMEOUT, srs_tran_redispatch_cb, clnt, &tv);
+    if (rc)
+        clnt_set_thd(clnt, thd); /* not parked: this worker still finishes it */
+    return rc;
+}
+
 /* Without a pause, every loser of a verify race retries at the same moment and
    collides again; a random pause spreads them out.  A one-off race is won on the
    next try or two, so the first gbl_verify_retry_count_before_backoff replays go
@@ -429,16 +446,7 @@ static int srs_tran_redispatch(struct sqlclntstate *clnt)
     }
     if (max_ms <= 0 || clnt->verify_retries < count_before)
         return srs_tran_requeue(clnt);
-    int ms = rand() % (max_ms + 1);
-    struct timeval tv = {.tv_sec = ms / 1000, .tv_usec = (ms % 1000) * 1000};
-    clnt_change_state(clnt, CONNECTION_RETRY_WAIT);
-    /* the worker may age out while we wait; don't leave clnt pointing at its stack */
-    struct sqlthdstate *thd = clnt->thd;
-    clnt_set_thd(clnt, NULL);
-    int rc = event_base_once(get_dispatch_event_base(), -1, EV_TIMEOUT, srs_tran_redispatch_cb, clnt, &tv);
-    if (rc)
-        clnt_set_thd(clnt, thd); /* not parked: this worker still finishes it */
-    return rc;
+    return srs_tran_park(clnt, rand() % (max_ms + 1));
 }
 
 int srs_tran_replay(struct sqlclntstate *clnt)
@@ -460,6 +468,27 @@ int srs_tran_replay(struct sqlclntstate *clnt)
         return 0;
     }
 
+    /* After a master swing this node may still roll back what the replay would read: park and
+     * retry until it is coherent, for at most osql_replay_coherent_wait_ms */
+    if (!bdb_am_i_coherent(thedb->bdb_env)) {
+        int now = comdb2_time_epochms();
+        if (!osql->replay_incoherent_start_ms)
+            osql->replay_incoherent_start_ms = now;
+        int waited_ms = now - osql->replay_incoherent_start_ms;
+        if (waited_ms < gbl_osql_replay_coherent_wait_ms && srs_tran_park(clnt, 50) == 0)
+            return RC_INTERNAL_RETRY;
+        logmsg(LOGMSG_ERROR, "%s: not replaying a verify-failed txn, node still incoherent after %dms\n", __func__,
+               waited_ms);
+        /* Nothing was written: tell the client to retry on another node */
+        if (!peer_dropped_connection(clnt))
+            send_run_error(clnt, "node incoherent, retry on another node", SQLHERR_MASTER_TIMEOUT);
+        clnt->query_rc = SQLHERR_MASTER_TIMEOUT;
+        osql_set_replay(__FILE__, __LINE__, clnt, OSQL_RETRY_NONE);
+        srs_tran_replay_end(clnt, -1, 0);
+        return -1;
+    }
+    osql->replay_incoherent_start_ms = 0;
+
     // replay all the stmts
     rc = srs_tran_replay_once(clnt, run_sql_query);
 
@@ -479,6 +508,7 @@ int srs_tran_replay(struct sqlclntstate *clnt)
 static void srs_tran_replay_end(struct sqlclntstate *clnt, int rc, int dispatch_rc)
 {
     osqlstate_t *osql = &clnt->osql;
+    osql->replay_incoherent_start_ms = 0;
     int replay_succeeded = (osql->replay == OSQL_RETRY_NONE && rc == 0);
 
     // Replay succeeded or there's an error and we need to stop replay

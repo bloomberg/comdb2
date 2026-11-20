@@ -1021,6 +1021,10 @@ REGISTER_TUNABLE("osql_verify_retry_max",
                  "Retry a transaction on a verify error this many times (see "
                  "optimistic concurrency control). (Default: 499)",
                  TUNABLE_INTEGER, &gbl_osql_verify_retries_max, 0, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("osql_replay_coherent_wait_ms",
+                 "Before replaying a verify-failed transaction, wait this long for an incoherent node to become "
+                 "coherent, then fail it.  (Default: 5000)",
+                 TUNABLE_INTEGER, &gbl_osql_replay_coherent_wait_ms, 0, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("override_cachekb", NULL, TUNABLE_INTEGER, &db->override_cacheszkb, READONLY, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("page_compact_latency_ms", NULL, TUNABLE_INTEGER, &gbl_pg_compact_latency_ms, READONLY, NULL, NULL,
                  NULL, NULL);
@@ -1777,6 +1781,11 @@ REGISTER_TUNABLE("debug_elect_lose_round",
                  "Fail this node's next election round once another node is master (at most 30 seconds), "
                  "as a timeout would.  (Default: off)",
                  TUNABLE_BOOLEAN, &gbl_debug_elect_lose_round, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("debug_own_vote_upgrade_delay_ms",
+                 "Sleep this long between winning on our own vote2 and upgrading.  (Default: 0)", TUNABLE_INTEGER,
+                 &gbl_debug_own_vote_upgrade_delay_ms, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("debug_dupmaster_delay_ms", "Sleep this long before downgrading on DUPMASTER.  (Default: 0)",
+                 TUNABLE_INTEGER, &gbl_debug_dupmaster_delay_ms, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("debug_unsanctioned_elect",
                  "Let this node hold elections even if it is not sanctioned, so tests can check that its votes are "
                  "dropped.  (Default: off)",
@@ -2672,6 +2681,10 @@ REGISTER_TUNABLE("replicant_retry_on_not_durable", "Replicant retries non-durabl
 
 REGISTER_TUNABLE("debug_force_non_durable", "Debug tunable which makes all commits not durable.  (Default: off)",
                  TUNABLE_BOOLEAN, &gbl_debug_force_non_durable, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("debug_commit_wait_lock_desired",
+                 "Treat this many commit waits on a node that misses a 1s ack window as lock-desired.  "
+                 "(Default: 0)",
+                 TUNABLE_INTEGER, &gbl_debug_commit_wait_lock_desired, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 
 REGISTER_TUNABLE(
     "debug_fail_commit_restart",

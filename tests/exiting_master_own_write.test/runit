@@ -1,0 +1,59 @@
+#!/usr/bin/env bash
+bash -n "$0" || exit 1
+
+# A commit still waiting for a slow replicant's ack when the master starts a
+# clean exit must not leave that replicant coherent without the commit: the
+# client's read-back on that replicant has to see its own write.
+
+. ${TESTSROOTDIR}/tools/cluster_utils.sh
+. ${TESTSROOTDIR}/tools/runit_common.sh
+
+[[ -z "$CLUSTER" ]] && { echo "requires a cluster"; exit 0; }
+
+function admin
+{
+    $CDB2SQL_EXE $CDB2_OPTIONS -admin --tabs $DBNAME --host $1 "$2"
+}
+
+function slow_apply
+{
+    admin $1 "put tunable slow_rep_process_txn_minms $2"
+    admin $1 "put tunable slow_rep_process_txn_maxms $(( $2 + 1 ))"
+    admin $1 "put tunable slow_rep_process_txn_freq 0"
+}
+
+$CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "create table t (i int primary key)" || failexit "create table"
+sleep 5
+
+checked=0
+for id in 0 1 2 3; do
+    master=$(get_master)
+    replicant=$(echo $CLUSTER | tr ' ' '\n' | grep -vx $master | head -1)
+    admin $master "exec procedure sys.cmd.send('bdb setattr WAIT_FOR_SEQNUM_TRACE 1')"
+    slow_apply $replicant 4000
+
+    printf "set hasql on\nset transaction snapshot isolation\ninsert into t values ($id)\nselect count(*) from t where i = $id\n" |
+        $CDB2SQL_EXE $CDB2_OPTIONS --tabs $DBNAME --host $replicant - > out.$id 2>&1 &
+    pid=$!
+    # Exit the master while the commit waits for the replicant's ack
+    sleep 1
+    # id 0 is the control: no exit
+    [[ $id -gt 0 ]] && admin $master "exec procedure sys.cmd.send('exit')"
+    slow_apply $replicant 0
+    wait $pid
+    out=$(cat out.$id)
+    echo "attempt $id master $master replicant $replicant: $(echo $out)"
+    if echo "$out" | grep -q "failed with rc"; then
+        echo "attempt $id: a statement failed, so nothing to check"
+    else
+        [[ "$(echo "$out" | grep -x "[0-9]*")" == "1" ]] || failexit "read-back on $replicant missed acked insert $id: $out"
+        [[ $id -gt 0 ]] && checked=$((checked + 1))
+    fi
+    [[ $id -gt 0 ]] && bounce_node $master 5 > /dev/null
+    wait_for_cluster
+    sleep 10
+done
+
+[[ $checked -gt 0 ]] || failexit "no exit round got a result to check"
+$CDB2SQL_EXE $CDB2_OPTIONS --tabs $DBNAME default "select i from t order by i"
+echo "Success"

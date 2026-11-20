@@ -1154,6 +1154,8 @@ static void abort_election_on_exit(bdb_state_type *bdb_state)
 
 int gbl_elect_priority_bias = 0;
 int gbl_debug_elect_lose_round = 0;
+int gbl_debug_own_vote_upgrade_delay_ms = 0;
+int gbl_debug_dupmaster_delay_ms = 0;
 /* Test hook: let a node that can't vote hold elections anyway */
 int gbl_debug_unsanctioned_elect = 0;
 
@@ -1397,7 +1399,28 @@ elect_again:
     if (rc == DB_REP_NEWMASTER) {
         /* We won on our own vote2, so no NEWMASTER reaches process_berkdb: upgrade here as it would */
         logmsg(LOGMSG_WARN, "elect_thread: won the election on our own vote, upgrading to gen %d\n", newgen);
+        if (gbl_debug_own_vote_upgrade_delay_ms) {
+            /* Test hook: a slow writelock wait, so peers can elect a newer master meanwhile */
+            logmsg(LOGMSG_WARN, "elect_thread: debug_own_vote_upgrade_delay_ms sleeping %d ms\n",
+                   gbl_debug_own_vote_upgrade_delay_ms);
+            poll(NULL, 0, gbl_debug_own_vote_upgrade_delay_ms);
+        }
         BDB_WRITELOCK_REP("upgrade");
+        uint32_t gen;
+        bdb_state->dbenv->get_rep_gen(bdb_state->dbenv, &gen);
+        if (gen > newgen) {
+            /* We accepted a newer master while waiting: upgrading would take the gen backwards */
+            logmsg(LOGMSG_WARN, "elect_thread: not upgrading to stale gen %d, current gen is %u\n", newgen, gen);
+            BDB_RELLOCK();
+            goto give_up;
+        }
+        uint32_t vote2_egen;
+        if (bdb_state->dbenv->rep_refuse_upgrade(bdb_state->dbenv, newgen, &vote2_egen)) {
+            logmsg(LOGMSG_WARN, "elect_thread: not upgrading to gen %d, our vote2 promised egen %u\n", newgen,
+                   vote2_egen);
+            BDB_RELLOCK();
+            goto give_up;
+        }
         rc = bdb_upgrade(bdb_state, newgen, &done);
         BDB_RELLOCK();
         if (rc != 0) {
@@ -1626,7 +1649,9 @@ void *rep_catchup_add_thread(void *arg)
     bdb_state_type *bdb_state = arg;
     thread_started("rep_catchup_add");
     bdb_thread_event(bdb_state, BDBTHR_EVENT_START);
-    add_thread_int(bdb_state, 1);
+    /* No new-master delay: incoherent_wait replicants become coherent only once they apply a
+     * commit on the master's generation, and the colease thread already paces these */
+    add_thread_int(bdb_state, 0);
     bdb_thread_event(bdb_state, BDBTHR_EVENT_DONE);
     Pthread_mutex_lock(&lk);
     rep_catchup_add_running = 0;
@@ -2399,6 +2424,16 @@ int verify_master_leases_int(bdb_state_type *bdb_state, const char *func, uint32
         return 1;
     }
 
+    /* No sanctioned nodes: like elections, keep the sitting master (its commits are never
+     * durable then, since the commit wait has no cluster to count) */
+    if (total_nodes == 0) {
+        if (verify_trace && (now = time(NULL)) != lastpr) {
+            logmsg(LOGMSG_USER, "%s master-lease return good because the sanctioned list is empty\n", __func__);
+            lastpr = now;
+        }
+        return 1;
+    }
+
     Pthread_mutex_lock(&(bdb_state->master_lease_lk));
     for (i = 0; i < comcount; i++) {
         struct hostinfo *h = retrieve_hostinfo(comlist[i]);
@@ -2556,10 +2591,16 @@ static void got_new_seqnum_from_node(bdb_state_type *bdb_state,
                 logmsg(LOGMSG_USER,
                        "%s: got seqnum from %s of gen %u (high), i want %u, count=%llu\n",
                        __func__, host, seqnum->generation, mygen, count);
-            } else
-            if (bdb_state->attr->downgrade_on_seqnum_gen_mismatch &&
-                bdb_state->repinfo->master_host == bdb_state->repinfo->myhost)
-                call_for_election(bdb_state, __func__, __LINE__);
+            } else if (bdb_state->repinfo->master_host == bdb_state->repinfo->myhost) {
+                /* A node on (or promised to) a later gen: make the next election beat it, then
+                 * downgrade from the watcher */
+                bdb_state->dbenv->rep_raise_egen(bdb_state->dbenv, seqnum->generation + 1);
+                if (!bdb_state->need_to_downgrade_vote2) {
+                    logmsg(LOGMSG_USER, "vote2 backstop: deposed by %s, its gen %u > our gen %u, downgrading\n", host,
+                           seqnum->generation, mygen);
+                    bdb_state->need_to_downgrade_vote2 = 1;
+                }
+            }
             return;
         }
 
@@ -2796,8 +2837,12 @@ static int bdb_wait_for_seqnum_from_node_nowait_int(bdb_state_type *bdb_state,
     Pthread_mutex_lock(&(bdb_state->seqnum_info->lock));
     host_seqnum = &h->seqnum;
 
+    /* A node on an older generation may still hold a stale master's commits */
+    uint32_t mygen;
+    bdb_state->dbenv->get_rep_gen(bdb_state->dbenv, &mygen);
+
     /*fprintf(stderr, "calling bdb_seqnum_compare\n");*/
-    if (bdb_seqnum_compare(bdb_state, host_seqnum, master_seqnum) >= 0) {
+    if (host_seqnum->generation == mygen && bdb_seqnum_compare(bdb_state, host_seqnum, master_seqnum) >= 0) {
         /*fprintf(stderr, "compared >=, returning\n");*/
         if (gbl_set_coherent_state_trace) {
             logmsg(LOGMSG_USER,
@@ -3078,6 +3123,11 @@ static int bdb_wait_for_seqnum_from_node_int(bdb_state_type *bdb_state,
     if (bdb_state->parent)
         bdb_state = bdb_state->parent;
 
+    /* A child txn's commit leaves the seqnum empty (0:0, gen 0): nothing to wait for, as in
+     * bdb_wait_for_seqnum_from_all_int.  With seqnum generations on it would be rejected (-10) */
+    if (seqnum->lsn.file == 0 && seqnum->lsn.offset == 0)
+        return 0;
+
     if (fakeincoherent) {
         node_is_rtcpu = 1;
     }
@@ -3195,14 +3245,14 @@ again:
         return 0;
     }
 
-    /* on our way out and this node hasn't acked: nothing is going to arrive,
-     * so don't burn the full replication timeout waiting for it */
+    /* on our way out and this node hasn't acked: nothing is going to arrive, so
+     * time out now; the caller defers and marks it incoherent as for any timeout */
     if (bdb_state->exiting) {
         Pthread_mutex_unlock(&(bdb_state->seqnum_info->lock));
         if (bdb_state->attr->wait_for_seqnum_trace) {
             logmsg(LOGMSG_USER, PR_LSN " %s exiting, not waiting\n", PARM_LSN(seqnum->lsn), host->str);
         }
-        return 1;
+        return -999;
     }
 
     /* this node may have been decommissioned, in which case we
@@ -3354,17 +3404,77 @@ int gbl_ignore_final_non_durable_retry = 1;
 
 int gbl_replicant_retry_on_not_durable = 0;
 int gbl_debug_force_non_durable = 0;
+int gbl_debug_commit_wait_lock_desired = 0;
 int gbl_assert_no_schemalk_in_distributed_commit = 0;
+
+/* Stop leasing a node that missed this commit, and defer commits until its lease runs out */
+static void make_node_incoherent(bdb_state_type *bdb_state, struct interned_string *node, seqnum_type *seqnum,
+                                 int catchup_window, int penalize)
+{
+    struct hostinfo *h = retrieve_hostinfo(node);
+    DB_LSN nodelsn, *masterlsn;
+    uint32_t nodegen;
+    int cntbytes;
+
+    // Extract seqnum
+    Pthread_mutex_lock(&(bdb_state->seqnum_info->lock));
+    nodegen = h->seqnum.generation;
+    nodelsn = h->seqnum.lsn;
+    Pthread_mutex_unlock(&(bdb_state->seqnum_info->lock));
+
+    Pthread_mutex_lock(&(bdb_state->coherent_state_lock));
+
+    if (nodegen <= seqnum->generation && log_compare(&(seqnum->lsn), &nodelsn) >= 0) {
+        /* Only sleep on the change from COHERENT (the point where we
+         * decide to stop sending leases).  For role-change the new
+         * master marks every node as INCOHERENT_WAIT and then sleeps
+         * for the lease interval. */
+        if (h->coherent_state == STATE_COHERENT)
+            defer_commits(bdb_state, node->str, __func__);
+
+        /* Change to INCOHERENT_WAIT if we allow catchup on commit */
+        struct hostinfo *m = retrieve_hostinfo(bdb_state->repinfo->master_host_interned);
+        if (bdb_state->attr->catchup_on_commit && catchup_window) {
+            masterlsn = &m->seqnum.lsn;
+            cntbytes = subtract_lsn(bdb_state, masterlsn, &nodelsn);
+
+            set_coherent_state(bdb_state, node, (cntbytes < catchup_window) ? STATE_INCOHERENT_WAIT : STATE_INCOHERENT,
+                               __func__, __LINE__);
+        } else
+            set_coherent_state(bdb_state, node, STATE_INCOHERENT, __func__, __LINE__);
+
+        /* Start the downgrade penalty only if the node held up the commit */
+        if (penalize)
+            h->last_downgrade_time = gettimeofday_ms();
+
+        bdb_state->repinfo->skipsinceepoch = comdb2_time_epoch();
+    }
+
+    Pthread_mutex_unlock(&(bdb_state->coherent_state_lock));
+}
+
+/* A commit that stops waiting early must not leave a node that lacks it coherent */
+static void make_unacked_incoherent(bdb_state_type *bdb_state, struct interned_string **nodelist, int numnodes,
+                                    seqnum_type *seqnum, int catchup_window)
+{
+    for (int i = 0; i < numnodes; i++) {
+        struct hostinfo *h = retrieve_hostinfo(nodelist[i]);
+        Pthread_mutex_lock(&(bdb_state->seqnum_info->lock));
+        int acked = bdb_seqnum_compare(bdb_state, &h->seqnum, seqnum) >= 0;
+        Pthread_mutex_unlock(&(bdb_state->seqnum_info->lock));
+        if (!acked)
+            make_node_incoherent(bdb_state, nodelist[i], seqnum, catchup_window, 0);
+    }
+}
 
 int bdb_wait_for_seqnum_from_all_int(bdb_state_type *bdb_state, seqnum_type *seqnum, int *timeoutms, int is_final)
 {
-    int i, now, cntbytes;
+    int i, now;
     struct interned_string *nodelist[REPMAX];
     struct interned_string *connlist[REPMAX];
     int durable_lsns;
     int catchup_window;
     int do_slow_node_check = 0;
-    DB_LSN *masterlsn;
     int numnodes;
     int numwait;
     int rc;
@@ -3378,8 +3488,6 @@ int bdb_wait_for_seqnum_from_all_int(bdb_state_type *bdb_state, seqnum_type *seq
     const char *base_node = NULL;
     char str[80];
     int track_once = 1;
-    DB_LSN nodelsn;
-    uint32_t nodegen;
     int num_successfully_acked = 0;
     int total_commissioned;
     struct interned_string *durlist[REPMAX];
@@ -3488,8 +3596,15 @@ int bdb_wait_for_seqnum_from_all_int(bdb_state_type *bdb_state, seqnum_type *seq
             rc = bdb_wait_for_seqnum_from_node_int(bdb_state, seqnum,
                     nodelist[i], 1000, __LINE__, fake_incoherent);
 
+            /* Test hook: a node missing its first ack window counts as lock-desired */
+            if (gbl_debug_commit_wait_lock_desired && rc == -999) {
+                gbl_debug_commit_wait_lock_desired--;
+                rc = WAIT_SEQNUM_LOCK_DESIRED;
+            }
+
             if (rc == WAIT_SEQNUM_LOCK_DESIRED || bdb_lock_desired(bdb_state)) {
                 logmsg(LOGMSG_ERROR, "%s line %d early exit because lock-is-desired\n", __func__, __LINE__);
+                make_unacked_incoherent(bdb_state, nodelist, numnodes, seqnum, catchup_window);
                 ATOMIC_ADD64(gbl_distributed_commit_count, 1);
                 ATOMIC_ADD64(gbl_not_durable_commit_count, 1);
                 return (durable_lsns ? BDBERR_NOT_DURABLE : -1);
@@ -3579,10 +3694,18 @@ got_ack:
                    "waiting for NEWSEQ from node %s of >= <%s> timeout %d\n",
                    nodelist[i]->str, lsn_to_str(str, &(seqnum->lsn)), waitms);
 
-        rc = bdb_wait_for_seqnum_from_node_int(bdb_state, seqnum, nodelist[i], waitms, __LINE__, fake_incoherent);
+        /* Test hook: a node missing a 1s ack window counts as lock-desired */
+        int hook = gbl_debug_commit_wait_lock_desired > 0;
+        rc = bdb_wait_for_seqnum_from_node_int(bdb_state, seqnum, nodelist[i], hook && waitms > 1000 ? 1000 : waitms,
+                                               __LINE__, fake_incoherent);
+        if (hook && rc == -999) {
+            gbl_debug_commit_wait_lock_desired--;
+            rc = WAIT_SEQNUM_LOCK_DESIRED;
+        }
 
         if (rc == WAIT_SEQNUM_LOCK_DESIRED || bdb_lock_desired(bdb_state)) {
             logmsg(LOGMSG_ERROR, "%s line %d early exit because lock-is-desired\n", __func__, __LINE__);
+            make_unacked_incoherent(bdb_state, nodelist, numnodes, seqnum, catchup_window);
 
             ATOMIC_ADD64(gbl_distributed_commit_count, 1);
             ATOMIC_ADD64(gbl_not_durable_commit_count, 1);
@@ -3611,47 +3734,8 @@ got_ack:
         waitms -= (end_time - begin_time);
 
         /* replication timeout: we may need to make the node incoherent */
-        if (rc != 0 && rc != -2) {
-            struct hostinfo *h = retrieve_hostinfo(nodelist[i]);
-            // Extract seqnum
-            Pthread_mutex_lock(&(bdb_state->seqnum_info->lock));
-            nodegen = h->seqnum.generation;
-            nodelsn = h->seqnum.lsn;
-            Pthread_mutex_unlock(&(bdb_state->seqnum_info->lock));
-
-            Pthread_mutex_lock(&(bdb_state->coherent_state_lock));
-
-            if (nodegen <= seqnum->generation && log_compare(&(seqnum->lsn), &nodelsn) >= 0) {
-                /* Only sleep on the change from COHERENT (the point where we
-                 * decide to stop sending leases).  For role-change the new
-                 * master marks every node as INCOHERENT_WAIT and then sleeps
-                 * for the lease interval. */
-                if (h->coherent_state == STATE_COHERENT)
-                    defer_commits(bdb_state, nodelist[i]->str, __func__);
-
-                /* Change to INCOHERENT_WAIT if we allow catchup on commit */
-                struct hostinfo *m = retrieve_hostinfo(bdb_state->repinfo->master_host_interned);
-                if (bdb_state->attr->catchup_on_commit && catchup_window) {
-                    masterlsn = &m->seqnum.lsn;
-                    cntbytes = subtract_lsn(bdb_state, masterlsn, &nodelsn);
-
-                    set_coherent_state(bdb_state, nodelist[i],
-                                       (cntbytes < catchup_window)
-                                           ? STATE_INCOHERENT_WAIT
-                                           : STATE_INCOHERENT,
-                                       __func__, __LINE__);
-                } else
-                    set_coherent_state(bdb_state, nodelist[i], STATE_INCOHERENT,
-                                       __func__, __LINE__);
-
-                /* Record the downgrade time */
-                h->last_downgrade_time = gettimeofday_ms();
-
-                bdb_state->repinfo->skipsinceepoch = comdb2_time_epoch();
-            }
-
-            Pthread_mutex_unlock(&(bdb_state->coherent_state_lock));
-        }
+        if (rc != 0 && rc != -2)
+            make_node_incoherent(bdb_state, nodelist[i], seqnum, catchup_window, 1);
     }
 
 done_wait:
@@ -3882,6 +3966,36 @@ int get_myseqnum(bdb_state_type *bdb_state, uint8_t *p_net_seqnum)
     rep_berkdb_seqnum_type_put(&seqnum, p_buf, p_buf_end);
 
     return rc;
+}
+
+/* We refused host's gen (behind ours, or before our vote2's election): send it one seqnum at
+ * gen and no lease, so a master downgrades and the next election clears it */
+void bdb_vote2_backstop(void *in_bdb_state, char *host, uint32_t gen)
+{
+    bdb_state_type *bdb_state = in_bdb_state;
+    uint8_t p_net_seqnum[BDB_SEQNUM_TYPE_LEN];
+    seqnum_type seqnum;
+    struct hostinfo *me = retrieve_hostinfo(bdb_state->repinfo->myhost_interned);
+    struct hostinfo *h = retrieve_hostinfo(intern_ptr(host));
+    uint64_t now = gettimeofday_ms();
+
+    Pthread_mutex_lock(&(bdb_state->seqnum_info->lock));
+    if (now - h->last_vote2_backstop_ms < 1000) {
+        Pthread_mutex_unlock(&(bdb_state->seqnum_info->lock));
+        return;
+    }
+    h->last_vote2_backstop_ms = now;
+    seqnum = me->seqnum;
+    Pthread_mutex_unlock(&(bdb_state->seqnum_info->lock));
+
+    seqnum.generation = gen;
+    memset(&seqnum.issue_time, 0, sizeof(seqnum.issue_time));
+    seqnum.lease_ms = 0;
+    rep_berkdb_seqnum_type_put(&seqnum, p_net_seqnum, p_net_seqnum + BDB_SEQNUM_TYPE_LEN);
+    int rc = net_send_nodrop(bdb_state->repinfo->netinfo, host, USER_TYPE_BERKDB_NEWSEQ, p_net_seqnum,
+                             sizeof(seqnum_type), 1);
+    logmsg(LOGMSG_USER, "vote2 backstop: sent %s seqnum gen %u lsn %u:%u rc %d\n", host, gen, seqnum.lsn.file,
+           seqnum.lsn.offset, rc);
 }
 
 int request_copydelay(void *bdb_state_in)
@@ -4312,6 +4426,15 @@ static int process_berkdb(bdb_state_type *bdb_state, char *host, DBT *control, D
             /* I'm upgrading and this thread could be holding logical locks:
              * abort sql threads waiting on logical locks */
             BDB_WRITELOCK_REP("upgrade");
+            uint32_t vote2_egen;
+            int refuse = bdb_state->dbenv->rep_refuse_upgrade(bdb_state->dbenv, egen, &vote2_egen);
+            if (refuse) {
+                /* A later gen or a promise to a later election: stay a replicant */
+                logmsg(LOGMSG_WARN, "NEWMASTER: not upgrading to gen %d (%s), vote2 egen %u\n", egen,
+                       refuse == 1 ? "stale gen" : "vote2 promise", vote2_egen);
+                BDB_RELLOCK();
+                break;
+            }
             /* we need to upgrade */
             rc = bdb_upgrade(bdb_state, egen, &done);
 
@@ -4350,6 +4473,12 @@ static int process_berkdb(bdb_state_type *bdb_state, char *host, DBT *control, D
         logmsg(LOGMSG_WARN, "rep_process_message: got DUPMASTER from %s, "
                 "I think master is %s.  dowgrading and calling for election\n",
                 host, oldmaster);
+        if (gbl_debug_dupmaster_delay_ms) {
+            /* Test hook: keep a stale master up past its commit deferral */
+            logmsg(LOGMSG_WARN, "debug_dupmaster_delay_ms sleeping %d ms before downgrade\n",
+                   gbl_debug_dupmaster_delay_ms);
+            poll(NULL, 0, gbl_debug_dupmaster_delay_ms);
+        }
         rc = bdb_downgrade(bdb_state, 0, NULL);
         break;
 
@@ -6076,6 +6205,12 @@ void *watcher_thread(void *arg)
                         __FILE__, __LINE__);
             }
             bdb_state->need_to_downgrade_and_lose = 0;
+        }
+
+        if (bdb_state->need_to_downgrade_vote2) {
+            bdb_state->need_to_downgrade_vote2 = 0;
+            if (master_host == bdb_state->repinfo->myhost)
+                bdb_downgrade(bdb_state, 0, NULL);
         }
 
         /* downgrade ourselves if we are in a dupmaster situation */

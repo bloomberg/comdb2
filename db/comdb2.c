@@ -496,6 +496,7 @@ int gbl_test_commit_lsn_map = 0;
 
 /* how many times we retry osql for verify */
 int gbl_osql_verify_retries_max = 499;
+int gbl_osql_replay_coherent_wait_ms = 5000;
 
 /* extended verify-checking after this many failures */
 int gbl_osql_verify_ext_chk = 1;

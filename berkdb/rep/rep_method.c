@@ -128,6 +128,8 @@ __rep_dbenv_create(dbenv)
 		dbenv->rep_deadlocks = __rep_deadlocks;
 		dbenv->get_rep_gen = __rep_get_gen;
 		dbenv->get_rep_log_gen = __rep_get_log_gen;
+		dbenv->rep_refuse_upgrade = __rep_refuse_upgrade;
+		dbenv->rep_raise_egen = __rep_raise_egen;
 		dbenv->get_last_locked = __rep_get_last_locked;
 		dbenv->get_rep_limit = __rep_get_limit;
 		dbenv->set_rep_limit = __rep_set_limit;
@@ -1464,6 +1466,9 @@ restart:
 	early_vote2 = db_eid_invalid;
 	if (send_vote2) {
 		logmsg(LOGMSG_USER, "%s line %d clearing PHASE1 setting PHASE2\n", __func__, __LINE__);
+		/* Deciding our vote2 promises this egen, self-votes included */
+		if (egen > rep->vote2_egen)
+			rep->vote2_egen = egen;
 		F_SET(rep, REP_F_EPHASE2);
 		F_CLR(rep, REP_F_EPHASE1);
 		if (rep->winner == rep->eid) {
@@ -1565,6 +1570,9 @@ restart:
 		logmsg(LOGMSG_USER,
 				"%s line %d have seen enough votes for vote2\n", __func__, __LINE__);
 		send_vote = rep->winner;
+		/* Deciding our vote2 promises this egen, self-votes included */
+		if (egen > rep->vote2_egen)
+			rep->vote2_egen = egen;
 		/*
 		 * See if we won.  This will make sure we
 		 * don't count ourselves twice if we're racing
