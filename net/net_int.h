@@ -33,7 +33,6 @@
 #include "net_types.h"
 #include "cdb2_constants.h"
 #include "logmsg.h"
-#include "quantize.h"
 #include "perf.h"
 
 enum {
@@ -276,11 +275,8 @@ struct netinfo_struct {
     QSTATDUMPFP *qstat_dump_rtn;
     QSTATFREEFP *qstat_free_rtn;
 
-    struct quantize *conntime_all;
-    struct quantize *conntime_periodic;
     int64_t num_accepts;
     int64_t num_accept_timeouts;
-    int conntime_dump_period;
 
 
     /* An appsock routine may or may not close the connection.

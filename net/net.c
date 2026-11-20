@@ -1893,10 +1893,6 @@ netinfo_type *create_netinfo(char myhostname[], int myportnum, int myfd,
         Pthread_mutex_unlock(&nets_list_lk);
     }
 
-    netinfo_ptr->conntime_all = quantize_new(1, 100, "ms");
-    netinfo_ptr->conntime_periodic = quantize_new(1, 100, "ms");
-    netinfo_ptr->conntime_dump_period = 10 * 60;
-
     return netinfo_ptr;
 
 fail:
@@ -3317,14 +3313,6 @@ int net_listen(int port)
     }
 
     return listenfd;
-}
-
-void net_set_conntime_dump_period(netinfo_type *netinfo_ptr, int value)  {
-    netinfo_ptr->conntime_dump_period = value;
-}
-
-int net_get_conntime_dump_period(netinfo_type *netinfo_ptr) {
-    return netinfo_ptr->conntime_dump_period;
 }
 
 int net_send_all(netinfo_type *netinfo_ptr, int num, void **data, int *sz,
