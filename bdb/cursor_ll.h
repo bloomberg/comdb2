@@ -42,6 +42,8 @@ typedef struct bdb_realdb_tag {
     DBT data; /* owns the buffer for data & key */
     DBT key;
     uint8_t ver;
+    uint32_t insert_secs; /* odh2 insert time of current payload (0 if none) */
+    uint32_t update_secs; /* odh2 update time of current payload (0 if none) */
 
     /* bulk api requirements; enabled only if tmpbulklen>0 */
     DBT bulk; /* owns the buffer for itself */
@@ -82,6 +84,8 @@ typedef struct bdb_rowlocks_tag {
     int lastkeysize;      /* size of the last key payload */
     int keylen;           /* size of key */
     uint8_t ver;          /* ver of current payload */
+    uint32_t insert_secs; /* odh2 insert time of current payload (0 if none) */
+    uint32_t update_secs; /* odh2 update time of current payload (0 if none) */
     void *lastkey;        /* remembered key for re-position */
     int positioned;       /* cursor is positioned on something */
     int paused;           /* set to 1 if we're paused */
@@ -184,6 +188,7 @@ typedef struct bdb_berkdb {
     int (*key)(struct bdb_berkdb *berkdb, char **key, int *bdberr);
     int (*keysize)(struct bdb_berkdb *berkdb, int *keysize, int *bdberr);
     int (*ver)(struct bdb_berkdb *berkdb, uint8_t *ver, int *bdberr);
+    int (*odh2_times)(struct bdb_berkdb *berkdb, uint32_t *insert_secs, uint32_t *update_secs);
     int (*find)(struct bdb_berkdb *berkdb, void *key, int keysize, int how,
                 int *bdberr);
     int (*insert)(struct bdb_berkdb *berkdb, char *key, int keylen, char *dta,
