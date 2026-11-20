@@ -411,6 +411,7 @@ static char *legacy_options[] = {
     "dont_forbid_ulonglong",
     "dont_init_with_inplace_updates",
     "dont_init_with_instant_schema_change",
+    "dont_init_with_odh2",
     "dont_init_with_ondisk_header",
     "dont_prefix_foreign_keys",
     "dont_sort_nulls_with_header",

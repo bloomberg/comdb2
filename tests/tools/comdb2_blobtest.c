@@ -4,17 +4,30 @@
 #include <string.h>
 #include <unistd.h>
 #include <stddef.h>
+#include <stdint.h>
+#include <limits.h>
 
 #include <cdb2api.h>
 
 int main(int argc, char *argv[]) {
-    char *dbname = argv[1];
-    int64_t id = atoi(argv[2]);
-    off_t sz = atoi(argv[3]);
-    void *buf;
-
     if (argc != 4) {
         printf("Usage: dbname id size\n");
+        return 1;
+    }
+
+    char *dbname = argv[1];
+    int64_t id = strtoll(argv[2], NULL, 0);
+    /* Parse the size as 64-bit: the test drives sizes at and beyond the odh2
+     * ceiling (INT_MAX), which overflow atoi()/int and previously produced a
+     * bogus (often negative) length and a crash. */
+    unsigned long long sz = strtoull(argv[3], NULL, 0);
+    void *buf;
+
+    /* cdb2_bind_param carries the blob length in an int and the newsql wire
+     * length is a signed int, so a blob larger than INT_MAX cannot round-trip.
+     * Report and exit cleanly rather than truncate the length or over-allocate. */
+    if (sz > (unsigned long long)INT_MAX) {
+        printf("size %llu exceeds the maximum sendable blob (%d)\n", sz, INT_MAX);
         return 1;
     }
 
@@ -23,9 +36,9 @@ int main(int argc, char *argv[]) {
     if (config)
         cdb2_set_comdb2db_config(config);
 
-    buf = calloc(1, sz);
+    buf = calloc(1, sz ? (size_t)sz : 1);
     if (buf == NULL) {
-        printf("can't allocate %zd bytes for buffer\n", (size_t) sz);
+        printf("can't allocate %llu bytes for buffer\n", sz);
         return 1;
     }
     cdb2_hndl_tp *db;
@@ -36,7 +49,7 @@ int main(int argc, char *argv[]) {
     }
 
     cdb2_bind_param(db, "a", CDB2_INTEGER, &id, sizeof(int64_t));
-    cdb2_bind_param(db, "b", CDB2_BLOB, buf, sz);
+    cdb2_bind_param(db, "b", CDB2_BLOB, buf, (int)sz);
     rc = cdb2_run_statement(db, "insert into t(a, b) values(@a, @b)");
     if (rc) {
         printf("insert %d %s\n", rc, cdb2_errstr(db));
@@ -73,7 +86,7 @@ int main(int argc, char *argv[]) {
 
     cdb2_clearbindings(db);
     cdb2_bind_param(db, "a", CDB2_INTEGER, &id, sizeof(int64_t));
-    cdb2_bind_param(db, "b", CDB2_BLOB, buf, sz);
+    cdb2_bind_param(db, "b", CDB2_BLOB, buf, (int)sz);
     rc = cdb2_run_statement(db, "update t set b=@b where a=@a");
     if (rc) {
         printf("run b %d %s\n", rc, cdb2_errstr(db));
@@ -95,5 +108,6 @@ int main(int argc, char *argv[]) {
     }
 
     cdb2_close(db);
+    free(buf);
     return 0;
 }
