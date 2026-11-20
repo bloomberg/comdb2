@@ -4901,6 +4901,26 @@ int pgcompact_thdpool_init(void)
 }
 /****** btree page compact routines END ******/
 
+struct truncate_log_work {
+    bdb_state_type *bdb_state;
+    DB_LSN lsn;
+    void *ack;
+};
+
+static void *truncate_log_thd(void *arg)
+{
+    struct truncate_log_work *w = arg;
+    bdb_state_type *bdb_state = w->bdb_state;
+    thread_started("bdb truncate log");
+    bdb_thread_event(bdb_state, BDBTHR_EVENT_START);
+    truncate_log_lock(bdb_state, w->lsn.file, w->lsn.offset, 0);
+    net_ack_message(w->ack, 0);
+    bdb_thread_event(bdb_state, BDBTHR_EVENT_DONE);
+    free(w->ack);
+    free(w);
+    return NULL;
+}
+
 void berkdb_receive_msg(void *ack_handle, void *usr_ptr, char *from_host,
                         struct interned_string *from_interned, int usertype,
                         void *dta, int dtalen, uint8_t is_tcp)
@@ -5210,7 +5230,15 @@ void berkdb_receive_msg(void *ack_handle, void *usr_ptr, char *from_host,
         } else {
             logmsg(LOGMSG_INFO, "Truncating log to %d:%d\n", trunc_lsn.file,
                    trunc_lsn.offset);
-            truncate_log_lock(bdb_state, trunc_lsn.file, trunc_lsn.offset, 0);
+            /* Truncate off this host's reader: it waits for the sender to catch up */
+            struct truncate_log_work *w = malloc(sizeof(*w));
+            w->bdb_state = bdb_state;
+            w->lsn = trunc_lsn;
+            w->ack = net_ack_handle_dup(ack_handle);
+            extern pthread_attr_t gbl_pthread_attr_detached;
+            pthread_t tid;
+            Pthread_create(&tid, &gbl_pthread_attr_detached, truncate_log_thd, w);
+            break;
         }
         net_ack_message(ack_handle, 0);
         break;

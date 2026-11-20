@@ -2007,6 +2007,13 @@ int net_ack_message_payload(void *handle, int outrc, void *payload,
     return rc;
 }
 
+void *net_ack_handle_dup(void *handle)
+{
+    ack_state_type *ack = malloc(sizeof(ack_state_type));
+    *ack = *(ack_state_type *)handle;
+    return ack;
+}
+
 int net_ack_message(void *handle, int outrc)
 {
     uint8_t ack_buf[NET_ACK_MESSAGE_TYPE_LEN], *p_buf, *p_buf_end;
