@@ -6,6 +6,7 @@
 #include "cson.h"
 #include "sql.h"
 #include "reqlog.h"
+#include "thread_stats.h"
 #include <plhash_glue.h>
 
 /* This used to be private to reqlog.  Moving to a shared header since
@@ -71,6 +72,13 @@ struct reqlogger {
 
     /* flags that can be set as we progress */
     unsigned reqflags;
+
+    /* Async dist commit: the block processor hands this request to another
+     * thread to finish.  At hand-off it copies its storage counters (locks,
+     * I/O) here, since the finishing thread's own counters don't cover this
+     * request.  thread_stats_saved says whether the copy is present. */
+    int thread_stats_saved;
+    struct berkdb_thread_stats thread_stats;
 
     int in_request;
     const char *request_type;
@@ -245,6 +253,8 @@ void acquire_clientstats_lock(int);
 void release_clientstats_lock();
 void cleanup_clientstats(void);
 int hash_for_clientstats(hashforfunc_t *func, void *arg);
+/* the stats of the thread that ran this request */
+const struct berkdb_thread_stats *reqlog_thread_stats(const struct reqlogger *logger);
 
 extern int gbl_time_fdb;
 
