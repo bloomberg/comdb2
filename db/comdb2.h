@@ -516,6 +516,12 @@ struct rawnodestats {
     pthread_mutex_t lk;
     hash_t *fingerprints;
     api_history_t *api_history;
+#ifdef COMDB2_TEST
+    /* Exact twin of sql_queries, to measure how many increments the lockless
+     * counter loses (tests/counter_loss.test). Own cache line, so the atomic
+     * does not contend with the counters above. */
+    uint64_t sql_queries_exact __attribute__((aligned(64)));
+#endif
 };
 #define NUM_RAW_NODESTATS                                                      \
     (offsetof(struct rawnodestats, svc_time) / sizeof(unsigned))

@@ -686,7 +686,7 @@ int add_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
         gbl_sc_last_writer_time = comdb2_time_epoch();
 
         if (is_event_from_cascade(flags))
-            iq->usedb->casc_write_count++;
+            ATOMIC_ADD64(iq->usedb->casc_write_count, 1);
         /* For live schema change */
         retrc = live_sc_post_add(iq, trans, *genid, od_dta, ins_keys, blobs,
                                  maxblobs, flags, rrn);
@@ -720,7 +720,7 @@ int add_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
 
 err:
     if (retrc == RC_INTERNAL_RETRY) {
-        iq->usedb->deadlock_count++;
+        ATOMIC_ADD64(iq->usedb->deadlock_count, 1);
     }
     if (iq->debug)
         reqpopprefixes(iq, prefixes);
@@ -1717,7 +1717,7 @@ int upd_record(struct ireq *iq, void *trans, void *primkey, int rrn,
 
     ATOMIC_ADD64(iq->usedb->write_count[RECORD_WRITE_UPD], 1);
     if (is_event_from_cascade(flags))
-        iq->usedb->casc_write_count++;
+        ATOMIC_ADD64(iq->usedb->casc_write_count, 1);
     gbl_sc_last_writer_time = comdb2_time_epoch();
 
     dbglog_record_db_write(iq, "update");
@@ -1748,7 +1748,7 @@ int upd_record(struct ireq *iq, void *trans, void *primkey, int rrn,
 
 err:
     if (retrc == RC_INTERNAL_RETRY) {
-        iq->usedb->deadlock_count++;
+        ATOMIC_ADD64(iq->usedb->deadlock_count, 1);
     }
     free_blob_buffers(add_blobs_buf, MAXBLOBS);
     free_blob_status_data(&oldblobs);
@@ -2065,13 +2065,13 @@ int del_record(struct ireq *iq, void *trans, void *primkey, int rrn,
 
     ATOMIC_ADD64(iq->usedb->write_count[RECORD_WRITE_DEL], 1);
     if (is_event_from_cascade(flags))
-        iq->usedb->casc_write_count++;
+        ATOMIC_ADD64(iq->usedb->casc_write_count, 1);
     gbl_sc_last_writer_time = comdb2_time_epoch();
 
 err:
     dbglog_record_db_write(iq, "delete");
     if (retrc == RC_INTERNAL_RETRY) {
-        iq->usedb->deadlock_count++;
+        ATOMIC_ADD64(iq->usedb->deadlock_count, 1);
     }
     if (!retrc && iq->__limits.maxcost && iq->cost > iq->__limits.maxcost)
         retrc = ERR_LIMIT;

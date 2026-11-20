@@ -25,6 +25,7 @@
 
 #include "debug_switches.h"
 #include "fdb_fend.h"
+#include "comdb2_atomic.h"
 
 extern int gbl_osql_verify_retries_max;
 extern int gbl_notimeouts;
@@ -344,7 +345,7 @@ static int srs_tran_replay_once(struct sqlclntstate *clnt, int(dispatch_fn)(stru
     clnt->dist_txnid = NULL;
 
     clnt->verify_retries++;
-    gbl_verify_tran_replays++;
+    ATOMIC_ADD64(gbl_verify_tran_replays, 1);
     /* Replays for SERIAL or SNAPISOL will never have select or selectv */
     if (clnt->dbtran.mode == TRANLEVEL_RECOM /* not for modsnap */) {
         /* we need to free all the shadows but selectv table (recgenid) */

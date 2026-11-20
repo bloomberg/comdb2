@@ -1,0 +1,81 @@
+#!/usr/bin/env bash
+
+bash -n "$0" || exit 1
+
+# Measures how many increments a lockless (plain ++) counter loses when many
+# threads update it at once.  The hot-path counters are kept lockless on
+# purpose; this checks that the undercount stays well under 1%.
+#
+# rawnodestats->sql_queries is a plain counter that every connection from the
+# same task and host shares.  Test builds (COMDB2_TEST) keep an exact atomic
+# twin, sql_queries_exact, next to it; the 'clientstats_exact' trap prints both.
+# NCLIENTS cdb2sql processes each run NQUERIES 'select 1' against one node.
+
+dbnm=$1
+NCLIENTS=${NCLIENTS:-16}
+NQUERIES=${NQUERIES:-20000}
+MAXLOSS_PPM=${MAXLOSS_PPM:-10000}    # 1%
+
+# clientstats are per node: send every query, and the trap, to one host
+host=$(cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default 'select comdb2_host()')
+target="--host $host"
+[[ -z "$CLUSTER" ]] && target="default"
+
+# prints "<sql_queries> <sql_queries_exact>" for this test's cdb2sql task
+counters() {
+    cdb2sql --tabs ${CDB2_OPTIONS} $dbnm $target \
+        "exec procedure sys.cmd.send('clientstats_exact')" |
+        awk '/clientstats_exact task=[^ ]*cdb2sql / {
+                 for (i = 1; i <= NF; i++) {
+                     split($i, kv, "=")
+                     if (kv[1] == "sql_queries") p += kv[2]
+                     if (kv[1] == "sql_queries_exact") e += kv[2]
+                 }
+                 found = 1
+             }
+             END { if (found) print p, e; else print "none" }'
+}
+
+read p0 e0 < <(counters)
+if [[ "$p0" == "none" ]]; then
+    echo "FAIL: no clientstats_exact output (not a COMDB2_TEST build?)"
+    exit 1
+fi
+
+script=$(mktemp)
+for ((j = 0; j < NQUERIES; j++)); do echo "select 1"; done > $script
+
+start=$(date +%s)
+for ((i = 0; i < NCLIENTS; i++)); do
+    cdb2sql ${CDB2_OPTIONS} $dbnm $target - < $script > /dev/null 2>&1 &
+done
+wait
+elapsed=$(( $(date +%s) - start ))
+rm -f $script
+
+read p1 e1 < <(counters)
+
+sent=$(( NCLIENTS * NQUERIES ))
+# both deltas include the counters() query in between (one each)
+plain=$(( p1 - p0 ))
+exact=$(( e1 - e0 ))
+lost=$(( exact - plain ))
+loss_ppm=$(( exact > 0 ? lost * 1000000 / exact : 0 ))
+rate=$(( elapsed > 0 ? exact / elapsed : exact ))
+
+echo "clients=$NCLIENTS queries=$sent elapsed=${elapsed}s rate=${rate}/s"
+echo "plain=$plain exact=$exact lost=$lost loss=${loss_ppm}ppm ($(awk -v p=$loss_ppm 'BEGIN{printf "%.4f", p/10000}')%)"
+
+if (( exact < sent )); then
+    echo "FAIL: exact counter $exact is below the $sent queries sent"
+    exit 1
+fi
+if (( lost < 0 )); then
+    echo "FAIL: plain counter is above the exact one"
+    exit 1
+fi
+if (( loss_ppm >= MAXLOSS_PPM )); then
+    echo "FAIL: lost ${loss_ppm}ppm, limit ${MAXLOSS_PPM}ppm"
+    exit 1
+fi
+echo "Success"
