@@ -1077,6 +1077,8 @@ static DB_Connection *find_new_repl_db(cdb2_hndl_tp *repl_metadb, cdb2_hndl_tp *
     int rc, count = 0;
     DB_Connection *cnct;
     int start_time = time(NULL);
+    /* Sources behind our end-of-log are taken only if no source has caught up. */
+    int accept_behind = 0;
 
     assert(repl_db_connected == 0);
 
@@ -1084,6 +1086,8 @@ static DB_Connection *find_new_repl_db(cdb2_hndl_tp *repl_metadb, cdb2_hndl_tp *
 
         /* Set if we reached a source this pass but its logs don't cover us. */
         int saw_noncovering = 0;
+        /* Set if we skipped a source this pass only because it is behind us. */
+        int saw_behind = 0;
         /* Set if some candidate could not be probed this pass (skipped for the
          * reconnect penalty, or failed to open / 'select 1'). If so we cannot
          * conclude "no source covers me" -- a source we never reached might. */
@@ -1147,6 +1151,14 @@ static DB_Connection *find_new_repl_db(cdb2_hndl_tp *repl_metadb, cdb2_hndl_tp *
                     cdb2_close(*repl_db);
                     continue;
                 }
+                if (cov == PHYSREP_SOURCE_BEHIND && !accept_behind) {
+                    /* No reconnect penalty: we may come back to it on the next pass. */
+                    physrep_logmsg(LOGMSG_INFO, "%s:%d source %s@%s is behind my LSN, trying others first\n", __func__,
+                                   __LINE__, cnct->dbname, cnct->hostname);
+                    saw_behind = 1;
+                    cdb2_close(*repl_db);
+                    continue;
+                }
                 /* cov == -1 (unknown): fall through; handle_truncation is the backstop. */
             }
 
@@ -1172,6 +1184,12 @@ static DB_Connection *find_new_repl_db(cdb2_hndl_tp *repl_metadb, cdb2_hndl_tp *
             physrep_no_source_streak = 0;
             gbl_physrep_no_viable_source = 0;
             return cnct;
+        }
+
+        /* Nothing has caught up to us: retry at once, now taking a source that is behind. */
+        if (saw_behind && !accept_behind) {
+            accept_behind = 1;
+            continue;
         }
 
         /* Every reachable candidate this pass was probed and none covered our
@@ -1557,6 +1575,8 @@ static void *physrep_worker(void *args)
     char sql_cmd[sql_cmd_len];
     int do_truncate = 0;
     int source_gen_changed = 0;
+    /* Set when the source's log-cursor gen changed, i.e. it truncated its own log. */
+    int source_truncated = 0;
     int rc;
     int now;
     int is_revconn = -1;
@@ -1762,7 +1782,7 @@ repl_loop:
                 close_repl_connection(repl_db_cnct, repl_db, __func__, __LINE__);
                 goto sleep_and_retry;
             }
-            prev_info = handle_truncation(repl_db, info, source_gen_changed);
+            prev_info = handle_truncation(repl_db, info, source_gen_changed, source_gen_changed || source_truncated);
             if (prev_info.file == 0) {
                 close_repl_connection(repl_db_cnct, repl_db, __func__, __LINE__);
                 goto sleep_and_retry;
@@ -1773,6 +1793,7 @@ repl_loop:
                 physrep_logmsg(LOGMSG_USER, "%s: gen: %" PRId64 "\n", __func__, gen);
             do_truncate = 0;
             source_gen_changed = 0;
+            source_truncated = 0;
         }
 
         if (repl_db_connected == 0)
@@ -1834,6 +1855,7 @@ repl_loop:
                     }
                     close_repl_connection(repl_db_cnct, repl_db, __func__, __LINE__);
                     do_truncate = 1;
+                    source_truncated = 1;
                     first_lcgen = -1;
                     goto repl_loop;
                 }

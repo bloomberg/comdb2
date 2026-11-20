@@ -101,6 +101,26 @@ for firstfile in 0 1; do
     fi
 done
 
+for firstfile in 0 1; do
+    echo "== register_replicant prefers sources at or past the requester's LSN (firstfile $firstfile)"
+    build_chain $firstfile
+    # Same log file: s1 is past the requester at 100:300, s2 and mid@m1 are behind it
+    sql "update comdb2_physreps set offset = 500 where dbname = 'src' and host = 's1'"
+    sql "update comdb2_physreps set offset = 100 where dbname = 'src' and host = 's2'"
+    out=$(sql "exec procedure sys.physrep.register_replicant('r', 'r1', '100:300', 'src', \"'s1', 's2'\")")
+    echo "$out"
+    echo "$out" | grep -qw s1 || fail "register_replicant did not offer src@s1, which is past the requester: $out"
+    if echo "$out" | grep -qwE 's2|m1'; then
+        fail "register_replicant offered a source behind the requester when one had caught up: $out"
+    fi
+
+    # Nothing has caught up to 100:900, so fall back to offering sources that are behind
+    out=$(sql "exec procedure sys.physrep.register_replicant('r', 'r2', '100:900', 'src', \"'s1', 's2'\")")
+    echo "$out"
+    echo "$out" | grep -qw s1 && echo "$out" | grep -qw s2 ||
+        fail "register_replicant did not fall back when no source had caught up: $out"
+done
+
 echo "== update_registry refuses to link a node to itself or its own descendant"
 build_chain 0
 for src in "leaf', 'l1" "mid', 'm1"; do

@@ -409,6 +409,9 @@ int physrep_source_covers_me(void *in_bdb_state, cdb2_hndl_tp *repl_db)
     }
 
     rc = have_overlap(&parent_lowest, &parent_highest, &my_lowest, &my_highest);
+    /* Overlapping but ending before us: usable only by rewinding records it will likely send again. */
+    if (rc == 1 && log_compare(&parent_highest, &my_highest) < 0)
+        rc = PHYSREP_SOURCE_BEHIND;
 
     if (gbl_physrep_debug) {
         physrep_logmsg(LOGMSG_USER, "%s: parent-range {%d:%d}-{%d:%d}, my-range {%d:%d}-{%d:%d}, covers=%d\n", __func__,
@@ -658,7 +661,8 @@ int physrep_logged_gen_ahead(void *in_bdb_state)
  * physrep_find_last_match --
  *
  * Walk forward from find_match_lsn()'s anchor comparing both logs record for
- * record.  Returns 0 if we agree through my_end (nothing to unwind), else 1.
+ * record.  Returns 0 if we agree through my_end (nothing to unwind), 1 on a
+ * divergence, or PHYSREP_SOURCE_BEHIND if the source agrees but ends first.
  * *last_match is the newest agreed record -- the furthest we may rewind to.
  */
 int physrep_find_last_match(void *in_bdb_state, cdb2_hndl_tp *repl_db, LOG_INFO match_info, LOG_INFO my_end,
@@ -712,9 +716,12 @@ int physrep_find_last_match(void *in_bdb_state, cdb2_hndl_tp *repl_db, LOG_INFO 
         int blob_len;
         int64_t *gen;
 
-        /* Source ran out: we hold records it does not. */
-        if ((rc = cdb2_next_record(repl_db)) != CDB2_OK)
+        /* Source ran out: it agrees so far but is behind us, which is not a divergence. */
+        if ((rc = cdb2_next_record(repl_db)) != CDB2_OK) {
+            if (rc == CDB2_OK_DONE)
+                diverged = PHYSREP_SOURCE_BEHIND;
             goto done;
+        }
 
         src_lsn = (char *)cdb2_column_value(repl_db, 0);
         if (!src_lsn || char_to_lsn(src_lsn, &src_file, &src_offset) != 0)

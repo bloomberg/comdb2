@@ -14,6 +14,23 @@ static pthread_mutex_t physrep_truncate_lock = PTHREAD_MUTEX_INITIALIZER;
 /* Skip the rewind when the source already agrees with our end-of-log. */
 int gbl_physrep_skip_noop_truncation = 1;
 
+/* Seconds to wait for a source that agrees with us but is behind before rewinding to it (0: rewind at once). */
+int gbl_physrep_behind_source_max_wait = 300;
+
+static LOG_INFO behind_end;
+static time_t behind_since;
+
+/* True once we have waited max_wait at this end-of-log for sources to catch up. */
+static int behind_wait_expired(LOG_INFO my_end)
+{
+    time_t now = time(NULL);
+    if (behind_end.file != my_end.file || behind_end.offset != my_end.offset) {
+        behind_end = my_end;
+        behind_since = now;
+    }
+    return (now - behind_since) >= gbl_physrep_behind_source_max_wait;
+}
+
 int truncate_trylock(void)
 {
     return pthread_mutex_trylock(&physrep_truncate_lock);
@@ -24,7 +41,7 @@ void truncate_unlock(void)
     Pthread_mutex_unlock(&physrep_truncate_lock);
 }
 
-LOG_INFO handle_truncation(cdb2_hndl_tp *repl_db, LOG_INFO latest_info, int source_gen_changed)
+LOG_INFO handle_truncation(cdb2_hndl_tp *repl_db, LOG_INFO latest_info, int source_gen_changed, int source_rolled_back)
 {
     LOG_INFO match_lsn = find_match_lsn(thedb->bdb_env, repl_db, latest_info);
 
@@ -49,10 +66,24 @@ LOG_INFO handle_truncation(cdb2_hndl_tp *repl_db, LOG_INFO latest_info, int sour
      * divergence rewind to the newest agreed record, at worst the anchor. */
     if (gbl_physrep_skip_noop_truncation && !rewind_for_gen) {
         LOG_INFO last_match;
-        if (physrep_find_last_match(thedb->bdb_env, repl_db, match_lsn, latest_info, &last_match) == 0) {
+        int rc = physrep_find_last_match(thedb->bdb_env, repl_db, match_lsn, latest_info, &last_match);
+        if (rc == 0) {
             logmsg(LOGMSG_USER, "%s: log matches source through my end-of-log {%u:%u}, skipping truncation\n", __func__,
                    last_match.file, last_match.offset);
             return last_match;
+        }
+        if (rc == PHYSREP_SOURCE_BEHIND && !source_rolled_back) {
+            if (!behind_wait_expired(latest_info)) {
+                /* file 0 makes the caller drop this source and retry, preferring one that has caught up. */
+                logmsg(LOGMSG_USER, "%s: source agrees through {%u:%u} but is behind my end-of-log {%u:%u}, not "
+                       "rewinding\n", __func__, last_match.file, last_match.offset, latest_info.file,
+                       latest_info.offset);
+                LOG_INFO wait = {0};
+                return wait;
+            }
+            logmsg(LOGMSG_USER, "%s: no source caught up to {%u:%u} in %ds, rewinding to {%u:%u}\n", __func__,
+                   latest_info.file, latest_info.offset, gbl_physrep_behind_source_max_wait, last_match.file,
+                   last_match.offset);
         }
         match_lsn = last_match;
     } else if (gbl_physrep_skip_noop_truncation) {
