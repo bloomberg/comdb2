@@ -1,7 +1,14 @@
 find_package(TclStub)
 
 add_library(tclcdb2 SHARED tclcdb2.c)
-add_definitions(-DUSE_TCL_STUBS)
+# macOS SDK Tcl ships no arm64 slice (only arm64e), so the stub library can't
+# be linked; resolve Tcl symbols from the loading interpreter instead.
+if(APPLE)
+  target_link_options(tclcdb2 PRIVATE -undefined dynamic_lookup)
+  set(TCL_STUB_LIBRARY "")
+else()
+  add_definitions(-DUSE_TCL_STUBS)
+endif()
 add_dependencies(tclcdb2 cdb2api)
 
 configure_file(${CMAKE_CURRENT_SOURCE_DIR}/helper.tcl helper.tcl COPYONLY)
