@@ -543,6 +543,7 @@ if [[ -n "$dbdown" ]] ; then
     # if this is intentional, please run test with 'CHECK_DB_AT_FINISH=0' (ex. put in test Makefile:export CHECK_DB_AT_FINISH=0)
     teststatus=2
     echo "!$TESTCASE: db was unavailable at finish ($dbdown)" | tee -a ${TEST_LOG}
+    echo "!$TESTCASE: db unavailable (logs in ${TESTDIR}/logs/${DBNAME}.testcase)"
 elif [[ $rc -eq 124 ]] ; then
     echo -e "!$TESTCASE: ${YELLOW}timeout${NEUTRAL} (logs in ${TESTDIR}/logs/${DBNAME}.testcase)"
     echo "!$TESTCASE: timeout" >> ${TEST_LOG}

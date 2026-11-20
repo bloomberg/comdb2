@@ -269,6 +269,16 @@ REGISTER_TUNABLE("logmsg.epochms", "Show epochms in log-messages.  (Default: off
 /* User-level 2pc tunables */
 REGISTER_TUNABLE("enable_2pc", "Enable 2pc fdb transactions.  (Default: off)", TUNABLE_BOOLEAN, &gbl_2pc,
                  READONLY | NOARG, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("enable_2pc_ddl",
+                 "Make schema changes on generic-shard partitions 2pc distributed transactions; needs enable_2pc, "
+                 "and must be set on the coordinator and every shard.  Schema changes then resume from their sc "
+                 "lists, as with multitable_ddl.  (Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_2pc_ddl, READONLY | NOARG, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("disttxn_ddl_timeout_ms",
+                 "A 2pc schema change coordinator waits at most this many ms for its participants' votes and its "
+                 "schema lock, then aborts, so that distributed schema changes cannot wait on each other forever; "
+                 "0 waits forever.  (Default: 120000)",
+                 TUNABLE_INTEGER, &gbl_disttxn_ddl_timeout_ms, 0, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("allow_coordinator",
                  "Set of dbname/tiers which can act as coordinator for this participant.  (Default: none)",
                  TUNABLE_STRING, &gbl_allowed_coordinators, READONLY, NULL, NULL, disttxn_allow_coordinator_set, NULL);
@@ -319,6 +329,12 @@ REGISTER_TUNABLE("all_waitdie", "Enable waitdie for all transactions.  (Default:
 REGISTER_TUNABLE("debug_disable_waitdie_deadlock_detection", "Disable waitdie deadlock detection.  (Default: off)",
                  TUNABLE_BOOLEAN, &gbl_debug_disable_waitdie_deadlock_detection, EXPERIMENTAL | INTERNAL, NULL, NULL,
                  NULL, NULL);
+REGISTER_TUNABLE("debug_2pc_ddl",
+                 "2pc schema change faults, a bitmask: 1 participant sleeps 5s before it votes, 2 participant votes "
+                 "no, 4 participant exits after recording its vote, 8 participant fails to finalize a committed "
+                 "schema change, 16 participant's commit reports a failed replicant wait, 32 resumed participant "
+                 "sees lock-desired, 64 coordinator fails to write its decision.  (Default: 0)",
+                 TUNABLE_INTEGER, &gbl_debug_2pc_ddl, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("debug_exit_participant_after_prepare", "Participant exits after successful prepare.  (Default: off)",
                  TUNABLE_BOOLEAN, &gbl_debug_exit_participant_after_prepare, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL,
                  NULL);

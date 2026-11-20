@@ -42,6 +42,7 @@
 #include "sc_callbacks.h"
 #include "views.h"
 #include "bdb_int.h"
+#include "disttxn.h"
 #include <debug_switches.h>
 
 void comdb2_cheapstack_sym(FILE *f, char *fmt, ...);
@@ -1148,8 +1149,7 @@ int resume_sc_multiddl(int scabort)
         if (rc)
             logmsg(LOGMSG_ERROR, "%s failed to resume scl %d\n", __func__, rc);
 
-        free(scl.offsets);
-        free(scl.ser_scs);
+        sc_list_free(&scl);
 
         if (rc)
             goto freetime;
@@ -1164,6 +1164,32 @@ freetime:
     return rc;
 }
 
+int sc_list_get(uuid_t uuid, sc_list_t *scl)
+{
+    void **dtas = NULL, **keys = NULL;
+    int *dtalens = NULL;
+    int keylen = 0, num = 0, bdberr = 0, rc = 1;
+
+    if (bdb_llmeta_get_all_sc_lists(NULL, &dtas, &dtalens, &keys, &keylen, &num, &bdberr)) {
+        logmsg(LOGMSG_ERROR, "%s: failed to retrieve sc lists, bdberr %d\n", __func__, bdberr);
+        return -1;
+    }
+    for (int i = 0; i < num && rc == 1; i++) {
+        if (!osqlcomm_scl_get_key(scl, keys[i], (uint8_t *)keys[i] + keylen) || comdb2uuidcmp(scl->uuid, uuid))
+            continue;
+        rc = osqlcomm_scl_get(scl, dtas[i], (uint8_t *)dtas[i] + dtalens[i]) ? 0 : -1;
+        if (rc)
+            sc_list_free(scl);
+    }
+    for (int i = 0; i < num; i++) {
+        free(dtas[i]);
+        free(keys[i]);
+    }
+    free(dtas);
+    free(keys);
+    free(dtalens);
+    return rc;
+}
 
 int resume_schema_change(void)
 {
@@ -1195,7 +1221,8 @@ int resume_schema_change(void)
     }
 
     /* this path is able to handle multi table ddl in a single transaction */
-    if (gbl_multitable_ddl)
+    /* 2pc schema changes resume from their sc_lists */
+    if (gbl_multitable_ddl || gbl_2pc_ddl)
         return resume_sc_multiddl(scabort);
 
     hash_t *tpt_sc_hash = hash_init_strcaseptr(offsetof(struct timepart_sc_resuming, viewname));

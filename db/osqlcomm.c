@@ -7996,6 +7996,11 @@ int osql_finalize_scs(struct ireq *iq, tran_type *trans)
     if (!iq->sc)
         return 0;
 
+    if (iq->disttxn_ddl_committed && (gbl_debug_2pc_ddl & DDL_2PC_DEBUG_FAIL_FINALIZE)) {
+        logmsg(LOGMSG_USER, "%s failing finalize of committed 2pc schema change on debug tunable\n", __func__);
+        return ERR_SC;
+    }
+
     while (iq->sc != NULL) {
         if (!iq->sc_locked) {
             /* Lock schema from now on before we finalize any schema changes
@@ -10010,11 +10015,65 @@ uint8_t *osqlcomm_scl_put_key(struct sc_list *scl, uint8_t *p_buf,
     return p_buf;
 }
 
+/* sc_list_2pc after the scs; strings carry their length, including the NUL (0 for NULL) */
+#define SCL_STR_SIZE(str) (sizeof(int) + ((str) ? strlen(str) + 1 : 0))
+#define PUTS(str)                                                                                                      \
+    do {                                                                                                               \
+        int len = (str) ? strlen(str) + 1 : 0;                                                                         \
+        PUTI(len);                                                                                                     \
+        if (len && !(p_buf = buf_no_net_put((str), len, p_buf, p_buf_end)))                                            \
+            return NULL;                                                                                               \
+    } while (0)
+#define GETS(str)                                                                                                      \
+    do {                                                                                                               \
+        int len = 0;                                                                                                   \
+        GETI(len);                                                                                                     \
+        if (len < 0 || len > p_buf_end - p_buf || (len && !((str) = calloc(1, len))))                                  \
+            return NULL;                                                                                               \
+        if (len && !(p_buf = buf_no_net_get((str), len, p_buf, p_buf_end)))                                            \
+            return NULL;                                                                                               \
+        if (len)                                                                                                       \
+            (str)[len - 1] = '\0';                                                                                     \
+    } while (0)
+
+int osqlcomm_scl_2pc_size(struct sc_list *scl)
+{
+    sc_list_2pc_t *d = scl->dist;
+    if (!d)
+        return 0;
+    return 2 * sizeof(int) + SCL_STR_SIZE(d->dist_txnid) + SCL_STR_SIZE(d->coordinator_dbname) +
+           SCL_STR_SIZE(d->coordinator_tier);
+}
+
+static uint8_t *scl_2pc_put(sc_list_2pc_t *d, uint8_t *p_buf, const uint8_t *p_buf_end)
+{
+    PUTI(d->is_coordinator);
+    PUTI(d->voted);
+    PUTS(d->dist_txnid);
+    PUTS(d->coordinator_dbname);
+    PUTS(d->coordinator_tier);
+    return p_buf;
+}
+
+/* on failure the caller frees *pd */
+static const uint8_t *scl_2pc_get(sc_list_2pc_t **pd, const uint8_t *p_buf, const uint8_t *p_buf_end)
+{
+    sc_list_2pc_t *d = *pd = calloc(1, sizeof(sc_list_2pc_t));
+    if (!d)
+        return NULL;
+    GETI(d->is_coordinator);
+    GETI(d->voted);
+    GETS(d->dist_txnid);
+    GETS(d->coordinator_dbname);
+    GETS(d->coordinator_tier);
+    return d->dist_txnid ? p_buf : NULL;
+}
+
 const uint8_t *osqlcomm_scl_get(struct sc_list *scl,
                                 const uint8_t *p_buf, const uint8_t *p_buf_end)
 {
     GETI(scl->version);
-    if (scl->version != SESS_SC_LIST_VER) {
+    if (scl->version != SESS_SC_LIST_VER && scl->version != SESS_SC_LIST_2PC_VER) {
         logmsg(LOGMSG_ERROR, "Found unsupported SCL version %d\n", scl->version);
         return NULL;
     }
@@ -10030,7 +10089,11 @@ const uint8_t *osqlcomm_scl_get(struct sc_list *scl,
     scl->ser_scs = malloc(scl->ser_scs_len);
     if (!scl->ser_scs)
         return NULL;
-    return  buf_no_net_get(scl->ser_scs, scl->ser_scs_len, p_buf, p_buf_end);
+    p_buf = buf_no_net_get(scl->ser_scs, scl->ser_scs_len, p_buf, p_buf_end);
+    /* a 2pc sc_list has its configuration after the schema changes */
+    if (p_buf && scl->version == SESS_SC_LIST_2PC_VER)
+        p_buf = scl_2pc_get(&scl->dist, p_buf, p_buf_end);
+    return p_buf;
 }
 
 uint8_t *osqlcomm_scl_put(struct sc_list *scl,
@@ -10043,7 +10106,10 @@ uint8_t *osqlcomm_scl_put(struct sc_list *scl,
     for(i = 0; i < scl->count; i++) {
         PUTI(scl->offsets[i]);
     }
-    return  buf_no_net_put(scl->ser_scs, scl->ser_scs_len, p_buf, p_buf_end);
+    p_buf = buf_no_net_put(scl->ser_scs, scl->ser_scs_len, p_buf, p_buf_end);
+    if (p_buf && scl->dist)
+        p_buf = scl_2pc_put(scl->dist, p_buf, p_buf_end);
+    return p_buf;
 }
 
 int osql_scl_print(uint8_t *p_buf_key, const uint8_t *p_buf_key_end,
@@ -10055,7 +10121,8 @@ int osql_scl_print(uint8_t *p_buf_key, const uint8_t *p_buf_key_end,
         return -1;
 
     if (!osqlcomm_scl_get(&scl, p_buf, p_buf_end)) {
-            return -1;
+        sc_list_free(&scl);
+        return -1;
     }
 
     uuidstr_t us;
@@ -10067,7 +10134,10 @@ int osql_scl_print(uint8_t *p_buf_key, const uint8_t *p_buf_key_end,
     int sizes[scl.count];
     for(i = 0; i < scl.count-1; i++)
         sizes[i] = scl.offsets[i+1]-scl.offsets[i];
-    sizes[scl.count-1] = p_buf_end - p_buf - scl.offsets[scl.count-1];
+    sizes[scl.count - 1] = scl.ser_scs_len - (scl.offsets[scl.count - 1] - scl.offsets[0]);
+    if (scl.dist)
+        logmsg(LOGMSG_USER, "    2pc %s : %s\n", scl.dist->is_coordinator ? "coordinator" : "participant",
+               scl.dist->dist_txnid);
 
     for(i = 0; i < scl.count; i++) {
         logmsg(LOGMSG_USER, "    Sc %d size %d\n", i, sizes[i]);
@@ -10085,8 +10155,7 @@ int osql_scl_print(uint8_t *p_buf_key, const uint8_t *p_buf_key_end,
             logmsg(LOGMSG_USER, "      schema \"%s\"\n", sc->newcsc2);
         free_schema_change_type(sc);
     }
-    free(scl.offsets);
-    free(scl.ser_scs);
+    sc_list_free(&scl);
     return 0;
 }
 

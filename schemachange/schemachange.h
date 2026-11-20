@@ -428,6 +428,16 @@ typedef struct llog_scdone {
 } llog_scdone_t;
 
 #define SESS_SC_LIST_VER 1
+#define SESS_SC_LIST_2PC_VER 2 /* followed by a sc_list_2pc */
+
+/* 2pc role of a distributed schema change, saved in its sc_list for a resume */
+typedef struct sc_list_2pc {
+    int is_coordinator;
+    int voted; /* participant: may have voted yes, so a resume asks the coordinator */
+    char *dist_txnid;
+    char *coordinator_dbname; /* participant only */
+    char *coordinator_tier;
+} sc_list_2pc_t;
 
 struct sc_list {
     uuid_t uuid; /* part of the key */
@@ -436,6 +446,7 @@ struct sc_list {
     int ser_scs_len;
     int *offsets;
     char *ser_scs;
+    sc_list_2pc_t *dist; /* set for a 2pc schema change */
 };
 typedef struct sc_list sc_list_t;
 
@@ -443,6 +454,14 @@ typedef struct sc_list sc_list_t;
  * pointer fields are malloced
  */
 int sc_list_create(sc_list_t *scl, void *vscs, uuid_t uuid);
+
+int sc_list_2pc_create(sc_list_t *scl, int is_coordinator, const char *dist_txnid, const char *coordinator_dbname,
+                       const char *coordinator_tier);
+void sc_list_free(sc_list_t *scl); /* frees the malloced fields */
+void sc_list_2pc_free(sc_list_2pc_t *dist);
+
+/* read the sc_list of uuid: 0 found, 1 none, -1 error */
+int sc_list_get(uuid_t uuid, sc_list_t *scl);
 
 /* Returns 1 if schema changes of this kind run through do_ddl(), which is the
  * only path that marks the schema change in llmeta and, on completion, calls

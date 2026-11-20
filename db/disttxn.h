@@ -21,11 +21,36 @@
 
 #define DISTRIBUTED_TRANSACTIONS_TABLE "comdb2_distributed_transactions"
 
-/* coordinator_wait / participant_wait rcodes */
-enum { KEEP_RCODE = 0, HAS_COMMITTED = 1, HAS_ABORTED = 2, IS_NOT_DURABLE = 3, NO_DIST_TABLE = 4, LOCK_DESIRED = 5 };
+extern int gbl_2pc_ddl;
+extern int gbl_disttxn_ddl_timeout_ms;
+extern int gbl_coordinator_block_until_durable;
+extern int gbl_coordinator_sync_on_commit;
+/* debug_2pc_ddl bits: each fault applies while its bit is set */
+enum ddl_2pc_debug {
+    DDL_2PC_DEBUG_SLEEP_BEFORE_VOTE = 1 << 0,   /* participant sleeps 5s before it votes */
+    DDL_2PC_DEBUG_FAIL_VOTE = 1 << 1,           /* participant votes no */
+    DDL_2PC_DEBUG_EXIT_AFTER_VOTED = 1 << 2,    /* participant exits after its voted mark, before the vote */
+    DDL_2PC_DEBUG_FAIL_FINALIZE = 1 << 3,       /* participant fails to finalize what the coordinator committed */
+    DDL_2PC_DEBUG_FAIL_COMMIT_WAIT = 1 << 4,    /* participant's logged commit reports a failed replicant wait */
+    DDL_2PC_DEBUG_RESUME_LOCK_DESIRED = 1 << 5, /* resumed participant sees lock-desired */
+    DDL_2PC_DEBUG_FAIL_DECISION = 1 << 6        /* coordinator fails to write its decision */
+};
+extern int gbl_debug_2pc_ddl;
+extern int gbl_debug_exit_coordinator_after_commit;
 
-/* This coordinator records participant information */
-int collect_participants(const char *dist_txnid, participant_list_t *participants);
+/* coordinator_wait / participant_wait rcodes */
+enum {
+    KEEP_RCODE = 0,
+    HAS_COMMITTED = 1,
+    HAS_ABORTED = 2,
+    IS_NOT_DURABLE = 3,
+    NO_DIST_TABLE = 4,
+    LOCK_DESIRED = 5,
+    ALL_PREPARED = 6
+};
+
+/* This coordinator records participant information; is_ddl for a schema change */
+int collect_participants(const char *dist_txnid, participant_list_t *participants, int is_ddl);
 
 /* This coordinator asks participants to prepare */
 int dispatch_participants(const char *dist_txnid);
@@ -43,6 +68,16 @@ int participant_failed(const char *dist_txnid, const char *dbname, const char *t
 /* This coordinator will block until participants have responded */
 int coordinator_wait(const char *dist_txnid, int can_retry, int *rcode, int *outrc, char *errmsg, int errmsglen,
                      int force_failure);
+
+/* schema change coordinator waits for votes until deadline_ms (epoch ms, 0 none): ALL_PREPARED if it can commit */
+int coordinator_wait_ddl(const char *dist_txnid, int64_t deadline_ms, int *rcode, int *outrc, char *errmsg,
+                         int errmsglen);
+
+/* schema change coordinator adds its commit decision to trans */
+int coordinator_ddl_write_decision(tran_type *trans, const char *dist_txnid);
+
+/* tell participants the schema change coordinator committed (0), aborted (-1) or doesn't know (LOCK_DESIRED) */
+int coordinator_ddl_committed(const char *dist_txnid, int rc);
 
 /* This coordinator will block until participants have propogated this txn */
 int coordinator_wait_propagate(const char *dist_txnid);
@@ -77,6 +112,12 @@ int participant_heartbeat(const char *dist_txnid, const char *participant_name, 
 /* This participant tells coordinator it has prepared and waits for response */
 int participant_wait(const char *dist_txnid, const char *coordinator_name, const char *coordinator_tier,
                      const char *coordinator_master);
+
+/* resumed participant asks the coordinator: HAS_COMMITTED, HAS_ABORTED or LOCK_DESIRED */
+int participant_wait_resumed_ddl(const char *dist_txnid, const char *coordinator_name, const char *coordinator_tier);
+
+/* a participant's commit failed after the coordinator committed: stop heartbeating it */
+void participant_ddl_commit_failed(const char *dist_txnid);
 
 /* This participant processes a coordinator's abort */
 int coordinator_aborted(const char *dist_txnid);

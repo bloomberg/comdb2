@@ -444,6 +444,7 @@ const uint8_t *osqlcomm_scl_get(struct sc_list *scl,
                                 const uint8_t *p_buf, const uint8_t *p_buf_end);
 uint8_t *osqlcomm_scl_put(struct sc_list *scl,
                           uint8_t *p_buf, const uint8_t *p_buf_end);
+int osqlcomm_scl_2pc_size(struct sc_list *scl);
 
 /**
  * Handle the finalize part of a chain of schema changes

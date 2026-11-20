@@ -481,7 +481,7 @@ int osql_sess_rcvop(uuid_t uuid, int type, void *data, int datalen, int *found)
             logmsg(LOGMSG_USER, "DISTTXN %s %s collect_participants uuid=%s\n", __func__, sess->dist_txnid,
                    comdb2uuidstr(sess->uuid, us));
         }
-        rc = collect_participants(sess->dist_txnid, &sess->participants);
+        rc = collect_participants(sess->dist_txnid, &sess->participants, sess->scs.count > 0);
         if (rc) {
             rc = osql_repository_put(sess);
             goto failed_stream;
@@ -699,10 +699,10 @@ static void _destroy_schema_changes(osql_sess_t *sess)
     }
 }
 
-static int _write_sc_list(sc_list_t *scl)
+static int _write_sc_list(sc_list_t *scl, tran_type *tran)
 {
     int rc = 0;
-    int payload_len = scl->offsets[0] + scl->ser_scs_len;
+    int payload_len = scl->offsets[0] + scl->ser_scs_len + osqlcomm_scl_2pc_size(scl);
     char *payload = malloc(payload_len);
     if (!payload) {
         logmsg(LOGMSG_ERROR, "%s oom\n", __func__);
@@ -725,8 +725,7 @@ static int _write_sc_list(sc_list_t *scl)
     osqlcomm_scl_put_key(scl, key, key + sizeof(key));
 
     int bdberr = 0;
-    rc = bdb_llmeta_set_schema_change_list(NULL, (char*)key, sizeof(key),
-                                           payload, payload_len, &bdberr);
+    rc = bdb_llmeta_set_schema_change_list(tran, (char *)key, sizeof(key), payload, payload_len, &bdberr);
     if (rc) {
         logmsg(LOGMSG_ERROR, "%s failed to write sc list rc %d bdberr %d\n",
                __func__, rc, bdberr);
@@ -764,6 +763,8 @@ int osql_delete_sc_list_int(uuid_t uuid, tran_type *trans, const char *c, int l)
     return rc;
 }
 
+extern int gbl_flush_on_prepare;
+
 int osql_sess_save_sc_list(osql_sess_t *sess)
 {
     sc_list_t scl = {0};
@@ -772,13 +773,27 @@ int osql_sess_save_sc_list(osql_sess_t *sess)
     if (sess->scs.count == 0)
         return 0;
 
-    if (!gbl_multitable_ddl)
+    int dist = sess->dist_txnid && (sess->is_coordinator || sess->is_participant);
+    /* a 2pc schema change resumes from its sc_list */
+    if (dist && !gbl_2pc_ddl) {
+        errstat_set_rcstrf(&sess->xerr, rc = ERR_SC, "distributed schema change needs enable_2pc_ddl on every shard");
+        return rc;
+    }
+
+    if (!gbl_multitable_ddl && !gbl_2pc_ddl)
         return 0;
 
     rc = sc_list_create(&scl, &sess->scs, sess->uuid);
     if (rc) {
         logmsg(LOGMSG_ERROR, "%s: failed to create sc_list\n",
                __func__);
+        goto done;
+    }
+
+    if (dist && sc_list_2pc_create(&scl, sess->is_coordinator, sess->dist_txnid, sess->coordinator_dbname,
+                                   sess->coordinator_tier)) {
+        errstat_set_rcstrf(&sess->xerr, rc = ERR_SC, "failed to save 2pc schema change %s", sess->dist_txnid);
+        logmsg(LOGMSG_ERROR, "%s: failed to add 2pc configuration for %s\n", __func__, sess->dist_txnid);
         goto done;
     }
 
@@ -796,10 +811,40 @@ int osql_sess_save_sc_list(osql_sess_t *sess)
         goto done;
     }
 
-    rc = _write_sc_list(&scl);
+    rc = _write_sc_list(&scl, NULL);
 
 done:
-    free(scl.offsets);
-    free(scl.ser_scs);
+    sc_list_free(&scl);
+    return rc;
+}
+
+/* durable and replicated before the participant votes yes, so that it, or a new master, knows it may have voted */
+int osql_sc_list_mark_voted(uuid_t uuid)
+{
+    sc_list_t scl = {0};
+    struct ireq iq = {0};
+    tran_type *tran = NULL;
+    int rc = sc_list_get(uuid, &scl);
+
+    if (rc == 0 && !scl.dist)
+        rc = -1;
+    if (rc == 0) {
+        scl.dist->voted = 1;
+        init_fake_ireq(thedb, &iq);
+        if ((rc = trans_start(&iq, NULL, &tran)) == 0) {
+            if ((rc = _write_sc_list(&scl, tran)) == 0)
+                rc = trans_commit(&iq, tran, gbl_myhostname);
+            else
+                trans_abort(&iq, tran);
+        }
+        /* durable on this node too, as a prepare is */
+        if (rc == 0 && gbl_flush_on_prepare)
+            rc = bdb_flush_up_to_lsn(thedb->bdb_env, iq.commit_file, iq.commit_offset);
+    }
+    sc_list_free(&scl);
+    if (rc) {
+        uuidstr_t us;
+        logmsg(LOGMSG_ERROR, "%s: failed to mark 2pc sc list %s voted, rc %d\n", __func__, comdb2uuidstr(uuid, us), rc);
+    }
     return rc;
 }

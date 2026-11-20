@@ -75,8 +75,9 @@
 #define FDB_VER_CDB2API 7
 #define FDB_VER_WR_CDB2API 8
 #define FDB_VER_2PC_CDB2API 9
+#define FDB_VER_2PC_DDL 10
 
-#define FDB_VER FDB_VER_2PC_CDB2API
+#define FDB_VER FDB_VER_2PC_DDL
 
 extern int gbl_fdb_default_ver;
 
@@ -142,6 +143,7 @@ struct fdb_tran {
 
     int nwrites;                        /* how many writes were done; rows for dml; ddl instructions for ddl */
     enum fdb_tran_status writes_status; /* what status is this connection */
+    int is_ddl;                         /* runs a distributed schema change */
 
     /**
      * libevent heartbeats

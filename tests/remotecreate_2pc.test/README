@@ -1,0 +1,4 @@
+Test schema changes on generic-shard partitions as 2pc distributed transactions
+(CREATE/DROP TABLE).  Verifies that they commit on every shard or on none,
+including when a participant or the coordinator dies before or after the
+decision, and when a participant's finalize fails after the commit.
