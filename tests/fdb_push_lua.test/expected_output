@@ -63,4 +63,26 @@ Test 18: two concurrently-prepared push statements
 Test 19: SP invoked with bind arg + push prepare
 (version='test19')
 502	argprep
+Test 20: dbtable:insert remote
+(version='test20')
+600	dbtable
+Test 21: dbtable:insert remote types and NULL
+(version='test21')
+601	1.500000	types
+602	NULL	NULL
+Test 22: dbtable:insert remote loop
+(version='test22')
+610	dbt610
+611	dbt611
+612	dbt612
+Test 23: dbtable:insert mix local and remote
+(version='test23')
+620	local
+621	local2
+620	remote
+Test 24: dbtable:insert remote error
+got expected error
+Test 25: dbtable:copyfrom remote
+(version='test25')
+2
 Testcase passed.

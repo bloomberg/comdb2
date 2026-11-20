@@ -73,4 +73,55 @@ if [[ "$landed" != "1" ]]; then
     failexit "trigger's remote push write never reached the remote db"
 fi
 
+echo ""
+echo "=== Setup: trigger writing to the remote db with dbtable:insert ==="
+cdb2sql ${DST_OPT} $DST_DB default "create table dst2(id int, name cstring(16))" || failexit "create dst.dst2"
+src "create table src2(id int)" || failexit "create src.src2"
+
+cdb2sql ${SRC_OPT} $SRC_DB default - <<EOF || failexit "create trigger"
+create procedure remtrig2 version 'v1' {
+local function main(event)
+    if event.type == 'add' then
+        local rc = db:table("LOCAL_${DST_DB}.dst2"):insert({id = event.new.id, name = 'trig' .. event.new.id})
+        if rc ~= 0 then return rc end
+    end
+    return 0
+end
+}\$\$
+create lua trigger remtrig2 on (table src2 for insert)
+EOF
+
+echo "  waiting for trigger to register..."
+cnt=0
+for i in $(seq 1 30); do
+    cnt=$(src_tabs "select count(*) from comdb2_triggers where tbl_name='src2' and type='trigger'" 2>/dev/null)
+    [[ "$cnt" == "1" ]] && break
+    sleep 1
+done
+[[ "$cnt" == "1" ]] || failexit "trigger remtrig2 did not register"
+
+echo ""
+echo "=== Test: trigger's dbtable:insert push writes land on the destination db ==="
+# several events: the trigger's clnt is long lived, each row must be shipped
+for id in 1 2 3 4 5; do
+    src "insert into src2(id) values($id)" || failexit "insert src2 id=$id"
+done
+
+landed=0
+for i in $(seq 1 30); do
+    cnt=$(dst_tabs "select count(*) from dst2" 2>/dev/null)
+    if [[ "$cnt" == "5" ]]; then
+        landed=1
+        break
+    fi
+    sleep 1
+done
+
+if [[ "$landed" != "1" ]]; then
+    failexit "trigger's dbtable:insert push writes never reached the remote db (got $cnt rows)"
+fi
+
+bad=$(dst_tabs "select count(*) from dst2 where name != 'trig' || id" 2>/dev/null)
+[[ "$bad" == "0" ]] || failexit "trigger's dbtable:insert shipped wrong values"
+
 echo "Success"
