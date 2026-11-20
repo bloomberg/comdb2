@@ -11,12 +11,14 @@ Clustered tests also need ssh-client and ssh-server setup.
 
 To run the test suite you need to:
 
-1) Build comdb2 by doing the following from the top level dir:
+1) Build comdb2 by doing the following from the top level dir
+  ```
   mkdir build
   cmake ..
   make -j$(nproc) && make -j$(nproc) test-tools
+  ```
 
-2) To run tests manually, go to the `tests/` directory where each test resides
+3) To run tests manually, go to the `tests/` directory where each test resides
 in its own directory with a `.test` ending.
 To run a specific test, run `make testname`. For example `make
 cdb2api` will run the cdb2api test, which is stored in `cdb2api.test`.
