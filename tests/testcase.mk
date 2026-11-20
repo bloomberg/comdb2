@@ -41,6 +41,8 @@ export CDB2_CONFIG=$(abspath $(DBDIR)/comdb2db.cfg)
 export CDB2_OPTIONS=--cdb2cfg $(CDB2_CONFIG)
 export COMDB2_ROOT=$(TESTDIR)
 export COMDB2_UNITTEST?=0
+# copycomdb2 only finds comdb2ar via $comdb2ar, /opt/bb/bin, or PATH
+export comdb2ar?=$(COMDB2AR_EXE)
 
 
 ifneq ($(SECONDARY_DB_PREFIX),)
