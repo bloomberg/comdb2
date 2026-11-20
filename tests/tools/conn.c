@@ -13,17 +13,27 @@ static char *tier;
 static int flags;
 static int conns = 10;
 
+#define MAX_OPEN_RETRIES 1000
+
 static void *work(void *data)
 {
     cdb2_hndl_tp *dbs[conns];
     int rc, bad_open = 0;
     for (int i = 0; i < conns; ++i) {
         while ((rc = cdb2_open(&dbs[i], dbname, tier, flags)) != 0) {
-            ++bad_open;
+            /* cdb2_open allocates the handle even when it fails */
+            cdb2_close(dbs[i]);
+            if (++bad_open > MAX_OPEN_RETRIES) {
+                /* The db is gone - exit rather than spin, since the test
+                 * may no longer be around to stop us. */
+                fprintf(stderr, "cdb2_open failed rc:%d after %d retries\n", rc, bad_open);
+                exit(1);
+            }
+            usleep(10000);
         }
     }
     if (bad_open) {
-        printf("cdb2_open retries:%d", bad_open);
+        printf("cdb2_open retries:%d\n", bad_open);
     }
     while (1) {
         for (int i = 0; i < conns; ++i) {
@@ -49,6 +59,8 @@ int main(int argc, char **argv)
         exit(1);
     }
     signal(SIGPIPE, SIG_IGN);
+    /* Output goes to a file; don't lose it if we are killed */
+    setvbuf(stdout, NULL, _IOLBF, 0);
     if (argc == 6) cdb2_set_comdb2db_config(argv[5]);
     tier = argv[4];
     dbname = argv[3];
