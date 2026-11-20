@@ -1,6 +1,9 @@
 /* This test verifies that the API behaves as expected
  * even when a broken RAND engine is in the system */
 #define OPENSSL_API_COMPAT 0x10020000L
+#define OPENSSL_SUPPRESS_DEPRECATED
+/* OpenSSL 4 removed ENGINE; link against header stubs there */
+#define OPENSSL_ENGINE_STUBS
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
