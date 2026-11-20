@@ -75,6 +75,9 @@ int gbl_revsql_connect_freq_sec = 5;
 static pthread_t reverse_conn_manager;
 static int reverse_conn_manager_running;
 static int stop_reverse_conn_manager;
+/* Set under reverse_conn_hosts_mu once the workers have been reaped, so that
+ * the manager cannot spawn a replacement behind us. */
+static int stop_reverse_conn_workers;
 
 static pthread_mutex_t reverse_conn_hosts_mu = PTHREAD_MUTEX_INITIALIZER;
 
@@ -538,15 +541,20 @@ static void *reverse_connection_manager(void *args) {
 
         pthread_mutex_lock(&reverse_conn_hosts_mu);
         {
-            LISTC_FOR_EACH(&reverse_conn_hosts, host, lnk) {
-                pthread_mutex_lock(&host->mu);
+            /* Checked under the same lock the reaper takes, so we either spawn
+             * before it snapshots or not at all. */
+            if (stop_reverse_conn_workers == 0) {
+                LISTC_FOR_EACH(&reverse_conn_hosts, host, lnk)
                 {
-                    if (host->worker_state == REVERSE_CONN_WORKER_NEW) {
-                        host->worker_state = REVERSE_CONN_WORKER_RUNNING;
-                        Pthread_create(&host->thd, NULL, reverse_connection_worker, host);
+                    pthread_mutex_lock(&host->mu);
+                    {
+                        if (host->worker_state == REVERSE_CONN_WORKER_NEW) {
+                            host->worker_state = REVERSE_CONN_WORKER_RUNNING;
+                            Pthread_create(&host->thd, NULL, reverse_connection_worker, host);
+                        }
                     }
+                    pthread_mutex_unlock(&host->mu);
                 }
-                pthread_mutex_unlock(&host->mu);
             }
         }
         pthread_mutex_unlock(&reverse_conn_hosts_mu);
@@ -572,6 +580,87 @@ int start_reverse_connections_manager() {
     return 0;
 }
 
+/* Cancel and join the worker threads. They deref thedb, so exit has to wait
+ * for them: db_is_exiting() only tells a worker it may go away, it doesn't
+ * keep thedb alive. Workers park in a no-timeout connect() to the target, so
+ * cancel is what gets them out of it -- same approach as
+ * stop_physrep_worker_thread(). */
+static void stop_reverse_connection_workers()
+{
+    reverse_conn_host_tp *host;
+    pthread_t *thds = NULL;
+    int count = 0, nthds = 0;
+
+    /* Snapshot the tids under the list lock; joining while holding it would
+     * deadlock against a worker blocked on the same mutex. */
+    pthread_mutex_lock(&reverse_conn_hosts_mu);
+    {
+        stop_reverse_conn_workers = 1;
+
+        LISTC_FOR_EACH(&reverse_conn_hosts, host, lnk)
+        {
+            if (host->worker_state != REVERSE_CONN_WORKER_NEW) {
+                count++;
+            }
+        }
+
+        if (count > 0 && (thds = malloc(count * sizeof(pthread_t))) != NULL) {
+            LISTC_FOR_EACH(&reverse_conn_hosts, host, lnk)
+            {
+                pthread_mutex_lock(&host->mu);
+                {
+                    if (host->worker_state != REVERSE_CONN_WORKER_NEW) {
+                        thds[nthds++] = host->thd;
+                    }
+                }
+                pthread_mutex_unlock(&host->mu);
+            }
+        } else {
+            thds = NULL;
+        }
+    }
+    pthread_mutex_unlock(&reverse_conn_hosts_mu);
+
+    if (thds == NULL) {
+        if (count > 0) {
+            revconn_logmsg(LOGMSG_ERROR, "Failed to allocate a list of %d worker thread(s)\n", count);
+        }
+        return;
+    }
+
+    for (int i = 0; i < nthds; i++) {
+        pthread_cancel(thds[i]);
+    }
+
+    for (int i = 0; i < nthds; i++) {
+        int rc = pthread_join(thds[i], NULL);
+        if (rc != 0) {
+            revconn_logmsg(LOGMSG_ERROR, "'reverse-connection' worker thread failed to join (rc: %d)\n", rc);
+        }
+    }
+
+    free(thds);
+
+    /* Only now: refresh frees 'EXITED' entries, and a worker's argument is the
+     * entry itself, so it cannot be reaped while the thread is still alive. */
+    pthread_mutex_lock(&reverse_conn_hosts_mu);
+    {
+        LISTC_FOR_EACH(&reverse_conn_hosts, host, lnk)
+        {
+            pthread_mutex_lock(&host->mu);
+            {
+                if (host->worker_state != REVERSE_CONN_WORKER_NEW) {
+                    host->worker_state = REVERSE_CONN_WORKER_EXITED;
+                }
+            }
+            pthread_mutex_unlock(&host->mu);
+        }
+    }
+    pthread_mutex_unlock(&reverse_conn_hosts_mu);
+
+    revconn_logmsg(LOGMSG_USER, "%d 'reverse-connection' worker thread(s) have stopped\n", nthds);
+}
+
 int stop_reverse_connections_manager() {
     int rc = 0;
 
@@ -580,6 +669,10 @@ int stop_reverse_connections_manager() {
     }
 
     stop_reverse_conn_manager = 1;
+
+    /* Must happen even if we abandon the manager below: the workers touch
+     * thedb and the exit path is about to free it. */
+    stop_reverse_connection_workers();
 
     /* May be blocked in a cdb2 call to a dead metadb -- don't let the
      * join outlive the exit stall alarm. */
@@ -596,6 +689,10 @@ int stop_reverse_connections_manager() {
 
     reverse_conn_manager_running = 0;
     stop_reverse_conn_manager = 0;
+
+    pthread_mutex_lock(&reverse_conn_hosts_mu);
+    stop_reverse_conn_workers = 0;
+    pthread_mutex_unlock(&reverse_conn_hosts_mu);
 
     return 0;
 }
