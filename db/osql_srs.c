@@ -264,6 +264,8 @@ int gbl_verify_retry_backoff_ms = 50;
 int gbl_verify_retry_count_before_backoff = 3;
 int gbl_debug_fail_verify_requeue = 0;
 
+#define SQLHERR_MASTER_TIMEOUT -109
+
 /* A COMMIT that fails with a retryable error holds its error back so the retry
    can answer instead.  When the retry can't be queued, nobody else will answer,
    and the client would hear nothing until its read timeout.  A ruleset rejection
@@ -477,7 +479,11 @@ int srs_tran_replay(struct sqlclntstate *clnt)
             return RC_INTERNAL_RETRY;
         logmsg(LOGMSG_ERROR, "%s: not replaying a verify-failed txn, node still incoherent after %dms\n", __func__,
                waited_ms);
-        osql->replay_incoherent_start_ms = 0;
+        /* Nothing was written: tell the client to retry on another node */
+        if (!peer_dropped_connection(clnt))
+            send_run_error(clnt, "node incoherent, retry on another node", SQLHERR_MASTER_TIMEOUT);
+        clnt->query_rc = SQLHERR_MASTER_TIMEOUT;
+        osql_set_replay(__FILE__, __LINE__, clnt, OSQL_RETRY_NONE);
         srs_tran_replay_end(clnt, -1, 0);
         return -1;
     }
