@@ -51,7 +51,6 @@ extern int __berkdb_read_alarm_ms;
 #include "sqllog.h"
 #include "views.h"
 #include "autoanalyze.h"
-#include "quantize.h"
 #include "timers.h"
 #include "ssl_bend.h"
 #include "dohsql.h"
@@ -1918,27 +1917,6 @@ clipper_usage:
             analyze_dump_stats();
         } else if (tokcmp(tok, ltok, "iopool") == 0) {
             berkdb_iopool_process_message("stat", 4, 0);
-        } else if (tokcmp(tok, ltok, "reqrates") == 0) {
-            logmsg(LOGMSG_ERROR, "Service time rates:\n");
-            logmsg(LOGMSG_ERROR, "Non-sql requests this minute:\n");
-            quantize_dump(q_min, stdout);
-            logmsg(LOGMSG_ERROR, "Non-sql requests this hour:\n");
-            quantize_dump(q_hour, stdout);
-            logmsg(LOGMSG_ERROR, "Non-sql requests since startup:\n");
-            quantize_dump(q_all, stdout);
-            logmsg(LOGMSG_ERROR, "SQL requests this minute:\n");
-            quantize_dump(q_sql_min, stdout);
-            logmsg(LOGMSG_ERROR, "SQL requests this hour:\n");
-            quantize_dump(q_sql_hour, stdout);
-            logmsg(LOGMSG_ERROR, "SQL requests since startup:\n");
-            quantize_dump(q_sql_all, stdout);
-            logmsg(LOGMSG_ERROR, "SQL costs\n");
-            logmsg(LOGMSG_ERROR, "SQL steps/query this minute:\n");
-            quantize_dump(q_sql_steps_min, stdout);
-            logmsg(LOGMSG_ERROR, "SQL steps/query this hour:\n");
-            quantize_dump(q_sql_steps_hour, stdout);
-            logmsg(LOGMSG_ERROR, "SQL steps/query since startup:\n");
-            quantize_dump(q_sql_steps_all, stdout);
         } else if (tokcmp(tok, ltok, "trigger") == 0) {
             trigger_stat();
         } else if (tokcmp(tok, ltok, "keycompr") == 0) {

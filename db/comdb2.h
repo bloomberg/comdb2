@@ -71,7 +71,6 @@ typedef long long tranid_t;
 #include <comdb2_trn_intrl.h>
 #include <sqlthdpool.h>
 #include <prefault.h>
-#include <quantize.h>
 #include <dlmalloc.h>
 
 #include "sqlinterfaces.h"
@@ -3411,20 +3410,6 @@ extern int gbl_snapshot_isolation;
 extern int gbl_update_shadows_interval;
 extern int gbl_lowpri_snapisol_sessions;
 extern int gbl_disable_legacy_queues;
-
-/* stats */
-/* non-sql request service times (last minute, last hour, since start) */
-extern struct quantize *q_min;
-extern struct quantize *q_hour;
-extern struct quantize *q_all;
-/* sql query times */
-extern struct quantize *q_sql_min;
-extern struct quantize *q_sql_hour;
-extern struct quantize *q_sql_all;
-/* sql #steps */
-extern struct quantize *q_sql_steps_min;
-extern struct quantize *q_sql_steps_hour;
-extern struct quantize *q_sql_steps_all;
 
 extern int gbl_stop_thds_time;
 extern int gbl_stop_thds_time_threshold;

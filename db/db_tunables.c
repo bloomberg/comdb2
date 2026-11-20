@@ -1109,20 +1109,6 @@ static int broken_max_rec_sz_update(void *context, void *value)
     return 0;
 }
 
-static int netconndumptime_update(void *context, void *value)
-{
-    int val = *(int *)value;
-    net_set_conntime_dump_period(thedb->handle_sibling, val);
-    return 0;
-}
-
-static void *netconndumptime_value(void *context)
-{
-    static char val[64];
-    sprintf(val, "%d", net_get_conntime_dump_period(thedb->handle_sibling));
-    return val;
-}
-
 const char *deadlock_policy_str(u_int32_t policy);
 int deadlock_policy_max();
 

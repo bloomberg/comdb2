@@ -1826,11 +1826,6 @@ REGISTER_TUNABLE("abort_on_reconstruct_failure",
                  TUNABLE_BOOLEAN, &gbl_abort_on_reconstruct_failure,
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 
-REGISTER_TUNABLE("netconndumptime",
-                 "Dump connection statistics to ctrace this often.",
-                 TUNABLE_INTEGER, NULL, 0, netconndumptime_value, NULL, 
-                 netconndumptime_update, NULL);
-
 REGISTER_TUNABLE("timeseries_metrics_maxpoints",
                  "Maximum data points to keep in memory for various metrics",
                  TUNABLE_INTEGER, &gbl_metric_maxpoints, 0, NULL, NULL, NULL, NULL);

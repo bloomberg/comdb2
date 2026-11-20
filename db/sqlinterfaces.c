@@ -78,7 +78,6 @@
 #include <bb_oscompat.h>
 
 #include "fdb_bend_sql.h"
-#include <quantize.h>
 #include <str0.h>
 
 #include "debug_switches.h"
@@ -1372,13 +1371,6 @@ static void sql_statement_done(struct sql_thread *thd, struct reqlogger *logger,
 
     Pthread_mutex_lock(&gbl_sql_lock);
     {
-        quantize(q_sql_min, h->cost.time);
-        quantize(q_sql_hour, h->cost.time);
-        quantize(q_sql_all, h->cost.time);
-        quantize(q_sql_steps_min, h->cost.cost);
-        quantize(q_sql_steps_hour, h->cost.cost);
-        quantize(q_sql_steps_all, h->cost.cost);
-
         add_steps(clnt, h->cost.cost);
 
         listc_abl(&thedb->sqlhist, h);
