@@ -164,8 +164,8 @@ static int collect_bplog_session(void *obj, void *arg)
         snprintf(o->id, 20, "%llx", sess->rqid);
     }
     o->nops = sess->nops;
-    o->start_time = U2M(sess->sess_startus);
-    o->commit_time = U2M(sess->sess_endus);
+    o->start_time = sess->sess_startus / 1000; /* not U2M: an epoch overflows int */
+    o->commit_time = sess->sess_endus / 1000;
     o->nretries = iq?iq->retries:0;
     /* Only here if the client sent them; the host we already had, above. */
     o->argv0 = sess->clnt_taskname ? strdup(sess->clnt_taskname) : NULL;

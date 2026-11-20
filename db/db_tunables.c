@@ -329,6 +329,7 @@ extern int gbl_handle_buf_add_latency_ms;
 extern int gbl_osql_send_startgen;
 extern int gbl_osql_send_fingerprint;
 extern int gbl_osql_send_clientinfo;
+extern int gbl_osql_send_identity;
 extern int gbl_log_fingerprint;
 extern int gbl_log_clientinfo;
 extern int gbl_create_default_user;

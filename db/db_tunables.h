@@ -1847,6 +1847,12 @@ REGISTER_TUNABLE("osql_send_clientinfo",
                  "the whole cluster is upgraded. (Default: off)",
                  TUNABLE_BOOLEAN, &gbl_osql_send_clientinfo, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 
+REGISTER_TUNABLE("osql_send_identity",
+                 "Send the client identity, or else its argv0, origin and pid, "
+                 "in the osql stream ahead of the commit. Keep off until the "
+                 "whole cluster is upgraded. (Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_osql_send_identity, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+
 REGISTER_TUNABLE("log_fingerprint",
                  "Master logs the SQL fingerprint it received in the osql "
                  "stream, so replicants can attribute the page-in I/O they do "

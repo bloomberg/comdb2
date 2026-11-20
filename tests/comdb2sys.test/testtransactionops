@@ -1,0 +1,129 @@
+#!/usr/bin/env bash
+
+# comdb2_transaction_ops shows the ops of a transaction the master is applying,
+# including the rows its foreign key cascades generate, and, with
+# osql_send_identity on (lrl.options), who the transaction runs as; and its
+# start time, and the comdb2_locks rows of its lockers (with the identity)
+# via the uuid
+
+a_dbn=$1
+target="default"
+if [[ -n "${CLUSTER}" ]]; then
+    master=$(cdb2sql --tabs ${CDB2_OPTIONS} $a_dbn default 'select host from comdb2_cluster where is_master="Y"')
+    target="--host $master"
+fi
+
+cdb2sql ${CDB2_OPTIONS} $a_dbn default 'create table txops_p {schema{int a} keys{"pk" = a}}'
+cdb2sql ${CDB2_OPTIONS} $a_dbn default 'create table txops_c {schema{int a} keys{dup "ca" = a} constraints{"ca" -> <"txops_p":"pk"> on delete cascade}}'
+cdb2sql ${CDB2_OPTIONS} $a_dbn default 'insert into txops_p values (1), (2)'
+cdb2sql ${CDB2_OPTIONS} $a_dbn default 'insert into txops_c values (1), (1), (2)'
+
+cat > testtransactionops.expected <<'EOF2'
+(tablename='txops_c', opcode='FK_CASCADE_DELETE', count=2)
+(tablename='txops_p', opcode='OSQL_DELREC', count=1)
+(tablename='txops_p', opcode='OSQL_INSERT', count=1)
+EOF2
+
+query="select tablename, opcode, count from comdb2_transaction_ops where tablename like 'txops_%' and (opcode like 'FK_%' or opcode in ('OSQL_DELREC', 'OSQL_DELETE', 'OSQL_INSREC', 'OSQL_INSERT')) order by tablename, opcode"
+
+identity_query="select distinct identity from comdb2_transaction_ops where tablename like 'txops_%'"
+
+start_query="select distinct start_time from comdb2_transaction_ops where tablename like 'txops_%'"
+
+osqls_start_query="select start_time from comdb2_active_osqls where request_id in (select uuid from comdb2_transaction_ops where tablename like 'txops_%')"
+
+locks_query="select count(*) > 0 as has_locks from comdb2_locks where uuid in (select uuid from comdb2_transaction_ops where tablename like 'txops_%')"
+
+locks_identity_query="select distinct identity from comdb2_locks where uuid in (select uuid from comdb2_transaction_ops where tablename like 'txops_%')"
+
+# The sleep holds the next commit; a background commit can take it, so retry
+rc=1
+for try in 1 2 3; do
+    cdb2sql ${CDB2_OPTIONS} $a_dbn $target "put tunable debug_sleep_before_committed_lsn 5000"
+    begin_ms=$(( $(date +%s) * 1000 ))
+    cdb2sql ${CDB2_OPTIONS} $a_dbn default - > /dev/null <<'SQL' &
+begin
+insert into txops_p values (10)
+delete from txops_p where a = 1
+commit
+SQL
+    pid=$!
+    sleep 2
+    cdb2sql ${CDB2_OPTIONS} $a_dbn $target "$query" > testtransactionops.out
+    cdb2sql ${CDB2_OPTIONS} $a_dbn $target "$identity_query" > testtransactionops.identity.out
+    cdb2sql --tabs ${CDB2_OPTIONS} $a_dbn $target "$start_query" > testtransactionops.start.out
+    cdb2sql --tabs ${CDB2_OPTIONS} $a_dbn $target "$osqls_start_query" > testtransactionops.osqls_start.out
+    end_ms=$(( ($(date +%s) + 1) * 1000 ))
+    cdb2sql ${CDB2_OPTIONS} $a_dbn $target "$locks_query" > testtransactionops.locks.out
+    cdb2sql ${CDB2_OPTIONS} $a_dbn $target "$locks_identity_query" > testtransactionops.locks_identity.out
+    wait $pid
+    if diff testtransactionops.expected testtransactionops.out > /dev/null; then
+        rc=0
+        break
+    fi
+    cdb2sql ${CDB2_OPTIONS} $a_dbn default - > /dev/null <<'SQL'
+insert into txops_p values (1)
+insert into txops_c values (1), (1)
+delete from txops_p where a = 10
+SQL
+done
+
+if [[ $rc -ne 0 ]]; then
+    echo "Failed transaction ops test"
+    diff testtransactionops.expected testtransactionops.out
+    exit 1
+fi
+
+# cdb2sql sends no identity, so the replicant sends what it knows of the client
+if ! grep -qE "^\(identity='argv0=[^ ]*cdb2sql origin=[^ ]+ pid=[0-9]+'\)$" testtransactionops.identity.out; then
+    echo "Failed transaction ops test: unexpected identity"
+    cat testtransactionops.identity.out
+    exit 1
+fi
+
+# Started on the master after we started the client, and before we looked
+# (a second of slack each way for the clocks of a cluster)
+start=$(cat testtransactionops.start.out)
+if [[ ! "$start" =~ ^[0-9]+$ ]] || (( start < begin_ms - 1000 || start > end_ms + 1000 )); then
+    echo "Failed transaction ops test: start_time $start, expected $begin_ms to $end_ms"
+    exit 1
+fi
+
+# Same for the session's rows in comdb2_active_osqls (the master's row once
+# overflowed an int and went negative)
+if [[ ! -s testtransactionops.osqls_start.out ]]; then
+    echo "Failed transaction ops test: transaction missing from comdb2_active_osqls"
+    exit 1
+fi
+while read start; do
+    if [[ ! "$start" =~ ^[0-9]+$ ]] || (( start < begin_ms - 1000 || start > end_ms + 1000 )); then
+        echo "Failed transaction ops test: comdb2_active_osqls start_time $start, expected $begin_ms to $end_ms"
+        exit 1
+    fi
+done < testtransactionops.osqls_start.out
+
+# The transaction holds its locks while it sleeps in commit
+if [[ "$(cat testtransactionops.locks.out)" != "(has_locks=1)" ]]; then
+    echo "Failed transaction ops test: no comdb2_locks rows for the transaction uuid"
+    cat testtransactionops.locks.out
+    exit 1
+fi
+
+# Its locks show the same identity
+if ! diff testtransactionops.identity.out testtransactionops.locks_identity.out > /dev/null; then
+    echo "Failed transaction ops test: comdb2_locks identity differs"
+    diff testtransactionops.identity.out testtransactionops.locks_identity.out
+    exit 1
+fi
+
+# The transaction is gone once it commits
+cdb2sql ${CDB2_OPTIONS} $a_dbn $target "$query" > testtransactionops.after.out
+if [[ -s testtransactionops.after.out ]]; then
+    echo "Failed transaction ops test: committed transaction still listed"
+    cat testtransactionops.after.out
+    exit 1
+fi
+
+cdb2sql ${CDB2_OPTIONS} $a_dbn default "drop table txops_c"
+cdb2sql ${CDB2_OPTIONS} $a_dbn default "drop table txops_p"
+exit 0

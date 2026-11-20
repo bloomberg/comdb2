@@ -25,6 +25,10 @@
 #include "cdb2api.h"
 #include "str0.h"
 #include "tohex.h"
+#include "comdb2uuid.h"
+#include "osqlsession.h"
+#include "osqlrepository.h"
+#include <plhash_glue.h>
 #include <stackutil.h>
 
 typedef struct systable_activelocks {
@@ -45,6 +49,14 @@ typedef struct systable_activelocks {
     const char              *fingerprint_role;
     int64_t                 client_id;
     int                     client_id_isnull;
+    /* The master's osql transaction this lock's locker applies; joins
+     * comdb2_transaction_ops.uuid and comdb2_active_osqls.request_id. NULL if none. */
+    char                    *uuid;
+    /* Who that transaction runs as; looked up through the session, which
+     * holds the only copy. NULL if none. */
+    char                    *identity;
+    int                     has_uuid;
+    uuid_t                  rawuuid;
 } systable_activelocks_t;
 
 typedef struct getactivelocks {
@@ -67,7 +79,7 @@ static int collect(void *args, int64_t threadid, int32_t lockerid,
         const char *mode, const char *status, const char *object,
         int64_t page, const char *rectype, int stackid,
         const unsigned char *fingerprint, char fingerprint_role,
-        uint32_t client_id)
+        uint32_t client_id, const unsigned char *uuid)
 {
     int64_t hits;
     int nframes;
@@ -112,6 +124,17 @@ static int collect(void *args, int64_t threadid, int32_t lockerid,
         l->client_id_isnull = 1;
     }
 
+    l->identity = NULL;
+    if (uuid) {
+        uuidstr_t us;
+        l->uuid = strdup(comdb2uuidstr((unsigned char *)uuid, us));
+        comdb2uuidcpy(l->rawuuid, (unsigned char *)uuid);
+        l->has_uuid = 1;
+    } else {
+        l->uuid = NULL;
+        l->has_uuid = 0;
+    }
+
     if ((l->stack = stackutil_get_stack_str(stackid, &type, &nframes, &hits)) == NULL) {
         l->stack = strdup("(no-stack)");
     }
@@ -120,11 +143,62 @@ static int collect(void *args, int64_t threadid, int32_t lockerid,
     return 0;
 }
 
+typedef struct sess_identity {
+    uuid_t uuid;
+    char *identity;
+} sess_identity_t;
+
+static int collect_identity(void *obj, void *arg)
+{
+    osql_sess_t *sess = obj;
+    char *identity = osql_sess_identity_dup(sess);
+    if (identity) {
+        sess_identity_t *si = calloc(1, sizeof(*si));
+        comdb2uuidcpy(si->uuid, sess->uuid);
+        si->identity = identity;
+        hash_add(arg, si);
+    }
+    return 0;
+}
+
+static int free_identity(void *obj, void *arg)
+{
+    sess_identity_t *si = obj;
+    free(si->identity);
+    free(si);
+    return 0;
+}
+
+/* After collect_locks, which holds the lock region: the repository lock is not
+ * to be taken under it */
+static void add_identities(getactivelocks_t *a)
+{
+    hash_t *h = NULL;
+
+    for (int i = 0; i < a->count; i++) {
+        systable_activelocks_t *l = &a->records[i];
+        if (!l->has_uuid)
+            continue;
+        if (!h) {
+            h = hash_init_o(offsetof(sess_identity_t, uuid), sizeof(uuid_t));
+            osql_repository_for_each(h, collect_identity);
+        }
+        sess_identity_t *si = hash_find_readonly(h, l->rawuuid);
+        if (si)
+            l->identity = strdup(si->identity);
+    }
+    if (h) {
+        hash_for(h, free_identity, NULL);
+        hash_free(h);
+    }
+}
+
 static int get_activelocks(void **data, int *records)
 {
     bdb_state_type *bdb_state = thedb->bdb_env;
     getactivelocks_t a = {0};
     bdb_state->dbenv->collect_locks(bdb_state->dbenv, collect, &a);
+    add_identities(&a);
     *data = a.records;
     *records = a.count;
     return 0;
@@ -139,6 +213,8 @@ static void free_activelocks(void *p, int n)
         free(a->type);
         free(a->stack);
         free(a->fingerprint);
+        free(a->uuid);
+        free(a->identity);
     }
     free(p);
 }
@@ -161,5 +237,7 @@ int systblActivelocksInit(sqlite3 *db) {
             CDB2_CSTRING, "fingerprint", -1, offsetof(systable_activelocks_t, fingerprint),
             CDB2_CSTRING, "fingerprint_role", -1, offsetof(systable_activelocks_t, fingerprint_role),
             CDB2_INTEGER, "client_id", offsetof(systable_activelocks_t, client_id_isnull), offsetof(systable_activelocks_t, client_id),
+            CDB2_CSTRING, "uuid", -1, offsetof(systable_activelocks_t, uuid),
+            CDB2_CSTRING, "identity", -1, offsetof(systable_activelocks_t, identity),
             SYSTABLE_END_OF_FIELDS);
 }

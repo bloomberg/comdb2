@@ -344,6 +344,9 @@ int osql_bplog_commit(struct ireq *iq, void *iq_trans, int *nops,
     ckgenid_state_t cgstate = {.iq = iq, .trans = iq_trans, .err = err};
     int rc;
 
+    /* foreign key actions are redone on every apply; count them afresh */
+    osql_sess_clear_fk_ops(iq->sorese);
+
     /* Pre-process selectv's, getting a writelock on rows that are later updated
      */
     if ((rc = osql_process_selectv(tran, pselectv_callback, &cgstate)) != 0) {

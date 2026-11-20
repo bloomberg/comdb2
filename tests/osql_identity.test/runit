@@ -1,0 +1,62 @@
+#!/usr/bin/env bash
+bash -n "$0" || exit 1
+
+# OSQL_IDENTITY carries the client identity to the master, which shows it in
+# comdb2_transaction_ops from the first table the transaction writes
+
+source ${TESTSROOTDIR}/tools/runit_common.sh
+
+dbnm=$1
+
+if [ "x$dbnm" == "x" ] ; then
+    failexit "need a DB name"
+fi
+
+SA="${TESTSBUILDDIR}/simpleauth_test ${dbnm}"
+OP="bpi:procauth:cluster:test:user:op:bpkg:setup"
+USER="bpi:procauth:cluster:prod:user:mike:bpkg:myapp"
+
+master="default"
+nodes="default"
+if [[ -n "${CLUSTER}" ]]; then
+    master="--host $(cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default 'select host from comdb2_cluster where is_master="Y"')"
+    nodes=""
+    for n in ${CLUSTER}; do
+        nodes="$nodes --host:$n"
+    done
+fi
+
+$SA "$OP" "create table if not exists comdb2_simple_auth(cluster cstring(20) default '*', user cstring(20) default '*', bpkg cstring(50) default '*', verb cstring(20) default '*', resourcetype cstring(20) default '*', resourcename cstring(50) default '*')" > /dev/null || failexit "create auth table"
+$SA "$OP" "create unique index if not exists comdb2_simple_auth_ix on comdb2_simple_auth(cluster, user, bpkg, verb, resourcetype, resourcename)" > /dev/null || failexit "create auth index"
+$SA "$OP" "insert into comdb2_simple_auth(cluster, user, bpkg, verb, resourcetype, resourcename) values('*', '*', '*', '*', '*', '*') on conflict do nothing" > /dev/null || failexit "insert wildcard rule"
+$SA "$OP" "insert into comdb2_simple_auth(cluster, user, bpkg, verb, resourcetype, resourcename) values('*', '*', '*', 'Connect', '*', '*') on conflict do nothing" > /dev/null || failexit "insert Connect rule"
+$SA "$OP" "create table t(a int)" > /dev/null || failexit "create table t"
+
+set_send_identity()
+{
+    for n in $nodes; do
+        cdb2sql ${CDB2_OPTIONS} $dbnm ${n/:/ } "put tunable osql_send_identity $1" > /dev/null || failexit "set osql_send_identity $1"
+    done
+}
+
+# Read the identity the master has for a transaction that is still open: it
+# arrives with the first table, ahead of the commit
+identity_of_txn()
+{
+    local expected="$1"
+    $SA "$USER" "begin" "insert into t values (1)" "select sleep(3)" "commit" > /dev/null &
+    local pid=$!
+    sleep 1
+    local out=$(cdb2sql ${CDB2_OPTIONS} $dbnm $master "select distinct identity from comdb2_transaction_ops where tablename = 't'")
+    wait $pid || failexit "transaction failed"
+    [[ "$out" == "$expected" ]] || failexit "expected '$expected', got '$out'"
+}
+
+identity_of_txn "(identity='$USER')"
+echo "identity sent with osql_send_identity on"
+
+set_send_identity 0
+identity_of_txn "(identity=NULL)"
+echo "no identity sent with osql_send_identity off"
+
+echo "Success"

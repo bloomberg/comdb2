@@ -66,6 +66,7 @@ comdb2_timepartshards
 comdb2_timeseries
 comdb2_transaction_commit
 comdb2_transaction_logs
+comdb2_transaction_ops
 comdb2_transaction_state
 comdb2_triggers
 comdb2_tunables

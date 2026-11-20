@@ -7,3 +7,4 @@ table t4 t4.csc2
 enable_partial_indexes
 logmsg level debug
 do reql events on
+osql_send_identity 1
