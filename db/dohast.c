@@ -21,6 +21,7 @@
 #include "dohsql.h"
 #include "sql.h"
 #include "fdb_fend.h"
+#include "fdb_access.h"
 
 int gbl_dohast_disable = 0;
 int gbl_dohast_verbose = 0;
@@ -971,6 +972,76 @@ ast_node_t *_get_ast_node(Parse *pParse)
     return ast->stack;
 }
 
+/* table owning btree "tnum" (table or index root page) in "pSchema" */
+static Table *_find_table_by_tnum(Schema *pSchema, int tnum)
+{
+    for (HashElem *e = sqliteHashFirst(&pSchema->tblHash); e; e = sqliteHashNext(e)) {
+        Table *pTab = sqliteHashData(e);
+        if (pTab->tnum == tnum)
+            return pTab;
+        for (Index *pIdx = pTab->pIndex; pIdx; pIdx = pIdx->pNext)
+            if (pIdx->tnum == tnum)
+                return pTab;
+    }
+    return NULL;
+}
+
+/**
+ * A pushed statement runs entirely on the remote db, so the remote cursors
+ * never check the connection's remote access control (SET REMOTE); check
+ * here every remote table the statement opens, with the rights the cursors
+ * would require. Write statements cannot fall back to local execution,
+ * since the remote transaction only supports pushed writes, so deny instead.
+ * "how" is added to the rights required by write cursors.
+ * Returns -1 and sets a parse error if access is denied, 0 otherwise
+ *
+ */
+static int _push_access_check(Parse *pParse, int how)
+{
+    GET_CLNT;
+    sqlite3 *db = pParse->db;
+    Vdbe *v = pParse->pVdbe;
+    char err[256];
+
+    if (!clnt->fdb_state.access || !v)
+        return 0;
+
+    for (int i = 0; i < v->nOp; i++) {
+        VdbeOp *pOp = &v->aOp[i];
+        int type;
+
+        switch (pOp->opcode) {
+        case OP_OpenRead:
+        case OP_OpenRead_Record:
+        case OP_ReopenIdx:
+            type = ACCESS_REMOTE_READ;
+            break;
+        case OP_OpenWrite:
+            type = ACCESS_REMOTE_WRITE | how;
+            break;
+        default:
+            continue;
+        }
+
+        if (pOp->p3 <= 1 || pOp->p3 >= db->nDb)
+            continue; /* local */
+
+        Table *pTab = NULL;
+        if (!(pOp->p5 & OPFLAG_P2ISREG))
+            pTab = _find_table_by_tnum(db->aDb[pOp->p3].pSchema, pOp->p2);
+        if (!pTab) {
+            sqlite3ErrorMsg(pParse, "access denied to unresolved table in %s", db->aDb[pOp->p3].zDbSName);
+            return -1;
+        }
+
+        if (fdb_push_access_check(clnt, db->aDb[pOp->p3].zDbSName, pTab->zName, type, err, sizeof(err))) {
+            sqlite3ErrorMsg(pParse, "%s", err);
+            return -1;
+        }
+    }
+    return 0;
+}
+
 int comdb2_check_push_remote(Parse *pParse)
 {
     if (has_parallel_sql(NULL) == 0)
@@ -988,9 +1059,12 @@ int comdb2_check_push_remote(Parse *pParse)
 
     dohsql_node_t *node = (dohsql_node_t*)anode->obj;
 
-    if (node->remotedb > 1)
+    if (node->remotedb > 1) {
+        if (_push_access_check(pParse, 0))
+            return 0;
         if (!fdb_push_setup(pParse, node))
             return 1;
+    }
 
     return 0;
 }
@@ -1008,9 +1082,13 @@ int comdb2_check_push_remote_write(Parse *pParse)
     if (!pTab)
         return 0;
 
-    if (pTab->iDb > 1)
+    if (pTab->iDb > 1) {
+        /* update/delete also move the write cursors, which requires read */
+        if (_push_access_check(pParse, (anode->op != AST_TYPE_INSERT) ? ACCESS_REMOTE_READ : 0))
+            return 0;
         if (!fdb_push_write_setup(pParse, anode->op, pTab))
             return 1;
+    }
     return 0;
 }
 
