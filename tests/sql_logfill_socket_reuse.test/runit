@@ -1,0 +1,140 @@
+#!/usr/bin/env bash
+
+# An unbounded comdb2_transaction_logs() stream never ends, so sql-logfill
+# walks away from it as soon as the gap is filled.  cdb2api cannot donate a
+# half-read result set back to sockpool, so every gap-fill burns a connection
+# and lands as a sockpool miss.
+#
+# Drop rep messages on one replicant to force gaps, then require that its
+# gap-fills issue far more log-requests than master disconnects.
+
+bash -n "$0" || exit 1
+
+. ${TESTSROOTDIR}/tools/runit_common.sh
+. ${TESTSROOTDIR}/tools/cluster_utils.sh
+
+export debug=1
+[[ "$debug" == "1" ]] && set -x
+
+db=$1
+
+# Bounded, disconnects come only from rare events (gap closing early,
+# generation change).  Unbounded, they track requests one-for-one, so a tenth
+# separates the two cleanly.
+MAX_DISCONNECT_PCT=10
+# Floor the budget so a low-throughput run isn't judged on a handful of
+# disconnects.  Unbounded gives ~1:1, so this still separates cleanly.
+MIN_DISCONNECTS_ALLOWED=10
+MIN_REQUESTS=50
+MEASURE_SECONDS=60
+DROP_NTH=20
+WRITERS=2
+
+victim=""
+declare -a clnt_pids
+
+function cleanup
+{
+    [[ -n "$victim" ]] && set_drops $victim 0 &>/dev/null
+    for pid in ${clnt_pids[@]}; do
+        kill -9 $pid 2>/dev/null
+    done
+}
+
+# A gap is an out-of-order arrival, not just being behind: gap_lsn is repdb's
+# waiting_lsn.  Dropping a rep message leaves its successor waiting, which is
+# exactly what logfill exists to fill.
+function set_drops
+{
+    $CDB2SQL_EXE ${CDB2_OPTIONS} $db --host $1 "put tunable debug_drop_nth_rep_message $2"
+}
+
+# Sustained load: one cdb2sql per writer fed from 'yes', rather than a process
+# per insert.
+function start_writers
+{
+    local target=$1
+    local sql="insert into t1 select 1, 1 from generate_series(1, 1000)"
+    local i
+
+    for ((i = 0; i < $WRITERS; ++i)); do
+        timeout --kill-after=5s ${TEST_TIMEOUT:-5m} yes "$sql" | \
+            $CDB2SQL_EXE ${CDB2_OPTIONS} $db --host $target - &>/dev/null &
+        clnt_pids+=( $! )
+    done
+}
+
+function logfile_for
+{
+    echo "${TESTDIR}/logs/${db}.${1}.db"
+}
+
+function count_in_log
+{
+    local f=$(logfile_for $1)
+    [[ -f "$f" ]] || { echo 0; return; }
+    # grep -c prints 0 and exits 1 when nothing matches.
+    grep -c "$2" "$f" 2>/dev/null || true
+}
+
+function run_test
+{
+    local master=$(get_master)
+    [[ -z "$master" ]] && failexit "No master"
+
+    local node
+    for node in $CLUSTER; do
+        [[ "$node" == "$master" ]] && continue
+        victim=$node
+        break
+    done
+    [[ -z "$victim" ]] && failexit "No replicant to drop messages on"
+    echo "master=$master victim=$victim"
+
+    $CDB2SQL_EXE ${CDB2_OPTIONS} $db --host $master \
+        "create table t1 (id int index, val int)" || failexit "Failed to create t1"
+
+    start_writers $master
+    sleep 5
+
+    local base_req=$(count_in_log $victim "requesting logs from master")
+    local base_dis=$(count_in_log $victim "disconnecting from")
+    local base_drop=$(count_in_log $victim "dropping message!")
+
+    set_drops $victim $DROP_NTH || failexit "Failed to enable drops on $victim"
+    sleep $MEASURE_SECONDS
+    set_drops $victim 0
+
+    local drops=$(( $(count_in_log $victim "dropping message!") - base_drop ))
+    local requests=$(( $(count_in_log $victim "requesting logs from master") - base_req ))
+    local disconnects=$(( $(count_in_log $victim "disconnecting from") - base_dis ))
+    echo "$victim: $drops drops, $requests log-requests, $disconnects disconnects"
+
+    # Separates "the tunable never took" from "logfill never fired".
+    [[ $drops -eq 0 ]] && failexit "$victim dropped no rep messages -- drop tunable had no effect"
+
+    [[ $requests -lt $MIN_REQUESTS ]] && \
+        failexit "$victim issued only $requests requests over $drops drops -- test is vacuous"
+
+    local allowed=$((requests * MAX_DISCONNECT_PCT / 100))
+    [[ $allowed -lt $MIN_DISCONNECTS_ALLOWED ]] && allowed=$MIN_DISCONNECTS_ALLOWED
+    [[ $disconnects -gt $allowed ]] && \
+        failexit "$victim: $disconnects disconnects over $requests requests exceeds $allowed - logfill is not reusing its connection"
+
+    echo "$victim: within budget ($disconnects <= $allowed)"
+
+    # A mid-run election would invalidate the counts above.
+    [[ "$(get_master)" == "$master" ]] || failexit "Master moved during the run"
+}
+
+cnt=$(echo $CLUSTER | wc -w)
+if [[ -z "$CLUSTER" || $cnt -lt 3 ]]; then
+    failexit "This test requires a clustered installation of at least 3 nodes"
+fi
+
+trap cleanup EXIT
+
+run_test
+
+cleanup
+echo "Success"
