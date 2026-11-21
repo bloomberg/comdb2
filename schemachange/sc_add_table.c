@@ -225,6 +225,8 @@ static inline void set_empty_options(struct schema_change_type *s)
     if (s->instant_sc == -1) s->instant_sc = gbl_init_with_instant_sc;
 }
 
+extern int gbl_sc_commit_map_skip;
+
 int do_add_table(struct ireq *iq, struct schema_change_type *s,
                  tran_type *trans)
 {
@@ -266,6 +268,12 @@ int do_add_table(struct ireq *iq, struct schema_change_type *s,
     db->odh = s->headers;
     db->inplace_updates = s->ip_updates;
     db->schema_version = 1;
+    /* a future shard of a retroactive partition: its converter skips the commit
+     * LSN map too (set_sc_commit_map_skip()), so mark it like a replacement, under
+     * the schema lock that opened it, until finalize_add_table() publishes it */
+    if (s->partition.type == PARTITION_ADD_TIMED_RETRO && bdb_commit_map_enabled() &&
+        (gbl_sc_commit_map_skip || s->resume))
+        bdb_set_sc_commit_map_skip(db->handle, 1);
     if (local_lock)
         unlock_schema_lk();
 
@@ -327,6 +335,7 @@ int finalize_add_table(struct ireq *iq, struct schema_change_type *s,
     /* Set instant schema-change */
     db->instant_schema_change = db->odh && s->instant_sc;
 
+    bdb_set_sc_commit_map_skip(db->handle, 0); /* see do_add_table() */
     rc = add_dbtable_to_thedb_dbs(db);
     if (rc) {
         sc_errf(s, "Failed to add db to thedb->dbs, rc %d\n", rc);

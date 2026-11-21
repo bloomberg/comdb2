@@ -483,11 +483,16 @@ int stmt_cache_get(struct sqlthdstate *thd, struct sqlclntstate *clnt,
     }
 
     if (rec->stmt) {
+        const char *sql = rec->sql;
         rec->sql = sqlite3_sql(rec->stmt); // save expanded query
         if ((prepFlags & PREPARE_ONLY) == 0) {
             int rc = sqlite3LockStmtTables(rec->stmt);
             if (rc) {
+                /* e.g. a table changed since this snapshot began: finalize the
+                 * statement, or the engine can never be closed again */
                 stmt_cache_remove_entry(thd->stmt_cache, rec->stmt_entry, 1);
+                rec->sql = sql; /* pointed into the statement */
+                stmt_cache_free_vdbe(rec->stmt, clnt);
                 stmt_cache_free_entry(rec->stmt_entry);
                 rec->stmt_entry = NULL;
                 rec->stmt = NULL;

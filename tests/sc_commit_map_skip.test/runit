@@ -1,0 +1,277 @@
+#!/usr/bin/env bash
+bash -n "$0" || exit 1
+
+# sc_commit_map_skip keeps the commits of a rebuild's converter out of the
+# commit LSN map, on the master and, through a flag in the commit record, in
+# recovery.  Check which conversions skip, that everything else still goes into
+# the map, and that snapshots read the same data either way.
+
+source ${TESTSROOTDIR}/tools/runit_common.sh
+set -o pipefail
+
+dbnm=$1
+N=${SC_COMMIT_MAP_ROWS:-5000}
+# entries a rebuild adds besides its converter commits (llmeta, sc bookkeeping)
+SLACK=${SC_COMMIT_MAP_SLACK:-200}
+# in a cluster ask the nodes themselves: getmaster goes through the client's
+# default route, which has answered with a host outside the cluster
+master=""
+if [[ -n "$CLUSTER" ]]; then
+	for _ in $(seq 1 60); do
+		for node in $CLUSTER; do
+			m=$(cdb2sql --tabs ${CDB2_OPTIONS} --host $node "$dbnm" "select host from comdb2_cluster where is_master='Y'" 2>/dev/null)
+			[[ -n "$m" && " $CLUSTER " == *" $m "* ]] && { master=$m; break 2; }
+		done
+		sleep 1
+	done
+else
+	master=$(getmaster)
+fi
+[[ -n "$master" ]] || { echo "FAIL: could not find master"; exit 1; }
+if [[ -n "$CLUSTER" ]]; then
+	log=$TESTDIR/logs/$dbnm.$master.db
+else
+	log=$TESTDIR/logs/$dbnm.db
+fi
+
+run() { cdb2sql --tabs ${CDB2_OPTIONS} --host "$master" "$dbnm" "$@"; }
+send() { run "exec procedure sys.cmd.send(\"$1\")"; }
+fail() { echo "FAIL: $*"; exit 1; }
+entries() { send "bdb clminfo" | grep -oP '(?<=Entries: )[0-9]+'; }
+skip() { run "put tunable 'sc_commit_map_skip' $1" >/dev/null; }
+snapshot() {
+	run - <<EOF | grep -v -e '^$' -e '^\['
+set transaction snapshot isolation
+begin
+$1
+commit
+EOF
+}
+
+# so retained entries are not purged while we count them
+trap 'send "sync log-delete on" >/dev/null 2>&1' EXIT
+send "sync log-delete off 3600" >/dev/null
+
+# ddl: prints how many entries it added to the map
+map_delta() {
+	local before after
+	before=$(entries)
+	run "$1" >/dev/null || fail "'$1' failed"
+	after=$(entries)
+	echo $((after - before))
+}
+
+run "create table t(i int, j int)" >/dev/null
+run "create index t_j on t(j)" >/dev/null
+run "insert into t select value, value from generate_series(1, $N)" >/dev/null
+sum=$(run "select sum(j) from t")
+
+echo "=== rebuild with the skip off: every converter commit is in the map"
+skip 0
+delta=$(map_delta "rebuild t")
+(( delta >= N )) || fail "skip off: rebuild added $delta entries for $N rows"
+echo "skip off: $delta entries"
+
+echo "=== rebuild with the skip on: the converter commits are not"
+skip 1
+lines=$(grep -c "converter commits skip the commit LSN map" "$log")
+ckps=$(grep -c "checkpoint is past the converter commits" "$log")
+delta=$(map_delta "rebuild t")
+(( delta < SLACK )) || fail "skip on: rebuild added $delta entries for $N rows"
+(( $(grep -c "converter commits skip the commit LSN map" "$log") > lines )) || fail "skip on: rebuild did not skip"
+(( $(grep -c "checkpoint is past the converter commits" "$log") > ckps )) || fail "skip on: no checkpoint before publishing"
+echo "skip on: $delta entries"
+
+if [[ -z "$CLUSTER" ]]; then
+	echo "=== a restart rebuilds the map from the log without the flagged commits"
+	source ${TESTSROOTDIR}/tools/cluster_utils.sh
+	kill_restart_node $master 2
+	send "sync log-delete off 3600" >/dev/null
+	# a schema change killed right after it answered may resume (and publish again)
+	for _ in $(seq 1 300); do
+		(( $(send stat | grep -c "Schema change in progress") == 0 )) && break
+		sleep 1
+	done
+	e=$(entries)
+	echo "$e entries after restart"
+	# the skip-off rebuild's converter commits are back, the skip-on ones are not
+	(( e >= N )) || fail "restart rebuilt only $e entries: recovery did not reach the skip-off rebuild"
+	(( e < 2 * N )) || fail "restart rebuilt $e entries: the skipped converter commits are back"
+fi
+
+echo "=== a snapshot after the rebuild reads every row"
+got=$(snapshot "select count(*), sum(j) from t")
+[[ "$got" == "$N	$sum" ]] || fail "snapshot after rebuild: got '$got', expected '$N	$sum'"
+
+echo "=== an older snapshot undoes a later update, and only that"
+fifo=$TMPDIR/snap.fifo
+out=$TMPDIR/snap.out
+mkfifo "$fifo"
+cdb2sql --tabs ${CDB2_OPTIONS} --host "$master" "$dbnm" - <"$fifo" >"$out" 2>&1 &
+snap_pid=$!
+exec 9>"$fifo"
+printf '%s\n' "set transaction snapshot isolation" "begin" "select sum(j) from t" >&9
+for _ in $(seq 1 100); do grep -q "^$sum$" "$out" && break; sleep 0.1; done
+grep -q "^$sum$" "$out" || fail "old snapshot did not start"
+run "update t set j = j + 1 where i = 1" >/dev/null
+printf '%s\n' "select sum(j), count(*) from t" "commit" >&9
+exec 9>&-
+wait $snap_pid
+grep -q "^$sum	$N$" "$out" || { cat "$out"; fail "old snapshot did not read the table as of its start"; }
+sum=$((sum + 1))
+[[ "$(snapshot "select sum(j) from t")" == "$sum" ]] || fail "new snapshot missed the update"
+
+echo "=== application writes during a skipping rebuild stay in the map"
+# how many entries one update adds on its own
+before=$(entries)
+for k in $(seq 1 50); do
+	run "update t set j = j + 1 where i = $k" >/dev/null
+done
+per_update=$(( ($(entries) - before + 25) / 50 ))
+(( per_update >= 1 )) || fail "updates added no entries"
+sum=$((sum + 50))
+# 1 ms per record (scdelay defaults to 1)
+send "bdb setattr SC_FORCE_DELAY 1" >/dev/null
+before=$(entries)
+run "rebuild t" >/dev/null &
+rb_pid=$!
+updates=0
+while kill -0 $rb_pid 2>/dev/null; do
+	run "update t set j = j + 1 where i = $((updates % N + 1))" >/dev/null || fail "update during rebuild"
+	updates=$((updates + 1))
+done
+wait $rb_pid || fail "rebuild with concurrent updates failed"
+delta=$(($(entries) - before))
+send "bdb setattr SC_FORCE_DELAY 0" >/dev/null
+(( updates > 10 )) || fail "only $updates updates ran during the rebuild"
+(( delta >= updates * per_update && delta < updates * per_update + SLACK )) ||
+	fail "$updates updates at $per_update entries each during the rebuild, map grew by $delta"
+sum=$((sum + updates))
+[[ "$(snapshot "select count(*), sum(j) from t")" == "$N	$sum" ]] || fail "lost updates made during the rebuild"
+echo "$updates updates at $per_update entries each during the rebuild, $delta entries"
+
+echo "=== alter ... merge: both converters skip into the alter's replacement, one checkpoint"
+run "create table mt(a int)" >/dev/null
+run "create table ms(a int)" >/dev/null
+run "create table ms2(a int)" >/dev/null
+for tbl in mt ms ms2; do
+	run "insert into $tbl select value from generate_series(1, $N)" >/dev/null
+done
+skips=$(grep -c "converter commits skip the commit LSN map" "$log")
+ckps=$(grep -c "checkpoint is past the converter commits" "$log")
+# the alter of mt owns the replacement; ms is merged into it and follows its decision
+delta=$(map_delta "alter table mt add column c int, merge ms")
+(( delta < SLACK )) || fail "alter and merge of $N + $N rows added $delta entries"
+(( $(grep -c "converter commits skip the commit LSN map" "$log") == skips + 2 )) || fail "not both converters skipped"
+(( $(grep -c "checkpoint is past the converter commits" "$log") == ckps + 1 )) || fail "not one checkpoint for the merge"
+# a create converts nothing, so it does not skip, and neither does what is merged into it
+lines=$(grep -c "converter commits go into the commit LSN map" "$log")
+delta=$(map_delta "create table mc(a int) merge ms2")
+(( delta >= N )) || fail "create and merge of $N rows added $delta entries"
+(( $(grep -c "converter commits go into the commit LSN map" "$log") > lines )) || fail "create merge skipped"
+[[ "$(snapshot "select count(*) from mt")" == "$((2 * N))" ]] || fail "merged rows missing from mt"
+[[ "$(snapshot "select count(*) from mc")" == "$N" ]] || fail "merged rows missing from mc"
+
+echo "=== transactional and multiple ddl"
+run "create table u(i int, j int)" >/dev/null
+run "insert into u select value, value from generate_series(1, $N)" >/dev/null
+ckps=$(grep -c "checkpoint is past the converter commits" "$log")
+before=$(entries)
+# ddl and dml in one transaction
+run "put tunable 'reject_mixed_ddl_dml' 0" >/dev/null
+run - <<EOF >/dev/null || fail "rebuild in a transaction failed"
+begin
+rebuild t
+insert into u values($((N + 1)), 0)
+commit
+EOF
+run "put tunable 'reject_mixed_ddl_dml' 1" >/dev/null
+(( $(grep -c "checkpoint is past the converter commits" "$log") == ckps + 1 )) || fail "a rebuild in a transaction did not checkpoint once"
+run - <<EOF >/dev/null || fail "two rebuilds in a transaction failed"
+begin
+rebuild t
+rebuild u
+commit
+EOF
+delta=$(($(entries) - before))
+(( delta < 2 * SLACK )) || fail "three skipping rebuilds added $delta entries"
+# the two rebuilds finalized together checkpoint once, past both
+(( $(grep -c "checkpoint is past the converter commits" "$log") == ckps + 2 )) || fail "two rebuilds in a transaction did not checkpoint once"
+[[ "$(snapshot "select count(*), sum(j) from t")" == "$N	$sum" ]] || fail "t changed"
+[[ "$(snapshot "select count(*), sum(j) from u")" == "$((N + 1))	$((N * (N + 1) / 2))" ]] || fail "u changed"
+
+echo "=== a snapshot taken while the replacement is unpublished"
+# Hold the rebuild after conversion, start a snapshot, publish, read again.
+# Without the skip the snapshot reads the rows as before.  With it, it must
+# fail as schema changed instead of returning a replacement it cannot unroll.
+publication_window() {
+	local tbl=$1 on=$2 v
+	skip $on
+	send "sc_pause_at_end 1" >/dev/null
+	run "rebuild $tbl" >/dev/null 2>&1 &
+	rb_pid=$!
+	for _ in $(seq 1 600); do
+		v=$(run "select value from comdb2_tunables where name='sc_is_at_end'")
+		[[ "$v" == "ON" ]] && break
+		sleep 0.1
+	done
+	[[ "$v" == "ON" ]] || fail "$tbl: rebuild never reached the end of conversion"
+	rm -f "$fifo"
+	mkfifo "$fifo"
+	cdb2sql --tabs ${CDB2_OPTIONS} --host "$master" "$dbnm" - <"$fifo" >"$out" 2>&1 &
+	snap_pid=$!
+	exec 9>"$fifo"
+	printf '%s\n' "set transaction snapshot isolation" "begin" "select count(*) from $tbl" >&9
+	for _ in $(seq 1 100); do grep -q "^$N$" "$out" && break; sleep 0.1; done
+	grep -q "^$N$" "$out" || fail "$tbl: snapshot did not start"
+	send "sc_pause_at_end 0" >/dev/null
+	wait $rb_pid || fail "$tbl: rebuild failed"
+	printf '%s\n' "select count(*) from $tbl" "commit" >&9
+	exec 9>&-
+	wait $snap_pid
+	grep -q "^0$" "$out" && { cat "$out"; fail "$tbl: snapshot read an empty table (skip $on)"; }
+	if (( on )); then
+		grep -q "table \"$tbl\" was schema changed" "$out" || { cat "$out"; fail "$tbl: snapshot was not failed"; }
+	else
+		[[ $(grep -c "^$N$" "$out") == 2 ]] || { cat "$out"; fail "$tbl: snapshot did not read the rows"; }
+	fi
+	[[ "$(snapshot "select count(*) from $tbl")" == "$N" ]] || fail "$tbl: new snapshot after publication"
+}
+run "create table w0(i int)" >/dev/null
+run "create table w1(i int)" >/dev/null
+run "insert into w0 select value from generate_series(1, $N)" >/dev/null
+run "insert into w1 select value from generate_series(1, $N)" >/dev/null
+publication_window w0 0
+publication_window w1 1
+
+echo "=== a schema change that converts nothing does not skip or checkpoint"
+skip 1
+run "create table nc(i int, j int)" >/dev/null
+run "create index nc_i on nc(i)" >/dev/null
+run "create index nc_j on nc(j)" >/dev/null
+run "insert into nc select value, value from generate_series(1, $N)" >/dev/null
+noscan=$(grep -c "does not require a table scan" "$log")
+lines=$(grep -c "converter commits skip the commit LSN map\|converter commits go into the commit LSN map" "$log")
+ckps=$(grep -c "bdb_checkpoint_past_lsn" "$log")
+start=$(date +%s%N)
+run "drop index nc_j on nc" >/dev/null || fail "drop index"
+echo "drop index took $(( ($(date +%s%N) - start) / 1000000 )) ms"
+(( $(grep -c "does not require a table scan" "$log") > noscan )) || fail "drop index scanned the table"
+(( $(grep -c "converter commits skip the commit LSN map\|converter commits go into the commit LSN map" "$log") == lines )) ||
+	fail "drop index ran the converter"
+(( $(grep -c "bdb_checkpoint_past_lsn" "$log") == ckps )) || fail "drop index checkpointed for the commit LSN map"
+[[ "$(snapshot "select count(*), sum(j) from nc")" == "$N	$((N * (N + 1) / 2))" ]] || fail "nc changed"
+
+echo "=== a skipped commit leaves its committed children out too"
+out=$(send "clm_selftest")
+if [[ "$out" == *"Unknown command"* ]]; then
+	echo "not a COMDB2_TEST build, skipping the selftest"
+else
+	[[ "$out" == *"selftest passed"* ]] || fail "commit LSN map selftest: $out"
+fi
+
+skip 0
+for tbl in t u mt mc w0 w1 nc; do
+	do_verify $tbl
+done
+echo "Passed test"
