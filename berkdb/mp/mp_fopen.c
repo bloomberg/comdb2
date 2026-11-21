@@ -1047,6 +1047,7 @@ check_map:
 	 * the selected (or allocated) MPOOLFILE.
 	 */
 	dbmfp->mfp = mfp;
+	__memp_rwh_init(dbmfp);
 
 	/*
 	 * Set the priority in the non-allocate case.

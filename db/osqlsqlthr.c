@@ -60,6 +60,65 @@
 extern int gbl_partial_indexes;
 extern int gbl_expressions_indexes;
 extern int gbl_reorder_socksql_no_deadlock;
+void bdb_send_write_hints(bdb_state_type *bdb_state, int send);
+void bdb_rwh_mark_row(bdb_state_type *bdb_state, bdb_cursor_ifn_t *cur, unsigned long long genid);
+extern int gbl_rep_write_hints;
+
+/* The cursor that read the row written through pCur: pCur, or the table cursor of an index cursor */
+static bdb_cursor_ifn_t *rwh_dta_cursor(struct BtCursor *pCur)
+{
+    struct BtCursor *c = pCur->ixnum == -1 ? pCur : pCur->pCursorHintTableCursor;
+    return c ? c->bdbcur : NULL;
+}
+
+void bdb_rwh_mark_blobs(bdb_state_type *bdb_state, unsigned long long genid, unsigned int mask);
+void bdb_rwh_mark_ix_row(bdb_state_type *bdb_state, bdb_cursor_ifn_t *ixcur, unsigned long long genid,
+                         unsigned long long ixmask);
+extern int gbl_rep_write_hints_written_blob_rows, gbl_rep_write_hints_written_index_rows;
+
+/* Whether upd_record (db/record.c) surely skips the old value of a blob an update leaves unchanged: inplace blobs and
+ * their optimization on (read-only settings, assumed the same as the master's), and an inplace update that keeps the
+ * genid (table with inplace updates); no check constraint or blob index, which read it.  It reads it anyway during a
+ * live schema change or for a trigger on a blob field, which a replica does not know. */
+static int rwh_master_skips_unchanged_blob(struct dbtable *db)
+{
+    return gbl_inplace_blobs && gbl_inplace_blob_optimization && bdb_have_ipu(db->handle) &&
+           db->n_check_constraints == 0 && !db->ix_blob && !db->schema->ix_blob;
+}
+
+/* The blobs of the row an osql update (or, with no updCols, a delete) ships whose old value the master reads
+ * (rep_write_hints_written_blob_rows): upd_record (db/record.c) may skip a blob that updCols marks unchanged, and
+ * changes every other one; a delete deletes them all */
+static unsigned int rwh_upd_blobs(struct dbtable *db, int *updCols)
+{
+    unsigned int mask = 0;
+    int i, idx;
+
+    if (updCols && !rwh_master_skips_unchanged_blob(db))
+        updCols = NULL;
+    for (i = 0; i < db->numblobs && i < 32; i++) {
+        idx = updCols ? get_schema_blob_field_idx(db, ".ONDISK", i) : -1;
+        if (updCols == NULL || idx < 0 || idx >= updCols[0] || updCols[idx + 1] != -1)
+            mask |= 1U << i;
+    }
+    return mask;
+}
+
+/* Replica write hints: at the end of a statement (sqlite_done, lua_end_step), or before a commit ships, send the pages
+ * the statement recorded if it shipped an osql write (osql.rwh_wrote), and forget them */
+void osql_send_write_hints(struct sqlclntstate *clnt)
+{
+    bdb_send_write_hints(thedb->bdb_env, clnt->osql.rwh_wrote);
+    clnt->osql.rwh_wrote = 0;
+}
+
+/* Replica write hints: forget the recorded pages without sending them, at the start of a statement (it records only
+ * its own) and on abort */
+void osql_reset_write_hints(struct sqlclntstate *clnt)
+{
+    bdb_send_write_hints(thedb->bdb_env, 0);
+    clnt->osql.rwh_wrote = 0;
+}
 
 int gbl_allow_bplog_restarts = 600;
 int gbl_not_durable_retries = 100;
@@ -467,6 +526,16 @@ static int osql_send_del_logic(struct BtCursor *pCur, struct sql_thread *thd)
             return rc;
         }
     }
+    if (gbl_rep_write_hints)
+        bdb_rwh_mark_row(pCur->db->handle, rwh_dta_cursor(pCur), pCur->genid);
+    if (gbl_rep_write_hints && gbl_rep_write_hints_written_blob_rows && pCur->db->numblobs > 0)
+        bdb_rwh_mark_blobs(pCur->db->handle, pCur->genid, rwh_upd_blobs(pCur->db, NULL));
+    /* a one-pass DELETE shipped from an index cursor: its leaf, if the master changes that index for the row (on a
+     * table with partial indexes, those the row is in) */
+    if (gbl_rep_write_hints && gbl_rep_write_hints_written_index_rows && pCur->ixnum != -1)
+        bdb_rwh_mark_ix_row(pCur->db->handle, pCur->bdbcur, pCur->genid,
+                            (gbl_partial_indexes && pCur->db->ix_partial) ? clnt->del_keys : -1ULL);
+    osql->rwh_wrote = 1;
     osql->replicant_numops++;
     DEBUG_PRINT_NUMOPS();
 
@@ -600,6 +669,8 @@ static int osql_send_ins_logic(struct BtCursor *pCur, struct sql_thread *thd,
             return rc;
         }
     }
+    /* an insert hints no data page: the master chooses where the row goes */
+    osql->rwh_wrote = 1;
     osql->replicant_numops++;
     DEBUG_PRINT_NUMOPS();
     return SQLITE_OK;
@@ -769,6 +840,11 @@ static int osql_send_upd_logic(struct BtCursor *pCur, struct sql_thread *thd,
         }
     }
 
+    if (gbl_rep_write_hints)
+        bdb_rwh_mark_row(pCur->db->handle, rwh_dta_cursor(pCur), pCur->genid);
+    if (gbl_rep_write_hints && gbl_rep_write_hints_written_blob_rows && pCur->db->numblobs > 0)
+        bdb_rwh_mark_blobs(pCur->db->handle, pCur->genid, rwh_upd_blobs(pCur->db, updCols));
+    osql->rwh_wrote = 1;
     osql->replicant_numops++;
     DEBUG_PRINT_NUMOPS();
     return SQLITE_OK;
@@ -1047,6 +1123,7 @@ static inline int sock_restart_retryable_rcode(int restart_rc)
 extern int gbl_is_physical_replicant;
 int osql_sock_commit(struct sqlclntstate *clnt, int type, enum trans_clntcomm sideeffects)
 {
+    osql_send_write_hints(clnt); /* before the commit ships */
     osqlstate_t *osql = &clnt->osql;
     int rc = 0, rc2;
     int rcout = 0;
@@ -1387,6 +1464,7 @@ done:
  */
 int osql_sock_abort(struct sqlclntstate *clnt, int type)
 {
+    osql_reset_write_hints(clnt); /* nothing to hint for an aborted transaction */
     int rcout = 0;
     int rc = 0;
     int bdberr = 0;

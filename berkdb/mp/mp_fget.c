@@ -54,7 +54,278 @@ extern __thread int send_prefault_udp;
 extern __thread DB *prefault_dbp;
 
 extern int db_is_exiting(void);
-void udp_prefault_all(bdb_state_type * bdb_state, unsigned int fileid,
+
+/*
+ * Replica write hints (tunable rep_write_hints, off by default): while a SQL
+ * statement runs on a replica, remember the distinct B-tree leaf pages it
+ * reads (at most RWH_MAX, the rest are not hinted), so that a write statement
+ * can tell the master to prefetch them (bdb/bdb_net.c bdb_send_write_hints).
+ * Reset at every statement start and end.
+ *
+ * With rep_write_hints_written_rows (on by default) a data page is remembered
+ * only when an osql update or delete ships the row on it (__memp_rwh_mark_op,
+ * called from db/osqlsqlthr.c): the page the row's cursor read it from.  An
+ * insert remembers none: the master chooses where the new row goes.
+ * Index and blob leaves are remembered as they are read. The data pages of rows
+ * the statement only scanned, e.g. those its WHERE clause rejected, are not
+ * hinted.
+ *
+ * With rep_write_hints_written_index_rows (off by default) an index leaf is not
+ * remembered as it is read either.  Instead, the leaf a real index cursor of
+ * the target table is positioned on is remembered (__memp_rwh_ix_mark, called
+ * from bdb/bdb_net.c) if its entry is the row's (same genid): when a two-pass
+ * UPDATE or DELETE selects the row for writing (OP_RowSetAdd, before the
+ * scan's cursors close), or when a one-pass DELETE ships the row from an index
+ * cursor.  These are the old-key leaves the master's block processor reads to
+ * change the row's index entries.
+ */
+extern int gbl_rep_write_hints;
+int gbl_rep_write_hints_written_rows = 1;
+int gbl_rep_write_hints_written_index_rows = 0;
+int bb_berkdb_fingerprint_rtstats_is_sql(void);
+#define	RWH_MAX	DB_RWH_MAX
+static __thread struct {
+	u_int8_t ufid[DB_FILE_ID_LEN];
+	u_int32_t pgno;
+} rwh_pg[RWH_MAX];
+static __thread int rwh_n;
+/*
+ * Whether a file name is a table data file (not an index or a blob file): its
+ * extension (after the last '.', so neither a directory nor a table name with a
+ * '.' can match) is "data" or "datas<N>" (versioned names), or "dta" or
+ * "dtas<N>" (legacy names; legacy blob files are "dta<N>" and "dta<N>s<N>").
+ */
+static int
+rwh_name_is_data(const char *fn)
+{
+	const char *ext;
+
+	if (fn == NULL || (ext = strrchr(fn, '.')) == NULL)
+		return (0);
+	ext++;
+	if (strcmp(ext, "data") == 0 || strcmp(ext, "dta") == 0)
+		return (1);
+	if (strncmp(ext, "datas", 5) == 0)
+		ext += 5;
+	else if (strncmp(ext, "dtas", 4) == 0)
+		ext += 4;
+	else
+		return (0);
+	if (*ext == '\0')
+		return (0);
+	while (*ext >= '0' && *ext <= '9')
+		ext++;
+	return (*ext == '\0');
+}
+
+/*
+ * Whether a file name is a blob file: its extension is "blob" or "blobs<N>"
+ * (versioned names), or "dta<N>" or "dta<N>s<N>" with N > 0 (legacy names).
+ */
+static int
+rwh_name_is_blob(const char *fn)
+{
+	const char *ext;
+
+	if (fn == NULL || (ext = strrchr(fn, '.')) == NULL)
+		return (0);
+	ext++;
+	if (strcmp(ext, "blob") == 0)
+		return (1);
+	if (strncmp(ext, "blobs", 5) == 0) {
+		ext += 5;
+		if (*ext == '\0')
+			return (0);
+	} else if (strncmp(ext, "dta", 3) == 0 && ext[3] >= '1' && ext[3] <= '9') {
+		for (ext += 3; *ext >= '0' && *ext <= '9'; ext++)
+			;
+		if (*ext != 's')
+			return (*ext == '\0');
+		if (*++ext == '\0')
+			return (0);
+	} else
+		return (0);
+	while (*ext >= '0' && *ext <= '9')
+		ext++;
+	return (*ext == '\0');
+}
+
+/* Whether a file name is an index file: extension "index", or "ix<N>" (legacy) */
+static int
+rwh_name_is_index(const char *fn)
+{
+	const char *ext;
+
+	if (fn == NULL || (ext = strrchr(fn, '.')) == NULL)
+		return (0);
+	ext++;
+	if (strcmp(ext, "index") == 0)
+		return (1);
+	if (strncmp(ext, "ix", 2) != 0 || ext[2] == '\0')
+		return (0);
+	for (ext += 2; *ext >= '0' && *ext <= '9'; ext++)
+		;
+	return (*ext == '\0');
+}
+
+/*
+ * __memp_rwh_init --
+ *	Remember in a handle whether its file is a table data file, an index
+ *	file, a blob file or another file.  Called by
+ *	__memp_fopen before the handle can be shared, so readers need no
+ *	synchronization.
+ *
+ * PUBLIC: void __memp_rwh_init __P((DB_MPOOLFILE *));
+ */
+void
+__memp_rwh_init(DB_MPOOLFILE *dbmfp)
+{
+	const char *fn = __memp_fn(dbmfp);
+
+	dbmfp->rwh_class = rwh_name_is_data(fn) ? 1 : rwh_name_is_index(fn) ? 3 : rwh_name_is_blob(fn) ? 4 : 2;
+}
+
+static void
+rwh_add(const u_int8_t *ufid, u_int32_t pgno)
+{
+	int i;
+
+	if (rwh_n >= RWH_MAX)
+		return;
+	for (i = 0; i < rwh_n; i++)
+		if (rwh_pg[i].pgno == pgno &&
+		    memcmp(rwh_pg[i].ufid, ufid, DB_FILE_ID_LEN) == 0)
+			return;
+	memcpy(rwh_pg[rwh_n].ufid, ufid, DB_FILE_ID_LEN);
+	rwh_pg[rwh_n++].pgno = pgno;
+}
+
+extern int gbl_rep_write_hints_written_blob_rows;
+
+static void
+rwh_note(DB_MPOOLFILE *dbmfp, db_pgno_t pgno, PAGE *h)
+{
+	static const u_int8_t nofileid[DB_FILE_ID_LEN];
+
+	if (rwh_n >= RWH_MAX || TYPE(h) != P_LBTREE || IS_REP_MASTER(dbmfp->dbenv) ||
+	    !bb_berkdb_fingerprint_rtstats_is_sql())
+		return;
+	if ((dbmfp->rwh_class == 4 && gbl_rep_write_hints_written_blob_rows) ||
+	    (dbmfp->rwh_class == 3 && gbl_rep_write_hints_written_index_rows))
+		return;
+	/* temporary files (e.g. SQL temp tables) have no UFID: the master can't use them */
+	if (memcmp(dbmfp->fileid, nofileid, DB_FILE_ID_LEN) == 0)
+		return;
+	if (!gbl_rep_write_hints_written_rows || dbmfp->rwh_class != 1)
+		rwh_add(dbmfp->fileid, pgno);
+}
+
+/* An osql update or delete of the row on this page of the data file with this
+ * UFID: remember the page (rep_write_hints_written_rows) */
+void
+__memp_rwh_mark_op(const u_int8_t *ufid, u_int32_t pgno)
+{
+	if (ufid != NULL && gbl_rep_write_hints_written_rows)
+		rwh_add(ufid, pgno);
+}
+
+/* Leaf pgno of index file dbp holds the entry of a row being written: remember it
+ * (rep_write_hints_written_index_rows) */
+void
+__memp_rwh_ix_mark(DB *dbp, u_int32_t pgno)
+{
+	static const u_int8_t nofileid[DB_FILE_ID_LEN];
+
+	if (gbl_rep_write_hints && gbl_rep_write_hints_written_index_rows && !IS_REP_MASTER(dbp->dbenv) &&
+	    bb_berkdb_fingerprint_rtstats_is_sql() && memcmp(dbp->fileid, nofileid, DB_FILE_ID_LEN) != 0)
+		rwh_add(dbp->fileid, pgno);
+}
+
+/*
+ * With rep_write_hints_written_blob_rows (off by default) a blob leaf is not
+ * remembered as it is read either.  Instead, each blob record the statement
+ * fetches is saved as (blob file UFID, leaf page, table, genid, blob number)
+ * in a per-thread ring of the RWH_BLOB_MAX most recent fetches
+ * (__memp_rwh_blob_save, called from bdb/fetch.c), reset with the hint list.
+ * An osql delete of a row, or an update that changes one of its blobs,
+ * remembers the saved leaves of those blobs of that row (__memp_rwh_blob_mark):
+ * the old-blob leaves the master's block processor reads.  A blob an update
+ * leaves unchanged is not hinted if the master surely skips it (inplace blob
+ * optimization; see db/osqlsqlthr.c).  The written row's blobs are fetched
+ * right before its write (in an UPDATE's write loop, or by a one-pass DELETE's
+ * WHERE clause), so a few recent fetches are enough.  A two-pass DELETE
+ * remembers them when its first pass selects the row (OP_RowSetAdd).
+ */
+int gbl_rep_write_hints_written_blob_rows = 0;
+#define	RWH_BLOB_MAX	64
+static __thread struct {
+	u_int8_t ufid[DB_FILE_ID_LEN];
+	const void *tbl;
+	u_int64_t genid;
+	u_int32_t pgno;
+	int blobno;
+} rwh_blob[RWH_BLOB_MAX];
+static __thread u_int32_t rwh_blob_n;	/* fetches saved since the reset */
+
+/* A replica SQL thread fetched blob blobno of the row with (search) genid of table tbl from leaf pgno of blob file dbp */
+void
+__memp_rwh_blob_save(DB *dbp, const void *tbl, u_int32_t pgno, u_int64_t genid, int blobno)
+{
+	static const u_int8_t nofileid[DB_FILE_ID_LEN];
+	u_int32_t i;
+
+	if (!gbl_rep_write_hints || !gbl_rep_write_hints_written_blob_rows || dbp == NULL ||
+	    IS_REP_MASTER(dbp->dbenv) || !bb_berkdb_fingerprint_rtstats_is_sql() ||
+	    memcmp(dbp->fileid, nofileid, DB_FILE_ID_LEN) == 0)
+		return;
+	if (rwh_blob_n > 0) {
+		i = (rwh_blob_n - 1) % RWH_BLOB_MAX;
+		if (rwh_blob[i].genid == genid && rwh_blob[i].pgno == pgno && rwh_blob[i].tbl == tbl &&
+		    memcmp(rwh_blob[i].ufid, dbp->fileid, DB_FILE_ID_LEN) == 0)
+			return;
+	}
+	i = rwh_blob_n++ % RWH_BLOB_MAX;
+	memcpy(rwh_blob[i].ufid, dbp->fileid, DB_FILE_ID_LEN);
+	rwh_blob[i].tbl = tbl;
+	rwh_blob[i].genid = genid;
+	rwh_blob[i].pgno = pgno;
+	rwh_blob[i].blobno = blobno;
+}
+
+/* An osql delete, or update, of the row with (search) genid of table tbl reads the old value of the blobs set in
+ * mask (bit n: blob n): remember the saved leaves of those blobs */
+void
+__memp_rwh_blob_mark(const void *tbl, u_int64_t genid, u_int32_t mask)
+{
+	u_int32_t i, n = rwh_blob_n < RWH_BLOB_MAX ? rwh_blob_n : RWH_BLOB_MAX;
+
+	for (i = 0; i < n; i++)
+		if (rwh_blob[i].genid == genid && rwh_blob[i].tbl == tbl && rwh_blob[i].blobno >= 0 &&
+		    rwh_blob[i].blobno < 32 && (mask & (1U << rwh_blob[i].blobno)))
+			rwh_add(rwh_blob[i].ufid, rwh_blob[i].pgno);
+}
+
+/* Copy up to max of this thread's pages as (UFID, pgno in network order) and forget all of them */
+int
+__memp_rwh_take(u_int8_t *buf, int max)
+{
+	int i, n;
+
+	n = rwh_n < max ? rwh_n : max;
+	rwh_blob_n = 0;
+	for (i = 0; i < n; i++) {
+		memcpy(buf, rwh_pg[i].ufid, DB_FILE_ID_LEN);
+		buf[DB_FILE_ID_LEN] = rwh_pg[i].pgno >> 24;
+		buf[DB_FILE_ID_LEN + 1] = rwh_pg[i].pgno >> 16;
+		buf[DB_FILE_ID_LEN + 2] = rwh_pg[i].pgno >> 8;
+		buf[DB_FILE_ID_LEN + 3] = rwh_pg[i].pgno;
+		buf += DB_RWH_PAIR_LEN;
+	}
+	rwh_n = 0;
+	return (n);
+}
+
+void udp_prefault_all(bdb_state_type * bdb_state, const unsigned char *ufid,
     unsigned int pgno);
 int send_pg_compact_req(bdb_state_type *bdb_state, int32_t fileid,
 	uint32_t size, void *data);
@@ -409,8 +680,10 @@ retry:	st_hsearch = 0;
 
 		++mfp->stat.st_cache_hit;
 
-        if (LF_ISSET(DB_MPOOL_PFGET))
+        if (LF_ISSET(DB_MPOOL_PFGET)) {
             ++c_mp->stat.st_page_pf_in_late;
+            ++mfp->stat.st_page_pf_in_late;
+        }
 
 		break;
 	}
@@ -733,6 +1006,7 @@ alloc:		/*
 			++mfp->stat.st_cache_miss;
 			if (LF_ISSET(DB_MPOOL_PFGET)) {
 				++c_mp->stat.st_page_pf_in;
+				++mfp->stat.st_page_pf_in;
                 
                 
 				F_SET(bhp, BH_PREFAULT);
@@ -1199,6 +1473,8 @@ __memp_fget(dbmfp, pgnoaddr, flags, addrp)
 	}
 
 	ret = __memp_fget_internal(dbmfp, pgnoaddr, flags, addrp, &did_io);
+	if (gbl_rep_write_hints && ret == 0 && !LF_ISSET(DB_MPOOL_PFGET))
+		rwh_note(dbmfp, *pgnoaddr, *(PAGE **)addrp);
 	if (ret || !did_io || !prefault_dbp || !prefault_dbp->log_filename)
 		goto out;
 
@@ -1208,8 +1484,7 @@ __memp_fget(dbmfp, pgnoaddr, flags, addrp)
 
 	if(send_prefault_udp) {
 		udp_prefault_all((bdb_state_type *) dbmfp->dbenv->app_private,
-				(u_int32_t)prefault_dbp->log_filename->id,
-				(u_int32_t)*pgnoaddr);
+				prefault_dbp->fileid, (u_int32_t)*pgnoaddr);
 	}
 
 	int pgcomp_enabled = (gbl_pg_compact_thresh > 0)

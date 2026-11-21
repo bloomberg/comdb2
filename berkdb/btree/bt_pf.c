@@ -20,6 +20,7 @@
 #include "logmsg.h"
 
 extern struct thdpool *gbl_udppfault_thdpool;
+extern int db_is_exiting(void);
 
 static inline int chk_forward(DBC *dbc);
 static inline int chk_backward(DBC *dbc);
@@ -445,7 +446,10 @@ start_loading_async_pp(struct thdpool *pool, void *work, void *thddata, int op)
 
 	switch (op) {
 	case THD_RUN:
-		start_loading_async_cb(job);
+		/* a clean exit waits for udppfaultpool threads before it frees
+		 * the environment: don't start work once it has begun */
+		if (!db_is_exiting())
+			start_loading_async_cb(job);
 		break;
 	}
     btpf_free_job(&job);

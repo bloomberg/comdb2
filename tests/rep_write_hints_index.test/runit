@@ -1,0 +1,322 @@
+#!/usr/bin/env bash
+bash -n "$0" || exit 1
+
+# Replica write hints for the index leaves of the rows a statement writes
+# (rep_write_hints_written_index_rows).
+#
+# With the tunable on, a replica does not hint every index leaf its SQL
+# statement reads.  When a two-pass UPDATE or DELETE selects a row for writing
+# (OP_RowSetAdd), the leaves the table's index cursors are on for that row are
+# hinted: the old-key leaves the master's block processor reads.  A one-pass
+# DELETE hints the leaf of the index cursor it ships from.  INSERTs hint no
+# index leaf.
+#
+# Every case runs on the replicant R twice, with the tunable on and off (set on
+# R at runtime), and compares the write-hint pages that reach the master
+# ("udp prefault ufid hints pinned + skipped + dropped") with R's write-hint
+# packets.  UDP is lossy, so "at least" bounds allow a quarter of the pages to
+# be lost; "at most" bounds are exact.
+#
+# Cases:
+#   A  single-row UPDATE located through a secondary index: the index leaf and
+#      the data page are hinted (2 pages per statement, as with the tunable off)
+#   B  DELETE located through a secondary index: same
+#   C  multi-row UPDATE through a dup index: no more pages than with it off
+#   D  UPDATE of one row after scanning 600 entries of a dup index: only the
+#      written row's leaf and data page (2 per statement); off: the scanned
+#      leaves too
+#   E  INSERT ... SELECT from another table: no page at all; off: the source
+#      table's index leaves
+#   F  UPDATE with a scalar subquery on another table: 2 pages per statement;
+#      off: the other table's leaves too
+#   G  UPDATE with a subquery on the same table through another index: 2 pages
+#      per statement; off: the subquery's leaves too
+#   H  partial index (pt_p on a where flag = 1): rows located through it that
+#      stay in or move out: 2 pages per statement; rows located by primary key
+#      that stay in, stay out, move in, move out: 2 pages per statement
+#   I  a row inserted and updated in one transaction: the update's row is
+#      not in the index yet, so nothing is hinted; the transaction commits
+#   J  ROLLBACK: data unchanged (hints sent before a rollback are not undone)
+#   K  an UPDATE that selects rows and then fails, then an UPDATE by id of one
+#      of those rows: the second statement hints only its own 2 pages
+#   L  an UPDATE of 600 rows: the statement succeeds, at most 32 pages per
+#      packet
+# Every case ends with identical data on every node.
+
+DBNAME=$1
+[[ -z "$DBNAME" ]] && { echo "Usage: $0 <dbname>"; exit 1; }
+[[ -z "$CLUSTER" ]] && { echo "Test only suitable for a clustered setup"; exit 0; }
+
+NROWS=20000
+W=${TMPDIR:-/tmp}/rwhix.$$
+mkdir -p $W
+
+function fail
+{
+    echo "FAIL: $*"
+    exit 1
+}
+
+function sqlh
+{
+    local h=$1
+    shift
+    ${CDB2SQL_EXE} ${CDB2_OPTIONS} --tabs --host $h ${DBNAME} "$@"
+}
+
+function send
+{
+    sqlh $1 "exec procedure sys.cmd.send('$2')"
+}
+
+function current_master
+{
+    sqlh $1 "select host from comdb2_cluster where is_master='Y'"
+}
+
+function put_tunable
+{
+    sqlh $1 "put tunable $2 $3" > /dev/null || fail "put tunable $2 $3 on $1"
+    [[ "$(sqlh $1 "select value from comdb2_tunables where name = '$2'")" == "$4" ]] || fail "$2 is not $4 on $1"
+}
+
+function counter
+{
+    send $1 "udp stat" | awk -F': ' -v k="$2" '$1 == k { s += $2 } END { print s + 0 }'
+}
+
+# hint pages the master received, write-hint packets R produced
+function master_pages
+{
+    echo $(( $(counter ${master} "udp prefault ufid hints pinned") + $(counter ${master} "udp prefault ufid hints skipped (file not open)") + $(counter ${master} "udp prefault ufid hints dropped (queue full)") ))
+}
+
+function r_packets
+{
+    echo $(( $(counter ${origin} "udp prefault async write-hint packets queued") + $(counter ${origin} "udp prefault async write-hint packets dropped (queue full)") + $(counter ${origin} "udp prefault async write-hint packets dropped (no master)") ))
+}
+
+function wait_caught_up
+{
+    local i out
+    for ((i = 0; i < 600; i++)); do
+        out=$(sqlh ${master} "select count(*) from comdb2_cluster c, comdb2_cluster m where m.is_master = 'Y' and (c.logfile != m.logfile or c.logoffset != m.logoffset)")
+        [[ "$out" == "0" ]] && return 0
+        sleep 0.5
+    done
+    fail "replicants did not catch up with the master"
+}
+
+function settle
+{
+    local i last="" now
+    wait_caught_up
+    for ((i = 0; i < 40; i++)); do
+        now=$(master_pages)
+        [[ -n "$last" && "$now" == "$last" ]] && return 0
+        last="$now"
+        sleep 0.5
+    done
+}
+
+function check_data
+{
+    local n v ref="" tb
+    wait_caught_up
+    for n in ${nodes}; do
+        v=""
+        for tb in t s t2 pt; do
+            v="$v $(sqlh $n "select count(*) || ':' || coalesce(sum(v), 0) from $tb")" || fail "query failed on $n"
+        done
+        [[ -z "$ref" ]] && ref="$v"
+        [[ "$v" == "$ref" ]] || fail "data on $n differs: '$v' vs '$ref'"
+    done
+    echo "data on every node:$ref"
+}
+
+# run <case> <on|off> <file> : statements in one session on R; sets PAGES and PACKETS
+function run
+{
+    local c=$1 mode=$2 f=$3 p0 k0 out
+    put_tunable ${origin} rep_write_hints_written_index_rows $(mval $mode) $(mname $mode)
+    settle
+    p0=$(master_pages); k0=$(r_packets)
+    out=$(${CDB2SQL_EXE} ${CDB2_OPTIONS} -s --host ${origin} ${DBNAME} - < $f 2>&1) || fail "$c $mode: statements failed: $(echo "$out" | tail -3)"
+    echo "$out" | grep -i -E "error|fail" && fail "$c $mode: statement errors"
+    settle
+    PAGES=$(( $(master_pages) - p0 )); PACKETS=$(( $(r_packets) - k0 ))
+    echo "$c $mode: $(grep -c . $f) statements, R packets $PACKETS, master hint pages $PAGES"
+}
+
+# mval / mname <on|off> : the tunable's value to set / as comdb2_tunables shows it
+function mval
+{
+    [[ $1 == on ]] && echo 1 || echo 0
+}
+
+function mname
+{
+    [[ $1 == on ]] && echo ON || echo OFF
+}
+
+# both <case> <file> : run with the tunable on (<file>), then off (<file>.off); ON / OFF pages, ONK / OFFK packets
+function both
+{
+    run $1 on $2; ON=$PAGES; ONK=$PACKETS
+    run $1 off $2.off; OFF=$PAGES; OFFK=$PACKETS
+    check_data
+}
+
+# at_least <case> <what> <got> <expected> : got >= 3/4 of expected (UDP loss)
+function at_least
+{
+    (( $3 * 4 >= $4 * 3 )) || fail "$1: $2 = $3, expected about $4"
+}
+
+nodes=$(echo ${CLUSTER} | tr ' ' '\n' | sort | xargs)
+first=$(echo ${nodes} | cut -d' ' -f1)
+master=$(current_master ${first})
+[[ -n "${master}" ]] || fail "no master"
+origin=$(for n in ${nodes}; do [[ $n != ${master} ]] && echo $n; done | head -1)
+[[ -n "${origin}" ]] || fail "need a replicant"
+echo "master ${master}, R ${origin}"
+
+sqlh ${master} "create table t(id int primary key, a int, g int, v int, pad cstring(101))" || fail "create t"
+sqlh ${master} "create index t_a on t(a)" || fail "create t_a"
+sqlh ${master} "create index t_g on t(g)" || fail "create t_g"
+for ((s = 1; s <= NROWS; s += 5000)); do
+    # g: 600 rows per value for g < 10 (ids 1..6000), then 10 rows per value
+    sqlh ${master} "insert into t select value, value * 3, case when value <= 6000 then (value - 1) % 10 else 10 + value / 10 end, value, printf('%0100d', value) from generate_series($s, $((s + 4999)))" || fail "load t"
+done
+sqlh ${master} "create table s(id int primary key, x int, v int)" || fail "create s"
+sqlh ${master} "create index s_x on s(x)" || fail "create s_x"
+sqlh ${master} "insert into s select value, value * 2, 0 from generate_series(1, 20000)" || fail "load s"
+sqlh ${master} "create table t2(id int primary key, v int)" || fail "create t2"
+sqlh ${master} "create table pt(id int primary key, a int, flag int, v int, pad cstring(101))" || fail "create pt"
+sqlh ${master} "create index pt_p on pt(a) where flag = 1" || fail "create pt_p"
+sqlh ${master} "insert into pt select value, value * 3, value % 2, 0, printf('%0100d', value) from generate_series(1, 10000)" || fail "load pt"
+check_data
+
+N=40
+# A: single-row UPDATE through the secondary index t_a
+for i in $(seq $N); do echo "update t set v = v + 1 where a = $(( (7000 + 37 * i) * 3 ))"; done > $W/a; cp $W/a $W/a.off
+both A $W/a
+(( ONK == N )) || fail "A: $ONK packets for $N statements"
+(( ON <= 2 * N )) || fail "A on: $ON pages, at most 2 per statement (index leaf + data page)"
+at_least A "on pages (index leaf + data page per statement)" $ON $((2 * N))
+(( ON <= OFF + N / 4 )) || fail "A: on $ON pages, off $OFF"
+
+# B: DELETE through t_a (one-pass, from the index cursor)
+for i in $(seq $N); do echo "delete from t where a = $(( (9000 + 37 * i) * 3 ))"; done > $W/b
+for i in $(seq $N); do echo "delete from t where a = $(( (9001 + 37 * i) * 3 ))"; done > $W/b.off
+both B $W/b
+(( ON <= 2 * N )) || fail "B on: $ON pages, at most 2 per statement"
+at_least B "on pages" $ON $((2 * N))
+
+# C: multi-row UPDATE through t_g (10 rows per value)
+for i in $(seq 20); do echo "update t set v = v + 1 where g = $(( 1500 + 3 * i ))"; done > $W/c; cp $W/c $W/c.off
+both C $W/c
+(( ON <= OFF + 5 )) || fail "C: on $ON pages, off $OFF"
+at_least C "on pages (one leaf and >= 1 data page per statement)" $ON 40
+
+# D: scan 600 entries of t_g, update the one with the given id
+for i in $(seq 20); do g=$(( i % 10 )); echo "update t set v = v + 1 where g = $g and id = $(( 5990 + g + 1 ))"; done > $W/d.sql
+# +id: the plan scans t_g, not the primary key
+sed "s/ and id = / and +id = /" $W/d.sql > $W/d; cp $W/d $W/d.off
+both D $W/d
+(( ON <= 2 * 20 )) || fail "D on: $ON pages, at most 2 per statement (the written row's leaf and data page)"
+at_least D "on pages" $ON 40
+(( OFF >= ON + 20 )) || fail "D: off $OFF pages, expected the scanned leaves too (on $ON)"
+
+# E: INSERT ... SELECT from s through s_x
+for i in $(seq 20); do echo "insert into t2 select id + $(( i * 100000 )), x from s where x between $(( 4000 * i )) and $(( 4000 * i + 400 ))"; done > $W/e
+for i in $(seq 20); do echo "insert into t2 select id + $(( i * 100000 + 50000 )), x from s where x between $(( 4000 * i )) and $(( 4000 * i + 400 ))"; done > $W/e.off
+both E $W/e
+(( ON == 0 )) || fail "E: $ON pages, an INSERT hints no index leaf"
+(( OFF > 0 )) || fail "E off: no page (expected s_x leaves)"
+
+# F: UPDATE with a scalar subquery on s
+for i in $(seq $N); do echo "update t set v = (select max(x) from s where x between $(( 300 * i )) and $(( 300 * i + 1000 ))) where id = $(( 10000 + 53 * i ))"; done > $W/f; cp $W/f $W/f.off
+both F $W/f
+(( ON <= 2 * N )) || fail "F on: $ON pages, at most 2 per statement"
+at_least F "on pages" $ON $((2 * N))
+(( OFF >= ON + N / 2 )) || fail "F: off $OFF pages, expected s_x leaves too (on $ON)"
+
+# G: UPDATE with a subquery on t through t_a
+for i in $(seq $N); do echo "update t set v = (select max(v) from t t3 where t3.a between $(( 900 * i )) and $(( 900 * i + 1500 ))) where id = $(( 11000 + 53 * i ))"; done > $W/g; cp $W/g $W/g.off
+both G $W/g
+(( ON <= 2 * N )) || fail "G on: $ON pages, at most 2 per statement"
+at_least G "on pages" $ON $((2 * N))
+(( OFF >= ON + N / 2 )) || fail "G: off $OFF pages, expected the subquery's leaves too (on $ON)"
+
+# H: partial index pt_p (flag = id % 2); hcase <offset> : 60 statements, offset 0 for the run with the tunable on
+function hcase
+{
+    local o=$1 i
+    for i in $(seq 10); do echo "update pt set v = v + 1 where a = $(( (2 * i + 1 + o) * 3 )) and flag = 1"; done    # via pt_p, stays in
+    for i in $(seq 10); do echo "update pt set flag = 0 where a = $(( (2 * i + 101 + o) * 3 )) and flag = 1"; done   # via pt_p, moves out
+    for i in $(seq 10); do echo "update pt set v = v + 1 where id = $(( 2 * i + 301 + o ))"; done                   # by id, stays in
+    for i in $(seq 10); do echo "update pt set v = v + 1 where id = $(( 2 * i + 400 + o ))"; done                   # by id, stays out
+    for i in $(seq 10); do echo "update pt set flag = 1 where id = $(( 2 * i + 500 + o ))"; done                   # by id, moves in
+    for i in $(seq 10); do echo "update pt set flag = 0 where id = $(( 2 * i + 601 + o ))"; done                   # by id, moves out
+}
+hcase 0 > $W/h
+hcase 1000 > $W/h.off
+both H $W/h
+(( ONK == 60 && OFFK == 60 )) || fail "H: $ONK / $OFFK packets for 60 statements"
+(( ON <= 2 * 60 )) || fail "H on: $ON pages, at most 2 per statement"
+at_least H "on pages" $ON 120
+
+# I: a row inserted and then updated in one read committed transaction: the update writes a row the scan found in the
+#    transaction's shadow, not in the index: no index cursor is on its entry, so no index leaf (and no
+#    data page) is hinted, and the transaction commits
+printf 'set transaction read committed\nbegin\ninsert into t values (%d, %d, 0, 0, %s)\nupdate t set v = v + 1 where id = %d\ncommit\n' 50001 150003 "'x'" 50001 > $W/i
+printf 'set transaction read committed\nbegin\ninsert into t values (%d, %d, 0, 0, %s)\nupdate t set v = v + 1 where id = %d\ncommit\n' 50002 150006 "'x'" 50002 > $W/i.off
+both I $W/i
+(( ON == 0 )) || fail "I on: $ON pages for a row the statement found only in its transaction"
+[[ "$(sqlh ${master} "select v from t where id = 50001")" == "1" ]] || fail "I: v of id 50001 is not 1"
+
+# J: rollback
+printf 'begin\nupdate t set v = v + 1000 where a = %d\nrollback\n' 39000 > $W/j; cp $W/j $W/j.off
+both J $W/j
+[[ "$(sqlh ${master} "select v from t where a = 39000")" == "13000" ]] || fail "J: rolled-back update is visible"
+
+# K: an UPDATE that selects rows through t3_x and then fails converting the new value, then an UPDATE by id of one of
+#    those rows: the second statement hints its data page and PK leaf only (2 pages), nothing saved by the first
+sqlh ${master} "create table t3(id int primary key, x int, v int)" || fail "create t3"
+sqlh ${master} "create index t3_x on t3(x)" || fail "create t3_x"
+sqlh ${master} "insert into t3 select value, value * 7, 0 from generate_series(1, 20000)" || fail "load t3"
+wait_caught_up
+for mode in on off; do
+    v=$(mval $mode)
+    put_tunable ${origin} rep_write_hints_written_index_rows $v $(mname $mode)
+    settle
+    id=$(( 15000 + 500 * v ))
+    out=$(printf "update t3 set v = 'abc' where x between %d and %d\n" $(( id * 7 - 70 )) $(( id * 7 + 70 )) | ${CDB2SQL_EXE} ${CDB2_OPTIONS} -s --host ${origin} ${DBNAME} - 2>&1)
+    echo "$out" | grep -q -i "error\|fail\|incompatible\|convert" || fail "K $mode: expected the UPDATE to fail, got: $(echo "$out" | head -3)"
+    settle
+    p0=$(master_pages); k0=$(r_packets)
+    out=$(printf "update t3 set v = v + 1 where id = %d\n" $id | ${CDB2SQL_EXE} ${CDB2_OPTIONS} -s --host ${origin} ${DBNAME} - 2>&1) || fail "K $mode: $out"
+    settle
+    pg=$(( $(master_pages) - p0 )); pk=$(( $(r_packets) - k0 ))
+    echo "K $mode: second statement: R packets $pk, master hint pages $pg"
+    (( pk == 1 && pg <= 2 )) || fail "K $mode: $pk packets, $pg pages for an UPDATE by id after a failed statement"
+done
+check_data
+
+# L: 600 rows of t through t_g (g < 10 holds 600 rows each): one packet of at most 32 pages, every row updated
+v0=$(sqlh ${master} "select sum(v) from t where g = 7")
+put_tunable ${origin} rep_write_hints_written_index_rows 1 ON
+settle
+p0=$(master_pages); k0=$(r_packets)
+out=$(echo "update t set v = v + 1 where g = 7" | ${CDB2SQL_EXE} ${CDB2_OPTIONS} -s --host ${origin} ${DBNAME} - 2>&1) || fail "L: update failed: $out"
+settle
+echo "L: R packets $(( $(r_packets) - k0 )), master hint pages $(( $(master_pages) - p0 ))"
+(( $(r_packets) - k0 == 1 )) || fail "L: expected one packet"
+(( $(master_pages) - p0 <= 32 )) || fail "L: more than 32 pages in one packet"
+wait_caught_up
+[[ "$(sqlh ${master} "select sum(v) from t where g = 7")" == "$(( v0 + 600 ))" ]] || fail "L: not all 600 rows updated"
+
+put_tunable ${origin} rep_write_hints_written_index_rows 0 OFF
+check_data
+echo "Success"
