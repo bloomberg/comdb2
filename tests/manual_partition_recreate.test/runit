@@ -1,0 +1,23 @@
+#!/usr/bin/env bash
+bash -n "$0" || exit 1
+
+# Recreating a dropped manual partition under the same name must start a new counter, not
+# inherit the old one and catch up on rollouts that truncate the new shards.
+source ${TESTSROOTDIR}/tools/runit_common.sh
+
+dbnm=$1
+sql() { cdb2sql -s --tabs ${CDB2_OPTIONS} $dbnm default "$@"; }
+
+sql "create table tp (a int) partitioned by manual retention 2 start 1" || failexit "create tp"
+for i in $(seq 1 4); do
+    sql "put counter tp increment" || failexit "increment $i"
+done
+sleep 3
+sql "drop table tp" || failexit "drop tp"
+
+sql "create table tp (a int) partitioned by manual retention 2 start 1" || failexit "recreate tp"
+sql "insert into tp select value from generate_series(1, 10)" || failexit "insert"
+sleep 5
+cnt=$(sql "select count(*) from tp")
+[[ "$cnt" == "10" ]] || failexit "expected 10 rows after recreate, got $cnt"
+echo "Success"
