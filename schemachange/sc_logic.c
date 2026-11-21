@@ -1047,11 +1047,7 @@ static int verify_sc_resumed_for_all_shards(void *obj, void *arg)
                tpt_sc->s->tablename);
         sc = tpt_sc->s;
         while (sc) {
-            mark_schemachange_over(sc->tablename);
-            struct dbtable *tbl = get_dbtable_by_name(sc->tablename);
-            if (tbl) {
-                sc_del_unused_files(tbl);
-            }
+            cancel_resume_schemachange(sc->tablename, "Partition merge cannot be resumed");
             sc->sc_rc = SC_ABORTED;
             sc = sc->sc_next;
         }
@@ -1093,6 +1089,16 @@ extern const uint8_t *osqlcomm_scl_get(struct sc_list *scl,
         const uint8_t *p_buf, const uint8_t *p_buf_end);
 
 extern int resume_sc_multiddl_txn(sc_list_t *scl);
+extern int cancel_sc_multiddl_txn(sc_list_t *scl);
+
+/* scabort: cancel every interrupted schema change instead of resuming it;
+ * the sc lists alone are not enough: a partition sc is stored once under the
+ * partition name and only expanded into per shard sc-s when it runs */
+static void cancel_resume_all_tables(void)
+{
+    for (int i = 0; i < thedb->num_dbs; ++i)
+        cancel_resume_schemachange(thedb->dbs[i]->tablename, SC_ABORT_MARKER_REASON);
+}
 
 /**
  * The resume searches for existing sc_list llmeta objects, instead
@@ -1111,9 +1117,7 @@ int resume_sc_multiddl(int scabort)
     int bdberr = 0;
     uint8_t *p_buf, *p_buf_end, *p_buf_key, *p_buf_key_end;
 
-    if (scabort) {
-        return bdb_llmeta_rem_all_sc_lists(NULL);
-    }
+    int (*process_scl)(sc_list_t *) = scabort ? cancel_sc_multiddl_txn : resume_sc_multiddl_txn;
 
     rc = bdb_llmeta_get_all_sc_lists(NULL, &dtas, &dtalens, &keys, &keylen,
                                      &num, &bdberr);
@@ -1142,11 +1146,12 @@ int resume_sc_multiddl(int scabort)
         }
 
         uuidstr_t us;
-        logmsg(LOGMSG_INFO, "%s Resuming schema change %s\n", __func__, comdb2uuidstr(scl.uuid, us));
+        logmsg(LOGMSG_INFO, "%s %s schema change %s\n", __func__, scabort ? "Cancelling" : "Resuming",
+               comdb2uuidstr(scl.uuid, us));
 
-        rc = resume_sc_multiddl_txn(&scl);
+        rc = process_scl(&scl);
         if (rc)
-            logmsg(LOGMSG_ERROR, "%s failed to resume scl %d\n", __func__, rc);
+            logmsg(LOGMSG_ERROR, "%s failed to %s scl %d\n", __func__, scabort ? "cancel" : "resume", rc);
 
         free(scl.offsets);
         free(scl.ser_scs);
@@ -1161,9 +1166,22 @@ freetime:
         free(keys[i]);
     }
     free(dtalens);
+
+    if (scabort) {
+        /* shards of partition sc-s, and anything an unreadable sc list missed */
+        cancel_resume_all_tables();
+        rc = bdb_llmeta_rem_all_sc_lists(NULL);
+    }
     return rc;
 }
 
+/* the marker applies to the schema changes interrupted so far, not future ones */
+static void remove_scabort_marker(const char *abort_filename)
+{
+    logmsg(LOGMSG_WARN, "Cancelled interrupted schema changes, removing %s\n", abort_filename);
+    if (unlink(abort_filename))
+        logmsg(LOGMSG_ERROR, "Can't delete abort marker file %s - future sc may abort\n", abort_filename);
+}
 
 int resume_schema_change(void)
 {
@@ -1195,8 +1213,13 @@ int resume_schema_change(void)
     }
 
     /* this path is able to handle multi table ddl in a single transaction */
-    if (gbl_multitable_ddl)
-        return resume_sc_multiddl(scabort);
+    if (gbl_multitable_ddl) {
+        rc = resume_sc_multiddl(scabort);
+        if (scabort && rc == 0) /* else keep it, so the next master retries */
+            remove_scabort_marker(abort_filename);
+        free(abort_filename);
+        return rc;
+    }
 
     hash_t *tpt_sc_hash = hash_init_strcaseptr(offsetof(struct timepart_sc_resuming, viewname));
     if (!tpt_sc_hash) {
@@ -1264,12 +1287,8 @@ int resume_schema_change(void)
                     ? "%s: Cancelling resume of schema change.\n"
                     : "%s: Cancelling resume of schema change because it is a bulk import.\n",
                     __func__);
-                rc = bdb_set_in_schema_change(NULL, thedb->dbs[i]->tablename,
-                                              NULL, 0, &bdberr);
-                if (rc)
-                    logmsg(LOGMSG_ERROR,
-                           "Failed to cancel resuming schema change %d %d\n",
-                           rc, bdberr);
+                cancel_resume_schemachange(thedb->dbs[i]->tablename,
+                                           scabort ? SC_ABORT_MARKER_REASON : "Bulk import cannot be resumed");
                 free_schema_change_type(s);
                 continue; /* unmark all ongoing schema changes */
             }
@@ -1287,10 +1306,8 @@ int resume_schema_change(void)
                        "%s: Cancelling resume of retroactive partitioning of "
                        "'%s', multitable_ddl is not set\n",
                        __func__, thedb->dbs[i]->tablename);
-                rc = bdb_set_in_schema_change(NULL, thedb->dbs[i]->tablename, NULL, 0, &bdberr);
-                if (rc)
-                    logmsg(LOGMSG_ERROR, "Failed to cancel resuming schema change %d %d\n", rc, bdberr);
-                sc_del_unused_files(thedb->dbs[i]);
+                cancel_resume_schemachange(thedb->dbs[i]->tablename,
+                                           "Retroactive partitioning cannot be resumed without multitable_ddl");
                 free_schema_change_type(s);
                 continue;
             }
@@ -1395,14 +1412,8 @@ int resume_schema_change(void)
     hash_for(tpt_sc_hash, process_tpt_sc_hash, NULL);
     hash_free(tpt_sc_hash);
 
-    if (scabort) {
-        logmsg(LOGMSG_WARN, "Cancelling schema change\n");
-        rc = unlink(abort_filename);
-        if (rc)
-            logmsg(LOGMSG_ERROR,
-                   "Can't delete abort marker file %s - future sc may abort\n",
-                   abort_filename);
-    }
+    if (scabort)
+        remove_scabort_marker(abort_filename);
 
     free(abort_filename);
 

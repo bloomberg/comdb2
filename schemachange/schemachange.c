@@ -1078,19 +1078,17 @@ int add_schema_change_tables()
                 return -1;
             }
 
-            /* Give operators a chance to prevent a schema change from resuming.
+            /* Give operators a chance to prevent a schema change from resuming:
+             * do not open its new btrees.  The cancellation itself is left to
+             * resume_schema_change(), which runs on the master only and also
+             * removes the marker file.
              */
             char *abort_filename =
                 comdb2_location("marker", "%s.scabort", thedb->envname);
             if (access(abort_filename, F_OK) == 0) {
-                rc = bdb_set_in_schema_change(NULL, thedb->dbs[i]->tablename,
-                                              NULL, 0, &bdberr);
-                if (rc)
-                    logmsg(LOGMSG_ERROR,
-                           "Failed to cancel resuming schema change %d %d\n",
-                           rc, bdberr);
-                else
-                    scabort = 1;
+                logmsg(LOGMSG_WARN, "%s: found '%s', not adding tables of %s\n", __func__, abort_filename,
+                       thedb->dbs[i]->tablename);
+                scabort = 1;
             }
 
             free(abort_filename);
