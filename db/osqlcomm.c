@@ -54,6 +54,7 @@
 #include "osqlsqlnet.h"
 #include "sc_global.h"
 #include "logical_cron.h"
+#include "sqlinterfaces.h"
 #include "sc_logic.h"
 #include "eventlog.h"
 #include <disttxn.h>
@@ -7524,7 +7525,19 @@ static int _process_single_table_sc_partitioning(struct ireq *iq)
             sc->newpartition, start_schema_change_tran_wrapper, &arg);
 
     if (!rc && sc->partition.type == PARTITION_ADD_MANUAL) {
-        if (!get_dbtable_by_name(LOGICAL_CRON_SYSTABLE)){
+        if (get_dbtable_by_name(LOGICAL_CRON_SYSTABLE)) {
+            /* a dropped partition of the same name leaves its counter behind */
+            char *sql =
+                sqlite3_mprintf("delete from \"%w\" where name='%q'", LOGICAL_CRON_SYSTABLE, sc->timepartition_name);
+            struct sqlclntstate clnt;
+            start_internal_sql_clnt_named(&clnt, 1, "internal_logical_cron");
+            int drc = run_internal_sql_clnt(&clnt, sql);
+            if (drc)
+                logmsg(LOGMSG_ERROR, "%s: failed to reset logical cron for %s rc %d\n", __func__,
+                       sc->timepartition_name, drc);
+            end_internal_sql_clnt(&clnt);
+            sqlite3_free(sql);
+        } else {
             struct schema_change_type *lcsc = _create_logical_cron_systable(LOGICAL_CRON_SYSTABLE);
             if (!lcsc) {
                 rc = ERR_SC;
