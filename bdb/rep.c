@@ -66,7 +66,6 @@
 int gbl_watcher_thread_ran = 0;
 int gbl_lost_master_time = 0;
 int gbl_ignore_lost_master_time = 0;
-int gbl_prefault_latency = 0;
 int gbl_long_log_truncation_warn_thresh_sec = INT_MAX;
 int gbl_long_log_truncation_abort_thresh_sec = INT_MAX;
 int gbl_debug_drop_nth_rep_message = 0;
@@ -277,35 +276,6 @@ static const uint8_t *rep_berkdb_seqnum_type_get(seqnum_type *p_seqnum_type,
                     sizeof(p_seqnum_type->commit_generation), p_buf, p_buf_end);
     p_buf = buf_get(&(p_seqnum_type->generation),
                     sizeof(p_seqnum_type->generation), p_buf, p_buf_end);
-
-    return p_buf;
-}
-
-uint8_t *rep_udp_filepage_type_put(const filepage_type *p_filepage_type,
-                                   uint8_t *p_buf, const uint8_t *p_buf_end)
-{
-    if (p_buf_end < p_buf || BDB_FILEPAGE_TYPE_LEN > (p_buf_end - p_buf))
-        return NULL;
-
-    p_buf = buf_put(&(p_filepage_type->fileid), sizeof(p_filepage_type->fileid),
-                    p_buf, p_buf_end);
-    p_buf = buf_put(&(p_filepage_type->pgno), sizeof(p_filepage_type->pgno),
-                    p_buf, p_buf_end);
-
-    return p_buf;
-}
-
-const uint8_t *rep_udp_filepage_type_get(filepage_type *p_filepage_type,
-                                         const uint8_t *p_buf,
-                                         const uint8_t *p_buf_end)
-{
-    if (p_buf_end < p_buf || BDB_FILEPAGE_TYPE_LEN > (p_buf_end - p_buf))
-        return NULL;
-
-    p_buf = buf_get(&(p_filepage_type->fileid), sizeof(p_filepage_type->fileid),
-                    p_buf, p_buf_end);
-    p_buf = buf_get(&(p_filepage_type->pgno), sizeof(p_filepage_type->pgno),
-                    p_buf, p_buf_end);
 
     return p_buf;
 }
@@ -5267,41 +5237,8 @@ static void udppfault_ufid_do_work(udppf_rq_t *req)
         send_prefault_udp = 0;
         prefault_dbp = NULL;
     }
-    if (gbl_prefault_latency > 0)
-        sleep(gbl_prefault_latency);
 
     __ufid_prefault_unpin(dbenv, pin);
-}
-
-static void udppfault_do_work(struct thdpool *pool, void *work, void *thddata)
-{
-    bdb_state_type *bdb_state;
-    int32_t fileid;
-    unsigned int pgno;
-    DB *file_dbp = NULL;
-    DB_MPOOLFILE *mpf;
-    int ret;
-
-    udppf_rq_t *req = (udppf_rq_t *)work;
-    if (req->by_ufid) {
-        udppfault_ufid_do_work(req);
-        return;
-    }
-    bdb_state = req->bdb_state;
-    fileid = req->fileid;
-    pgno = req->pgno;
-
-    if ((ret = __dbreg_id_to_db_prefault(bdb_state->dbenv, NULL, &file_dbp,
-                                         fileid, 1)) != 0)
-        return;
-
-    mpf = file_dbp->mpf;
-
-    touch_page(mpf, pgno);
-    if (gbl_prefault_latency > 0)
-        sleep(gbl_prefault_latency);
-
-    __dbreg_prefault_complete(bdb_state->dbenv, fileid);
 }
 
 void touch_page(DB_MPOOLFILE *mpf, db_pgno_t pgno)
@@ -5323,6 +5260,8 @@ out:
     return;
 }
 
+int db_is_exiting(void);
+
 static void touch_page_pp(struct thdpool *pool, void *work, void *thddata,
                           int op)
 {
@@ -5332,7 +5271,9 @@ static void touch_page_pp(struct thdpool *pool, void *work, void *thddata,
 
     switch (op) {
     case THD_RUN:
-        touch_page(mpf, pgno);
+        /* see udppfault_do_work_pp */
+        if (!db_is_exiting())
+            touch_page(mpf, pgno);
         break;
     }
     free(work);
@@ -5349,7 +5290,6 @@ int enqueue_touch_page(DB_MPOOLFILE *mpf, db_pgno_t pgno)
     return rc;
 }
 
-int db_is_exiting(void);
 static void udppfault_do_work_pp(struct thdpool *pool, void *work,
                                  void *thddata, int op)
 {
@@ -5357,38 +5297,15 @@ static void udppfault_do_work_pp(struct thdpool *pool, void *work,
 
     switch (op) {
     case THD_RUN:
-        /* a clean exit waits for these threads before freeing the DB_ENV: don't start new work then */
+        /* A clean exit waits for the threads of this pool that the thread manager knows before it frees the
+           DB_ENV (THRTYPE_UDPPFAULT): don't start new work once it has begun, also in a thread created just before
+           and not registered yet when stop_threads() checked */
         if (db_is_exiting())
             break;
-        udppfault_do_work(pool, work, thddata);
+        udppfault_ufid_do_work(req);
         break;
     }
     free(req);
-}
-
-int enque_udppfault_filepage(bdb_state_type *bdb_state, unsigned int fileid,
-                             unsigned int pgno)
-{
-    udppf_rq_t *qdata = NULL;
-    int rc;
-
-    qdata = calloc(1, sizeof(udppf_rq_t));
-    if (qdata == NULL) {
-        logmsg(LOGMSG_FATAL, "failed to malloc udp prefault request\n");
-        exit(1);
-    }
-
-    qdata->bdb_state = bdb_state;
-    qdata->fileid = fileid;
-    qdata->pgno = pgno;
-
-    rc = thdpool_enqueue(gbl_udppfault_thdpool, udppfault_do_work_pp, qdata, 0,
-                         NULL, 0);
-
-    if (rc != 0) {
-        free(qdata);
-    }
-    return rc;
 }
 
 int enque_udppfault_ufid(bdb_state_type *bdb_state, const uint8_t *ufid, unsigned int pgno)
@@ -5403,7 +5320,6 @@ int enque_udppfault_ufid(bdb_state_type *bdb_state, const uint8_t *ufid, unsigne
     }
 
     qdata->bdb_state = bdb_state;
-    qdata->by_ufid = 1;
     memcpy(qdata->ufid, ufid, DB_FILE_ID_LEN);
     qdata->pgno = pgno;
 

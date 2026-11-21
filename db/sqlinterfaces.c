@@ -3510,8 +3510,8 @@ static int get_prepared_stmt_int(struct sqlthdstate *thd,
         /* Unconditional: show role 'R' even when fingerprinting is off and there
          * is no fingerprint to pair with it. Cleared in sqlite_done(). */
         bdb_fingerprint_rtstats_set_role(BDB_FP_ROLE_SQL);
-        /* The statement records its own write hints (rep_write_hints) */
-        osql_send_write_hints();
+        /* The statement records only its own write hints (rep_write_hints): drop any left over */
+        osql_reset_write_hints(clnt);
         /* An 'R' lock's client is the connection -- joins comdb2_connections. */
         bdb_fingerprint_rtstats_set_client_id(sql_connection_client_id(clnt));
 
@@ -4276,7 +4276,7 @@ static void sqlite_done(struct sqlthdstate *thd, struct sqlclntstate *clnt,
     /* Unguarded, mirroring the unconditional ..._set_role() in
      * get_prepared_stmt_int(): a role is armed even with fingerprinting off. */
     bdb_fingerprint_rtstats_clear();
-    osql_send_write_hints();
+    osql_send_write_hints(clnt);
 
     sqlite3_stmt *stmt = rec->stmt;
     int distributed = 0;

@@ -152,6 +152,8 @@ typedef struct osqlstate {
     int tran_ops;            /* actual number of operations for a transaction */
     int replicant_numops; /* total num of ops sent by replicant to master which
                              includes USEDB, BLOB, etc. */
+    int rwh_wrote;        /* replica write hints: the running statement shipped
+                             an osql write (db/osqlsqlthr.c) */
 
     /* == sqlclntstate == */
 

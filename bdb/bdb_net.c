@@ -80,7 +80,6 @@ static unsigned int pf_ufid_recd = 0;    /* UFID hints received */
 static unsigned int pf_ufid_dropped = 0; /* UFID hints not queued (prefault queue full) */
 unsigned int udp_pf_ufid_pinned = 0;     /* UFID hints that found an open handle (bdb/rep.c) */
 unsigned int udp_pf_ufid_skipped = 0;    /* UFID hints for a file not open or closing (bdb/rep.c) */
-static unsigned int pf_dbreg_recd = 0;   /* legacy dbreg-id hints received */
 
 int bdb_udp_send(bdb_state_type *bdb_state, const char *to, size_t len,
                  void *data)
@@ -371,21 +370,25 @@ static void udp_bind(repinfo_type *repinfo)
 }
 struct thdpool *gbl_udppfault_thdpool = NULL;
 
-/* Clean exit: make the udppfault workers (stopped by stop_threads) skip what is still queued and wait for them to
- * exit, so that none uses the DB_ENV after __dbenv_close frees it. No timeout: going on would free the DB_ENV under
- * a live worker; the clean-exit alarm (exitalarmsec) aborts an exit that is stuck here. */
-void udppfault_thdpool_wait_exit(void)
+/* udppfaultpool threads are known to the thread manager for their lifetime: a clean exit (stop_threads) stops the
+ * pool, then waits for them to exit before it frees the DB_ENV they use.  Work that starts once the exit has begun
+ * does nothing (db_is_exiting). */
+static void udppfault_thd_start(struct thdpool *pool, void *thddata)
 {
-    if (gbl_udppfault_thdpool == NULL)
-        return;
-    thdpool_stop(gbl_udppfault_thdpool);
-    while (thdpool_get_nthds(gbl_udppfault_thdpool) > 0)
-        poll(NULL, 0, 10);
+    thrman_register(THRTYPE_UDPPFAULT);
+}
+
+static void udppfault_thd_end(struct thdpool *pool, void *thddata)
+{
+    thrman_unregister();
 }
 
 int udppfault_thdpool_init(void)
 {
     gbl_udppfault_thdpool = thdpool_create("udppfaultpool", 0);
+
+    thdpool_set_init_fn(gbl_udppfault_thdpool, udppfault_thd_start);
+    thdpool_set_delt_fn(gbl_udppfault_thdpool, udppfault_thd_end);
 
     thdpool_set_minthds(gbl_udppfault_thdpool, 0);
     thdpool_set_maxthds(gbl_udppfault_thdpool, 8);
@@ -751,13 +754,7 @@ static void print_ping_rtt(ack_info *info)
            type, (double)diff.tv_sec * 1000 + (double)diff.tv_usec / 1000);
 }
 
-int enque_udppfault_filepage(bdb_state_type *bdb_state, unsigned int fileid,
-                             unsigned int pgno);
 int enque_udppfault_ufid(bdb_state_type *bdb_state, const uint8_t *ufid, unsigned int pgno);
-
-const uint8_t *rep_udp_filepage_type_get(filepage_type *p_filepage_type,
-                                         const uint8_t *p_buf,
-                                         const uint8_t *p_buf_end);
 
 static void udp_reader(int fd, short what, void *arg)
 {
@@ -774,7 +771,6 @@ static void udp_reader(int fd, short what, void *arg)
     static time_t lastpr = 0;
     char *from;
     int type;
-    filepage_type fp;
 
     struct pollfd pol;
     pol.fd = fd;
@@ -879,17 +875,7 @@ static void udp_reader(int fd, short what, void *arg)
         break;
 
     case USER_TYPE_UDP_PREFAULT:
-        data = ack_info_data(info);
-        p_buf = data;
-        p_buf_end = ((uint8_t *)data + info->len);
-        p_buf = (uint8_t *)rep_udp_filepage_type_get(&fp, p_buf, p_buf_end);
-        ++pf_dbreg_recd;
-        enque_udppfault_filepage(bdb_state, fp.fileid, fp.pgno);
-#ifdef UDP_DEBUG
-        /* ack every received lsn. */
-        udp_send_header(bdb_state, from, USER_TYPE_UDP_ACK);
-        debug_trace("sent ack %d -> %s", info->to, from);
-#endif
+        /* the old prefault hint by dbreg id: no longer sent, dropped */
         break;
 
     case USER_TYPE_UDP_PREFAULT_UFID: {
@@ -1021,9 +1007,8 @@ void udp_summary(void)
            "udp prefault ufid hints received: %u\n"
            "udp prefault ufid hints dropped (queue full): %u\n"
            "udp prefault ufid hints pinned: %u\n"
-           "udp prefault ufid hints skipped (file not open): %u\n"
-           "udp prefault dbreg hints received: %u\n",
-           pf_ufid_sent, pf_ufid_recd, pf_ufid_dropped, udp_pf_ufid_pinned, udp_pf_ufid_skipped, pf_dbreg_recd);
+           "udp prefault ufid hints skipped (file not open): %u\n",
+           pf_ufid_sent, pf_ufid_recd, pf_ufid_dropped, udp_pf_ufid_pinned, udp_pf_ufid_skipped);
     logmsg(LOGMSG_USER,
            "udp write-hint packets sent: %" PRIu64 "\n"
            "udp write-hint packets not sent (send failed or dropped): %" PRIu64 "\n",
@@ -1055,7 +1040,7 @@ void udp_reset(netinfo_type *netinfo)
 {
     if (!netinfo) return;
     rect_udp = recl_udp = fail_udp = sent_udp = recd_udp = 0;
-    pf_ufid_sent = pf_ufid_recd = pf_ufid_dropped = udp_pf_ufid_pinned = udp_pf_ufid_skipped = pf_dbreg_recd = 0;
+    pf_ufid_sent = pf_ufid_recd = pf_ufid_dropped = udp_pf_ufid_pinned = udp_pf_ufid_skipped = 0;
     udppf_async_queued = udppf_async_full = udppf_async_notmaster = udppf_async_wakeups = udppf_async_packets = 0;
     udppf_async_rwh_queued = udppf_async_rwh_full = udppf_async_rwh_nomaster = 0;
     rwh_sent = rwh_notsent = 0;

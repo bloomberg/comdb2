@@ -7089,15 +7089,11 @@ case OP_IntegrityCk: {
 }
 #endif /* SQLITE_OMIT_INTEGRITY_CHECK */
 
-/* Opcode: RowSetAdd P1 P2 P3 P4 P5
+/* Opcode: RowSetAdd P1 P2 * * *
 ** Synopsis: rowset(P1)=r[P2]
 **
 ** Insert the integer value held by register P2 into a RowSet object
 ** held in register P1.
-**
-** COMDB2: in a two-pass UPDATE or DELETE, P3 is the target table's cursor
-** + 1 and P5 the scan's index cursor + 1 (0 if none); P4 is the integer 1
-** in a DELETE.  See comdb2_rwh_rowset_add().
 **
 ** An assertion fails if P2 is not an integer.
 */
@@ -7110,9 +7106,9 @@ case OP_RowSetAdd: {       /* in1, in2 */
   }
   assert( sqlite3VdbeMemIsRowSet(pIn1) );
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-  /* comdb2: P3 / P5 = the target table cursor + 1 / the scan's index cursor
-  ** + 1 of a two-pass UPDATE or DELETE (0 = none), P4 = 1 for a DELETE:
-  ** replica write hints */
+  /* comdb2: in a two-pass UPDATE or DELETE, P3 / P5 = the target table
+  ** cursor + 1 / the scan's index cursor + 1 (0 = none), P4 = the integer 1
+  ** for a DELETE: replica write hints, see comdb2_rwh_rowset_add() */
   if( pOp->p3>0 || pOp->p5>0 ){
     VdbeCursor *pT = pOp->p3>0 && pOp->p3<=p->nCursor ? p->apCsr[pOp->p3-1] : 0;
     VdbeCursor *pI = pOp->p5>0 && pOp->p5<=p->nCursor ? p->apCsr[pOp->p5-1] : 0;

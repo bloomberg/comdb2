@@ -51,9 +51,6 @@
 struct seqnum_t;
 typedef struct seqnum_t seqnum_type;
 
-struct filepage_t;
-typedef struct filepage_t filepage_type;
-
 struct bdb_state_tag;
 
 struct bdb_callback_tag;
@@ -2073,6 +2070,7 @@ int bdb_get_num_sc_done(bdb_state_type *bdb_state, tran_type *tran,
 void udp_ping_ip(bdb_state_type *, char *ip);
 void udp_ping_all(bdb_state_type *);
 void udp_ping(bdb_state_type *, char *to);
+/* Master: hint every connected replica (UDP, lossy) to prefault page pgno of the file with this UFID */
 void udp_prefault_all(bdb_state_type *bdb_state, const unsigned char *ufid, unsigned int pgno);
 void tcp_ping_all(bdb_state_type *);
 void tcp_ping(bdb_state_type *, char *to);
@@ -2087,7 +2085,6 @@ void udp_stats(unsigned int *sent_udp, unsigned int *fail_udp,
 
 extern struct thdpool *gbl_udppfault_thdpool;
 int udppfault_thdpool_init(void);
-void udppfault_thdpool_wait_exit(void);
 
 extern struct thdpool *gbl_pgcompact_thdpool;
 int pgcompact_thdpool_init(void);

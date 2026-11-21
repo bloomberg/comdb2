@@ -83,7 +83,7 @@ enum {
     USER_TYPE_UDP_PING,
     USER_TYPE_UDP_TIMESTAMP,
     USER_TYPE_UDP_TIMESTAMP_ACK,
-    USER_TYPE_UDP_PREFAULT,
+    USER_TYPE_UDP_PREFAULT, /* no longer sent or handled; number kept */
     USER_TYPE_TCP_TIMESTAMP,
     USER_TYPE_TCP_TIMESTAMP_ACK,
     USER_TYPE_PING_TIMESTAMP,
@@ -100,8 +100,8 @@ enum {
     USER_TYPE_REQ_START_LSN,
     USER_TYPE_TRUNCATE_LOG,
     USER_TYPE_COMMITDELAYTIMED = 43,
-    USER_TYPE_UDP_PREFAULT_UFID = 44,
-    USER_TYPE_REP_WRITE_HINTS = 45,
+    USER_TYPE_UDP_PREFAULT_UFID = 44, /* master to replicas: (UFID, pgno) pairs to prefault */
+    USER_TYPE_REP_WRITE_HINTS = 45,   /* replica to master: (UFID, pgno) pairs a write statement read */
 
     NET_QUIESCE_THREADS = 100,
     NET_RESUME_THREADS = 101,

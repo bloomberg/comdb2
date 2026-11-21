@@ -21,9 +21,8 @@ bash -n "$0" || exit 1
 # For every phase the test asserts ("udp stat", per-file "bdb cachestatall")
 #   - master: it read pages from disk (the precondition for hints) and its
 #     "udp prefault ufid hints sent" grew;
-#   - every replicant: "ufid hints received" and "ufid hints pinned" grew and
-#     "dbreg hints received" did not (a master that went back to dbreg ids
-#     fails here), it queued udppfaultpool work, and it touched pages with
+#   - every replicant: "ufid hints received" and "ufid hints pinned" grew,
+#     it queued udppfaultpool work, and it touched pages with
 #     DB_MPOOL_PFGET (st_page_pf_in + st_page_pf_in_late grew);
 #   - per file, on every replicant: prefault touches landed only on t's files
 #     (t_*.datasN / t_*.index), in the UPDATE phase on t's data and on every
@@ -72,7 +71,7 @@ function counters
 {
     local h=$1
     send $h "udp stat" | sed -n -e 's/^udp packets \(sent\|received\): \([0-9]*\)$/udp_\1 \2/p' \
-        -e 's/^udp prefault \(ufid\|dbreg\) hints \([a-z]*\)[^:]*: \([0-9]*\)$/\1_\2 \3/p'
+        -e 's/^udp prefault \(ufid\) hints \([a-z]*\)[^:]*: \([0-9]*\)$/\1_\2 \3/p'
     send $h "bdb cachestat" | sed -n 's/^\(st_page_pf_in\|st_page_pf_in_late\|st_page_in\): \([0-9]*\)$/\1 \2/p'
     echo "pool_dispatched $(sqlh $h "select num_passed + num_enqueued from comdb2_threadpools where name = 'udppfaultpool'")"
 }
@@ -163,7 +162,7 @@ function check_hints
     echo "=== $p: counter deltas per node"
     for n in ${nodes}; do
         echo -n "$p $n $(role $n):"
-        for k in udp_sent udp_received ufid_sent ufid_received ufid_pinned ufid_skipped ufid_dropped dbreg_received \
+        for k in udp_sent udp_received ufid_sent ufid_received ufid_pinned ufid_skipped ufid_dropped \
                  pool_dispatched st_page_in st_page_pf_in st_page_pf_in_late; do
             echo -n " $k=$(delta $p $n $k)"
         done
@@ -175,7 +174,6 @@ function check_hints
     for n in ${replicants}; do
         [[ $(delta $p $n ufid_received) -gt 0 ]] || fail "$p: $(role $n) $n received no UFID hint"
         [[ $(delta $p $n ufid_pinned) -gt 0 ]] || fail "$p: $(role $n) $n pinned no file for a UFID hint"
-        [[ $(delta $p $n dbreg_received) -eq 0 ]] || fail "$p: $(role $n) $n received legacy dbreg-id hints"
         [[ $(delta $p $n pool_dispatched) -gt 0 ]] || fail "$p: $(role $n) $n queued no udp prefault work"
         d=$(($(delta $p $n st_page_pf_in) + $(delta $p $n st_page_pf_in_late)))
         [[ $d -gt 0 ]] || fail "$p: $(role $n) $n prefaulted no page"

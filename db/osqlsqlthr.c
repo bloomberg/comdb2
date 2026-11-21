@@ -64,9 +64,6 @@ void bdb_send_write_hints(bdb_state_type *bdb_state, int send);
 void bdb_rwh_mark_row(bdb_state_type *bdb_state, bdb_cursor_ifn_t *cur, unsigned long long genid);
 extern int gbl_rep_write_hints;
 
-/* Replica write hints (rep_write_hints): did the current statement ship an osql write? */
-static __thread int rwh_wrote;
-
 /* The cursor that read the row written through pCur: pCur, or the table cursor of an index cursor */
 static bdb_cursor_ifn_t *rwh_dta_cursor(struct BtCursor *pCur)
 {
@@ -107,11 +104,20 @@ static unsigned int rwh_upd_blobs(struct dbtable *db, int *updCols)
     return mask;
 }
 
-/* Called at statement start and end, and before a commit */
-void osql_send_write_hints(void)
+/* Replica write hints: at the end of a statement (sqlite_done, lua_end_step), or before a commit ships, send the pages
+ * the statement recorded if it shipped an osql write (osql.rwh_wrote), and forget them */
+void osql_send_write_hints(struct sqlclntstate *clnt)
 {
-    bdb_send_write_hints(thedb->bdb_env, rwh_wrote);
-    rwh_wrote = 0;
+    bdb_send_write_hints(thedb->bdb_env, clnt->osql.rwh_wrote);
+    clnt->osql.rwh_wrote = 0;
+}
+
+/* Replica write hints: forget the recorded pages without sending them, at the start of a statement (it records only
+ * its own) and on abort */
+void osql_reset_write_hints(struct sqlclntstate *clnt)
+{
+    bdb_send_write_hints(thedb->bdb_env, 0);
+    clnt->osql.rwh_wrote = 0;
 }
 
 int gbl_allow_bplog_restarts = 600;
@@ -529,7 +535,7 @@ static int osql_send_del_logic(struct BtCursor *pCur, struct sql_thread *thd)
     if (gbl_rep_write_hints && gbl_rep_write_hints_written_index_rows && pCur->ixnum != -1)
         bdb_rwh_mark_ix_row(pCur->db->handle, pCur->bdbcur, pCur->genid,
                             (gbl_partial_indexes && pCur->db->ix_partial) ? clnt->del_keys : -1ULL);
-    rwh_wrote = 1;
+    osql->rwh_wrote = 1;
     osql->replicant_numops++;
     DEBUG_PRINT_NUMOPS();
 
@@ -664,7 +670,7 @@ static int osql_send_ins_logic(struct BtCursor *pCur, struct sql_thread *thd,
         }
     }
     /* an insert hints no data page: the master chooses where the row goes */
-    rwh_wrote = 1;
+    osql->rwh_wrote = 1;
     osql->replicant_numops++;
     DEBUG_PRINT_NUMOPS();
     return SQLITE_OK;
@@ -838,7 +844,7 @@ static int osql_send_upd_logic(struct BtCursor *pCur, struct sql_thread *thd,
         bdb_rwh_mark_row(pCur->db->handle, rwh_dta_cursor(pCur), pCur->genid);
     if (gbl_rep_write_hints && gbl_rep_write_hints_written_blob_rows && pCur->db->numblobs > 0)
         bdb_rwh_mark_blobs(pCur->db->handle, pCur->genid, rwh_upd_blobs(pCur->db, updCols));
-    rwh_wrote = 1;
+    osql->rwh_wrote = 1;
     osql->replicant_numops++;
     DEBUG_PRINT_NUMOPS();
     return SQLITE_OK;
@@ -1117,7 +1123,7 @@ static inline int sock_restart_retryable_rcode(int restart_rc)
 extern int gbl_is_physical_replicant;
 int osql_sock_commit(struct sqlclntstate *clnt, int type, enum trans_clntcomm sideeffects)
 {
-    osql_send_write_hints(); /* before the commit ships */
+    osql_send_write_hints(clnt); /* before the commit ships */
     osqlstate_t *osql = &clnt->osql;
     int rc = 0, rc2;
     int rcout = 0;
@@ -1458,7 +1464,7 @@ done:
  */
 int osql_sock_abort(struct sqlclntstate *clnt, int type)
 {
-    rwh_wrote = 0; /* nothing to hint for an aborted transaction */
+    osql_reset_write_hints(clnt); /* nothing to hint for an aborted transaction */
     int rcout = 0;
     int rc = 0;
     int bdberr = 0;

@@ -36,6 +36,7 @@
 #include <types.h>
 #include <sql.h>
 #include <sqlinterfaces.h>
+#include <osqlsqlthr.h>
 #include <sqloffload.h>
 #include <flibc.h>
 #include <sqlresponse.pb-c.h>
@@ -2129,6 +2130,11 @@ static void lua_begin_step(struct sqlclntstate *clnt, SP sp,
     Vdbe *pVdbe = (Vdbe*)pStmt;
     struct reqlogger *logger;
 
+    /* Replica write hints: the statement records only its own pages, not
+       those another (read-only) statement left, e.g. an open dbstmt */
+    if (clnt != NULL)
+        osql_reset_write_hints(clnt);
+
     if ((sp != NULL) && (pVdbe != NULL)) {
         save_thd_cost_and_reset(sp->thd, pVdbe);
         pVdbe->luaStartTime = time;
@@ -2155,6 +2161,13 @@ static void lua_end_step(struct sqlclntstate *clnt, SP sp,
 {
     Vdbe *pVdbe = (Vdbe*)pStmt;
     struct reqlogger *logger;
+
+    /* Replica write hints: the statement is done (sqlite_done() runs only
+       at the end of the whole procedure); send its pages if it shipped a
+       write.  Before the fingerprint check: a prepared statement can run
+       many times. */
+    if (clnt != NULL)
+        osql_send_write_hints(clnt);
 
     /* Check whether fingerprint has already been computed. */
     if ((pVdbe == NULL) || (pVdbe->fingerprint_added == 1)) {

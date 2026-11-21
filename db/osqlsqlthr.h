@@ -148,11 +148,19 @@ int osql_sock_commit(struct sqlclntstate *clnt, int type, enum trans_clntcomm si
 int osql_sock_abort(struct sqlclntstate *clnt, int type);
 
 /**
- * Replica write hints (rep_write_hints): send the current statement's
- * B-tree leaf pages to the master if it shipped a write, and forget them
+ * Replica write hints (rep_write_hints): at the end of a statement, or before
+ * a commit ships, send the leaf pages the statement recorded to the master if
+ * it shipped an osql write, and forget them
  *
  */
-void osql_send_write_hints(void);
+void osql_send_write_hints(struct sqlclntstate *clnt);
+
+/**
+ * Replica write hints: forget the recorded pages without sending them (at the
+ * start of a statement, and on abort)
+ *
+ */
+void osql_reset_write_hints(struct sqlclntstate *clnt);
 
 /**
  * busy bee,

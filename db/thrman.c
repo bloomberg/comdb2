@@ -357,6 +357,8 @@ const char *thrman_type2a(enum thrtype type)
         return "cleanexit";
     case THRTYPE_GENERIC:
         return "generic";
+    case THRTYPE_UDPPFAULT:
+        return "udppfault";
     default:
         return "??";
     }
@@ -461,17 +463,13 @@ static int thrman_check_threads_stopped_ll(void *context)
     if (self)
         thr_type_counts[self->type]--;
 
-    if (0 ==
-        thr_type_counts[THRTYPE_OSQL] + thr_type_counts[THRTYPE_APPSOCK] +
-            thr_type_counts[THRTYPE_APPSOCK_POOL] +
-            thr_type_counts[THRTYPE_APPSOCK_SQL] +
-            thr_type_counts[THRTYPE_CONSUMER] + thr_type_counts[THRTYPE_SQL] +
-            thr_type_counts[THRTYPE_SQLPOOL] +
-            thr_type_counts[THRTYPE_SQLENGINEPOOL] +
-            thr_type_counts[THRTYPE_VERIFY] + thr_type_counts[THRTYPE_ANALYZE] +
-            thr_type_counts[THRTYPE_PURGEBLKSEQ] +
-            thr_type_counts[THRTYPE_PGLOGS_ASOF] +
-            thr_type_counts[THRTYPE_TRIGGER])
+    if (0 == thr_type_counts[THRTYPE_OSQL] + thr_type_counts[THRTYPE_APPSOCK] + thr_type_counts[THRTYPE_APPSOCK_POOL] +
+                 thr_type_counts[THRTYPE_APPSOCK_SQL] + thr_type_counts[THRTYPE_CONSUMER] +
+                 thr_type_counts[THRTYPE_SQL] + thr_type_counts[THRTYPE_SQLPOOL] +
+                 thr_type_counts[THRTYPE_SQLENGINEPOOL] + thr_type_counts[THRTYPE_VERIFY] +
+                 thr_type_counts[THRTYPE_ANALYZE] + thr_type_counts[THRTYPE_PURGEBLKSEQ] +
+                 thr_type_counts[THRTYPE_PGLOGS_ASOF] + thr_type_counts[THRTYPE_TRIGGER] +
+                 thr_type_counts[THRTYPE_UDPPFAULT])
         all_gone = 1;
 
     /* if we're exiting then we don't want a schema change thread running */
