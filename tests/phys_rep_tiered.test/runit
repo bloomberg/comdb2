@@ -233,10 +233,10 @@ function restart_source_nodes()
         for node in $CLUSTER ; do
             if [ $node == `hostname` ] ; then
                 PARAMS="--no-global-lrl --lrl $DBDIR/${DBNAME}.lrl --pidfile ${TMPDIR}/${DBNAME}.${node}.pid"
-                $COMDB2_EXE ${DBNAME} ${PARAMS} &> $LOGDIR/${DBNAME}.${node}.db &
+                ${DEBUG_PREFIX} $COMDB2_EXE ${DBNAME} ${PARAMS} &> $LOGDIR/${DBNAME}.${node}.db &
             else
                 PARAMS="--no-global-lrl --lrl $DBDIR/${DBNAME}.lrl --pidfile ${TMPDIR}/${DBNAME}.${node}.pid"
-                CMD="cd ${DBDIR}; source ${REP_ENV_VARS} ; $COMDB2_EXE ${DBNAME} ${PARAMS} 2>&1 | tee $TESTDIR/${DBNAME}.db"
+                CMD="cd ${DBDIR}; source ${REP_ENV_VARS} ; ${DEBUG_PREFIX} $COMDB2_EXE ${DBNAME} ${PARAMS} 2>&1 | tee $TESTDIR/${DBNAME}.db"
                 ssh -n -o StrictHostKeyChecking=no -tt $node ${CMD} &> $LOGDIR/${DBNAME}.${node}.db &
                 echo $! > ${TMPDIR}/${DBNAME}.${node}.pid
             fi
@@ -255,7 +255,7 @@ function restart_source_nodes()
         node=$(hostname)
         PARAMS="--no-global-lrl --lrl $DBDIR/${DBNAME}.lrl --pidfile ${TMPDIR}/${DBNAME}.pid"
         echo "$COMDB2_EXE ${DBNAME} ${PARAMS} &> $LOGDIR/${DBNAME}.db"
-        $COMDB2_EXE ${DBNAME} ${PARAMS} &> $LOGDIR/${DBNAME}.db &
+        ${DEBUG_PREFIX} $COMDB2_EXE ${DBNAME} ${PARAMS} &> $LOGDIR/${DBNAME}.db &
 
         echo "$DBNAME: waiting until ready"
         out=$($CDB2SQL_EXE ${CDB2_OPTIONS} --tabs --host $node ${DBNAME} 'select 1' 2>/dev/null)
@@ -676,8 +676,8 @@ physrep_keepalive_v2 1
 make_slow_replicants_incoherent off
 END
 
-        $COMDB2_EXE ${_dbname} --create --lrl ${_dbdir}/${_dbname}.lrl --pidfile ${_dbdir}/${_dbname}.pid >> ${logFile} 2>&1
-        $COMDB2_EXE ${_dbname} --lrl ${_dbdir}/${_dbname}.lrl --pidfile ${_dbdir}/${_dbname}.pid >> ${logFile} 2>&1 &
+        ${MEMORY_TOOL_VARIANT:+$DEBUG_PREFIX} $COMDB2_EXE ${_dbname} --create --lrl ${_dbdir}/${_dbname}.lrl --pidfile ${_dbdir}/${_dbname}.pid >> ${logFile} 2>&1
+        ${DEBUG_PREFIX} $COMDB2_EXE ${_dbname} --lrl ${_dbdir}/${_dbname}.lrl --pidfile ${_dbdir}/${_dbname}.pid >> ${logFile} 2>&1 &
  
         out=$($CDB2SQL_EXE ${CDB2_OPTIONS} --tabs --host ${node} ${_dbname} 'select 1' 2>/dev/null)
 
@@ -723,7 +723,7 @@ physrep_keepalive_v2 1
 make_slow_replicants_incoherent off
 END
                 scp ${tmpdir}/${_dbname}.lrl ${node}:${_dbdir}/${_dbname}.lrl
-                ssh ${node} "$COMDB2_EXE ${_dbname} --create --lrl ${_dbdir}/${_dbname}.lrl --pidfile ${_dbdir}/${_dbname}.pid" >> ${logFile} 2>&1 < /dev/null
+                ssh ${node} "${MEMORY_TOOL_VARIANT:+$DEBUG_PREFIX} $COMDB2_EXE ${_dbname} --create --lrl ${_dbdir}/${_dbname}.lrl --pidfile ${_dbdir}/${_dbname}.pid" >> ${logFile} 2>&1 < /dev/null
                 firstNode=${node}
             else
                 lastNode=${node}
@@ -737,7 +737,7 @@ END
         # 2. Start instances
         for node in ${CLUSTER}; do
             logFile=$TESTDIR/logs/${_dbname}.${node}.log
-            ssh ${node} "source ${REP_ENV_VARS} ; $COMDB2_EXE ${_dbname} --lrl ${_dbdir}/${_dbname}.lrl --pidfile ${_dbdir}/${_dbname}.pid" >> ${logFile} 2>&1 < /dev/null &
+            ssh ${node} "source ${REP_ENV_VARS} ; ${DEBUG_PREFIX} $COMDB2_EXE ${_dbname} --lrl ${_dbdir}/${_dbname}.lrl --pidfile ${_dbdir}/${_dbname}.pid" >> ${logFile} 2>&1 < /dev/null &
             PIDs="${PIDs} $!"
         done
 
@@ -858,7 +858,7 @@ function setup_physrep_cluster()
         # Set altmeta2 to be alternate
         echo "alternate_metadb ${_altmeta_dbname2} ${_altmeta_host2}" >> ${_dbdir}/${_dbname}.lrl
 
-        $COMDB2_EXE ${_dbname} --lrl ${_dbdir}/${_dbname}.lrl ${_dbdir}/${_dbname}.lrl --pidfile ${_dbdir}/${_dbname}.pid >> ${logFile} 2>&1 &
+        ${DEBUG_PREFIX} $COMDB2_EXE ${_dbname} --lrl ${_dbdir}/${_dbname}.lrl ${_dbdir}/${_dbname}.lrl --pidfile ${_dbdir}/${_dbname}.pid >> ${logFile} 2>&1 &
  
         out=$($CDB2SQL_EXE ${CDB2_OPTIONS} --tabs --host ${node} ${_dbname} 'select 1' 2>/dev/null)
 
@@ -924,7 +924,7 @@ function setup_physrep_cluster()
         # 2. Start instances
         for node in ${CLUSTER}; do
             logFile=$TESTDIR/logs/${_dbname}.${node}.log
-            ssh ${node} "source ${REP_ENV_VARS} ; $COMDB2_EXE ${_dbname} --lrl ${_dbdir}/${_dbname}.lrl --pidfile ${_dbdir}/${_dbname}.pid" >> ${logFile} 2>&1 < /dev/null &
+            ssh ${node} "source ${REP_ENV_VARS} ; ${DEBUG_PREFIX} $COMDB2_EXE ${_dbname} --lrl ${_dbdir}/${_dbname}.lrl --pidfile ${_dbdir}/${_dbname}.pid" >> ${logFile} 2>&1 < /dev/null &
             PIDs="${PIDs} $!"
         done
 
@@ -982,7 +982,7 @@ function setup_alt_replicant()
     add_to_physrep_sources ${_altmeta_dbname2} ${_altmeta_host2} ${_cluster_dbname} ${_cluster_host} ${_alt_dbname} ${_alt_host}
 
     # Start the alt-replicant
-    ssh ${_alt_host} "source ${REP_ENV_VARS} ; $COMDB2_EXE ${_alt_dbname} --lrl ${_repl_dbdir}/${_alt_dbname}.lrl --pidfile ${_repl_dbdir}/${_alt_dbname}.pid" >> ${logFile} 2>&1 < /dev/null &
+    ssh ${_alt_host} "source ${REP_ENV_VARS} ; ${DEBUG_PREFIX} $COMDB2_EXE ${_alt_dbname} --lrl ${_repl_dbdir}/${_alt_dbname}.lrl --pidfile ${_repl_dbdir}/${_alt_dbname}.pid" >> ${logFile} 2>&1 < /dev/null &
     PIDs="${PIDs} $!"
 
     out=0
@@ -1038,7 +1038,7 @@ function setup_physrep_replicants()
         # Set alternate to be metadb
         echo "physrep_metadb ${_altmeta_dbname} ${_altmeta_host}" >> ${_repl_dbdir}/${_repl_dbname}.lrl
 
-        $COMDB2_EXE ${_repl_dbname} --lrl ${_repl_dbdir}/${_repl_dbname}.lrl --pidfile ${_repl_dbdir}/${_repl_dbname}.pid >> ${logFile} 2>&1 &
+        ${DEBUG_PREFIX} $COMDB2_EXE ${_repl_dbname} --lrl ${_repl_dbdir}/${_repl_dbname}.lrl --pidfile ${_repl_dbdir}/${_repl_dbname}.pid >> ${logFile} 2>&1 &
 
         out=$($CDB2SQL_EXE ${CDB2_OPTIONS} --tabs --host ${node} ${_repl_dbname} 'select 1' 2>/dev/null)
 
@@ -1082,7 +1082,7 @@ function setup_physrep_replicants()
                 ssh $node "echo \"machine_class mips\" >> ${_repl_dbdir}/${_repl_dbname}.lrl" 2>&1 < /dev/null
             fi
 
-            ssh ${node} "source ${REP_ENV_VARS} ; $COMDB2_EXE ${_repl_dbname} --lrl ${_repl_dbdir}/${_repl_dbname}.lrl --pidfile ${_repl_dbdir}/${_repl_dbname}.pid" >> ${logFile} 2>&1 < /dev/null &
+            ssh ${node} "source ${REP_ENV_VARS} ; ${DEBUG_PREFIX} $COMDB2_EXE ${_repl_dbname} --lrl ${_repl_dbdir}/${_repl_dbname}.lrl --pidfile ${_repl_dbdir}/${_repl_dbname}.pid" >> ${logFile} 2>&1 < /dev/null &
             PIDs="${PIDs} $!"
 
             # Wait for the node to start
@@ -1892,11 +1892,11 @@ function revconn_metadb_failure_test
     if [[ -z "$CLUSTER" ]]; then
         local node=$(hostname)
         local altLogFile=$TESTDIR/logs/${REPL_ALTMETA_DBNAME}.${node}.log
-        $COMDB2_EXE ${REPL_ALTMETA_DBNAME} --lrl ${REPL_ALTMETA_DBDIR}/${REPL_ALTMETA_DBNAME}.lrl --pidfile ${REPL_ALTMETA_DBDIR}/${REPL_ALTMETA_DBNAME}.pid >> ${altLogFile} 2>&1 &
+        ${DEBUG_PREFIX} $COMDB2_EXE ${REPL_ALTMETA_DBNAME} --lrl ${REPL_ALTMETA_DBDIR}/${REPL_ALTMETA_DBNAME}.lrl --pidfile ${REPL_ALTMETA_DBDIR}/${REPL_ALTMETA_DBNAME}.pid >> ${altLogFile} 2>&1 &
     else
         for node in $CLUSTER ; do
             local altLogFile=$TESTDIR/logs/${REPL_ALTMETA_DBNAME}.${node}.log
-            ssh ${node} "source ${REP_ENV_VARS} ; $COMDB2_EXE ${REPL_ALTMETA_DBNAME} --lrl ${REPL_ALTMETA_DBDIR}/${REPL_ALTMETA_DBNAME}.lrl --pidfile ${REPL_ALTMETA_DBDIR}/${REPL_ALTMETA_DBNAME}.pid" >> ${altLogFile} 2>&1 < /dev/null &
+            ssh ${node} "source ${REP_ENV_VARS} ; ${DEBUG_PREFIX} $COMDB2_EXE ${REPL_ALTMETA_DBNAME} --lrl ${REPL_ALTMETA_DBDIR}/${REPL_ALTMETA_DBNAME}.lrl --pidfile ${REPL_ALTMETA_DBDIR}/${REPL_ALTMETA_DBNAME}.pid" >> ${altLogFile} 2>&1 < /dev/null &
         done
     fi
 
@@ -3506,7 +3506,7 @@ function verify_non_ignored_reptype
 
     echo "Restart $exit_node"
     logFile=$TESTDIR/logs/${REPL_CLUS_DBNAME}.${exit_node}.log
-    ssh ${exit_node} "source ${REP_ENV_VARS} ; $COMDB2_EXE ${REPL_CLUS_DBNAME} --lrl ${REPL_CLUS_DBDIR}/${REPL_CLUS_DBNAME}.lrl --pidfile ${REPL_CLUS_DBDIR}/${REPL_CLUS_DBNAME}.pid" >> ${logFile} 2>&1 < /dev/null &
+    ssh ${exit_node} "source ${REP_ENV_VARS} ; ${DEBUG_PREFIX} $COMDB2_EXE ${REPL_CLUS_DBNAME} --lrl ${REPL_CLUS_DBDIR}/${REPL_CLUS_DBNAME}.lrl --pidfile ${REPL_CLUS_DBDIR}/${REPL_CLUS_DBNAME}.pid" >> ${logFile} 2>&1 < /dev/null &
     PIDs="${PIDx} $!"
 
     echo "Block until $exit_node is available"

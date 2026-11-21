@@ -5,11 +5,11 @@ dbnm=pmuxsecure
 export CDB2_DISABLE_SOCKPOOL=1
 
 # Use our own pmux in this test
-${COMDB2_EXE} ${dbnm} --create --dir $TESTDIR/${dbnm} --tunable 'portmux_bind_path /tmp/pmux.secure.socket' --tunable 'portmux_port 5106' --tunable "ssl_cert_path $TESTDIR"
+${MEMORY_TOOL_VARIANT:+$DEBUG_PREFIX} ${COMDB2_EXE} ${dbnm} --create --dir $TESTDIR/${dbnm} --tunable 'portmux_bind_path /tmp/pmux.secure.socket' --tunable 'portmux_port 5106' --tunable "ssl_cert_path $TESTDIR"
 ${PMUX_EXE} -f -b /tmp/pmux.secure.socket -p 5106 -s 5104 -r 20000:20001 &
 pmuxpid=$!
 
-${COMDB2_EXE} ${dbnm} --lrl $TESTDIR/${dbnm}/${dbnm}.lrl &
+${DEBUG_PREFIX} ${COMDB2_EXE} ${dbnm} --lrl $TESTDIR/${dbnm}/${dbnm}.lrl &
 dbpid=$!
 sleep 10;
 

@@ -10,7 +10,7 @@ echo "schema { int id }" >> ${DBDIR}/table.csc2
 echo "table t2345678901234567890123456789012 table.csc2" > ${DBDIR}/${DBNAME}.lrl
 
 # WHEN: the database is created.
-${COMDB2_EXE} ${DBNAME} --create --dir ${DBDIR} --lrl ${DBDIR}/${DBNAME}.lrl &> out
+${MEMORY_TOOL_VARIANT:+$DEBUG_PREFIX} ${COMDB2_EXE} ${DBNAME} --create --dir ${DBDIR} --lrl ${DBDIR}/${DBNAME}.lrl &> out
 
 # THEN: database creation fails.
 [[ $? -eq 0 ]] && failexit "expected database creation to fail"
@@ -23,7 +23,7 @@ rm out ${DBDIR}/${DBNAME}.lrl
 echo "table table-with>illegal<chars table.csc2" > ${DBDIR}/${DBNAME}.lrl
 
 # WHEN: the database is created.
-${COMDB2_EXE} ${DBNAME} --create --dir ${DBDIR} --lrl ${DBDIR}/${DBNAME}.lrl &> out
+${MEMORY_TOOL_VARIANT:+$DEBUG_PREFIX} ${COMDB2_EXE} ${DBNAME} --create --dir ${DBDIR} --lrl ${DBDIR}/${DBNAME}.lrl &> out
 
 # THEN: database creation fails.
 [[ $? -eq 0 ]] && failexit "expected database creation to fail"
@@ -36,7 +36,7 @@ rm out ${DBDIR}/${DBNAME}.lrl
 echo 'table ._$0123456789 table.csc2' > ${DBDIR}/${DBNAME}.lrl
 
 # WHEN: the database is created.
-${COMDB2_EXE} ${DBNAME} --create --dir ${DBDIR} --lrl ${DBDIR}/${DBNAME}.lrl &> out
+${MEMORY_TOOL_VARIANT:+$DEBUG_PREFIX} ${COMDB2_EXE} ${DBNAME} --create --dir ${DBDIR} --lrl ${DBDIR}/${DBNAME}.lrl &> out
 
 # THEN: database creation succeeds.
 [[ $? -ne 0 ]] && failexit "expected database creation to succeed"
@@ -49,7 +49,7 @@ rm out ${DBDIR}/${DBNAME}.lrl
 echo 'table t234567890123456789012345678901 table.csc2' > ${DBDIR}/${DBNAME}.lrl
 
 # WHEN: the database is created.
-${COMDB2_EXE} ${DBNAME} --create --dir ${DBDIR} --lrl ${DBDIR}/${DBNAME}.lrl &> out
+${MEMORY_TOOL_VARIANT:+$DEBUG_PREFIX} ${COMDB2_EXE} ${DBNAME} --create --dir ${DBDIR} --lrl ${DBDIR}/${DBNAME}.lrl &> out
 
 # THEN: database creation succeeds.
 [[ $? -ne 0 ]] && failexit "expected database creation to succeed"
