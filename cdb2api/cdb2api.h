@@ -302,7 +302,8 @@ typedef enum cdb2_event_arg {
     CDB2_RETURN_VALUE = 4,
     CDB2_QUERY_STATE = 5,
     CDB2_DBTYPE = 6,
-    CDB2_FINGERPRINT = 7
+    CDB2_FINGERPRINT = 7,
+    CDB2_EVENT = 8
 } cdb2_event_arg;
 
 typedef struct cdb2_event cdb2_event;
