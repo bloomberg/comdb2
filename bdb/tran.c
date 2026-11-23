@@ -736,6 +736,16 @@ static tran_type *bdb_tran_begin_logical_int(bdb_state_type *bdb_state,
     return tran;
 }
 
+void bdb_tran_set_llmeta_snap(tran_type *tran, uint32_t lsn_file, uint32_t lsn_offset, uint32_t ckp_file,
+                              uint32_t ckp_offset)
+{
+    tran->llmeta_snap = 1;
+    tran->llmeta_snap_lsn.file = lsn_file;
+    tran->llmeta_snap_lsn.offset = lsn_offset;
+    tran->llmeta_snap_ckp_lsn.file = ckp_file;
+    tran->llmeta_snap_ckp_lsn.offset = ckp_offset;
+}
+
 #define GET_TRANID(tranid) (tranid) ? (tranid) : get_id(bdb_state)
 
 extern int gbl_extended_sql_debug_trace;

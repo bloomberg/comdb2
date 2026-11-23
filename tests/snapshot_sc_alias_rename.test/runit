@@ -1,0 +1,129 @@
+#!/usr/bin/env bash
+bash -n "$0" || exit 1
+
+# A snapshot reads a table as of its start, also when an alias rename
+# (lightweight_rename) commits after it starts.  An alias rename does not
+# work with transactional_drop_plus_rename on, so lrl.options turns it off.
+
+dbname=$1
+SQL="cdb2sql ${CDB2_OPTIONS} ${dbname} default"
+ROWS=$'(i=1, j=1)\n(i=2, j=2)\n(i=3, j=3)'
+n=0
+failed=0
+
+# run each line of $1; "ALLNODES <sql>" runs <sql> on every node
+run_lines() {
+    while IFS= read -r stmt; do
+        [[ -z "$stmt" ]] && continue
+        if [[ "$stmt" == "ALLNODES "* ]]; then
+            for node in ${CLUSTER:-default}; do
+                local h="--host $node"
+                [[ $node == default ]] && h=default
+                cdb2sql ${CDB2_OPTIONS} ${dbname} $h "${stmt#ALLNODES }" >/dev/null 2>&1
+            done
+            continue
+        fi
+        $SQL "$stmt" >/dev/null 2>&1 || { echo "FAIL: setup statement failed: $stmt"; exit 1; }
+    done <<< "$1"
+}
+
+# check <case> <output of the transaction> <expected>: the expected rows of
+# the statement after "select 'last'", "ERR <text>" for an error of the
+# rest of the transaction, or "OK" for no error in the transaction.  The
+# output has the rows of each statement, then a "[statement] rc 0" line;
+# errors come from stderr, so not in order.
+check() {
+    local name=$1 out=$2 exp=$3
+    local got=$(awk '/^\(last=.last.\)$/ {p = 1; next} p == 1 {p = 2; next} p && /^\[/ {print; exit} p' <<< "$out")
+    local status=$(tail -1 <<< "$got")
+    local rows=$(sed '$d' <<< "$got")
+    if [[ "$exp" == "OK" ]]; then
+        grep -q "failed with" <<< "$out" || return
+    elif [[ "$exp" == "ERR "* ]]; then
+        sed -n '/^(last=.last.)$/,$p' <<< "$out" | grep -q "failed with.*${exp#ERR }" && return
+    else
+        [[ "$status" == *"] rc 0" && "$rows" == "$exp" ]] && return
+    fi
+    echo "FAIL: $name: expected:"
+    echo "$exp"
+    echo "got:"
+    echo "$out"
+    failed=1
+}
+
+new_table() {
+    n=$((n + 1))
+    T=t$n
+    run_lines "create table $T(i int, j int)
+insert into $T values(1,1),(2,2),(3,3)"
+}
+
+# live <case> <setup> <change> <query> <expected> [<first>]: a snapshot
+# reads the table (or runs <first>), the change commits, and the snapshot
+# runs <query>; T in the arguments is the table of the case
+live() {
+    local name=$1
+    new_table
+    local setup=${2//T/$T} change=${3//T/$T} q=${4//T/$T} first=${6//T/$T}
+    run_lines "$setup"
+    local fifo=$(mktemp -u)
+    mkfifo $fifo
+    $SQL - < $fifo > out.$name 2>&1 &
+    local pid=$!
+    exec 3> $fifo
+    echo "begin" >&3
+    echo "${first:-select count(*) from $T}" >&3
+    sleep 2
+    run_lines "$change"
+    echo "select 'last' as last" >&3
+    echo "$q" >&3
+    echo "commit" >&3
+    exec 3>&-
+    wait $pid
+    rm -f $fifo
+    check live_$name "$(cat out.$name)" "$5"
+}
+
+# asof <case> <change> <query> <expected> [<setup>]: the change commits
+# after a timestamp, and a snapshot as of that timestamp runs <query>
+asof() {
+    local name=$1
+    new_table
+    local change=${2//T/$T} q=${3//T/$T} setup=${5//T/$T}
+    run_lines "$setup"
+    sleep 2
+    local ts=$($SQL --tabs "select cast(now() as text)")
+    sleep 2
+    run_lines "$change"
+    local out=$($SQL - 2>&1 <<SQLEOF
+begin transaction as of datetime $ts
+select 'last' as last
+$q
+commit
+SQLEOF
+)
+    echo "$out" > out.asof_$name
+    check asof_$name "$out" "$4"
+}
+
+SEL="select * from T order by i"
+# every node caches the new table version before the snapshot reads again
+RC="ALLNODES select 1"
+
+live read_old "" "alter table T rename to T_a" "$SEL" "$ROWS"
+live read_new "" "alter table T rename to T_a" "select * from T_a order by i" "ERR no such table"
+live read_old_recache "" $'alter table T rename to T_a\n'"$RC" "$SEL" "$ROWS"
+live other_and_add_column "create table T_o(i int)" $'alter table T_o rename to T_o2\nalter table T add k int' \
+    "$SEL" "$ROWS"
+# an alias rename keeps the table version, so a write to the table under its
+# old name commits
+live write_old "" "alter table T rename to T_a" "insert into T values(9,9)" "OK"
+
+asof read_old "alter table T rename to T_a" "$SEL" "$ROWS"
+asof read_new "alter table T rename to T_a" "select * from T_a order by i" "ERR no such table"
+asof read_old_recache $'alter table T rename to T_a\n'"$RC" "$SEL" "$ROWS"
+asof other_and_add_column $'alter table T_o rename to T_o2\nalter table T add k int' "$SEL" "$ROWS" \
+    "create table T_o(i int)"
+asof write_old "alter table T rename to T_a" "insert into T values(9,9)" "OK"
+
+exit $failed

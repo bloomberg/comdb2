@@ -106,6 +106,8 @@ int osql_save_updcols(struct BtCursor *pCur, struct sql_thread *thd,
 int osql_save_dbq_consume(struct sqlclntstate *, const char *spname, genid_t);
 
 void *osql_get_shadow_bydb(struct sqlclntstate *clnt, struct dbtable *db);
+int osql_get_shadow_dbnum(struct sqlclntstate *clnt, const char *tablename);
+int osql_shadow_dbnum_in_use(struct sqlclntstate *clnt, int dbnum);
 int osql_fetch_shadblobs_by_genid(struct BtCursor *pCur, int *blobnum,
                                   blob_status_t *blobs, int *bdberr);
 int osql_get_shadowdata(struct BtCursor *pCur, unsigned long long genid,

@@ -528,11 +528,13 @@ static int exec_set_skipscan(void *tran, bpfunc_t *func, struct errstat *err)
     int rc;
 
     if (cov_f->newvalue == 1) //enable skipscan means clear llmeta entry
-        rc = bdb_clear_table_parameter(tran, cov_f->tablename, "disableskipscan");
+        rc = bdb_clear_table_parameter(tran, cov_f->tablename, "disableskipscan", &bdberr);
     else {
         const char *value = "true";
-        rc = bdb_set_table_parameter(tran, cov_f->tablename, "disableskipscan", value);
+        rc = bdb_set_table_parameter(tran, cov_f->tablename, "disableskipscan", value, &bdberr);
     }
+    if (rc && bdberr == BDBERR_DEADLOCK)
+        return RC_INTERNAL_RETRY;
     if (!rc)
         bdb_llog_analyze(thedb->bdb_env, 1, &bdberr);
     if (rc)
