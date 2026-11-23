@@ -1,0 +1,5 @@
+# The cost checks expect an expression index added by ALTER to be used for
+# lookups on a 4-row table.  With statistics collected during the schema
+# change the planner rightly prefers a table scan, so keep the old behavior;
+# sc_analyze.test covers the feature.
+analyze_new_indexes off
