@@ -183,9 +183,12 @@ static int propose_sc(struct schema_change_type *s)
     return rc;
 }
 
-static int master_downgrading(struct schema_change_type *s)
+/* downgraded: the schema change returned SC_MASTER_DOWNGRADE (a downgrade it
+ * started itself has already let schema changes run again, see
+ * sc_transfer_master()) */
+static int master_downgrading(struct schema_change_type *s, int downgraded)
 {
-    if (get_stopsc(__func__, __LINE__)) {
+    if (downgraded || get_stopsc(__func__, __LINE__)) {
         if (!s->nothrevent)
             backend_thread_event(thedb, COMDB2_THR_EVENT_DONE);
         if (s->sb) {
@@ -465,6 +468,173 @@ static int check_table_version(struct ireq *iq, struct schema_change_type *sc)
     return 0;
 }
 
+int gbl_sc_commit_map_checkpoint_timeout_ms = 10 * 60 * 1000;
+int gbl_debug_sc_commit_map_checkpoint_hold = 0;
+int gbl_debug_sc_commit_map_checkpoint_fail = 0;
+
+/* the schema changes that are finalized together: a list, or just its first */
+struct sc_commit_map_barrier {
+    struct ireq *iq;
+    struct schema_change_type *list;
+    int one;
+};
+
+#define FOREACH_BARRIER_SC(b, sc) for (sc = (b)->list; sc; sc = (b)->one ? NULL : sc->sc_next)
+
+static int sc_commit_map_barrier_stop(void *p)
+{
+    struct sc_commit_map_barrier *b = p;
+    struct schema_change_type *sc;
+    if (get_stopsc(__func__, __LINE__))
+        return SC_MASTER_DOWNGRADE;
+    if (gbl_sc_abort || b->iq->sc_should_abort)
+        return SC_ABORTED;
+    FOREACH_BARRIER_SC(b, sc)
+    {
+        if (sc->db && sc->db->sc_abort)
+            return SC_ABORTED;
+    }
+    return 0;
+}
+
+/* The converters that skipped the commit LSN map have all finished when this
+ * runs, so their commits are all below the current LSN, M.  Before the schema
+ * changes that are finalized together publish anything, take one checkpoint
+ * whose recovery LSN is past M, so no snapshot that can read a replacement needs
+ * those commits.  Not under the schema lock: the transactions holding the
+ * checkpoint back may need it.  If one still does after
+ * sc_commit_map_checkpoint_timeout_ms, ask the caller for a new master
+ * (SC_TRANSFER_MASTER, see sc_transfer_master()): the downgrade aborts it, and
+ * the next master resumes the schema changes and takes its own checkpoint.  Fail
+ * instead when a prepared transaction holds it back: the next master would
+ * recover it and be held back the same way.  On failure the callers back the
+ * schema changes out as after a failed conversion.
+ * Returns 0, SC_TRANSFER_MASTER, SC_MASTER_DOWNGRADE (the next master resumes),
+ * SC_ABORTED, or -1. */
+static int sc_commit_map_barrier_wait(struct sc_commit_map_barrier *b)
+{
+    struct schema_change_type *sc, *s = NULL;
+    unsigned int file, offset;
+    int rc;
+
+    FOREACH_BARRIER_SC(b, sc)
+    {
+        if (sc->sc_skip_commit_map) {
+            s = sc;
+            break;
+        }
+    }
+    if (!s)
+        return 0;
+
+    if (b->iq->sc_locked) {
+        sc_errf(s, "Cannot wait for the commit LSN map checkpoint under the schema lock\n");
+        return -1;
+    }
+
+    if (gbl_debug_sc_commit_map_checkpoint_hold)
+        sc_printf(s, "[%s] holding before the commit LSN map checkpoint\n", s->tablename);
+    while (gbl_debug_sc_commit_map_checkpoint_hold && sc_commit_map_barrier_stop(b) == 0)
+        poll(NULL, 0, 100);
+
+    bdb_get_current_lsn(thedb->bdb_env, &file, &offset);
+    rc = bdb_checkpoint_past_lsn(thedb->bdb_env, file, offset, gbl_sc_commit_map_checkpoint_timeout_ms,
+                                 sc_commit_map_barrier_stop, b);
+    if (rc == -2) {
+        sc_errf(s, "Commit LSN map checkpoint blocked for %d ms, transferring mastership\n",
+                gbl_sc_commit_map_checkpoint_timeout_ms);
+        return SC_TRANSFER_MASTER;
+    } else if (rc == -3) {
+        sc_errf(s,
+                "A prepared transaction holds the commit LSN map checkpoint back after %d ms; a new master "
+                "would recover it, so mastership stays here\n",
+                gbl_sc_commit_map_checkpoint_timeout_ms);
+        rc = -1;
+    }
+    if (rc == 0 && gbl_debug_sc_commit_map_checkpoint_fail)
+        rc = -1;
+
+    if (rc == SC_MASTER_DOWNGRADE)
+        sc_errf(s, "Master downgrading before the commit LSN map checkpoint\n");
+    else if (rc == SC_ABORTED)
+        sc_errf(s, "Schema change aborted before the commit LSN map checkpoint\n");
+    else if (rc)
+        sc_errf(s, "Failed to checkpoint past the converter commits\n");
+    else
+        sc_printf(s, "[%s] checkpoint is past the converter commits at %u:%u\n", s->tablename, file, offset);
+    return rc;
+}
+
+/* Every failure releases the schema changes or backs them out, and either waits
+ * for their logical redo threads, which nothing has stopped (a real downgrade
+ * does, through stopsc).  Stop them as a failed converter does: once the
+ * converters are done nothing else reads sc_thd_failed, so it backs nothing out
+ * and leaves llmeta for the next master to resume from. */
+static int sc_commit_map_barrier(struct sc_commit_map_barrier *b)
+{
+    struct schema_change_type *sc;
+    int rc = sc_commit_map_barrier_wait(b);
+    if (rc) {
+        FOREACH_BARRIER_SC(b, sc)
+        {
+            sc->sc_thd_failed = -1;
+        }
+    }
+    return rc;
+}
+
+/* a schema change finalized on its own */
+int sc_commit_map_checkpoint(struct ireq *iq, struct schema_change_type *s)
+{
+    struct sc_commit_map_barrier b = {.iq = iq, .list = s, .one = 1};
+    return sc_commit_map_barrier(&b);
+}
+
+/* the schema changes in iq->sc_pending, finalized together */
+int sc_commit_map_checkpoint_pending(struct ireq *iq)
+{
+    struct sc_commit_map_barrier b = {.iq = iq, .list = iq->sc_pending, .one = 0};
+    return sc_commit_map_barrier(&b);
+}
+
+/* For SC_TRANSFER_MASTER from the commit LSN map checkpoint: can mastership be
+ * handed over?  Not without another node, nor with
+ * abort_during_downgrade_if_scs_dont_stop.  If it can, the caller releases the
+ * schema changes as for any downgrade, while this node can still write, and then
+ * calls sc_transfer_master(); the next master resumes them.
+ * Returns SC_MASTER_DOWNGRADE, or -1 to back them out. */
+extern int gbl_abort_during_downgrade_if_scs_dont_stop;
+int sc_transfer_master_rc(struct schema_change_type *s)
+{
+    if (bdb_is_an_unconnected_master(thedb->bdb_env)) {
+        sc_errf(s, "No node to hand mastership to\n");
+        return -1;
+    }
+    if (gbl_abort_during_downgrade_if_scs_dont_stop) {
+        sc_errf(s, "Not transferring mastership with abort_during_downgrade_if_scs_dont_stop on\n");
+        return -1;
+    }
+    return SC_MASTER_DOWNGRADE;
+}
+
+/* After sc_transfer_master_rc() and the release of the schema changes */
+void sc_transfer_master(void)
+{
+    bdb_transfermaster(thedb->bdb_env);
+    if (bdb_iam_master(thedb->bdb_env) && thedb->master == gbl_myhostname)
+        logmsg(LOGMSG_ERROR, "%s: mastership was not transferred; the schema change resumes on the next master\n",
+               __func__);
+}
+
+/* from a schema change thread, released for the transfer: master_downgrading()
+ * has ended its bdb thread registration */
+static void sc_thread_transfer_master(void)
+{
+    backend_thread_event(thedb, COMDB2_THR_EVENT_START);
+    sc_transfer_master();
+    backend_thread_event(thedb, COMDB2_THR_EVENT_DONE);
+}
+
 static int do_ddl(ddl_t pre, ddl_t post, struct ireq *iq,
                   struct schema_change_type *s, tran_type *tran)
 {
@@ -499,7 +669,7 @@ static int do_ddl(ddl_t pre, ddl_t post, struct ireq *iq,
     }
 
     rc = pre(iq, s, NULL);                            // non-tran ??
-    if (s->done_type == alter && master_downgrading(s)) {
+    if (s->done_type == alter && master_downgrading(s, rc == SC_MASTER_DOWNGRADE)) {
         s->sc_rc = SC_MASTER_DOWNGRADE;
         errstat_set_strf(
             &iq->errstat,
@@ -571,7 +741,8 @@ int do_alter_queues(struct schema_change_type *s, struct ireq *unused)
 
     if (rc == SC_OK) rc = do_alter_queues_int(s);
 
-    if (master_downgrading(s)) return SC_MASTER_DOWNGRADE;
+    if (master_downgrading(s, 0))
+        return SC_MASTER_DOWNGRADE;
 
     if (gbl_pushlogs_after_sc)
         push_next_log();
@@ -589,7 +760,8 @@ int do_alter_stripes(struct schema_change_type *s, struct ireq *unused)
 
     rc = do_alter_stripes_int(s);
 
-    if (master_downgrading(s)) return SC_MASTER_DOWNGRADE;
+    if (master_downgrading(s, 0))
+        return SC_MASTER_DOWNGRADE;
 
     if (gbl_pushlogs_after_sc)
         push_next_log();
@@ -697,6 +869,7 @@ int sc_kind_uses_existing_table(int kind)
 static int do_schema_change_tran_int(sc_arg_t *arg)
 {
     struct ireq *iq = arg->iq;
+    int transfer_master = 0;
     tran_type *trans = arg->trans;
     int rc = SC_OK;
     struct schema_change_type *s = arg->sc;
@@ -740,6 +913,9 @@ static int do_schema_change_tran_int(sc_arg_t *arg)
     }
 
 downgraded:
+    /* not a downgrade under way: the commit LSN map checkpoint asked for one
+     * (do_alter_table()); release first, transfer on the way out */
+    transfer_master = rc == SC_MASTER_DOWNGRADE && s->sc_transfer_master;
     if (rc == SC_MASTER_DOWNGRADE) {
         while (s->logical_livesc) {
             poll(NULL, 0, 100);
@@ -806,6 +982,8 @@ downgraded:
                rc == SC_PREEMPTED || rc == SC_PAUSED ||
                (!s->nothrevent && !s->finalize)) {
         Pthread_mutex_unlock(&s->mtx);
+        if (transfer_master)
+            sc_thread_transfer_master();
         return rc;
     }
     Pthread_mutex_unlock(&s->mtx);
@@ -818,6 +996,8 @@ downgraded:
             stop_and_free_sc(iq, rc, s, 1);
         }
     }
+    if (transfer_master)
+        sc_thread_transfer_master();
     return rc;
 }
 

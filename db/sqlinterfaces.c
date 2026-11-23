@@ -1755,7 +1755,8 @@ int cache_table_versions(struct sqlclntstate *clnt)
     }
 
     int bdberr;
-    rc = bdb_osql_cache_table_versions(thedb->bdb_env, clnt->dbtran.table_version_cache, &bdberr);
+    rc = bdb_osql_cache_table_versions(thedb->bdb_env, clnt->dbtran.table_version_cache,
+                                       clnt->dbtran.mode == TRANLEVEL_SNAPISOL, &bdberr);
     if (rc) {
         logmsg(LOGMSG_ERROR, "%s failed to cache table versions rc=%d bdberr=%d\n", __func__, rc, bdberr);
         return rc;

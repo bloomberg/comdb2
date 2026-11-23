@@ -300,6 +300,10 @@ struct schema_change_type {
 
     int sc_thd_failed;
     int schema_change;
+    /* converter commits left out of the commit LSN map */
+    int sc_skip_commit_map;
+    /* released for a new master the commit LSN map checkpoint asked for */
+    int sc_transfer_master;
 
     /*********************** temporary fields for table upgrade
      * ************************/
@@ -390,6 +394,7 @@ enum schema_change_rc {
     SC_PREEMPTED,
     SC_DETACHED,
     SC_FUNC_IN_USE,
+    SC_TRANSFER_MASTER, /* the commit LSN map checkpoint wants a new master, see sc_transfer_master() */
     SC_UNKNOWN_ERROR = -1,
     SC_CANT_SET_RUNNING = -99
 };
