@@ -1073,6 +1073,17 @@ static int seedsort(const void *arg1, const void *arg2)
     return 0;
 }
 
+/* 1 if the source's log agrees with ours but ends sooner, at *end */
+static int source_only_behind(cdb2_hndl_tp *repl_db, LOG_INFO *end)
+{
+    LOG_INFO mine = get_last_lsn(thedb->bdb_env);
+    LOG_INFO match = find_match_lsn(thedb->bdb_env, repl_db, mine);
+
+    if (match.file == 0)
+        return 0;
+    return physrep_find_last_match(thedb->bdb_env, repl_db, match, mine, end) == 2;
+}
+
 static DB_Connection *find_new_repl_db(cdb2_hndl_tp *repl_metadb, cdb2_hndl_tp **repl_db) {
     int rc, count = 0;
     DB_Connection *cnct;
@@ -1088,14 +1099,20 @@ static DB_Connection *find_new_repl_db(cdb2_hndl_tp *repl_metadb, cdb2_hndl_tp *
          * reconnect penalty, or failed to open / 'select 1'). If so we cannot
          * conclude "no source covers me" -- a source we never reached might. */
         int saw_unreachable = 0;
+        /* Furthest source whose log agrees with ours but ends sooner: used only if no other fits */
+        DB_Connection *best = NULL, *only = NULL;
+        LOG_INFO best_end = {0};
 
         if (gbl_physrep_shuffle_host_list == 1) {
             qsort(repl_dbs, repl_dbs_sz, sizeof(DB_Connection *), seedsort);
         }
 
         int now;
+    again:
         for (int i = 0; i < repl_dbs_sz; i++) {
             cnct = repl_dbs[i];
+            if (only && cnct != only)
+                continue;
 
             if (((now = time(NULL)) - cnct->last_failed) <= gbl_physrep_reconnect_penalty) {
                 if (gbl_physrep_debug) {
@@ -1150,6 +1167,21 @@ static DB_Connection *find_new_repl_db(cdb2_hndl_tp *repl_metadb, cdb2_hndl_tp *
                 /* cov == -1 (unknown): fall through; handle_truncation is the backstop. */
             }
 
+            /* Rewinding to a source that is only behind us would unwind rows our readers saw */
+            LOG_INFO end;
+            if (!only && source_only_behind(*repl_db, &end)) {
+                if (gbl_physrep_debug) {
+                    physrep_logmsg(LOGMSG_USER, "%s:%d source %s@%s is behind me, skipping\n", __func__, __LINE__,
+                                   cnct->dbname, cnct->hostname);
+                }
+                if (!best || end.file > best_end.file || (end.file == best_end.file && end.offset > best_end.offset)) {
+                    best = cnct;
+                    best_end = end;
+                }
+                cdb2_close(*repl_db);
+                continue;
+            }
+
             /* Execute sys.physrep.update_registry() on the replication metadb cluster */
             rc = update_registry(repl_metadb, cnct->dbname, cnct->hostname);
             if (rc == PHYSREP_REGISTRY_REFUSED_CYCLE) {
@@ -1172,6 +1204,12 @@ static DB_Connection *find_new_repl_db(cdb2_hndl_tp *repl_metadb, cdb2_hndl_tp *
             physrep_no_source_streak = 0;
             gbl_physrep_no_viable_source = 0;
             return cnct;
+        }
+
+        /* Every source we reached is behind us: take the furthest */
+        if (best && !only) {
+            only = best;
+            goto again;
         }
 
         /* Every reachable candidate this pass was probed and none covered our
