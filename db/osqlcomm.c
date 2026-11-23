@@ -6740,6 +6740,8 @@ static int start_schema_change_tran_wrapper_merge(const char *tblname,
     alter_sc->kind = SC_ALTERTABLE;
     /* use the created file as target */
     alter_sc->newdb = sc->newdb;
+    /* it converts into sc's replacement, as sc decided */
+    alter_sc->sc_skip_commit_map = sc->sc_skip_commit_map;
     alter_sc->force_rebuild = 1; /* we are moving rows here */
     /* alter only in parallel mode for live */
     alter_sc->scanmode = SCAN_PARALLEL;

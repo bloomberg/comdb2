@@ -28,9 +28,10 @@ BEGIN {
 }
 /opcode:/ {
 	if (in_regop == 1) {
-		if ($2 == 1)
+		# flags such as TXN_COMMIT_F_SC_SKIP_MAP sit above the low byte
+		if ($2 % 256 == 1)
 			status[txnid] = 2
-		else if ($2 == 3)
+		else if ($2 % 256 == 3)
 			status[txnid] = 3
 		else
 			status[txnid] = 4

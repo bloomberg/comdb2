@@ -1393,6 +1393,8 @@ struct ireq {
     /************/
     uint8_t region3; /* used for offsetof */
 
+    uint8_t sc_skip_commit_map; /* schema-change converter: keep commits out of the commit LSN map */
+    uint8_t sc_transfer_master; /* a schema change wants a new master: transfer once this request is done */
     uint64_t startus; /* thread handling; start time stamp */
 
     /* latched by toblock before gbl_tagged_request_callback: the table and
