@@ -1,0 +1,132 @@
+#!/usr/bin/env bash
+bash -n "$0" || exit 1
+
+# With logical_live_sc, a rebuild whose commit LSN map checkpoint fails (or, on
+# a standalone master, stays blocked past the timeout) must stop its logical
+# redo thread: the rebuild fails promptly instead of hanging, nothing of it is
+# left, the table is intact and writable, and a retry succeeds.
+
+source ${TESTSROOTDIR}/tools/runit_common.sh
+source ${TESTSROOTDIR}/tools/cluster_utils.sh
+set -o pipefail
+
+dbnm=$1
+N=${SC_COMMIT_MAP_ROWS:-2000}
+SUM=$((N * (N + 1) / 2))
+# in a cluster ask the nodes themselves: getmaster goes through the client's
+# default route, which has answered with a host outside the cluster
+master=""
+if [[ -n "$CLUSTER" ]]; then
+	for _ in $(seq 1 60); do
+		for node in $CLUSTER; do
+			m=$(cdb2sql --tabs ${CDB2_OPTIONS} --host $node "$dbnm" "select host from comdb2_cluster where is_master='Y'" 2>/dev/null)
+			[[ -n "$m" && " $CLUSTER " == *" $m "* ]] && { master=$m; break 2; }
+		done
+		sleep 1
+	done
+else
+	master=$(getmaster)
+fi
+[[ -n "$master" ]] || { echo "FAIL: could not find master"; exit 1; }
+if [[ -n "$CLUSTER" ]]; then
+	log() { echo $TESTDIR/logs/$dbnm.$master.db; }
+else
+	log() { echo $TESTDIR/logs/$dbnm.db; }
+fi
+
+run() { timeout ${T:-120} cdb2sql --tabs ${CDB2_OPTIONS} --host "$master" "$dbnm" "$@"; }
+send() { run "exec procedure sys.cmd.send(\"$1\")"; }
+fail() { echo "FAIL: $*"; exit 1; }
+tunable() { run "put tunable '$1' $2" >/dev/null || fail "put tunable $1 $2"; }
+
+fill() {
+	run "create table $1(a int, b int)" >/dev/null || fail "create $1"
+	run "insert into $1 select value, value from generate_series(1, $N)" >/dev/null || fail "fill $1"
+}
+check_rows() {
+	[[ "$(run "select count(*), sum(b) from $1")" == "$N	$SUM" ]] || fail "$1: rows changed"
+}
+# the failed rebuild is backed out: nothing of it left, the table works
+intact() {
+	local st
+	st=$(run "select status from comdb2_sc_status where name='$1'")
+	[[ "$st" == "ABORTED" ]] || fail "$1: schema change status is '$st'"
+	send "llmeta list" | grep "LLMETA_SCHEMACHANGE" | grep -v "HISTORY" | grep -qw "$1" &&
+		fail "$1: schema change left in llmeta"
+	run "insert into $1 values(-1, 0)" >/dev/null || fail "$1: write after backout"
+	run "delete from $1 where a = -1" >/dev/null || fail "$1: delete after backout"
+	check_rows $1
+}
+no_sc_running() {
+	local n
+	n=$(run "select count(*) from comdb2_sc_status where status in ('RUNNING', 'COMMIT_PENDING')")
+	[[ "$n" == "0" ]] || fail "$n schema changes still running"
+}
+# $1: label, rest: cdb2sql args; the rebuild must fail, and within a minute
+must_fail_fast() {
+	local label=$1 s=$SECONDS rc
+	shift
+	T=180 run "$@" >$TMPDIR/ddl.out 2>&1
+	rc=$?
+	echo "$label: rc $rc after $((SECONDS - s)) s: $(tr '\n' ' ' <$TMPDIR/ddl.out | cut -c1-160)"
+	((rc != 0)) || fail "$label: rebuild succeeded"
+	((rc != 124)) || fail "$label: rebuild hung"
+	((SECONDS - s <= 60)) || fail "$label: rebuild took $((SECONDS - s)) s"
+}
+rebuild_two() {
+	"$@" - <<EOF
+begin
+rebuild t2
+rebuild t3
+commit
+EOF
+}
+
+for t in t1 t2 t3 other; do
+	fill $t
+done
+
+echo "=== a rebuild whose checkpoint fails"
+tunable debug_sc_commit_map_checkpoint_fail 1
+must_fail_fast single "rebuild t1"
+grep -q "logical redo starts" "$(log)" || fail "no logical redo thread started"
+intact t1
+
+echo "=== two rebuilds in one transaction whose checkpoint fails"
+rebuild_two must_fail_fast txn
+tunable debug_sc_commit_map_checkpoint_fail 0
+intact t2
+intact t3
+no_sc_running
+
+echo "=== the same rebuilds without the fault"
+run "rebuild t1" >/dev/null || fail "retry rebuild t1"
+rebuild_two run >/dev/null || fail "retry rebuild t2, t3"
+for t in t1 t2 t3; do
+	check_rows $t
+done
+no_sc_running
+
+if [[ -z "$CLUSTER" ]]; then
+	echo "=== a standalone master whose checkpoint stays blocked past the timeout"
+	tunable sc_commit_map_checkpoint_timeout_ms 3000
+	send "bdb setattr DELAY_WRITES_IN_RECORD_C 5000" >/dev/null
+	run "insert into other values(-4, 0), (-5, 0)" >/dev/null &
+	ins_pid=$!
+	sleep 1
+	must_fail_fast timeout "rebuild t1"
+	send "bdb setattr DELAY_WRITES_IN_RECORD_C 0" >/dev/null
+	wait $ins_pid || fail "insert holding the checkpoint failed"
+	tunable sc_commit_map_checkpoint_timeout_ms 600000
+	grep -q "No node to hand mastership to" "$(log)" || fail "timeout was not reported"
+	run "delete from other where a < 0" >/dev/null || fail "delete from other"
+	intact t1
+	no_sc_running
+	run "rebuild t1" >/dev/null || fail "retry rebuild t1 after timeout"
+	check_rows t1
+fi
+
+for t in t1 t2 t3 other; do
+	do_verify $t
+done
+echo "Passed test"

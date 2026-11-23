@@ -1,0 +1,302 @@
+#!/usr/bin/env bash
+bash -n "$0" || exit 1
+
+# sc_commit_map_skip and retroactive time partitioning.  Its converter routes
+# each existing row into one of the future shards (new tables added by the same
+# transaction, marked until published); its commits skip the commit LSN map and
+# the transaction checkpoints once before publishing.  A snapshot begun before
+# the partitioning or at its checkpoint, even one reading a new shard first,
+# reads it right or fails as schema changed, never empty.  A failed or aborted
+# checkpoint backs everything out, and (cluster) a downgrade at the checkpoint
+# leaves it to the next master.  Rows are inserted in three sets more than one
+# 2-minute test period apart, so each set lands in its own shard.
+
+source ${TESTSROOTDIR}/tools/runit_common.sh
+source ${TESTSROOTDIR}/tools/cluster_utils.sh
+set -o pipefail
+
+dbnm=$1
+N=${RETRO_ROWS:-2000}
+GAP=${RETRO_GAP:-140}
+SLACK=${RETRO_SLACK:-300}
+EXP3="$((3 * N))	$((3 * N))	$((3 * N * (3 * N + 1) / 2))"
+
+on() { local h=$1; shift; cdb2sql --tabs ${CDB2_OPTIONS} --host "$h" "$dbnm" "$@"; }
+master() {
+	[[ -z "$CLUSTER" ]] && { getmaster; return; }
+	local node m
+	for node in $CLUSTER; do
+		m=$(on $node "select host from comdb2_cluster where is_master='Y'" 2>/dev/null)
+		[[ -n "$m" && " $CLUSTER " == *" $m "* ]] && { echo $m; return 0; }
+	done
+	return 1
+}
+wait_master() {
+	local m
+	for _ in $(seq 1 120); do
+		m=$(master 2>/dev/null)
+		[[ -n "$m" ]] && on $m "select 1" >/dev/null 2>&1 && { echo $m; return 0; }
+		sleep 1
+	done
+	return 1
+}
+fail() { echo "FAIL: $*"; exit 1; }
+log() { if [[ -n "$CLUSTER" ]]; then echo $TESTDIR/logs/$dbnm.$1.db; else echo $TESTDIR/logs/$dbnm.db; fi; }
+entries() { on $1 "exec procedure sys.cmd.send('bdb clminfo')" | grep -oP '(?<=Entries: )[0-9]+'; }
+idle() {
+	for _ in $(seq 1 180); do
+		(( $(on $1 "exec procedure sys.cmd.send('stat')" | grep -c "Schema change in progress") == 0 )) && return 0
+		sleep 1
+	done
+	return 1
+}
+slow() { on $(master) "exec procedure sys.cmd.send('bdb setattr SC_FORCE_DELAY $1')" >/dev/null; }
+declare -A lmark
+mark_log() { [[ -n "$1" ]] || fail "no node to mark"; lmark[$1]=$(wc -l < "$(log $1)"); }
+nsince() { tail -n +$(( ${lmark[$1]:-0} + 1 )) "$(log $1)" | grep -c -- "$2"; }
+# wait (up to 10 minutes: sanitizer builds are slow) for the master to hold at the barrier
+held() {
+	for _ in $(seq 1 6000); do
+		(( $(nsince $1 "holding before the commit LSN map checkpoint") > 0 )) && return 0
+		kill -0 $2 2>/dev/null || return 1
+		sleep 0.1
+	done
+	return 1
+}
+
+NODES=${CLUSTER:-$(getmaster)}
+for node in $NODES; do
+	on $node "exec procedure sys.cmd.send('sync log-delete off 3600')" >/dev/null
+done
+trap 'for node in $NODES; do on $node "exec procedure sys.cmd.send(\"sync log-delete on\")" >/dev/null 2>&1; on $node "exec procedure sys.cmd.send(\"bdb setattr CHECKPOINTTIME 60\")" >/dev/null 2>&1; done' EXIT
+
+TABLES="rskip rfail rabort $([[ -n "$CLUSTER" ]] && echo rdg)"
+m=$(wait_master) || fail "no master"
+for t in $TABLES; do
+	on $m "create table $t(a int unique, b int)" >/dev/null || fail "create $t"
+done
+T0=$SECONDS
+for k in 0 1 2; do
+	(( k > 0 )) && { echo "waiting $GAP s before set $k"; sleep $GAP; }
+	for t in $TABLES; do
+		on $m "insert into $t select value, value from generate_series($((k * N + 1)), $(((k + 1) * N)))" >/dev/null ||
+			fail "fill $t set $k"
+	done
+done
+
+# START 10 minutes ahead, so no rollout fires; enough 2-minute shards to reach set 0
+retro_sql() {
+	local start=$(on $(master) "select now() + cast(10 as minutes)" | sed "s/\"/'/g")
+	echo "alter table $1 partitioned by time period 'test2min' retention $(( (600 + SECONDS - T0 + 120) / 120 + 2 )) start $start retroactively"
+}
+shards() { on $(wait_master) "select shardname from comdb2_timepartshards where name='$1' order by shardname"; }
+barriers() { nsince $1 "checkpoint is past the converter commits"; }
+# the rows are all there, spread over at least 3 shards (a set can straddle a
+# boundary when its inserts are slow)
+check_part() {
+	local tbl=$1 m=$(wait_master) s nonempty=0
+	for s in $(shards $tbl); do (( $(on $m "select count(*) from '$s'") > 0 )) && nonempty=$((nonempty + 1)); done
+	(( nonempty >= 3 )) || fail "$tbl: $nonempty non-empty shards, expected at least 3"
+	[[ "$(on $m "select count(*), count(distinct a), sum(b) from $tbl")" == "$EXP3" ]] || fail "$tbl: contents"
+}
+# the shard that holds set 0: a table the partitioning added
+set0_shard() {
+	local s
+	for s in $(shards $1); do
+		[[ "$(on $(master) "select count(*) from '$s' where a = 1")" == 1 ]] && { echo $s; return; }
+	done
+}
+# only one retroactive partition can exist at a time (its shard names do not
+# depend on the table)
+collapse() { on $(wait_master) "alter table $1 partitioned by none" >/dev/null || fail "collapse $1"; }
+
+# a snapshot that reads, after publication, one shard first (once a read fails
+# the rest of the transaction fails too), then the partition and every shard:
+# each read is right, or fails as schema changed
+SNAP_FDS=""
+snap_begin() {
+	local m=$1 tag=$2 tbl=$3
+	rm -f $TMPDIR/$tag.fifo; mkfifo $TMPDIR/$tag.fifo
+	# the reader must not hold the other snapshots' fifos open, or they never see EOF
+	( for fd in $SNAP_FDS; do eval "exec $fd>&-"; done
+	  exec cdb2sql --tabs ${CDB2_OPTIONS} --host "$m" "$dbnm" - <$TMPDIR/$tag.fifo >$TMPDIR/$tag.out 2>&1 ) &
+	eval "${tag}_pid=$!"
+	eval "exec {${tag}_fd}>$TMPDIR/$tag.fifo"
+	eval "SNAP_FDS=\"$SNAP_FDS \$${tag}_fd\""
+	local fd; eval "fd=\$${tag}_fd"
+	printf '%s\n' "set transaction snapshot isolation" "begin" "select 'begin', count(*) from $tbl" >&$fd
+}
+# (the snapshots run the same text: the second one reuses the first one's cached
+# statement, which fails its table version check and must be finalized, or the
+# SQL thread can no longer reopen its engine after the next schema change)
+snap_check() {
+	local tag=$1 tbl=$2 first=$3 fd pid s got exp bad=0
+	eval "fd=\$${tag}_fd; pid=\$${tag}_pid"
+	printf '%s\n' "select '$first', count(*) from '$first'" "select 'after', count(*) from $tbl" >&$fd
+	for s in $(shards $tbl); do printf '%s\n' "select '$s', count(*) from '$s'" >&$fd; done
+	printf '%s\n' "commit" >&$fd
+	eval "exec ${fd}>&-"
+	wait $pid
+	while read -r s got; do
+		if [[ "$s" == after ]]; then exp=$((3 * N)); else exp=$(on $(master) "select count(*) from '$s'"); fi
+		[[ "$got" == "$exp" ]] || { echo "  $tag: $s read $got, has $exp"; bad=$((bad + 1)); }
+	done < <(awk -F'\t' 'NF == 2 && $1 != "begin"' $TMPDIR/$tag.out)
+	echo "  snapshot $tag: $(grep -c "schema changed" $TMPDIR/$tag.out) reads failed as schema changed, $bad wrong"
+	(( bad == 0 )) || { cat $TMPDIR/$tag.out; fail "snapshot $tag read the partition wrong"; }
+}
+
+echo "=== routed converter commits skip, one checkpoint; snapshots across publication never read a shard empty"
+m=$(wait_master) || fail "no master"
+before=$(entries $m)
+mark_log $m
+# no periodic checkpoint before the held snapshot starts: its checkpoint stays
+# below the converter commits
+on $m "exec procedure sys.cmd.send('bdb setattr CHECKPOINTTIME 3600')" >/dev/null
+snap_begin $m s0 rskip
+on $m "put tunable 'debug_sc_commit_map_checkpoint_hold' 1" >/dev/null
+on $m "$(retro_sql rskip)" > $TMPDIR/rskip.ddl 2>&1 &
+ddl_pid=$!
+held $m $ddl_pid || fail "rskip never held at the barrier: $(cat $TMPDIR/rskip.ddl)"
+[[ "$(on $m "select count(*) from comdb2_timepartshards where name='rskip'")" == 0 ]] || fail "published before the barrier"
+[[ "$(on $m "select count(*), count(distinct a), sum(b) from rskip")" == "$EXP3" ]] || fail "rskip unreadable at the barrier"
+on $m "insert into rskip values($((10 * N)), $((10 * N)))" >/dev/null || fail "insert at the barrier"
+on $m "delete from rskip where a = $((10 * N))" >/dev/null || fail "delete at the barrier"
+# after the conversion, before the checkpoint
+snap_begin $m s1 rskip
+sleep 1
+on $m "put tunable 'debug_sc_commit_map_checkpoint_hold' 0" >/dev/null
+wait $ddl_pid || fail "partitioning rskip: $(cat $TMPDIR/rskip.ddl)"
+on $m "exec procedure sys.cmd.send('bdb setattr CHECKPOINTTIME 60')" >/dev/null
+delta=$(( $(entries $m) - before ))
+sk=$(nsince $m "converter commits skip the commit LSN map"); gi=$(nsince $m "converter commits go into the commit LSN map")
+echo "  map grew by $delta for $((3 * N)) rows; converters skipping $sk, not skipping $gi, barrier checkpoints $(barriers $m)"
+(( sk == 1 && gi == 0 )) || fail "$sk converters skipped and $gi did not"
+(( $(barriers $m) == 1 )) || fail "$(barriers $m) barrier checkpoints"
+(( delta < SLACK )) || fail "map grew by $delta"
+check_part rskip
+first=$(set0_shard rskip)
+echo "  set 0 is in $first"
+snap_check s0 rskip $first
+snap_check s1 rskip $first
+# a snapshot begun after publication reads the new shards normally
+got=$(on $m - <<EOF | grep -v -e '^$' -e '^\['
+set transaction snapshot isolation
+begin
+select count(*) from '$first'
+commit
+EOF
+)
+[[ "$got" == "$N" ]] || fail "a snapshot begun after publication reads $first as '$got'"
+do_verify rskip
+collapse rskip
+on $m "select count(*) from rskip" >/dev/null || fail "no query after the collapse"
+(( $(nsince $m "NOT FINALIZED") == 0 )) || fail "a failed snapshot statement was not finalized"
+
+# writes during a partitioning: inserts go to the newest shard, deletes and
+# updates of old rows are routed by genid to every shard
+writes_start() {
+	local m=$1 tbl=$2
+	rm -f $TMPDIR/$tbl.stop
+	( k=0; while [[ ! -f $TMPDIR/$tbl.stop ]]; do
+		k=$((k + 1))
+		on $m "insert into $tbl values($((10 * N + k)), $((10 * N + k)))" >/dev/null 2>&1 && echo "ins $((10 * N + k))"
+		on $m "delete from $tbl where a = $((6 * k % (3 * N)))" 2>/dev/null | grep -q . && echo "del $((6 * k % (3 * N)))"
+		on $m "update $tbl set b = b + 1000000 where a = $(((6 * k + 1) % (3 * N))) and b < 1000000" 2>/dev/null |
+			grep -q . && echo "upd $(((6 * k + 1) % (3 * N)))"
+	done ) > $TMPDIR/$tbl.writes &
+	WR_PID=$!
+}
+writes_check() {
+	local tbl=$1 m a exp got
+	touch $TMPDIR/$tbl.stop; wait $WR_PID
+	m=$(wait_master)
+	exp=$((3 * N + $(grep -c "^ins" $TMPDIR/$tbl.writes) - $(grep -c "^del" $TMPDIR/$tbl.writes)))
+	got=$(on $m "select count(*), count(distinct a) from $tbl")
+	echo "  $(grep -c "^ins" $TMPDIR/$tbl.writes) inserts, $(grep -c "^del" $TMPDIR/$tbl.writes) deletes, $(grep -c "^upd" $TMPDIR/$tbl.writes) updates; $tbl has '$got'"
+	[[ "$got" == "$exp	$exp" ]] || fail "$tbl has '$got', expected $exp rows once each"
+	for a in $(grep "^upd" $TMPDIR/$tbl.writes | cut -d' ' -f2); do
+		(( $(on $m "select b from $tbl where a = $a") >= 1000000 )) || fail "$tbl: update of $a lost"
+	done
+	for a in $(grep "^del" $TMPDIR/$tbl.writes | cut -d' ' -f2); do
+		[[ -z "$(on $m "select a from $tbl where a = $a")" ]] || fail "$tbl: delete of $a lost"
+	done
+}
+
+# a partitioning whose barrier fails, or that is aborted while held at it
+retro_fails() {
+	local mode=$1 tbl=$2 m held=0 rc ntab cnt
+	m=$(wait_master) || fail "$mode: no master"
+	ntab=$(on $m "select count(*) from comdb2_tables")
+	mark_log $m
+	writes_start $m $tbl
+	[[ $mode == fail ]] && on $m "put tunable 'debug_sc_commit_map_checkpoint_fail' 1" >/dev/null
+	[[ $mode == abort ]] && on $m "put tunable 'debug_sc_commit_map_checkpoint_hold' 1" >/dev/null
+	slow 1
+	on $m "$(retro_sql $tbl)" > $TMPDIR/$tbl.ddl 2>&1 &
+	local ddl_pid=$!
+	if [[ $mode == abort ]] && held $m $ddl_pid; then
+		on $m "exec procedure sys.cmd.send('scabort')" >/dev/null
+		held=1
+	fi
+	wait $ddl_pid; rc=$?
+	slow 0
+	on $m "put tunable 'debug_sc_commit_map_checkpoint_fail' 0" >/dev/null 2>&1
+	on $m "put tunable 'debug_sc_commit_map_checkpoint_hold' 0" >/dev/null 2>&1
+	echo "  $mode: ddl rc $rc ($(tr '\n' ' ' < $TMPDIR/$tbl.ddl)), held $held"
+	(( rc != 0 )) || fail "$mode: the partitioning succeeded"
+	if [[ $mode == fail ]]; then
+		(( $(nsince $m "Failed to checkpoint past the converter commits") >= 1 )) || fail "fail: the checkpoint did not fail"
+	else
+		(( held == 1 )) || fail "abort: never held at the barrier"
+		(( $(nsince $m "aborted before the commit LSN map checkpoint") >= 1 )) || fail "abort: not aborted at the barrier"
+	fi
+	(( $(barriers $m) == 0 )) || fail "$mode: a barrier checkpoint succeeded"
+	idle $m || fail "$mode: a schema change is still running"
+	writes_check $tbl
+	[[ "$(on $m "select count(*) from comdb2_timepartshards where name='$tbl'")" == 0 ]] || fail "$mode: published"
+	[[ "$(on $m "select count(*) from comdb2_tables")" == "$ntab" ]] || fail "$mode: tables $ntab -> $(on $m "select count(*) from comdb2_tables")"
+	on $m "insert into $tbl values($((20 * N)), 0)" >/dev/null || fail "$mode: insert after"
+	on $m "delete from $tbl where a = $((20 * N))" >/dev/null || fail "$mode: delete after"
+	do_verify $tbl
+	cnt=$(on $m "select count(*), count(distinct a), sum(b) from $tbl")
+	mark_log $m
+	on $m "$(retro_sql $tbl)" >/dev/null || fail "$mode: retry"
+	(( $(barriers $m) == 1 )) || fail "$mode: retry took $(barriers $m) barrier checkpoints"
+	(( $(shards $tbl | wc -l) > 0 )) || fail "$mode: retry did not publish"
+	[[ "$(on $m "select count(*), count(distinct a), sum(b) from $tbl")" == "$cnt" ]] || fail "$mode: retry changed $tbl"
+	echo "  $mode: backed out, the retry published $(shards $tbl | wc -l) shards"
+	do_verify $tbl
+	collapse $tbl
+}
+
+echo "=== a partitioning whose barrier checkpoint fails, with writes running"
+retro_fails fail rfail
+echo "=== a partitioning aborted at its barrier, with writes running"
+retro_fails abort rabort
+
+if [[ -n "$CLUSTER" ]]; then
+	echo "=== a downgrade at the barrier leaves the partitioning to the next master"
+	m=$(wait_master) || fail "no master"
+	for n in $CLUSTER; do mark_log $n; done
+	on $m "put tunable 'debug_sc_commit_map_checkpoint_hold' 1" >/dev/null
+	on $m "$(retro_sql rdg)" > $TMPDIR/rdg.ddl 2>&1 &
+	ddl_pid=$!
+	held $m $ddl_pid || fail "rdg never held"
+	downgrade_master
+	on $m "put tunable 'debug_sc_commit_map_checkpoint_hold' 0" >/dev/null 2>&1
+	wait $ddl_pid
+	nm=$(wait_master); echo "  old master $m, new master $nm: $(tr '\n' ' ' < $TMPDIR/rdg.ddl)"
+	idle $nm || fail "a schema change is still running on $nm"
+	(( $(barriers $m) == 0 )) || fail "the old master checkpointed"
+	(( $(barriers $nm) == 1 )) || fail "$nm took $(barriers $nm) barrier checkpoints"
+	check_part rdg
+	echo "=== every node reads the partition, a restarted replicant too"
+	for r in $CLUSTER; do [[ $r != $nm ]] && break; done
+	kill_restart_node $r 2
+	for n in $CLUSTER; do
+		got=$(on $n "select count(*), count(distinct a), sum(b) from rdg")
+		[[ "$got" == "$EXP3" ]] || fail "$n reads rdg as '$got'"
+	done
+	do_verify rdg
+fi
+echo "Passed test"

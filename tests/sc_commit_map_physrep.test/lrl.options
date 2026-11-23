@@ -1,0 +1,5 @@
+dtastripe 1
+utxnid_log on
+enable_snapshot_isolation
+sc_commit_map_skip 1
+sc_commit_map_skip_replicants 1
