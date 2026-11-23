@@ -101,6 +101,19 @@ for firstfile in 0 1; do
     fi
 done
 
+for firstfile in 0 1; do
+    echo "== register_replicant offers sources that have reached the requester first (firstfile $firstfile)"
+    create_tables $firstfile
+    add_node $firstfile src s1
+    add_node $firstfile src s2
+    sql "update comdb2_physreps set offset = 100 where host = 's1'"
+    sql "update comdb2_physreps set offset = 300 where host = 's2'"
+    for i in $(seq 1 10); do
+        out=$(sql "exec procedure sys.physrep.register_replicant('r', 'r$i', '100:200', 'src', \"'s1', 's2'\")")
+        [[ $(echo "$out" | head -1 | cut -f3) == s2 ]] || fail "register_replicant offered src@s1, behind the requester, first: $out"
+    done
+done
+
 echo "== update_registry refuses to link a node to itself or its own descendant"
 build_chain 0
 for src in "leaf', 'l1" "mid', 'm1"; do
