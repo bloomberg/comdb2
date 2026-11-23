@@ -7,7 +7,8 @@
  * sets it on the cdb2api handle, and runs the queries. When multiple
  * SQL statements are provided, they all run on the same connection
  * handle, exercising auth reuse (allow_old_authn). Prints results
- * to stdout; exits 0 on success, 1 on failure.
+ * to stdout; exits 0 on success, 1 on failure. A principal ending in
+ * ":exp:<epoch>" sends "exp:<epoch>" as the identity data instead.
  */
 #include <cstdio>
 #include <cstdlib>
@@ -83,8 +84,11 @@ int main(int argc, char **argv)
     id->principal = strdup(principal);
     id->majorversion = 1;
     id->minorversion = 0;
-    id->data.data = reinterpret_cast<uint8_t *>(strdup("dummy"));
-    id->data.len = 5;
+    char *exp = strstr(id->principal, ":exp:");
+    if (exp)
+        *exp++ = '\0';
+    id->data.data = reinterpret_cast<uint8_t *>(strdup(exp ? exp : "dummy"));
+    id->data.len = strlen(reinterpret_cast<char *>(id->data.data));
     hndl->id_blob = id;
 
     int failed = 0;

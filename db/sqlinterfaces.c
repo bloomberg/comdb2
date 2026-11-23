@@ -4951,8 +4951,7 @@ void clnt_to_ruleset_item_criteria(
       clnt->current_user.have_name ? clnt->current_user.name : NULL;
   context->zSql = clnt->sql;
   context->pFingerprint = clnt->work.aFingerprint;
-  clnt->authdata = clnt->plugin.get_authdata(clnt);
-  context->zIdentity = clnt->externalAuthUser;
+  context->zIdentity = clnt->plugin.get_identity(clnt);
 }
 
 static int can_execute_sql_query_now(
@@ -5080,6 +5079,8 @@ void sqlengine_work_appsock(struct sqlthdstate *thd, struct sqlclntstate *clnt)
 
     clnt->added_to_hist = clnt->isselect = 0;
     clnt->was_consumer = 0;
+    if (gbl_uses_externalauth)
+        clnt->authdata = get_authdata(clnt); /* drops the last statement's old authn outside a transaction */
     clnt_change_state(clnt, CONNECTION_RUNNING);
     clnt->osql.timings.query_dispatched = osql_log_time();
 
@@ -5656,7 +5657,7 @@ int cdb2_in_client_trans() {
     if (clnt == NULL)
         return 0;
 
-    return clnt->in_client_trans;
+    return clnt->in_client_trans || clnt->dbtran.cursor_tran != NULL;
 }
 
 /* Release one of the genshard partition arrays built by the SET PARTITION

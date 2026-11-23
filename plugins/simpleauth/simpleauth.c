@@ -1,6 +1,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <pthread.h>
+#include <time.h>
 
 #include "comdb2_plugin.h"
 #include "comdb2_initializer.h"
@@ -46,11 +47,18 @@ static void setOldAuthnResult(authenticationData *authData, const char *principa
         free(authData->oldAuthnResult->principal);
         authData->oldAuthnResult->principal = strdup(principal);
         authData->oldAuthnResult->rc = rc;
-    } else if (authData->oldAuthnResult) {
-        free(authData->oldAuthnResult->principal);
-        free(authData->oldAuthnResult);
-        authData->oldAuthnResult = NULL;
     }
+}
+
+/* Identity data may be "exp:<epoch>"; once past it, authentication fails */
+static int simpleIdentityExpired(const authenticationData *authData)
+{
+    char buf[32];
+    if (authData->dta_size < 5 || authData->dta_size >= sizeof(buf) || strncmp(authData->dta, "exp:", 4) != 0)
+        return 0;
+    memcpy(buf, authData->dta, authData->dta_size);
+    buf[authData->dta_size] = 0;
+    return strtoll(buf + 4, NULL, 10) <= time(NULL);
 }
 
 static int simpleCheckTableAccess(void *ID, const char *tablename, const char *argv0, const char *action)
@@ -69,7 +77,11 @@ static int simpleCheckTableAccess(void *ID, const char *tablename, const char *a
 
         if (gbl_allow_old_authn && authData->oldAuthnResult && cdb2_in_client_trans()) {
             logmsg(LOGMSG_USER, "simpleauth: reusing old authn for principal='%s' action='%s'\n", principal, action);
-            return authData->oldAuthnResult->rc;
+        } else if (simpleIdentityExpired(authData)) {
+            logmsg(LOGMSG_USER, "simpleauth: expired identity for principal='%s' action='%s'\n", principal, action);
+            return -1;
+        } else {
+            setOldAuthnResult(authData, principal, 0);
         }
     }
 
@@ -89,10 +101,6 @@ static int simpleCheckTableAccess(void *ID, const char *tablename, const char *a
     logmsg(LOGMSG_USER, "simpleauth: principal='%s' client_info='%s' action='%s'\n", principal,
            argv0 ? argv0 : "(null)", action);
     rc = simpleAuthCheck(principal, action, resource);
-
-    if (ID) {
-        setOldAuthnResult((authenticationData *)ID, principal, rc);
-    }
 
     return rc;
 }
