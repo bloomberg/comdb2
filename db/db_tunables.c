@@ -240,6 +240,7 @@ extern int gbl_elect_master_req_ms;
 extern int gbl_verbose_send_coherency_lease;
 extern int gbl_reset_on_unelectable_cluster;
 extern int gbl_rep_verify_always_grab_writelock;
+extern int gbl_rep_skip_limbo;
 extern int gbl_rep_verify_will_recover_trace;
 extern int64_t gbl_warn_wr_logbytes_per_txn;
 extern int64_t gbl_max_wr_logbytes_per_txn;

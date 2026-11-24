@@ -264,6 +264,7 @@ struct txn_properties;
 #define	DB_PRIVATE	      0x0100000	/* DB_ENV is process local. */
 #define	DB_RECOVER_FATAL      0x0200000	/* Run catastrophic recovery. */
 #define	DB_RECOVER_NOCKP      0x0400000	/* Do not write a checkpoint. */
+#define	DB_RECOVER_NOLIMBO    0x0800000	/* __db_apprec only: skip the limbo pass. */
 #define	DB_SYSTEM_MEM	      0x0400000	/* Use system-backed memory. */
 
 /*
