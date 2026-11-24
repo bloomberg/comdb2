@@ -913,7 +913,10 @@ static int sqlite3StrAccumEnlarge(StrAccum *p, int N){
         setStrAccumError(p, SQLITE_TOOBIG);
         return 0;
       }
-      szNew = p->mxAlloc;
+      /* Clamping when the append doesn't fit. */
+      if( szNew<=p->mxAlloc ){
+        szNew = p->mxAlloc;
+      }
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     }
     if( szNew > p->mxAlloc ){
