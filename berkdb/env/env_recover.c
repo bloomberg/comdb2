@@ -2043,11 +2043,8 @@ __env_openfiles(dbenv, logc, txninfo,
 			__db_err(dbenv,
 				"Recovery function for LSN %lu %lu failed, ret=%d",
 				(u_long) lsn.file, (u_long) lsn.offset, ret);
-#if defined (DEBUG_ABORT_ON_RECOVERY_FAILURE)
 			__log_flush(dbenv, NULL);
 			abort();
-#endif
-			break;
 		}
 		if ((ret = __log_c_get(logc, &lsn, data, DB_NEXT)) != 0) {
 			if (ret == DB_NOTFOUND) {

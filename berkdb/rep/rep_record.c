@@ -8116,6 +8116,13 @@ restart:
 	logmsg(LOGMSG_INFO, "%s calling truncate with lsn [%d:%d]\n", __func__,
 			lsnp->file, lsnp->offset);
 	ret = __db_apprec(dbenv, lsnp, trunclsnp, undo, DB_RECOVER_NOCKP);
+	/* A failed truncate leaves txns half undone: never report it as done */
+	if (ret != 0) {
+		logmsg(LOGMSG_FATAL, "%s: truncate to [%d:%d] failed, ret=%d\n", __func__,
+		    lsnp->file, lsnp->offset, ret);
+		__log_flush(dbenv, NULL);
+		abort();
+	}
 
 	/* Increase generation before releasing recovery lock */
 	if (i_am_master) {
