@@ -351,10 +351,15 @@ __dbreg_register_recover(dbenv, dbtp, lsnp, op, info)
 					F_SET(dbp, DB_AM_DISCARD);
 
 				if (op == DB_TXN_ABORT &&
-				    !F_ISSET(dbp, DB_AM_RECOVER))
+				    !F_ISSET(dbp, DB_AM_RECOVER)) {
+					/* refresh closes the mpf without
+					 * __db_close: drop it from the ufid
+					 * hash first (waits for prefaults) */
+					if (dbp->added_to_ufid)
+						__ufid_clear_dbp(dbenv, dbp);
 					t_ret = __db_refresh(dbp,
 					    NULL, DB_NOSYNC, NULL);
-				else {
+				} else {
 					if (op == DB_TXN_APPLY)
 						__db_sync(dbp);
 					t_ret =

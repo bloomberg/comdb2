@@ -37,6 +37,7 @@
  */
 
 struct BtCursor;
+struct sqlite3_stmt;
 enum trans_clntcomm;
 
 /* Upsert flags that attach with OSQL_INSERT. */
@@ -146,6 +147,22 @@ int osql_sock_commit(struct sqlclntstate *clnt, int type, enum trans_clntcomm si
  *
  */
 int osql_sock_abort(struct sqlclntstate *clnt, int type);
+
+/**
+ * Replica write hints (rep_write_hints): at the end of a statement, or before
+ * a commit ships, send the leaf pages the statement recorded to the master if
+ * it shipped an osql write, and forget them
+ *
+ */
+void osql_send_write_hints(struct sqlclntstate *clnt);
+
+/**
+ * Replica write hints: forget the recorded pages without sending them, at the
+ * start of a statement stmt (which records its own if rep_write_hints is on
+ * and it can write) and on abort (stmt NULL: record nothing more)
+ *
+ */
+void osql_reset_write_hints(struct sqlclntstate *clnt, struct sqlite3_stmt *stmt);
 
 /**
  * busy bee,

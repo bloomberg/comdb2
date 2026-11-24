@@ -182,6 +182,21 @@ int sqlite3WhereUsesDeferredSeek(WhereInfo *pWInfo){
   return pWInfo->bDeferredSeek;
 }
 
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+/*
+** The cursor of the index the outermost loop of pWInfo scans, or -1 (table
+** scan, OR optimization).  For comdb2's replica write hints (OP_RowSetAdd P5).
+*/
+int comdb2WhereScanIdxCur(WhereInfo *pWInfo){
+  WhereLoop *pLoop = pWInfo->a[0].pWLoop;
+  if( pLoop==0 || (pLoop->wsFlags & WHERE_INDEXED)==0
+   || (pLoop->wsFlags & WHERE_MULTI_OR)!=0 ){
+    return -1;
+  }
+  return pWInfo->a[0].iIdxCur;
+}
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+
 /*
 ** Move the content of pSrc into pDest
 */

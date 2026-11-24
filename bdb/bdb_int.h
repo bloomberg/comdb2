@@ -334,16 +334,6 @@ enum { BDB_SEQNUM_TYPE_LEN = 8 + 2 + 2 + 4 + 12 };
 BB_COMPILE_TIME_ASSERT(bdb_seqnum_type,
                        sizeof(struct seqnum_t) == BDB_SEQNUM_TYPE_LEN);
 
-struct filepage_t {
-    unsigned int fileid; /* fileid to prefault */
-    unsigned int pgno;   /* page number to prefault*/
-};
-
-enum { BDB_FILEPAGE_TYPE_LEN = 4 + 4 };
-
-BB_COMPILE_TIME_ASSERT(bdb_filepage_type,
-                       sizeof(struct filepage_t) == BDB_FILEPAGE_TYPE_LEN);
-
 /* terminate list w/ index == -1 */
 typedef struct {
     unsigned long long context;
@@ -1616,10 +1606,11 @@ extern int gbl_udp;
 extern int gbl_prefault_udp;
 extern int gbl_verify_all_pools;
 
+/* A UDP prefault hint queued for udppfaultpool: page pgno of the file with this UFID */
 typedef struct udppf_rq {
     bdb_state_type *bdb_state;
-    unsigned int fileid;
     unsigned int pgno;
+    uint8_t ufid[DB_FILE_ID_LEN];
 } udppf_rq_t;
 
 void start_udp_reader(bdb_state_type *bdb_state);
@@ -1644,8 +1635,6 @@ void receive_start_lsn_request(void *ack_handle, void *usr_ptr, char *from_host,
                              uint8_t is_tcp);
 uint8_t *rep_berkdb_seqnum_type_put(const seqnum_type *p_seqnum_type,
                                     uint8_t *p_buf, const uint8_t *p_buf_end);
-uint8_t *rep_udp_filepage_type_put(const filepage_type *p_filepage_type,
-                                   uint8_t *p_buf, const uint8_t *p_buf_end);
 const uint8_t *db_lsn_type_put(const DB_LSN *p_db_lsn, uint8_t *p_buf,
                                const uint8_t *p_buf_end);
 void poke_updateid(void *buf, int updateid);

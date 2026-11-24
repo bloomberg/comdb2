@@ -1,0 +1,325 @@
+#!/usr/bin/env bash
+bash -n "$0" || exit 1
+
+# Replica write hints (rep_write_hints) for the statements of a stored
+# procedure.
+#
+# A write statement of a stored procedure sends its own write-hint packet when
+# it ends (lua_end_step), as a top-level statement does in sqlite_done; a
+# statement starts with no pages (get_prepared_stmt_int, lua_begin_step), so a
+# packet holds only the pages its own statement recorded.
+#
+# Each case calls one procedure on the replicant R and compares counter deltas
+# around the call: R's write-hint packets ("udp prefault async write-hint
+# packets queued" + dropped) and the write-hint pages that reach the master
+# ("udp prefault ufid hints pinned + skipped + dropped").  Packets are counted
+# on R, so they are exact; UDP is lossy, so page counts are bounded.  An UPDATE
+# by primary key of a row of tb hints 2 pages (its data page and its primary key
+# leaf); the ids used are far apart, so no two of them share a page.
+#
+# Cases (each procedure call is one transaction):
+#   A  a prepared UPDATE run 5 times: 5 packets, at most 10 pages
+#   B  a prepared UPDATE run 20 times: 20 packets, more than 32 pages (one
+#      packet holds at most 32)
+#   C  a read-only dbstmt on tc, opened before and fetched around 3 UPDATEs of
+#      tb: 3 packets, at most 6 pages (no leaf of tc)
+#   D  only reads: no packet
+#   E  an UPDATE that changes no row: no packet
+#   F  an UPDATE that fails on the replica (db:exec returns its error): no packet
+#   G  two UPDATEs without db:begin(): 2 packets
+#   H  a prepared UPDATE of tb run 5 times, each run after another statement
+#      was run and closed: 5 packets, each with the data page and the primary
+#      key leaf (10 pages), as when nothing runs in between
+#   I  the same with an UPDATE that changes the blob of a row of tbb: 5
+#      packets, each with the data page, the primary key leaf and the blob
+#      leaf (15 pages)
+# Identical data on every node and the expected sum at the end.
+
+DBNAME=$1
+[[ -z "$DBNAME" ]] && { echo "Usage: $0 <dbname>"; exit 1; }
+[[ -z "$CLUSTER" ]] && { echo "Test only suitable for a clustered setup"; exit 0; }
+
+NROWS=200000
+W=${TMPDIR:-/tmp}/rwhsp.$$
+mkdir -p $W
+
+function fail
+{
+    echo "FAIL: $*"
+    exit 1
+}
+
+function sqlh
+{
+    local h=$1
+    shift
+    ${CDB2SQL_EXE} ${CDB2_OPTIONS} --tabs --host $h ${DBNAME} "$@"
+}
+
+function send
+{
+    sqlh $1 "exec procedure sys.cmd.send('$2')"
+}
+
+function current_master
+{
+    sqlh $1 "select host from comdb2_cluster where is_master='Y'"
+}
+
+# counters <host> : "name value" per line (a missing counter counts as 0)
+function counters
+{
+    send $1 "udp stat" | awk -F': ' '
+        $1 == "udp prefault ufid hints pinned" { print "ufid_pinned", $2 }
+        $1 == "udp prefault ufid hints skipped (file not open)" { print "ufid_skipped", $2 }
+        $1 == "udp prefault ufid hints dropped (queue full)" { print "ufid_dropped", $2 }
+        $1 == "udp prefault async write-hint packets queued" { print "wh_queued", $2 }
+        $1 == "udp prefault async write-hint packets dropped (queue full)" { print "wh_full", $2 }
+        $1 == "udp prefault async write-hint packets dropped (no master)" { print "wh_nomaster", $2 }'
+}
+
+function delta
+{
+    local b a
+    b=$(awk -v k=$3 '$1 == k {print $2}' $W/$1.before.$2)
+    a=$(awk -v k=$3 '$1 == k {print $2}' $W/$1.after.$2)
+    echo $((${a:-0} - ${b:-0}))
+}
+
+function packets
+{
+    echo $(($(delta $1 ${origin} wh_queued) + $(delta $1 ${origin} wh_full) + $(delta $1 ${origin} wh_nomaster)))
+}
+
+function pages
+{
+    echo $(($(delta $1 ${master} ufid_pinned) + $(delta $1 ${master} ufid_skipped) + $(delta $1 ${master} ufid_dropped)))
+}
+
+function wait_caught_up
+{
+    local i out
+    for ((i = 0; i < 600; i++)); do
+        out=$(sqlh ${master} "select count(*) from comdb2_cluster c, comdb2_cluster m where m.is_master = 'Y' and (c.logfile != m.logfile or c.logoffset != m.logoffset)")
+        [[ "$out" == "0" ]] && return 0
+        sleep 0.5
+    done
+    fail "replicants did not catch up with the master"
+}
+
+# Wait until R's sender and the master's prefetch pool have stopped moving
+function settle
+{
+    local i last="" now
+    wait_caught_up
+    for ((i = 0; i < 40; i++)); do
+        now="$(send ${master} "udp stat" | grep -E "^udp prefault ufid hints (pinned|skipped|dropped)" | xargs) $(send ${origin} "udp stat" | grep "write-hint packets" | xargs)"
+        [[ -n "$last" && "$now" == "$last" ]] && return 0
+        last="$now"
+        sleep 0.5
+    done
+}
+
+# call <case> <procedure> [expected error] : one call on R between two snapshots
+function call
+{
+    local c=$1 out
+    [[ "$(current_master ${origin})" == "${master}" ]] || fail "$c: master changed"
+    settle
+    counters ${origin} > $W/$c.before.${origin}
+    counters ${master} > $W/$c.before.${master}
+    out=$(sqlh ${origin} "exec procedure $2()" 2>&1)
+    if [[ -n "$3" ]]; then
+        echo "$out" | grep -q -i -- "$3" || fail "$c: expected an error matching '$3', got: $out"
+    else
+        echo "$out" | grep -q -i -E "error|fail" && fail "$c: $2 failed: $out"
+    fi
+    settle
+    counters ${origin} > $W/$c.after.${origin}
+    counters ${master} > $W/$c.after.${master}
+    echo "$c ($2): R write-hint packets $(packets $c), master hint pages $(pages $c)"
+}
+
+nodes=$(echo ${CLUSTER} | tr ' ' '\n' | sort | xargs)
+master=$(current_master $(echo ${nodes} | cut -d' ' -f1))
+[[ -n "${master}" ]] || fail "no master"
+origin=$(for n in ${nodes}; do [[ $n != ${master} ]] && echo $n; done | head -1)
+[[ -n "${origin}" ]] || fail "need a replicant"
+echo "master ${master}, R ${origin}"
+
+sqlh ${master} "create table tb(id int primary key, v int, pad cstring(65))" || fail "create table tb"
+sqlh ${master} "create table tc(id int primary key, c int, pad cstring(65))" || fail "create table tc"
+sqlh ${master} "create index tc_c on tc(c)" || fail "create index tc_c"
+B=50000
+for ((s = 1; s <= NROWS; s += B)); do
+    sqlh ${master} "insert into tb select value, 0, printf('%064d', value) from generate_series($s, $((s + B - 1)))" || fail "load tb at $s"
+done
+sqlh ${master} "insert into tc select value, value % 1000, printf('%064d', value) from generate_series(1, 20000)" || fail "load tc"
+sqlh ${master} "create table tbb(id int primary key, v int, b blob)" || fail "create table tbb"
+sqlh ${master} "insert into tbb select value, 0, randomblob(200) from generate_series(1, 20000)" > /dev/null || fail "load tbb"
+
+# ids of tb used by the procedures: 7919 apart, so no two share a data page or a primary key leaf
+${CDB2SQL_EXE} ${CDB2_OPTIONS} --host ${master} ${DBNAME} - > $W/sp.out 2>&1 <<'SPEOF'
+create procedure rwh_prep5 version 'v1' {
+local function main()
+    db:begin()
+    local st = db:prepare("update tb set v = v + 1 where id = ?")
+    for i = 1, 5 do
+        st:bind(1, i * 7919)
+        st:exec()
+    end
+    db:commit()
+    return 0
+end}$$
+put default procedure rwh_prep5 'v1'
+create procedure rwh_prep20 version 'v1' {
+local function main()
+    db:begin()
+    local st = db:prepare("update tb set v = v + 1 where id = ?")
+    for i = 1, 20 do
+        st:bind(1, i * 7919)
+        st:exec()
+    end
+    db:commit()
+    return 0
+end}$$
+put default procedure rwh_prep20 'v1'
+create procedure rwh_open version 'v1' {
+local function main()
+    db:begin()
+    local s = db:prepare("select id from tc where c between 100 and 900 order by c")
+    s:fetch()
+    for i = 1, 3 do
+        db:exec("update tb set v = v + 1 where id = " .. (i * 7919))
+        for j = 1, 50 do s:fetch() end
+    end
+    s:close()
+    db:commit()
+    return 0
+end}$$
+put default procedure rwh_open 'v1'
+create procedure rwh_read version 'v1' {
+local function main()
+    local s = db:prepare("select count(*) as n from tc where c between 100 and 900")
+    s:fetch()
+    s:close()
+    local s2 = db:exec("select v from tb where id = 7919")
+    s2:fetch()
+    return 0
+end}$$
+put default procedure rwh_read 'v1'
+create procedure rwh_zero version 'v1' {
+local function main()
+    db:begin()
+    db:exec("update tb set v = v + 1 where id = -5")
+    db:commit()
+    return 0
+end}$$
+put default procedure rwh_zero 'v1'
+create procedure rwh_fail version 'v1' {
+local function main()
+    db:exec("update tb set pad = printf('%0200d', 1) where id = 7919")
+    return 0
+end}$$
+put default procedure rwh_fail 'v1'
+create procedure rwh_noxn version 'v1' {
+local function main()
+    db:exec("update tb set v = v + 1 where id = 7919")
+    db:exec("update tb set v = v + 1 where id = 15838")
+    return 0
+end}$$
+put default procedure rwh_noxn 'v1'
+create procedure rwh_between version 'v1' {
+local function main()
+    db:begin()
+    local u = db:prepare("update tb set v = v + 1 where id = ?")
+    for i = 1, 5 do
+        local s = db:exec("select count(*) as n from tc where c = " .. i)
+        s:fetch()
+        s:close()
+        u:bind(1, (i + 20) * 7919)
+        u:exec()
+    end
+    db:commit()
+    return 0
+end}$$
+put default procedure rwh_between 'v1'
+create procedure rwh_between_blob version 'v1' {
+local function main()
+    db:begin()
+    local u = db:prepare("update tbb set b = cast(b || x'01' as blob) where id = ?")
+    for i = 1, 5 do
+        local s = db:exec("select count(*) as n from tc where c = " .. i)
+        s:fetch()
+        s:close()
+        u:bind(1, i * 3001)
+        u:exec()
+    end
+    db:commit()
+    return 0
+end}$$
+put default procedure rwh_between_blob 'v1'
+SPEOF
+grep -q -E "failed with rc|\] rc -?[1-9]" $W/sp.out && fail "create procedure: $(cat $W/sp.out)"
+wait_caught_up
+
+for n in ${nodes}; do
+    for tn in rep_write_hints; do
+        [[ "$(sqlh $n "select value from comdb2_tunables where name = '$tn'")" == "ON" ]] || fail "$tn is not on on $n"
+    done
+done
+
+V=0   # expected sum(v) of tb
+
+call A rwh_prep5
+V=$((V + 5))
+[[ $(packets A) -eq 5 ]] || fail "A: $(packets A) write-hint packets for a prepared UPDATE run 5 times, expected 5"
+[[ $(pages A) -le 10 ]] || fail "A: $(pages A) hint pages, expected at most 10"
+[[ $(pages A) -ge 5 ]] || fail "A: $(pages A) hint pages, expected at least 5"
+
+call B rwh_prep20
+V=$((V + 20))
+[[ $(packets B) -eq 20 ]] || fail "B: $(packets B) write-hint packets for a prepared UPDATE run 20 times, expected 20"
+[[ $(pages B) -le 40 ]] || fail "B: $(pages B) hint pages, expected at most 40"
+[[ $(pages B) -gt 32 ]] || fail "B: $(pages B) hint pages, expected more than one packet can hold (32)"
+
+call C rwh_open
+V=$((V + 3))
+[[ $(packets C) -eq 3 ]] || fail "C: $(packets C) write-hint packets for 3 UPDATEs, expected 3"
+[[ $(pages C) -le 6 ]] || fail "C: $(pages C) hint pages for 3 single-row UPDATEs, expected at most 6 (no leaf of the open SELECT)"
+
+call D rwh_read
+[[ $(packets D) -eq 0 ]] || fail "D: $(packets D) write-hint packets for a read-only procedure"
+
+call E rwh_zero
+[[ $(packets E) -eq 0 ]] || fail "E: $(packets E) write-hint packets for an UPDATE that changes no row"
+
+call F rwh_fail
+[[ $(packets F) -eq 0 ]] || fail "F: $(packets F) write-hint packets for an UPDATE that failed on the replica"
+
+call G rwh_noxn
+V=$((V + 2))
+[[ $(packets G) -eq 2 ]] || fail "G: $(packets G) write-hint packets for 2 UPDATEs, expected 2"
+[[ $(pages G) -le 4 ]] || fail "G: $(pages G) hint pages, expected at most 4"
+
+call H rwh_between
+V=$((V + 5))
+call I rwh_between_blob
+[[ $(packets H) -eq 5 ]] || fail "H: $(packets H) write-hint packets for 5 UPDATEs, expected 5"
+[[ $(pages H) -le 10 ]] || fail "H: $(pages H) hint pages, expected at most 10"
+(( $(pages H) * 4 >= 10 * 3 )) || fail "H: $(pages H) hint pages, expected about 10 (the primary key leaves are missing)"
+[[ $(packets I) -eq 5 ]] || fail "I: $(packets I) write-hint packets for 5 UPDATEs, expected 5"
+[[ $(pages I) -le 15 ]] || fail "I: $(pages I) hint pages, expected at most 15"
+(( $(pages I) * 4 >= 15 * 3 )) || fail "I: $(pages I) hint pages, expected about 15 (primary key or blob leaves are missing)"
+[[ "$(sqlh ${master} "select sum(length(b)) from tbb")" == "$(( 20000 * 200 + 5 ))" ]] || fail "I: tbb blobs not updated"
+
+wait_caught_up
+ref=""
+for n in ${nodes}; do
+    v=$(sqlh $n "select count(*) || ' ' || sum(v) from tb") || fail "query failed on $n"
+    [[ -z "$ref" ]] && ref="$v"
+    [[ "$v" == "$ref" ]] || fail "data on $n differs: '$v' vs '$ref'"
+done
+[[ "$ref" == "${NROWS} ${V}" ]] || fail "tb is '$ref', expected '${NROWS} ${V}'"
+echo "data on every node: $ref"
+echo "Success"

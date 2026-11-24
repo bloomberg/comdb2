@@ -1,0 +1,6 @@
+# Keep the cache much smaller than the tables (the default minimum cache is 64 MB)
+cachekbmin 8192
+cache 8 mb
+# The UDP prefault features are off by default: this test needs them on
+enable_prefault_udp
+rep_write_hints 1
