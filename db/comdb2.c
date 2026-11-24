@@ -5859,6 +5859,16 @@ void exec_tool(int argc, char *argv[])
     }
 }
 
+#ifdef COMDB2_ASAN
+/* Compiled in so that every launch path, including ssh to cluster nodes,
+   gets them; ASAN_OPTIONS still overrides. Leaks are off because the db
+   exits without tearing down its heap. */
+const char *__asan_default_options(void)
+{
+    return "detect_leaks=0:abort_on_error=1:allow_user_segv_handler=1";
+}
+#endif
+
 int main(int argc, char **argv)
 {
     int rc;

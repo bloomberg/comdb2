@@ -66,6 +66,7 @@
 #include "fdb_whitelist.h"
 #include "schemachange.h"
 #include "disttxn.h"
+#include "str_util.h"
 
 extern int gbl_fdb_resolve_local;
 extern char *gbl_fdb_resolve_tier;
@@ -6663,6 +6664,11 @@ static fdb_push_connector_t *fdb_push_connector_create(const char *dbname,
 }
 
 
+/* Placeholder limits, added so the ASan build's -Wformat-truncation check can
+ * size numdbs_str/numcols_str. Real limits and sane defaults are TBD. */
+#define DIST_DDL_MAX_SHARDS 256
+#define DIST_DDL_MAX_COLS 2048
+
 static int _running_dist_ddl(struct schema_change_type *sc, char **errmsg, uint32_t nshards,
                              char **dbnames, uint32_t numcols, char **columns, char **shardnames,
                              char **sqls, enum ast_type type) 
@@ -6679,6 +6685,15 @@ static int _running_dist_ddl(struct schema_change_type *sc, char **errmsg, uint3
     }
 
     *errmsg = "";
+
+    if (nshards > DIST_DDL_MAX_SHARDS) {
+        *errmsg = "too many shards, max " QUOTE(DIST_DDL_MAX_SHARDS);
+        return -1;
+    }
+    if (numcols > DIST_DDL_MAX_COLS) {
+        *errmsg = "too many partition columns, max " QUOTE(DIST_DDL_MAX_COLS);
+        return -1;
+    }
 
     /* Fix this, for now disable 2pc if its a DDL */
     clnt->use_2pc = 0;
@@ -6710,10 +6725,10 @@ static int _running_dist_ddl(struct schema_change_type *sc, char **errmsg, uint3
     int strl[6];
     char *extra_set[6];
 
-    char numdbs_str[3];
-    char numcols_str[3];
-    snprintf(numdbs_str, 3, "%d", nshards);
-    snprintf(numcols_str, 3, "%d", numcols);
+    char numdbs_str[sizeof(QUOTE(DIST_DDL_MAX_SHARDS))];
+    char numcols_str[sizeof(QUOTE(DIST_DDL_MAX_COLS))];
+    snprintf(numdbs_str, sizeof(numdbs_str), "%u", nshards);
+    snprintf(numcols_str, sizeof(numcols_str), "%u", numcols);
 
     str[0] = "SET PARTITION NAME ";
     strl[0] = strlen(str[0]) + strlen(sc->tablename) + 1;
