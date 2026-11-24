@@ -1,0 +1,130 @@
+#!/usr/bin/env bash
+bash -n "$0" || exit 1
+
+# A log truncate that rolls back many page allocations (one stripe, so they land in one file):
+# phase 1, the default: replicants skip the limbo pass, the master's must be linear;
+# phase 2, rep_skip_limbo off: every node runs limbo, which must also be linear.
+# Each phase then reuses the space and checks every node with verify.
+
+db=$1
+rows=${LIMBO_ROWS:-60000}
+maxsecs=${LIMBO_MAX_SECS:-120}
+minpages=${LIMBO_MIN_PAGES:-500}
+nodes=${CLUSTER:-$(hostname)}
+logs=${TESTDIR}/logs/${db}
+set -e
+
+function fail
+{
+    echo "FAILED: $*"
+    exit 1
+}
+
+function nsql
+{
+    local node=$1; shift
+    cdb2sql --tabs ${CDB2_OPTIONS} --host $node $db "$@"
+}
+
+function master
+{
+    cdb2sql --tabs ${CDB2_OPTIONS} $db default "select host from comdb2_cluster where is_master='Y'"
+}
+
+# wait until every node answers count(*) = $1, within $maxsecs
+function wait_count
+{
+    local want=$1 node cnt i
+    for node in $nodes; do
+        for ((i = 0; i < maxsecs; i++)); do
+            cnt=$(nsql $node "select count(*) from t" 2>/dev/null) && [[ $cnt == $want ]] && break
+            sleep 1
+        done
+        [[ $cnt == $want ]] || fail "$node has ${cnt:-no answer} rows, want $want"
+    done
+}
+
+function verify_all
+{
+    local node out
+    for node in $nodes; do
+        out=$(nsql $node "exec procedure sys.cmd.verify('t')" 2>&1)
+        [[ $out == *"Verify succeeded"* ]] || fail "verify on $node: $out"
+    done
+}
+
+# most pages one limbo pass freed in a file, in node $1's log lines after line $2
+function limbo_pages
+{
+    tail -n +$(( $2 + 1 )) ${logs}.$1.db 2>/dev/null | grep -o "limbo freed [0-9]* of [0-9]* pages" |
+        awk '{ if ($3 > m) m = $3 } END { print m + 0 }'
+}
+
+function loglines
+{
+    wc -l < ${logs}.$1.db 2>/dev/null || echo 0
+}
+
+function skips
+{
+    grep -c "skipping the limbo pass (replicant truncate)" ${logs}.$1.db 2>/dev/null || true
+}
+
+# Insert $rows rows in one txn after a truncate point, truncate back, and time it until every node is back
+function rollback
+{
+    local keep=$1 m lsn start secs
+    m=$(master)
+    for node in $nodes; do mark[$node]=$(loglines $node); done
+    lsn=$(nsql $m "select lsn from comdb2_transaction_logs(NULL, NULL, 4) limit 1")
+    nsql $m "insert into t select value, randomblob(1024) from generate_series(1, $rows)" > /dev/null
+    wait_count $((keep + rows))
+    start=$(date +%s)
+    nsql $m "exec procedure sys.cmd.truncate_log(\"$lsn\")" || fail "truncate_log to $lsn failed"
+    wait_count $keep
+    secs=$(( $(date +%s) - start ))
+    echo "rolled back $rows rows to $lsn in ${secs}s"
+    for node in $nodes; do
+        freed[$node]=$(limbo_pages $node ${mark[$node]})
+        echo "  $node: limbo freed up to ${freed[$node]} pages in one file"
+    done
+    [[ $secs -le $maxsecs ]] || fail "rollback took ${secs}s, over ${maxsecs}s"
+}
+
+cdb2sql ${CDB2_OPTIONS} $db default "create table t (a int, b blob)"
+cdb2sql ${CDB2_OPTIONS} $db default "insert into t values (0, x'00')"
+
+declare -A mark freed
+echo "== phase 1: rep_skip_limbo on (default)"
+m=$(master)
+declare -A before
+for node in $nodes; do before[$node]=$(skips $node); done
+rollback 1
+[[ ${freed[$m]} -ge $minpages ]] || fail "master's limbo freed only ${freed[$m]} pages, want $minpages"
+if [[ -n $CLUSTER ]]; then
+    for node in $nodes; do
+        n=$(( $(skips $node) - ${before[$node]} ))
+        if [[ $node == $m ]]; then
+            [[ $n == 0 ]] || fail "master $node skipped limbo"
+        else
+            [[ $n -ge 1 ]] || fail "replicant $node did not skip limbo"
+        fi
+    done
+fi
+cdb2sql ${CDB2_OPTIONS} $db default "insert into t select value, randomblob(1024) from generate_series(1, $rows)" > /dev/null
+wait_count $((rows + 1))
+verify_all
+
+echo "== phase 2: rep_skip_limbo off"
+for node in $nodes; do nsql $node "put tunable rep_skip_limbo 0" > /dev/null; done
+rollback $((rows + 1))
+for node in $nodes; do
+    [[ ${freed[$node]} -ge $minpages ]] || fail "$node's limbo freed only ${freed[$node]} pages, want $minpages"
+done
+cdb2sql ${CDB2_OPTIONS} $db default "delete from t where a > 0" > /dev/null
+wait_count 1
+verify_all
+for node in $nodes; do nsql $node "put tunable rep_skip_limbo 1" > /dev/null; done
+
+echo "Testcase passed."
+exit 0
