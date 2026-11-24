@@ -3297,9 +3297,8 @@ void backend_update_sync(struct dbenv *dbenv)
     logdelete_unlock(__func__, __LINE__);
 }
 
-static void net_close_all_dbs(void *hndl, void *uptr, char *fromnode,
-                              struct interned_string *frominterned,
-                              int usertype, void *dtap, int dtalen,
+static void net_close_all_dbs(struct ack_state_struct *hndl, void *uptr, char *fromnode,
+                              struct interned_string *frominterned, int usertype, void *dtap, int dtalen,
                               uint8_t is_tcp)
 {
     int rc;
@@ -3314,9 +3313,8 @@ struct net_sc_msg {
     char host[1];
 };
 
-static void net_start_sc(void *hndl, void *uptr, char *fromnode,
-                         struct interned_string *frominterned,
-                         int usertype, void *dtap, int dtalen, uint8_t is_tcp)
+static void net_start_sc(struct ack_state_struct *hndl, void *uptr, char *fromnode,
+                         struct interned_string *frominterned, int usertype, void *dtap, int dtalen, uint8_t is_tcp)
 {
     struct net_sc_msg *sc;
     bdb_state_type *bdb_state = thedb->bdb_env;
@@ -3333,9 +3331,8 @@ static void net_start_sc(void *hndl, void *uptr, char *fromnode,
     BDB_RELLOCK();
 }
 
-static void net_stop_sc(void *hndl, void *uptr, char *fromnode,
-                        struct interned_string *frominterned, int usertype,
-                        void *dtap, int dtalen, uint8_t is_tcp)
+static void net_stop_sc(struct ack_state_struct *hndl, void *uptr, char *fromnode, struct interned_string *frominterned,
+                        int usertype, void *dtap, int dtalen, uint8_t is_tcp)
 {
     struct net_sc_msg *sc;
     bdb_state_type *bdb_state = thedb->bdb_env;
@@ -3352,19 +3349,16 @@ static void net_stop_sc(void *hndl, void *uptr, char *fromnode,
     BDB_RELLOCK();
 }
 
-static void net_check_sc_ok(void *hndl, void *uptr, char *fromnode,
-                            struct interned_string *frominterned,
-                            int usertype, void *dtap, int dtalen,
-                            uint8_t is_tcp)
+static void net_check_sc_ok(struct ack_state_struct *hndl, void *uptr, char *fromnode,
+                            struct interned_string *frominterned, int usertype, void *dtap, int dtalen, uint8_t is_tcp)
 {
     int rc;
     rc = check_sc_ok(NULL);
     net_ack_message(hndl, rc == 0 ? 0 : 1);
 }
 
-static void net_flush_all(void *hndl, void *uptr, char *fromnode,
-                          struct interned_string *frominterned, int usertype,
-                          void *dtap, int dtalen, uint8_t is_tcp)
+static void net_flush_all(struct ack_state_struct *hndl, void *uptr, char *fromnode,
+                          struct interned_string *frominterned, int usertype, void *dtap, int dtalen, uint8_t is_tcp)
 {
     logmsg(LOGMSG_DEBUG, "Received NET_FLUSH_ALL\n");
     if (db_is_exiting() || gbl_exit || !gbl_ready) {
@@ -3375,7 +3369,7 @@ static void net_flush_all(void *hndl, void *uptr, char *fromnode,
     net_ack_message(hndl, 0);
 }
 
-void net_new_queue(void *hndl, void *uptr, char *fromnode, struct interned_string *frominterned,
+void net_new_queue(struct ack_state_struct *hndl, void *uptr, char *fromnode, struct interned_string *frominterned,
                    int usertype, void *dtap, int dtalen, uint8_t is_tcp)
 {
     struct net_new_queue_msg *msg = dtap;
@@ -3393,7 +3387,7 @@ void net_new_queue(void *hndl, void *uptr, char *fromnode, struct interned_strin
     net_ack_message(hndl, rc);
 }
 
-void net_javasp_op(void *hndl, void *uptr, char *fromnode, struct interned_string *frominterned,
+void net_javasp_op(struct ack_state_struct *hndl, void *uptr, char *fromnode, struct interned_string *frominterned,
                    int usertype, void *dtap, int dtalen, uint8_t is_tcp)
 {
     struct new_procedure_op_msg *msg = dtap;
@@ -3434,7 +3428,7 @@ void net_javasp_op(void *hndl, void *uptr, char *fromnode, struct interned_strin
     net_ack_message(hndl, rc);
 }
 
-void net_prefault_ops(void *hndl, void *uptr, char *fromnode, struct interned_string *frominterned,
+void net_prefault_ops(struct ack_state_struct *hndl, void *uptr, char *fromnode, struct interned_string *frominterned,
                       int usertype, void *dtap, int dtalen, uint8_t is_tcp)
 {
     /* TODO: Does nothing?  Refactor to remove it? */
@@ -3443,16 +3437,14 @@ void net_prefault_ops(void *hndl, void *uptr, char *fromnode, struct interned_st
 int process_broadcast_prefault(struct dbenv *dbenv, unsigned char *dta,
                                int dtalen, int is_tcp);
 
-void net_prefault2_ops(void *hndl, void *uptr, char *fromnode,
-                       struct interned_string *frominterned, int usertype,
-                       void *dta, int dtalen, uint8_t is_tcp)
+void net_prefault2_ops(struct ack_state_struct *hndl, void *uptr, char *fromnode, struct interned_string *frominterned,
+                       int usertype, void *dta, int dtalen, uint8_t is_tcp)
 {
     process_broadcast_prefault(thedb, dta, dtalen, is_tcp);
 }
 
-void net_add_consumer(void *hndl, void *uptr, char *fromnode,
-                      struct interned_string *frominterned, int usertype,
-                      void *dtap, int dtalen, uint8_t is_tcp)
+void net_add_consumer(struct ack_state_struct *hndl, void *uptr, char *fromnode, struct interned_string *frominterned,
+                      int usertype, void *dtap, int dtalen, uint8_t is_tcp)
 {
     struct net_add_consumer_msg *msg = dtap;
     int rc;
@@ -3632,10 +3624,8 @@ static int valid_trigger_reg_payload(const void *dtap, int dtalen)
     return valid_trigger_reg_current(dtap, dtalen);
 }
 
-static void net_trigger_register(void *hndl, void *uptr, char *fromnode,
-                                 struct interned_string *frominterned,
-                                 int usertype, void *dtap, int dtalen,
-                                 uint8_t _)
+static void net_trigger_register(struct ack_state_struct *hndl, void *uptr, char *fromnode,
+                                 struct interned_string *frominterned, int usertype, void *dtap, int dtalen, uint8_t _)
 {
     if (!valid_trigger_reg_payload(dtap, dtalen)) {
         logmsg(LOGMSG_ERROR, "%s: invalid trigger registration payload length %d\n", __func__, dtalen);
@@ -3649,9 +3639,8 @@ static void net_trigger_register(void *hndl, void *uptr, char *fromnode,
         net_ack_message(hndl, rc);
 }
 
-static void net_trigger_unregister(void *hndl, void *uptr, char *fromnode,
-                                   struct interned_string *frominterned,
-                                   int usertype, void *dtap, int dtalen,
+static void net_trigger_unregister(struct ack_state_struct *hndl, void *uptr, char *fromnode,
+                                   struct interned_string *frominterned, int usertype, void *dtap, int dtalen,
                                    uint8_t _)
 {
     if (!valid_trigger_reg_payload(dtap, dtalen)) {
@@ -3666,17 +3655,15 @@ static void net_trigger_unregister(void *hndl, void *uptr, char *fromnode,
         rc = net_ack_message(hndl, rc);
 }
 
-static void net_trigger_start(void *hndl, void *uptr, char *fromnode,
-                              struct interned_string *frominterned,
-                              int usertype, void *dtap, int dtalen, uint8_t _)
+static void net_trigger_start(struct ack_state_struct *hndl, void *uptr, char *fromnode,
+                              struct interned_string *frominterned, int usertype, void *dtap, int dtalen, uint8_t _)
 {
     trigger_start(dtap);
 }
 
-static void net_authentication_check(void *hndl, void *uptr, char *fromhost,
-                             struct interned_string *frominterned,
-                             int usertype, void *dtap, int dtalen,
-                             uint8_t is_tcp)
+static void net_authentication_check(struct ack_state_struct *hndl, void *uptr, char *fromhost,
+                                     struct interned_string *frominterned, int usertype, void *dtap, int dtalen,
+                                     uint8_t is_tcp)
 {
     gbl_check_access_controls = 1;
     ++gbl_bpfunc_auth_gen;

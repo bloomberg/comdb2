@@ -1962,8 +1962,7 @@ void print_netinfo(netinfo_type *netinfo_ptr)
     Pthread_rwlock_unlock(&(netinfo_ptr->lock));
 }
 
-int net_ack_message_payload(void *handle, int outrc, void *payload,
-                            int payloadlen)
+int net_ack_message_payload(struct ack_state_struct *handle, int outrc, void *payload, int payloadlen)
 {
     uint8_t *ack_buf, *p_buf, *p_buf_end;
     net_ack_message_payload_type p_net_ack_payload_message;
@@ -2007,7 +2006,7 @@ int net_ack_message_payload(void *handle, int outrc, void *payload,
     return rc;
 }
 
-int net_ack_message(void *handle, int outrc)
+int net_ack_message(struct ack_state_struct *handle, int outrc)
 {
     uint8_t ack_buf[NET_ACK_MESSAGE_TYPE_LEN], *p_buf, *p_buf_end;
     net_ack_message_type p_net_ack_message;

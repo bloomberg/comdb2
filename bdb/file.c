@@ -2031,17 +2031,15 @@ int bdb_close_env(bdb_state_type *bdb_state)
 int berkdb_send_rtn(DB_ENV *dbenv, const DBT *control, const DBT *rec,
                     const DB_LSN *lsnp, char *host, int flags, void *usr_ptr);
 
-void berkdb_receive_rtn(void *ack_handle, void *usr_ptr, char *from_host,
-                        struct interned_string *from_interned, int usertype,
-                        void *dta, int dtalen, uint8_t is_tcp);
+void berkdb_receive_rtn(struct ack_state_struct *ack_handle, void *usr_ptr, char *from_host,
+                        struct interned_string *from_interned, int usertype, void *dta, int dtalen, uint8_t is_tcp);
 
-void berkdb_receive_test(void *ack_handle, void *usr_ptr, char *from_host,
-                         struct interned_string *from_interned, int usertype,
-                         void *dta, int dtalen, uint8_t is_tcp);
+void berkdb_receive_test(struct ack_state_struct *ack_handle, void *usr_ptr, char *from_host,
+                         struct interned_string *from_interned, int usertype, void *dta, int dtalen, uint8_t is_tcp);
 
-void berkdb_receive_msg(void *ack_handle, void *usr_ptr, char *from_host,
-                        struct interned_string *from_host_interned, int usertype,
-                        void *dta, int dtalen, uint8_t is_tcp);
+void berkdb_receive_msg(struct ack_state_struct *ack_handle, void *usr_ptr, char *from_host,
+                        struct interned_string *from_host_interned, int usertype, void *dta, int dtalen,
+                        uint8_t is_tcp);
 
 void *watcher_thread(void *arg);
 void *checkpoint_thread(void *arg);

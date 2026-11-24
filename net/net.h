@@ -55,9 +55,9 @@ typedef void HELLOFP(struct netinfo_struct *netinfo, char name[]);
 
 typedef void APPSOCKFP(struct netinfo_struct *netinfo, COMDB2BUF *sb);
 
-typedef void NETFP(void *ack_handle, void *usr_ptr, char *fromhost,
-                   struct interned_string *frominterned, int usertype,
-                   void *dta, int dtalen, uint8_t is_tcp);
+struct ack_state_struct;
+typedef void NETFP(struct ack_state_struct *ack_handle, void *usr_ptr, char *fromhost,
+                   struct interned_string *frominterned, int usertype, void *dta, int dtalen, uint8_t is_tcp);
 
 typedef int HOSTDOWNFP(netinfo_type *netinfo, struct interned_string *host);
 
@@ -179,9 +179,8 @@ void netinfo_lock(netinfo_type *netinfo_ptr, int seconds);
   failure.  all return codes >0 are available for use.
   return codes <0 are reserved by system.
 */
-int net_ack_message(void *ack_handle, int outrc);
-int net_ack_message_payload(void *ack_handle, int outrc, void *payload, 
-        int payloadlen);
+int net_ack_message(struct ack_state_struct *ack_handle, int outrc);
+int net_ack_message_payload(struct ack_state_struct *ack_handle, int outrc, void *payload, int payloadlen);
 
 netinfo_type *create_netinfo(char myhostname[], int myportnum, int myfd,
                              char app[], char service[], char instance[],

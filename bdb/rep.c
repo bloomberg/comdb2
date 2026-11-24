@@ -4675,9 +4675,9 @@ static const uint8_t *start_lsn_response_type_get(start_lsn_response_t
     return p_buf;
 }
 
-void receive_start_lsn_request(void *ack_handle, void *usr_ptr, char *from_host,
-                             struct interned_string *from_interned, int usertype,
-                             void *dta, int dtalen, uint8_t is_tcp)
+void receive_start_lsn_request(struct ack_state_struct *ack_handle, void *usr_ptr, char *from_host,
+                               struct interned_string *from_interned, int usertype, void *dta, int dtalen,
+                               uint8_t is_tcp)
 {
     start_lsn_response_t start_lsn = {0};
     uint8_t buf[START_LSN_RESPONSE_TYPE_LEN];
@@ -4737,9 +4737,8 @@ void receive_start_lsn_request(void *ack_handle, void *usr_ptr, char *from_host,
     return;
 }
 
-void receive_coherency_lease(void *ack_handle, void *usr_ptr, char *from_host,
-                             struct interned_string *from_interned, int usertype,
-                             void *dta, int dtalen, uint8_t is_tcp)
+void receive_coherency_lease(struct ack_state_struct *ack_handle, void *usr_ptr, char *from_host,
+                             struct interned_string *from_interned, int usertype, void *dta, int dtalen, uint8_t is_tcp)
 {
     uint8_t *p_buf, *p_buf_end;
     uint64_t base_ts;
@@ -4902,9 +4901,8 @@ int pgcompact_thdpool_init(void)
 }
 /****** btree page compact routines END ******/
 
-void berkdb_receive_msg(void *ack_handle, void *usr_ptr, char *from_host,
-                        struct interned_string *from_interned, int usertype,
-                        void *dta, int dtalen, uint8_t is_tcp)
+void berkdb_receive_msg(struct ack_state_struct *ack_handle, void *usr_ptr, char *from_host,
+                        struct interned_string *from_interned, int usertype, void *dta, int dtalen, uint8_t is_tcp)
 {
     bdb_state_type *bdb_state;
     int node = 0;
@@ -5225,7 +5223,7 @@ void berkdb_receive_msg(void *ack_handle, void *usr_ptr, char *from_host,
     }
 }
 
-void berkdb_receive_test(void *ack_handle, void *usr_ptr, char *from_host,
+void berkdb_receive_test(struct ack_state_struct *ack_handle, void *usr_ptr, char *from_host,
                          struct interned_string *from_intered, int usertype, void *dta, int dtalen)
 {
     logmsg(LOGMSG_USER, "got req from %s\n", from_host);
@@ -5371,10 +5369,9 @@ int bdb_commitdelay(void *arg)
     return 0;
 }
 
-static int berkdb_receive_rtn_int(void *ack_handle, void *usr_ptr,
-                                  char *from_node, struct interned_string *from_interned, 
-                                  int usertype, void *dta,
-                                  int dtalen, uint8_t is_tcp)
+static int berkdb_receive_rtn_int(struct ack_state_struct *ack_handle, void *usr_ptr, char *from_node,
+                                  struct interned_string *from_interned, int usertype, void *dta, int dtalen,
+                                  uint8_t is_tcp)
 {
     char *recbuf;
     char *controlbuf;
@@ -5585,9 +5582,8 @@ static int berkdb_receive_rtn_int(void *ack_handle, void *usr_ptr,
     return outrc;
 }
 
-void berkdb_receive_rtn(void *ack_handle, void *usr_ptr, char *from_host,
-                        struct interned_string *from_host_interned, int usertype,
-                        void *dta, int dtalen, uint8_t is_tcp)
+void berkdb_receive_rtn(struct ack_state_struct *ack_handle, void *usr_ptr, char *from_host,
+                        struct interned_string *from_host_interned, int usertype, void *dta, int dtalen, uint8_t is_tcp)
 {
     bdb_state_type *bdb_state;
     int rc;
