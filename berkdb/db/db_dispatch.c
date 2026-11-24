@@ -64,6 +64,7 @@ static const char revid[] = "$Id: db_dispatch.c,v 11.145 2003/09/10 20:31:18 ube
 #include "dbinc/db_swap.h"
 
 #include <pthread.h>
+#include <sys/time.h>
 
 #include <logmsg.h>
 
@@ -1916,6 +1917,40 @@ err:	if (meta != NULL)
 	return (ret);
 }
 
+/* Pages on a file's free list, one bit per pgno: limbo checks each page once instead of
+ * walking the whole list per page (quadratic in the number of pages freed) */
+struct limbo_freeset {
+	u_int8_t *bits;
+	size_t nbits; /* always a multiple of 8 */
+};
+
+static int
+__limbo_freeset_add(dbenv, fs, pgno)
+	DB_ENV *dbenv;
+	struct limbo_freeset *fs;
+	db_pgno_t pgno;
+{
+	int ret;
+
+	if (pgno >= fs->nbits) {
+		size_t oldsz = fs->nbits / 8, newsz = ((size_t)pgno + 1) * 2 / 8 + 1;
+		if ((ret = __os_realloc(dbenv, newsz, &fs->bits)) != 0)
+			return (ret);
+		memset(fs->bits + oldsz, 0, newsz - oldsz);
+		fs->nbits = newsz * 8;
+	}
+	fs->bits[pgno / 8] |= (u_int8_t)(1 << (pgno % 8));
+	return (0);
+}
+
+static int
+__limbo_freeset_has(fs, pgno)
+	struct limbo_freeset *fs;
+	db_pgno_t pgno;
+{
+	return (pgno < fs->nbits && (fs->bits[pgno / 8] & (1 << (pgno % 8))) != 0);
+}
+
 /*
  * __db_limbo_fix --
  *	Process a single limbo entry which describes all the page allocations
@@ -1939,7 +1974,10 @@ __db_limbo_fix(dbp, txn, ctxn, elp, lastp, meta, state)
 	db_pgno_t next, pgno;
 	u_int32_t i;
 	extern int gbl_cmptxn_inherit_locks;
-	int put_page, ret, t_ret, inherit;
+	int put_page, ret, t_ret, inherit, have_freeset;
+	struct limbo_freeset freeset = {0};
+	u_int32_t nfreed = 0;
+	struct timeval start, end;
 
 	/*
 	 * Loop through the entries for this txnlist element and
@@ -1950,7 +1988,8 @@ __db_limbo_fix(dbp, txn, ctxn, elp, lastp, meta, state)
 	dbc = NULL;
 	mpf = dbp->mpf;
 	dbenv = dbp->dbenv;
-	put_page = ret = 0;
+	put_page = ret = have_freeset = 0;
+	gettimeofday(&start, NULL);
 
 	if (inherit && (ret = __db_lock_move(dbenv, elp->u.p.uid, 0, 
 			DB_LOCK_WRITE, ctxn, txn)) != 0) {
@@ -1978,9 +2017,12 @@ __db_limbo_fix(dbp, txn, ctxn, elp, lastp, meta, state)
 				 * spans a previous crash this page may
 				 * be on the free list already.
 				 */
-				for (next = *lastp; next != 0; ) {
-					if (next == pgno)
-						break;
+				/* Walk the free list once, not once per page */
+				for (next = *lastp; !have_freeset && next != 0; ) {
+					if (__limbo_freeset_has(&freeset, next))
+						break; /* a cycle: stop */
+					if ((ret = __limbo_freeset_add(dbenv, &freeset, next)) != 0)
+						goto err;
 					if ((ret = __memp_fget(mpf,
 					    &next, 0, &freep)) != 0)
 						goto err;
@@ -1989,13 +2031,17 @@ __db_limbo_fix(dbp, txn, ctxn, elp, lastp, meta, state)
 					    __memp_fput(mpf, freep, 0)) != 0)
 						goto err;
 				}
+				have_freeset = 1;
 
-				if (next != pgno) {
+				if (!__limbo_freeset_has(&freeset, pgno)) {
 					P_INIT(pagep, dbp->pgsize, pgno,
 					    PGNO_INVALID, *lastp, 0, P_INVALID);
 					/* Make the lsn non-zero but generic. */
 					INIT_LSN(LSN(pagep));
 					*lastp = pgno;
+					nfreed++;
+					if ((ret = __limbo_freeset_add(dbenv, &freeset, pgno)) != 0)
+						goto err;
 				}
 			} else if (state == LIMBO_COMPENSATE) {
 				/*
@@ -2080,6 +2126,14 @@ err:	if (put_page &&
 		ret = t_ret;
 	if (dbc != NULL && (t_ret = __db_c_close(dbc)) != 0 && ret == 0)
 		ret = t_ret;
+	if (freeset.bits != NULL)
+		__os_free(dbenv, freeset.bits);
+	if (elp->u.p.nentries >= 500) {
+		gettimeofday(&end, NULL);
+		logmsg(LOGMSG_USER, "%s: limbo freed %u of %u pages in %s in %ld ms\n", __func__, nfreed,
+		    elp->u.p.nentries, elp->u.p.fname ? elp->u.p.fname : "?",
+		    (long)((end.tv_sec - start.tv_sec) * 1000 + (end.tv_usec - start.tv_usec) / 1000));
+	}
 	return (ret);
 }
 
