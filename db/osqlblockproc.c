@@ -1944,18 +1944,16 @@ void *resume_sc_multiddl_txn_finalize_thd(void *arg)
  * Resume schema change
  *
  */
-int resume_sc_multiddl_txn(sc_list_t *scl)
+/* unpack the schema changes of a persistent sc list into scs; on error, the
+ * caller frees whatever got unpacked */
+static int _scl_unpack(sc_list_t *scl, void *pscs)
 {
-    LISTC_T(struct schema_change_type) scs;
-    struct schema_change_type *sc, *tmp;
-    int i, size;
+    LISTC_T(struct schema_change_type) *scs = pscs;
+    struct schema_change_type *sc;
     uuidstr_t us;
-    int rc;
-    int resume = bdb_attr_get(thedb->bdb_attr, BDB_ATTR_SC_RESUME_AUTOCOMMIT) ?
-        SC_RESUME : SC_NEW_MASTER_RESUME;
+    int i, size;
 
     comdb2uuidstr(scl->uuid, us);
-    listc_init(&scs, offsetof(struct schema_change_type, scs_lnk));
 
     for (i = 0; i < scl->count; i++) {
         size =  (i < scl->count - 1) ? scl->offsets[i+1] - scl->offsets[i] :
@@ -1966,18 +1964,75 @@ int resume_sc_multiddl_txn(sc_list_t *scl)
         sc = new_schemachange_type();
         if (!sc) {
             logmsg(LOGMSG_ERROR, "%s oom %d\n", __func__, __LINE__);
-            goto early_error;
+            return -1;
         }
-        listc_abl(&scs, sc);
+        listc_abl(scs, sc);
         if (!buf_get_schemachange(sc, p_buf, p_buf_end)) {
             logmsg(LOGMSG_ERROR, "%s uuid %s failed to retrieve sc\n",
                    __func__, us);
-            goto early_error;
+            return -1;
         }
-        /* only schema changes going through do_ddl() persist state to pick up
-         * (sc seed, in-schema-change record); the rest (sp, trigger, lua func)
-         * have nothing to resume from and must start as new
-         */
+    }
+    return 0;
+}
+
+static void _scl_free(void *pscs)
+{
+    LISTC_T(struct schema_change_type) *scs = pscs;
+    struct schema_change_type *sc, *tmp;
+
+    LISTC_FOR_EACH_SAFE(scs, sc, tmp, scs_lnk)
+    {
+        listc_rfl(scs, sc);
+        free_schema_change_type(sc);
+    }
+}
+
+/**
+ * Cancel, instead of resuming, the schema changes of a persistent sc list
+ * (scabort marker file); the caller removes the sc list itself
+ */
+int cancel_sc_multiddl_txn(sc_list_t *scl)
+{
+    LISTC_T(struct schema_change_type) scs;
+    struct schema_change_type *sc;
+    int rc;
+
+    listc_init(&scs, offsetof(struct schema_change_type, scs_lnk));
+    rc = _scl_unpack(scl, &scs);
+    if (rc == 0) {
+        /* catches tables created by the txn, which the caller's scan of the
+         * existing tables does not see */
+        LISTC_FOR_EACH(&scs, sc, scs_lnk)
+        {
+            if (sc_kind_runs_do_ddl(sc->kind))
+                cancel_resume_schemachange(sc->tablename, SC_ABORT_MARKER_REASON);
+        }
+    }
+    _scl_free(&scs);
+    return rc;
+}
+
+int resume_sc_multiddl_txn(sc_list_t *scl)
+{
+    LISTC_T(struct schema_change_type) scs;
+    struct schema_change_type *sc;
+    uuidstr_t us;
+    int rc;
+    int resume = bdb_attr_get(thedb->bdb_attr, BDB_ATTR_SC_RESUME_AUTOCOMMIT) ? SC_RESUME : SC_NEW_MASTER_RESUME;
+
+    comdb2uuidstr(scl->uuid, us);
+    listc_init(&scs, offsetof(struct schema_change_type, scs_lnk));
+
+    if (_scl_unpack(scl, &scs))
+        goto early_error;
+
+    /* only schema changes going through do_ddl() persist state to pick up
+     * (sc seed, in-schema-change record); the rest (sp, trigger, lua func)
+     * have nothing to resume from and must start as new
+     */
+    LISTC_FOR_EACH(&scs, sc, scs_lnk)
+    {
         if (sc_kind_runs_do_ddl(sc->kind))
             sc->resume = resume;
     }
@@ -2047,10 +2102,6 @@ int resume_sc_multiddl_txn(sc_list_t *scl)
 
 early_error:
     /* free sc objects there if we fail early */
-    LISTC_FOR_EACH_SAFE(&scs, sc, tmp, scs_lnk)
-    {
-        listc_rfl(&scs, sc);
-        free_schema_change_type(sc);
-    }
+    _scl_free(&scs);
     return ERR_SC;
 }

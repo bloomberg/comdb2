@@ -455,6 +455,9 @@ int sc_kind_uses_existing_table(int kind);
 
 int start_schema_change_tran(struct ireq *, tran_type *tran);
 int start_schema_change(struct schema_change_type *);
+
+#define SC_ABORT_MARKER_REASON "Cancelled by scabort marker file"
+int cancel_resume_schemachange(const char *table, const char *reason);
 int create_queue(struct dbenv *, char *queuename, int avgitem, int pagesize);
 int start_table_upgrade(struct dbenv *dbenv, const char *tbl,
                         unsigned long long genid, int full, int partial,
