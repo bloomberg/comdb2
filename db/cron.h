@@ -17,8 +17,11 @@
 #ifndef __CRON_H_
 #define __CRON_H_
 
+#ifndef CRON_UNIT_TEST
 #include "comdb2.h"
+#endif
 #include "comdb2uuid.h"
+#include <dbinc/queue.h>
 #include "cron_systable.h"
 
 /**
@@ -59,7 +62,7 @@ struct cron_event {
     void *arg4; /* NOT OWNED: NEVER FREED */
     uuid_t source_id; /* source id, if any, used to map events to sources */
     struct sched_if *schedif; /* implicit scheduler */
-    LINKC_T(struct cron_event) lnk;
+    TAILQ_ENTRY(cron_event) lnk;
 };
 typedef struct cron_event cron_event_t;
 
