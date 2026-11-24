@@ -64,6 +64,8 @@ struct dohsql_connector {
                              coordinator */
     pthread_mutex_t mtx;  /* mutex for queueing operations and related counts */
     pthread_cond_t cond;  /* signalled when status becomes DOH_CLIENT_DONE */
+    pthread_cond_t master_cond; /* signalled when the coordinator returns this
+                                   shard's row or stops reading */
     char *thr_where;      /* cached where status */
     my_col_t *cols;       /* cached cols values */
     int ncols;            /* number of columns */
@@ -575,6 +577,7 @@ static void donate_current_row(dohsql_t *conns, int locked)
             if (queue_add(conns->conns[conns->row_src].que_free, conns->row))
                 abort();
             conns->conns[conns->row_src].selected = 0;
+            Pthread_cond_signal(&conns->conns[conns->row_src].master_cond);
             if (!locked)
                 Q_UNLOCK(conns->row_src);
             conns->row = NULL;
@@ -633,6 +636,7 @@ static void _signal_children_master_is_done(dohsql_t *conns)
                 logmsg(LOGMSG_USER, "%s: signalling client done, ignoring\n",
                        __func__);
             conns->conns[child_num].status = DOH_MASTER_DONE;
+            Pthread_cond_signal(&conns->conns[child_num].master_cond);
         }
         Q_UNLOCK(child_num);
     }
@@ -1027,6 +1031,7 @@ static int _shard_connect(struct sqlclntstate *clnt, dohsql_connector_t *conn,
     }
     Pthread_mutex_init(&conn->mtx, NULL);
     Pthread_cond_init(&conn->cond, NULL);
+    Pthread_cond_init(&conn->master_cond, NULL);
 
     comdb2uuid(conn->clnt->osql.uuid);
     conn->clnt->appsock_id = getarchtid();
@@ -1085,6 +1090,17 @@ static void _shard_disconnect(dohsql_connector_t *conn)
 
     Pthread_mutex_destroy(&conn->mtx);
     Pthread_cond_destroy(&conn->cond);
+    Pthread_cond_destroy(&conn->master_cond);
+}
+
+static void _deadline_in_msec(struct timespec *ts, int msec)
+{
+    clock_gettime(CLOCK_REALTIME, ts);
+    ts->tv_nsec += msec * 1000000L;
+    if (ts->tv_nsec >= 1000000000) {
+        ts->tv_sec++;
+        ts->tv_nsec -= 1000000000;
+    }
 }
 
 /* Block until conn reaches DOH_CLIENT_DONE.  Timed rather than indefinite:
@@ -1098,12 +1114,7 @@ static int _wait_shard_done(dohsql_connector_t *conn)
     Pthread_mutex_lock(&conn->mtx);
     while (conn->status != DOH_CLIENT_DONE) {
         struct timespec ts;
-        clock_gettime(CLOCK_REALTIME, &ts);
-        ts.tv_nsec += 10 * 1000000;
-        if (ts.tv_nsec >= 1000000000) {
-            ts.tv_sec++;
-            ts.tv_nsec -= 1000000000;
-        }
+        _deadline_in_msec(&ts, 10);
         pthread_cond_timedwait(&conn->cond, &conn->mtx, &ts);
         Pthread_mutex_unlock(&conn->mtx);
         if (bdb_lock_desired(thedb->bdb_env)) {
@@ -1216,8 +1227,10 @@ static void _dohsql_distribute_unwind(struct sqlclntstate *clnt, dohsql_t *conns
 
     for (i = 1; i < nconnected; i++) {
         Pthread_mutex_lock(&conns->conns[i].mtx);
-        if (conns->conns[i].status != DOH_CLIENT_DONE)
+        if (conns->conns[i].status != DOH_CLIENT_DONE) {
             conns->conns[i].status = DOH_MASTER_DONE;
+            Pthread_cond_signal(&conns->conns[i].master_cond);
+        }
         Pthread_mutex_unlock(&conns->conns[i].mtx);
     }
     for (i = 1; i < nconnected; i++)
@@ -1436,12 +1449,15 @@ void dohsql_wait_for_master(sqlite3_stmt *stmt, struct sqlclntstate *clnt)
 
     Pthread_mutex_lock(&conn->mtx);
 
-    /* wait if run ended ok, master is not done, and there are cached rows */
+    /* wait if run ended ok, master is not done, and there are cached rows;
+     * timed so we still surface every 10msec for replication's bdb lock */
     if (!clnt->query_rc) {
         while (conn->status == DOH_RUNNING &&
                (conn->selected || (queue_count(conn->que) > 0))) {
+            struct timespec ts;
+            _deadline_in_msec(&ts, 10);
+            pthread_cond_timedwait(&conn->master_cond, &conn->mtx, &ts);
             Pthread_mutex_unlock(&conn->mtx);
-            poll(NULL, 0, 10);
             if (bdb_lock_desired(thedb->bdb_env)) {
                 rc = recover_deadlock_simple(thedb->bdb_env);
                 if (rc) {
