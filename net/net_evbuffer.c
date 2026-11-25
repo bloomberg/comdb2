@@ -112,6 +112,9 @@
 int gbl_accept_headroom = 100;
 int gbl_pb_connectmsg = 1;
 int gbl_libevent_rte_only = 0;
+/* Testing: override the read-buffer limit (KB), and delay resuming a paused read (ms) */
+int gbl_debug_net_rd_max_kb = 0;
+int gbl_debug_net_resume_read_delay_ms = 0;
 
 extern char gbl_dbname[MAX_DBNAME_LENGTH];
 extern char *gbl_myhostname;
@@ -1129,12 +1132,13 @@ static void reconnect(int fd, short what, void *data)
 static void check_rd_full(struct event_info *e)
 {
     if (e->rd_full) return;
-    size_t max_bytes = e->net_info->rd_max;
+    size_t max_bytes = gbl_debug_net_rd_max_kb ? (size_t)gbl_debug_net_rd_max_kb * 1024 : e->net_info->rd_max;
     size_t outstanding = evbuffer_get_length(e->readv_buf) + ATOMIC_LOAD64(e->rd_worker_sz);
     if (outstanding < max_bytes) return;
     e->rd_full = time(NULL);
     event_del(e->rd_ev);
-    //hprintf("SUSPENDING RD outstanding:%zumb\n", max_bytes / MB(1));
+    if (gbl_debug_net_resume_read_delay_ms)
+        hprintf("SUSPENDING RD outstanding:%zu bytes\n", outstanding);
 }
 
 static void check_wr_full(struct event_info *e)
@@ -1760,9 +1764,18 @@ static void *rd_worker(void *data)
         e->rd_worker_sz = evbuffer_get_length(buf);
         if (e->rd_worker_sz < e->need) {
             if (e->rd_full) {
-                //hprintf("RESUMING RD after:%ds\n", (int)(time(NULL) - e->rd_full));
-                e->rd_full = 0;
-                evtimer_once(rd_base, resume_read, e);
+                /* We stopped reading, the peer didn't go quiet: restart the heartbeat clock */
+                e->recv_at = time(NULL);
+                if (gbl_debug_net_resume_read_delay_ms) {
+                    hprintf("RESUMING RD after:%ds\n", (int)(time(NULL) - e->rd_full));
+                    struct timeval t = {gbl_debug_net_resume_read_delay_ms / 1000,
+                                        (gbl_debug_net_resume_read_delay_ms % 1000) * 1000};
+                    e->rd_full = 0;
+                    event_base_once(rd_base, -1, EV_TIMEOUT, resume_read, e, &t);
+                } else {
+                    e->rd_full = 0;
+                    evtimer_once(rd_base, resume_read, e);
+                }
             }
             Pthread_cond_wait(&e->rd_cond, &e->rd_lk);
             continue;
