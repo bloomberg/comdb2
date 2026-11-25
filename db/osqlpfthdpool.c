@@ -48,6 +48,34 @@ typedef struct osqlpf_rq {
     unsigned long long tableversion;
 } osqlpf_rq_t;
 
+/* Totals since start, printed by `stat prefault`, to tell whether osql
+ * prefault does useful work or drops everything */
+static unsigned long long pf_slots, pf_noslot, pf_drop_txn, pf_drop_applied, pf_drop_sc, pf_lookups, pf_bpk_rows,
+    pf_bpk_busy, pf_bpk_lookahead, pf_bpk_pending;
+
+void osqlpf_stats(void)
+{
+    logmsg(LOGMSG_USER, "osqlpf transactions with a slot %llu, without (all slots in use) %llu\n",
+           ATOMIC_LOAD64(pf_slots), ATOMIC_LOAD64(pf_noslot));
+    logmsg(LOGMSG_USER, "osqlpf requests dropped: transaction gone %llu, already applied %llu, schema change %llu\n",
+           ATOMIC_LOAD64(pf_drop_txn), ATOMIC_LOAD64(pf_drop_applied), ATOMIC_LOAD64(pf_drop_sc));
+    logmsg(LOGMSG_USER, "osqlpf lookups done %llu\n", ATOMIC_LOAD64(pf_lookups));
+    logmsg(LOGMSG_USER,
+           "osqlpf block processor rows prefetched %llu, skipped: previous lookups running %llu, pool busy %llu, "
+           "lookahead done %llu\n",
+           ATOMIC_LOAD64(pf_bpk_rows), ATOMIC_LOAD64(pf_bpk_pending), ATOMIC_LOAD64(pf_bpk_busy),
+           ATOMIC_LOAD64(pf_bpk_lookahead));
+}
+
+/* the block processor already passed this step: count the drop */
+static int pf_applied(unsigned long long step, int i)
+{
+    if (step > ATOMIC_LOAD32(gbl_osqlpf_step[i].step))
+        return 0;
+    ATOMIC_ADD64(pf_drop_applied, 1);
+    return 1;
+}
+
 static void osqlpf_set_table(osqlpf_rq_t *req, struct dbtable *db)
 {
     req->db = db;
@@ -383,22 +411,26 @@ static void osqlpfault_do_work(struct thdpool *pool, void *work, void *thddata)
     /* i < 0: issued by the block processor itself (osqlpf_bp_keys), no session checks */
     /* the slot fields are read without a lock while their owner writes them (atomics); a request
        that is stale by the time it runs only costs one lookup */
-    if (req->i >= 0 && req->rqid != ATOMIC_LOAD64(gbl_osqlpf_step[req->i].rqid)) {
+    if (req->i >= 0 && (req->rqid != ATOMIC_LOAD64(gbl_osqlpf_step[req->i].rqid) ||
+                        (req->rqid == OSQL_RQID_USE_UUID && comdb2uuidcmp(req->uuid, gbl_osqlpf_step[req->i].uuid)))) {
+        ATOMIC_ADD64(pf_drop_txn, 1);
         goto done;
     }
-    if (req->i >= 0 && req->rqid == OSQL_RQID_USE_UUID && comdb2uuidcmp(req->uuid, gbl_osqlpf_step[req->i].uuid))
-        goto done;
 
     /* A schema change closes or replaces table handles under the schema
        write lock: skip the work while one runs, and use the table only if it
        is still the one the request was queued for */
-    if (get_schema_change_in_progress(__func__, __LINE__) || tryrdlock_schema_lk() != 0)
+    if (get_schema_change_in_progress(__func__, __LINE__) || tryrdlock_schema_lk() != 0) {
+        ATOMIC_ADD64(pf_drop_sc, 1);
         goto done;
+    }
     schema_locked = 1;
     struct dbtable *db = get_dbtable_by_name(req->tablename);
     if (db == NULL || db->tableversion != req->tableversion ||
-        (req->db && (db != req->db || db->handle != req->handle)))
+        (req->db && (db != req->db || db->handle != req->handle))) {
+        ATOMIC_ADD64(pf_drop_sc, 1);
         goto done;
+    }
     req->db = db; /* requests queued by the reader thread carry only the name */
 
     step = req->seq << 7;
@@ -411,7 +443,7 @@ static void osqlpfault_do_work(struct thdpool *pool, void *work, void *thddata)
         iq.usedb = req->db;
 
         step += 1;
-        if (step <= ATOMIC_LOAD32(gbl_osqlpf_step[req->i].step)) {
+        if (pf_applied(step, req->i)) {
             if (fnddta)
                 free(fnddta);
             break;
@@ -420,6 +452,7 @@ static void osqlpfault_do_work(struct thdpool *pool, void *work, void *thddata)
         od_len = getdatsize(iq.usedb);
         if (fnddta == NULL)
             break;
+        ATOMIC_ADD64(pf_lookups, 1);
         rc = ix_find_by_rrn_and_genid_prefault(&iq, 2, req->genid, fnddta,
                                                &fndlen, od_len);
         if (fnddta)
@@ -437,11 +470,12 @@ static void osqlpfault_do_work(struct thdpool *pool, void *work, void *thddata)
         }
 
         step += ((1 + (unsigned long long)req->index) << 1);
-        if (req->i >= 0 && step <= ATOMIC_LOAD32(gbl_osqlpf_step[req->i].step)) {
+        if (req->i >= 0 && pf_applied(step, req->i)) {
             break;
         }
 
         iq.usedb = req->db;
+        ATOMIC_ADD64(pf_lookups, 1);
         rc = ix_find_prefault(&iq, req->index, req->key, req->len, fndkey,
                               &fndrrn, &genid, NULL, NULL, 0);
         done_ok = 1;
@@ -458,11 +492,12 @@ static void osqlpfault_do_work(struct thdpool *pool, void *work, void *thddata)
         }
 
         step += 1 + ((1 + (unsigned long long)req->index) << 1);
-        if (req->i >= 0 && step <= ATOMIC_LOAD32(gbl_osqlpf_step[req->i].step)) {
+        if (req->i >= 0 && pf_applied(step, req->i)) {
             break;
         }
 
         iq.usedb = req->db;
+        ATOMIC_ADD64(pf_lookups, 1);
         rc = ix_find_prefault(&iq, req->index, req->key, req->len, fndkey,
                               &fndrrn, &genid, NULL, NULL, 0);
         done_ok = 1;
@@ -485,7 +520,7 @@ static void osqlpfault_do_work(struct thdpool *pool, void *work, void *thddata)
         od_len = (size_t)od_len_int;
 
         step += 1;
-        if (step <= ATOMIC_LOAD32(gbl_osqlpf_step[req->i].step)) {
+        if (pf_applied(step, req->i)) {
             if (fnddta)
                 free(fnddta);
             break;
@@ -494,6 +529,7 @@ static void osqlpfault_do_work(struct thdpool *pool, void *work, void *thddata)
         if (fnddta == NULL)
             break;
 
+        ATOMIC_ADD64(pf_lookups, 1);
         rc = ix_find_by_rrn_and_genid_prefault(&iq, 2, req->genid, fnddta,
                                                &fndlen, od_len);
 
@@ -582,11 +618,12 @@ static void osqlpfault_do_work(struct thdpool *pool, void *work, void *thddata)
         od_len = (size_t)od_len_int;
 
         step += 1;
-        if (step <= ATOMIC_LOAD32(gbl_osqlpf_step[req->i].step)) {
+        if (pf_applied(step, req->i)) {
             free(fnddta);
             break;
         }
 
+        ATOMIC_ADD64(pf_lookups, 1);
         rc = ix_find_by_rrn_and_genid_prefault(&iq, 2, req->genid, fnddta,
                                                &fndlen, od_len);
 
@@ -697,8 +734,11 @@ int osql_page_prefault(char *rpl, int rplen, struct osqlpf_tbl *tbl, int **iq_st
         Pthread_mutex_lock(&osqlpf_mutex);
         ii = queue_next(gbl_osqlpf_stepq);
         Pthread_mutex_unlock(&osqlpf_mutex);
-        if (ii == NULL) /* all slots in use: no prefault for this transaction */
+        if (ii == NULL) { /* all slots in use: no prefault for this transaction */
+            ATOMIC_ADD64(pf_noslot, 1);
             return 0;
+        }
+        ATOMIC_ADD64(pf_slots, 1);
         XCHANGE32(gbl_osqlpf_step[*ii].step, 0);
         XCHANGE32(gbl_osqlpf_step[*ii].bp_pending, 0);
         gbl_osqlpf_step[*ii].bp_last = 0;
@@ -785,17 +825,24 @@ void osqlpf_bp_keys(struct ireq *iq, const void *oldrec, const void *newrec)
        commit). Without a slot to count them, only the first row; schema
        change rows are not counted as written rows, so they never qualify. */
     if (slot ? ATOMIC_LOAD32(gbl_osqlpf_step[*slot].bp_pending) > gbl_osqlpf_step[*slot].bp_last
-             : iq->written_row_count != 1)
+             : iq->written_row_count != 1) {
+        ATOMIC_ADD64(pf_bpk_pending, 1);
         return;
+    }
     bpi = slot ? -2 - *slot : -1; /* request index < 0: issued by the block processor */
     /* the transaction's lookahead already read these keys (count first: see osqlpf_la_end) */
     if (slot && ATOMIC_LOAD32(gbl_osqlpf_step[*slot].lookahead_pending) == 0 &&
-        ATOMIC_LOAD32(gbl_osqlpf_step[*slot].lookahead_state) == LA_STARTED)
+        ATOMIC_LOAD32(gbl_osqlpf_step[*slot].lookahead_state) == LA_STARTED) {
+        ATOMIC_ADD64(pf_bpk_lookahead, 1);
         return;
+    }
     nq = 0;
     /* only with spare capacity: behind a backlog the lookups would come after the block processor's own reads */
-    if (thdpool_get_queue_depth(gbl_osqlpfault_thdpool) > 0)
+    if (thdpool_get_queue_depth(gbl_osqlpfault_thdpool) > 0) {
+        ATOMIC_ADD64(pf_bpk_busy, 1);
         return;
+    }
+    ATOMIC_ADD64(pf_bpk_rows, 1);
     for (ix = 1; ix < db->nix; ix++) {
         if (ix_has_expr(db, ix))
             continue;
