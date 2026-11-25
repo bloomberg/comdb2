@@ -1630,18 +1630,17 @@ void auto_analyze(int, short, void *);
 int do_ack(bdb_state_type *bdb_state, DB_LSN permlsn, uint32_t generation, uint32_t rep_gen);
 void comdb2_early_ack(DB_ENV *dbenv, DB_LSN permlsn, uint32_t commit_gen, uint32_t rep_gen);
 void net_rep_throttle_init(netinfo_type *netinfo_ptr);
-void berkdb_receive_rtn(void *ack_handle, void *usr_ptr, char *from_host,
-                        struct interned_string *from_host_interned,
-                        int usertype, void *dta, int dtalen, uint8_t is_tcp);
-void berkdb_receive_msg(void *ack_handle, void *usr_ptr, char *from_host,
-                        struct interned_string *from_interned, int usertype,
-                        void *dta, int dtalen, uint8_t is_tcp);
-void receive_coherency_lease(void *ack_handle, void *usr_ptr, char *from_host,
+void berkdb_receive_rtn(struct ack_state_struct *ack_handle, void *usr_ptr, char *from_host,
+                        struct interned_string *from_host_interned, int usertype, void *dta, int dtalen,
+                        uint8_t is_tcp);
+void berkdb_receive_msg(struct ack_state_struct *ack_handle, void *usr_ptr, char *from_host,
+                        struct interned_string *from_interned, int usertype, void *dta, int dtalen, uint8_t is_tcp);
+void receive_coherency_lease(struct ack_state_struct *ack_handle, void *usr_ptr, char *from_host,
                              struct interned_string *from_interned, int usertype, void *dta, int dtalen,
                              uint8_t is_tcp);
-void receive_start_lsn_request(void *ack_handle, void *usr_ptr, char *from_host,
-                             struct interned_string *from_interned, int usertype, void *dta, int dtalen,
-                             uint8_t is_tcp);
+void receive_start_lsn_request(struct ack_state_struct *ack_handle, void *usr_ptr, char *from_host,
+                               struct interned_string *from_interned, int usertype, void *dta, int dtalen,
+                               uint8_t is_tcp);
 uint8_t *rep_berkdb_seqnum_type_put(const seqnum_type *p_seqnum_type,
                                     uint8_t *p_buf, const uint8_t *p_buf_end);
 uint8_t *rep_udp_filepage_type_put(const filepage_type *p_filepage_type,
