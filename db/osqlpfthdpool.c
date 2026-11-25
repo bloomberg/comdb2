@@ -126,6 +126,65 @@ static int is_bad_rc(int rc)
 static void osqlpfault_do_work_pp(struct thdpool *pool, void *work,
                                   void *thddata, int op);
 
+/* Lookahead progress of a transaction, in its slot: lookahead_pending counts
+ * its requests queued or running; lookahead_state is LA_STARTED once one was
+ * queued, plus LA_INCOMPLETE once one was dropped before doing its work.
+ * Started, complete and nothing pending: the lookahead has read every key of
+ * the transaction, so the block processor need not prefetch them again. */
+enum { LA_STARTED = 1, LA_INCOMPLETE = 2 };
+
+/* the request belongs to the slot's current transaction: a stale request must
+ * not touch the count of the slot's next owner */
+static int osqlpf_la_mine(osqlpf_rq_t *req)
+{
+    osqlpf_step *s = &gbl_osqlpf_step[req->i];
+    return req->rqid == ATOMIC_LOAD64(s->rqid) &&
+           (req->rqid != OSQL_RQID_USE_UUID || !comdb2uuidcmp(req->uuid, s->uuid));
+}
+
+static void osqlpf_la_begin(osqlpf_rq_t *req)
+{
+    int zero = 0;
+    osqlpf_step *s = &gbl_osqlpf_step[req->i];
+    ATOMIC_ADD32(s->lookahead_pending, 1);
+    if (!osqlpf_la_mine(req)) { /* the transaction is gone: undo */
+        ATOMIC_ADD32(s->lookahead_pending, -1);
+        return;
+    }
+    if (ATOMIC_LOAD32(s->lookahead_state) == 0)
+        CAS32(s->lookahead_state, zero, LA_STARTED);
+}
+
+static void osqlpf_la_end(osqlpf_rq_t *req, int dropped)
+{
+    osqlpf_step *s;
+    if (req->i < 0 || !osqlpf_la_mine(req))
+        return;
+    s = &gbl_osqlpf_step[req->i];
+    if (dropped) /* before the decrement: whoever sees the count drop sees this */
+        XCHANGE32(s->lookahead_state, LA_STARTED | LA_INCOMPLETE);
+    ATOMIC_ADD32(s->lookahead_pending, -1);
+}
+
+/* a request that could not be built: the lookahead is incomplete */
+static int osqlpf_la_drop(int i)
+{
+    if (i >= 0)
+        XCHANGE32(gbl_osqlpf_step[i].lookahead_state, LA_STARTED | LA_INCOMPLETE);
+    return -1;
+}
+
+static int osqlpf_enqueue(osqlpf_rq_t *req)
+{
+    int rc;
+    if (req->i >= 0)
+        osqlpf_la_begin(req);
+    rc = thdpool_enqueue(gbl_osqlpfault_thdpool, osqlpfault_do_work_pp, req, 0, NULL, 0);
+    if (rc != 0)
+        osqlpf_la_end(req, 1);
+    return rc;
+}
+
 /* given a table, key   : enqueue a fault for the a single ix record */
 int enque_osqlpfault_oldkey(struct dbtable *db, void *key, int keylen, int ixnum, int i, unsigned long long rqid,
                             uuid_t uuid, unsigned long long seq)
@@ -135,7 +194,7 @@ int enque_osqlpfault_oldkey(struct dbtable *db, void *key, int keylen, int ixnum
 
     qdata = calloc(1, sizeof(osqlpf_rq_t));
     if (qdata == NULL)
-        return -1; /* advisory: no prefault for this op */
+        return osqlpf_la_drop(i); /* advisory: no prefault for this op */
 
     qdata->type = OSQLPFRQ_OLDKEY;
     qdata->len = keylen;
@@ -150,8 +209,7 @@ int enque_osqlpfault_oldkey(struct dbtable *db, void *key, int keylen, int ixnum
     if ((keylen > 0) && (keylen < MAXKEYLEN + 1))
         memcpy(qdata->key, key, keylen);
 
-    rc = thdpool_enqueue(gbl_osqlpfault_thdpool, osqlpfault_do_work_pp, qdata,
-                         0, NULL, 0);
+    rc = osqlpf_enqueue(qdata);
 
     if (rc != 0) {
         free(qdata);
@@ -168,7 +226,7 @@ int enque_osqlpfault_newkey(struct dbtable *db, void *key, int keylen, int ixnum
 
     qdata = calloc(1, sizeof(osqlpf_rq_t));
     if (qdata == NULL)
-        return -1; /* advisory: no prefault for this op */
+        return osqlpf_la_drop(i); /* advisory: no prefault for this op */
 
     qdata->type = OSQLPFRQ_NEWKEY;
     qdata->len = keylen;
@@ -183,8 +241,7 @@ int enque_osqlpfault_newkey(struct dbtable *db, void *key, int keylen, int ixnum
     if ((keylen > 0) && (keylen < MAXKEYLEN + 1))
         memcpy(qdata->key, key, keylen);
 
-    rc = thdpool_enqueue(gbl_osqlpfault_thdpool, osqlpfault_do_work_pp, qdata,
-                         0, NULL, 0);
+    rc = osqlpf_enqueue(qdata);
 
     if (rc != 0) {
         free(qdata);
@@ -204,7 +261,7 @@ int enque_osqlpfault_olddata_oldkeys(const struct osqlpf_tbl *tbl, unsigned long
 
     qdata = calloc(1, sizeof(osqlpf_rq_t));
     if (qdata == NULL)
-        return -1; /* advisory: no prefault for this op */
+        return osqlpf_la_drop(i); /* advisory: no prefault for this op */
 
     qdata->type = OSQLPFRQ_OLDDATA_OLDKEYS;
     qdata->index = -1;
@@ -215,8 +272,7 @@ int enque_osqlpfault_olddata_oldkeys(const struct osqlpf_tbl *tbl, unsigned long
     qdata->rqid = rqid;
     comdb2uuidcpy(qdata->uuid, uuid);
 
-    rc = thdpool_enqueue(gbl_osqlpfault_thdpool, osqlpfault_do_work_pp, qdata,
-                         0, NULL, 0);
+    rc = osqlpf_enqueue(qdata);
 
     if (rc != 0) {
         free(qdata);
@@ -236,7 +292,7 @@ int enque_osqlpfault_newdata_newkeys(const struct osqlpf_tbl *tbl, void *record,
 
     qdata = calloc(1, sizeof(osqlpf_rq_t));
     if (qdata == NULL)
-        return -1; /* advisory: no prefault for this op */
+        return osqlpf_la_drop(i); /* advisory: no prefault for this op */
 
     qdata->type = OSQLPFRQ_NEWDATA_NEWKEYS;
     qdata->index = -1;
@@ -245,7 +301,7 @@ int enque_osqlpfault_newdata_newkeys(const struct osqlpf_tbl *tbl, void *record,
     qdata->record = malloc(reclen);
     if (qdata->record == NULL) {
         free(qdata);
-        return -1;
+        return osqlpf_la_drop(i);
     }
     memcpy(qdata->record, record, reclen);
     qdata->len = reclen;
@@ -254,8 +310,7 @@ int enque_osqlpfault_newdata_newkeys(const struct osqlpf_tbl *tbl, void *record,
     qdata->rqid = rqid;
     comdb2uuidcpy(qdata->uuid, uuid);
 
-    rc = thdpool_enqueue(gbl_osqlpfault_thdpool, osqlpfault_do_work_pp, qdata,
-                         0, NULL, 0);
+    rc = osqlpf_enqueue(qdata);
 
     if (rc != 0) {
         free(qdata->record);
@@ -282,7 +337,7 @@ int enque_osqlpfault_olddata_oldkeys_newkeys(const struct osqlpf_tbl *tbl, unsig
 
     qdata = calloc(1, sizeof(osqlpf_rq_t));
     if (qdata == NULL)
-        return -1; /* advisory: no prefault for this op */
+        return osqlpf_la_drop(i); /* advisory: no prefault for this op */
 
     qdata->type = OSQLPFRQ_OLDDATA_OLDKEYS_NEWKEYS;
     qdata->index = -1;
@@ -291,7 +346,7 @@ int enque_osqlpfault_olddata_oldkeys_newkeys(const struct osqlpf_tbl *tbl, unsig
     qdata->record = malloc(reclen);
     if (qdata->record == NULL) {
         free(qdata);
-        return -1;
+        return osqlpf_la_drop(i);
     }
     memcpy(qdata->record, record, reclen);
     qdata->len = reclen;
@@ -300,8 +355,7 @@ int enque_osqlpfault_olddata_oldkeys_newkeys(const struct osqlpf_tbl *tbl, unsig
     qdata->rqid = rqid;
     comdb2uuidcpy(qdata->uuid, uuid);
 
-    rc = thdpool_enqueue(gbl_osqlpfault_thdpool, osqlpfault_do_work_pp, qdata,
-                         0, NULL, 0);
+    rc = osqlpf_enqueue(qdata);
 
     if (rc != 0) {
         free(qdata->record);
@@ -317,6 +371,7 @@ static void osqlpfault_do_work(struct thdpool *pool, void *work, void *thddata)
     unsigned long long step;
     osqlpf_rq_t *req = (osqlpf_rq_t *)work;
     int schema_locked = 0;
+    int done_ok = 0; /* the request did its lookup (and queued its key requests) */
     init_fake_ireq(thedb, &iq);
     bdb_thread_event(thedb->bdb_env, BDBTHR_EVENT_START);
     if (gbl_prefault_udp)
@@ -369,6 +424,7 @@ static void osqlpfault_do_work(struct thdpool *pool, void *work, void *thddata)
                                                &fndlen, od_len);
         if (fnddta)
             free(fnddta);
+        done_ok = 1;
     } break;
     case OSQLPFRQ_OLDKEY: {
         int fndrrn = 0;
@@ -388,6 +444,7 @@ static void osqlpfault_do_work(struct thdpool *pool, void *work, void *thddata)
         iq.usedb = req->db;
         rc = ix_find_prefault(&iq, req->index, req->key, req->len, fndkey,
                               &fndrrn, &genid, NULL, NULL, 0);
+        done_ok = 1;
     } break;
     case OSQLPFRQ_NEWKEY: {
         int fndrrn = 0;
@@ -408,6 +465,7 @@ static void osqlpfault_do_work(struct thdpool *pool, void *work, void *thddata)
         iq.usedb = req->db;
         rc = ix_find_prefault(&iq, req->index, req->key, req->len, fndkey,
                               &fndrrn, &genid, NULL, NULL, 0);
+        done_ok = 1;
     } break;
     case OSQLPFRQ_OLDDATA_OLDKEYS: {
         size_t od_len;
@@ -471,6 +529,7 @@ static void osqlpfault_do_work(struct thdpool *pool, void *work, void *thddata)
         }
         if (fnddta)
             free(fnddta);
+        done_ok = 1;
     } break;
     case OSQLPFRQ_NEWDATA_NEWKEYS: {
         int ixnum = 0;
@@ -502,6 +561,7 @@ static void osqlpfault_do_work(struct thdpool *pool, void *work, void *thddata)
 
             rc = enque_osqlpfault_newkey(iq.usedb, key, keysz, ixnum, req->i, req->rqid, req->uuid, req->seq);
         }
+        done_ok = 1;
     } break;
     case OSQLPFRQ_OLDDATA_OLDKEYS_NEWKEYS: {
         size_t od_len = 0;
@@ -588,10 +648,13 @@ static void osqlpfault_do_work(struct thdpool *pool, void *work, void *thddata)
 
             rc = enque_osqlpfault_newkey(iq.usedb, key, keysz, ixnum, req->i, req->rqid, req->uuid, req->seq);
         }
+        done_ok = 1;
     } break;
     }
 
 done:
+    /* after the key requests were queued (they hold the count up) */
+    osqlpf_la_end(req, !done_ok);
     if (schema_locked)
         unlock_schema_lk();
     bdb_thread_event(thedb->bdb_env, BDBTHR_EVENT_DONE);
@@ -605,6 +668,9 @@ static void osqlpfault_do_work_pp(struct thdpool *pool, void *work,
     switch (op) {
     case THD_RUN:
         osqlpfault_do_work(pool, work, thddata);
+        break;
+    default:
+        osqlpf_la_end(req, 1); /* never ran */
         break;
     }
     if (req->i <= -2) /* a block processor request of slot -2 - i is done */
@@ -636,6 +702,8 @@ int osql_page_prefault(char *rpl, int rplen, struct osqlpf_tbl *tbl, int **iq_st
         XCHANGE32(gbl_osqlpf_step[*ii].step, 0);
         XCHANGE32(gbl_osqlpf_step[*ii].bp_pending, 0);
         gbl_osqlpf_step[*ii].bp_last = 0;
+        XCHANGE32(gbl_osqlpf_step[*ii].lookahead_pending, 0);
+        XCHANGE32(gbl_osqlpf_step[*ii].lookahead_state, 0);
         comdb2uuidcpy(gbl_osqlpf_step[*ii].uuid, uuid);
         XCHANGE64(gbl_osqlpf_step[*ii].rqid, rqid); /* last: whoever sees this rqid sees this uuid */
         *iq_step_ix = ii;
@@ -720,6 +788,10 @@ void osqlpf_bp_keys(struct ireq *iq, const void *oldrec, const void *newrec)
              : iq->written_row_count != 1)
         return;
     bpi = slot ? -2 - *slot : -1; /* request index < 0: issued by the block processor */
+    /* the transaction's lookahead already read these keys (count first: see osqlpf_la_end) */
+    if (slot && ATOMIC_LOAD32(gbl_osqlpf_step[*slot].lookahead_pending) == 0 &&
+        ATOMIC_LOAD32(gbl_osqlpf_step[*slot].lookahead_state) == LA_STARTED)
+        return;
     nq = 0;
     /* only with spare capacity: behind a backlog the lookups would come after the block processor's own reads */
     if (thdpool_get_queue_depth(gbl_osqlpfault_thdpool) > 0)
