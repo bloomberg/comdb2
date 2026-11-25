@@ -400,7 +400,7 @@ static void *handle_comptest_thd(void *_arg)
         compr_stat(&comp);
     }
     cdb2buf_flush(arg->sb);
-    backend_thread_event(thedb, COMDB2_THR_EVENT_START);
+    backend_thread_event(thedb, COMDB2_THR_EVENT_DONE);
     return NULL;
 }
 
