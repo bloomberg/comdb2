@@ -106,10 +106,8 @@ int enque_osqlpfault_oldkey(struct dbtable *db, void *key, int keylen, int ixnum
     int rc;
 
     qdata = calloc(1, sizeof(osqlpf_rq_t));
-    if (qdata == NULL) {
-        logmsg(LOGMSG_FATAL, "failed to malloc osql prefault request\n");
-        exit(1);
-    }
+    if (qdata == NULL)
+        return -1; /* advisory: no prefault for this op */
 
     qdata->type = OSQLPFRQ_OLDKEY;
     qdata->len = keylen;
@@ -141,10 +139,8 @@ int enque_osqlpfault_newkey(struct dbtable *db, void *key, int keylen, int ixnum
     int rc;
 
     qdata = calloc(1, sizeof(osqlpf_rq_t));
-    if (qdata == NULL) {
-        logmsg(LOGMSG_FATAL, "failed to malloc osql prefault request\n");
-        exit(1);
-    }
+    if (qdata == NULL)
+        return -1; /* advisory: no prefault for this op */
 
     qdata->type = OSQLPFRQ_NEWKEY;
     qdata->len = keylen;
@@ -181,10 +177,8 @@ int enque_osqlpfault_olddata_oldkeys(struct dbtable *db,
     int rc;
 
     qdata = calloc(1, sizeof(osqlpf_rq_t));
-    if (qdata == NULL) {
-        logmsg(LOGMSG_FATAL, "failed to malloc osql prefault request\n");
-        exit(1);
-    }
+    if (qdata == NULL)
+        return -1; /* advisory: no prefault for this op */
 
     qdata->type = OSQLPFRQ_OLDDATA_OLDKEYS;
     qdata->index = -1;
@@ -216,16 +210,18 @@ int enque_osqlpfault_newdata_newkeys(struct dbtable *db, void *record,
     int rc;
 
     qdata = calloc(1, sizeof(osqlpf_rq_t));
-    if (qdata == NULL) {
-        logmsg(LOGMSG_FATAL, "failed to malloc osql prefault request\n");
-        exit(1);
-    }
+    if (qdata == NULL)
+        return -1; /* advisory: no prefault for this op */
 
     qdata->type = OSQLPFRQ_NEWDATA_NEWKEYS;
     qdata->index = -1;
     osqlpf_set_table(qdata, db);
     qdata->genid = -1;
     qdata->record = malloc(reclen);
+    if (qdata->record == NULL) {
+        free(qdata);
+        return -1;
+    }
     memcpy(qdata->record, record, reclen);
     qdata->len = reclen;
     qdata->i = i;
@@ -260,16 +256,18 @@ int enque_osqlpfault_olddata_oldkeys_newkeys(
     int rc;
 
     qdata = calloc(1, sizeof(osqlpf_rq_t));
-    if (qdata == NULL) {
-        logmsg(LOGMSG_FATAL, "failed to malloc osql prefault request\n");
-        exit(1);
-    }
+    if (qdata == NULL)
+        return -1; /* advisory: no prefault for this op */
 
     qdata->type = OSQLPFRQ_OLDDATA_OLDKEYS_NEWKEYS;
     qdata->index = -1;
     osqlpf_set_table(qdata, db);
     qdata->genid = genid;
     qdata->record = malloc(reclen);
+    if (qdata->record == NULL) {
+        free(qdata);
+        return -1;
+    }
     memcpy(qdata->record, record, reclen);
     qdata->len = reclen;
     qdata->i = i;
@@ -336,11 +334,8 @@ static void osqlpfault_do_work(struct thdpool *pool, void *work, void *thddata)
         }
 
         od_len = getdatsize(iq.usedb);
-        if (fnddta == NULL) {
-            logmsg(LOGMSG_FATAL, "osqlpfault_do_work: malloc %u failed\n",
-                   od_len);
-            exit(1);
-        }
+        if (fnddta == NULL)
+            break;
         rc = ix_find_by_rrn_and_genid_prefault(&iq, 2, req->genid, fnddta,
                                                &fndlen, od_len);
         if (fnddta)
@@ -409,11 +404,8 @@ static void osqlpfault_do_work(struct thdpool *pool, void *work, void *thddata)
             break;
         }
 
-        if (fnddta == NULL) {
-            logmsg(LOGMSG_FATAL, "osqlpfault_do_work: malloc %zu failed\n",
-                   od_len);
-            exit(1);
-        }
+        if (fnddta == NULL)
+            break;
 
         rc = ix_find_by_rrn_and_genid_prefault(&iq, 2, req->genid, fnddta,
                                                &fndlen, od_len);
@@ -485,11 +477,8 @@ static void osqlpfault_do_work(struct thdpool *pool, void *work, void *thddata)
         int ixnum = 0;
         unsigned char *fnddta = malloc(32768 * sizeof(unsigned char));
 
-        if (fnddta == NULL) {
-            logmsg(LOGMSG_FATAL, "osqlpfault_do_work: malloc %zu failed\n",
-                   od_len);
-            exit(1);
-        }
+        if (fnddta == NULL)
+            break;
         iq.usedb = req->db;
 
         od_len_int = getdatsize(iq.usedb);
@@ -596,6 +585,10 @@ int osql_page_prefault(char *rpl, int rplen, struct dbtable **last_db,
     uint8_t *p_buf_end = p_buf + rplen;
     osqlcomm_rpl_type_get(&rpl_op, p_buf, p_buf_end);
 
+    /* a stopped pool refuses (and logs) every request: do not queue any */
+    if (thdpool_get_status(gbl_osqlpfault_thdpool))
+        return 0;
+
     if (*iq_step_ix == NULL) {
         Pthread_mutex_lock(&osqlpf_mutex);
         ii = queue_next(gbl_osqlpf_stepq);
@@ -683,7 +676,8 @@ void osqlpf_bp_keys(struct dbtable *db, const void *oldrec, const void *newrec)
     char ko[MAXKEYLEN + 1], kn[MAXKEYLEN + 1];
     int ix, ksz, o, n;
 
-    if (!gbl_osqlpf_bp_keys || !gbl_osqlpfault_threads || !gbl_osqlpfault_thdpool || !db)
+    if (!gbl_osqlpf_bp_keys || !gbl_osqlpfault_threads || !gbl_osqlpfault_thdpool || !db ||
+        thdpool_get_status(gbl_osqlpfault_thdpool))
         return;
     /* only with spare capacity: behind a backlog the lookups would come after the block processor's own reads */
     if (thdpool_get_queue_depth(gbl_osqlpfault_thdpool) > 0)
