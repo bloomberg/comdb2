@@ -18,6 +18,8 @@
 #include "comdb2_atomic.h"
 #include "sc_util.h"
 
+extern const char *get_tablename_from_rpl(int is_uuid, const uint8_t *rpl, int rpllen, int *tableversion);
+
 struct thdpool *gbl_osqlpfault_thdpool = NULL;
 
 osqlpf_step *gbl_osqlpf_step = NULL;
@@ -52,6 +54,16 @@ static void osqlpf_set_table(osqlpf_rq_t *req, struct dbtable *db)
     strncpy0(req->tablename, db->tablename, sizeof(req->tablename));
     req->handle = db->handle;
     req->tableversion = db->tableversion;
+}
+
+/* From the osql reader thread, which holds no schema lock: only the name and
+ * version the replica sent; the worker looks the table up under the lock */
+static void osqlpf_set_table_name(osqlpf_rq_t *req, const struct osqlpf_tbl *tbl)
+{
+    req->db = NULL;
+    strncpy0(req->tablename, tbl->name, sizeof(req->tablename));
+    req->handle = NULL;
+    req->tableversion = tbl->version;
 }
 
 /* osql request io prefault, code stolen from prefault.c */
@@ -169,10 +181,8 @@ int enque_osqlpfault_newkey(struct dbtable *db, void *key, int keylen, int ixnum
                             genid then forms all keys from that record and
                             enqueues n ops to fault in each key.
                             */
-int enque_osqlpfault_olddata_oldkeys(struct dbtable *db,
-                                     unsigned long long genid, int i,
-                                     unsigned long long rqid, uuid_t uuid,
-                                     unsigned long long seq)
+int enque_osqlpfault_olddata_oldkeys(const struct osqlpf_tbl *tbl, unsigned long long genid, int i,
+                                     unsigned long long rqid, uuid_t uuid, unsigned long long seq)
 {
     osqlpf_rq_t *qdata = NULL;
     int rc;
@@ -183,7 +193,7 @@ int enque_osqlpfault_olddata_oldkeys(struct dbtable *db,
 
     qdata->type = OSQLPFRQ_OLDDATA_OLDKEYS;
     qdata->index = -1;
-    osqlpf_set_table(qdata, db);
+    osqlpf_set_table_name(qdata, tbl);
     qdata->genid = genid;
     qdata->i = i;
     qdata->seq = seq;
@@ -203,9 +213,8 @@ int enque_osqlpfault_olddata_oldkeys(struct dbtable *db,
                             genid then forms all keys from that record and
                             enqueues n ops to fault in each key.
                             */
-int enque_osqlpfault_newdata_newkeys(struct dbtable *db, void *record,
-                                     int reclen, int i, unsigned long long rqid,
-                                     uuid_t uuid, unsigned long long seq)
+int enque_osqlpfault_newdata_newkeys(const struct osqlpf_tbl *tbl, void *record, int reclen, int i,
+                                     unsigned long long rqid, uuid_t uuid, unsigned long long seq)
 {
     osqlpf_rq_t *qdata = NULL;
     int rc;
@@ -216,7 +225,7 @@ int enque_osqlpfault_newdata_newkeys(struct dbtable *db, void *record,
 
     qdata->type = OSQLPFRQ_NEWDATA_NEWKEYS;
     qdata->index = -1;
-    osqlpf_set_table(qdata, db);
+    osqlpf_set_table_name(qdata, tbl);
     qdata->genid = -1;
     qdata->record = malloc(reclen);
     if (qdata->record == NULL) {
@@ -249,9 +258,9 @@ int enque_osqlpfault_newdata_newkeys(struct dbtable *db, void *record,
                                   5) forms all keys from new record.
                                   6) enqueues n ops to fault in each key.
                                   */
-int enque_osqlpfault_olddata_oldkeys_newkeys(
-    struct dbtable *db, unsigned long long genid, void *record, int reclen,
-    int i, unsigned long long rqid, uuid_t uuid, unsigned long long seq)
+int enque_osqlpfault_olddata_oldkeys_newkeys(const struct osqlpf_tbl *tbl, unsigned long long genid, void *record,
+                                             int reclen, int i, unsigned long long rqid, uuid_t uuid,
+                                             unsigned long long seq)
 {
     osqlpf_rq_t *qdata = NULL;
     int rc;
@@ -262,7 +271,7 @@ int enque_osqlpfault_olddata_oldkeys_newkeys(
 
     qdata->type = OSQLPFRQ_OLDDATA_OLDKEYS_NEWKEYS;
     qdata->index = -1;
-    osqlpf_set_table(qdata, db);
+    osqlpf_set_table_name(qdata, tbl);
     qdata->genid = genid;
     qdata->record = malloc(reclen);
     if (qdata->record == NULL) {
@@ -316,9 +325,11 @@ static void osqlpfault_do_work(struct thdpool *pool, void *work, void *thddata)
     if (get_schema_change_in_progress(__func__, __LINE__) || tryrdlock_schema_lk() != 0)
         goto done;
     schema_locked = 1;
-    if (get_dbtable_by_name(req->tablename) != req->db || req->db->handle != req->handle ||
-        req->db->tableversion != req->tableversion)
+    struct dbtable *db = get_dbtable_by_name(req->tablename);
+    if (db == NULL || db->tableversion != req->tableversion ||
+        (req->db && (db != req->db || db->handle != req->handle)))
         goto done;
+    req->db = db; /* requests queued by the reader thread carry only the name */
 
     step = req->seq << 7;
 
@@ -577,9 +588,8 @@ static void osqlpfault_do_work_pp(struct thdpool *pool, void *work,
     free(req);
 }
 
-int osql_page_prefault(char *rpl, int rplen, struct dbtable **last_db,
-                       int **iq_step_ix, unsigned long long rqid, uuid_t uuid,
-                       unsigned long long seq)
+int osql_page_prefault(char *rpl, int rplen, struct osqlpf_tbl *tbl, int **iq_step_ix, unsigned long long rqid,
+                       uuid_t uuid, unsigned long long seq)
 {
     int last_step_idex;
     int *ii;
@@ -610,20 +620,14 @@ int osql_page_prefault(char *rpl, int rplen, struct dbtable **last_db,
 
     switch (rpl_op.type) {
     case OSQL_USEDB: {
-        osql_usedb_t dt = {0};
-        p_buf = p_dt;
-        const char *tablename;
-        struct dbtable *db;
+        int version = 0;
+        const char *tablename = get_tablename_from_rpl(rqid == OSQL_RQID_USE_UUID, (uint8_t *)rpl, rplen, &version);
 
-        tablename =
-            (const char *)osqlcomm_usedb_type_get(&dt, p_buf, p_buf_end);
-
-        db = get_dbtable_by_name(tablename);
-        if (db == NULL) {
-            logmsg(LOGMSG_ERROR, "%s: unable to get usedb for table %.*s\n",
-                   __func__, dt.tablenamelen, tablename);
-        } else {
-            *last_db = db;
+        /* the ops that follow are for this table; a queue or a bad name: none */
+        tbl->name[0] = '\0';
+        if (tablename && strlen(tablename) < sizeof(tbl->name) && !is_tablename_queue(tablename)) {
+            strcpy(tbl->name, tablename);
+            tbl->version = version;
         }
     } break;
     case OSQL_DELREC:
@@ -632,10 +636,9 @@ int osql_page_prefault(char *rpl, int rplen, struct dbtable **last_db,
         p_buf = p_dt;
         p_buf = (uint8_t *)osqlcomm_del_type_get(&dt, p_buf, p_buf_end,
                                                  rpl_op.type == OSQL_DELETE);
-        if (p_buf == NULL || *last_db == NULL)
+        if (p_buf == NULL || tbl->name[0] == '\0')
             break;
-        enque_osqlpfault_olddata_oldkeys(*last_db, dt.genid, last_step_idex,
-                                         rqid, uuid, seq);
+        enque_osqlpfault_olddata_oldkeys(tbl, dt.genid, last_step_idex, rqid, uuid, seq);
     } break;
     case OSQL_INSREC:
     case OSQL_INSERT: {
@@ -644,10 +647,9 @@ int osql_page_prefault(char *rpl, int rplen, struct dbtable **last_db,
         uint8_t *p_buf = p_dt;
         pData = (uint8_t *)osqlcomm_ins_type_get(&dt, p_buf, p_buf_end,
                                                  rpl_op.type == OSQL_INSREC);
-        if (pData == NULL || *last_db == NULL || dt.nData <= 0 || dt.nData > p_buf_end - pData)
+        if (pData == NULL || tbl->name[0] == '\0' || dt.nData <= 0 || dt.nData > p_buf_end - pData)
             break;
-        enque_osqlpfault_newdata_newkeys(*last_db, pData, dt.nData,
-                                         last_step_idex, rqid, uuid, seq);
+        enque_osqlpfault_newdata_newkeys(tbl, pData, dt.nData, last_step_idex, rqid, uuid, seq);
     } break;
     case OSQL_UPDREC:
     case OSQL_UPDATE: {
@@ -656,11 +658,9 @@ int osql_page_prefault(char *rpl, int rplen, struct dbtable **last_db,
         unsigned char *pData;
         pData = (uint8_t *)osqlcomm_upd_type_get(&dt, p_buf, p_buf_end,
                                                  rpl_op.type == OSQL_UPDATE);
-        if (pData == NULL || *last_db == NULL || dt.nData <= 0 || dt.nData > p_buf_end - pData)
+        if (pData == NULL || tbl->name[0] == '\0' || dt.nData <= 0 || dt.nData > p_buf_end - pData)
             break;
-        enque_osqlpfault_olddata_oldkeys_newkeys(*last_db, dt.genid, pData,
-                                                 dt.nData, last_step_idex, rqid,
-                                                 uuid, seq);
+        enque_osqlpfault_olddata_oldkeys_newkeys(tbl, dt.genid, pData, dt.nData, last_step_idex, rqid, uuid, seq);
     } break;
     default:
         return 0;

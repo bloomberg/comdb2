@@ -379,9 +379,13 @@ enum osqlpfrq_type {
     OSQLPFRQ_OSQLREQ = 99
 };
 
-int osql_page_prefault(char *rpl, int rplen, struct dbtable **last_db,
-                       int **iq_step_ix, unsigned long long rqid, uuid_t uuid,
-                       unsigned long long seq);
+/* the table of a session's last USEDB, as the replica named it */
+struct osqlpf_tbl {
+    char name[MAXTABLELEN]; /* "": no table (unknown, a queue, or no USEDB yet) */
+    int version;
+};
+int osql_page_prefault(char *rpl, int rplen, struct osqlpf_tbl *tbl, int **iq_step_ix, unsigned long long rqid,
+                       uuid_t uuid, unsigned long long seq);
 void osqlpf_bp_keys(struct dbtable *db, const void *oldrec, const void *newrec);
 
 int osql_set_usedb(struct ireq *iq, const char *tablename, int tableversion,

@@ -88,7 +88,7 @@ struct blocksql_tran {
     int last_is_ins; /* 1 if processing INSERT, 0 for any other oql type */
 
     /* prefetch */
-    struct dbtable *last_db;
+    struct osqlpf_tbl pf_tbl; /* osql prefault: table of the last USEDB */
     int *osql_step_ix; /* osql prefault step slot, returned in osql_bplog_close */
 };
 
@@ -729,7 +729,7 @@ int osql_bplog_saveop(osql_sess_t *sess, blocksql_tran_t *tran, char *rpl,
     } else {
         tran->seq++;
         if (gbl_osqlpfault_threads) {
-            osql_page_prefault(rpl, rplen, &(tran->last_db), &tran->osql_step_ix, sess->rqid, sess->uuid, tran->seq);
+            osql_page_prefault(rpl, rplen, &tran->pf_tbl, &tran->osql_step_ix, sess->rqid, sess->uuid, tran->seq);
         }
     }
 
