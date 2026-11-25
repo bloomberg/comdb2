@@ -2299,6 +2299,12 @@ REGISTER_TUNABLE("protobuf_connectmsg", "Use protobuf in net library for the con
 
 REGISTER_TUNABLE("libevent_rte_only", "Prevent listening on TCP socket. (Default: off)",
                  TUNABLE_BOOLEAN, &gbl_libevent_rte_only, READONLY, 0, 0, 0, 0);
+REGISTER_TUNABLE("debug_net_rd_max_kb",
+                 "Testing: read-buffer limit in KB before a connection stops reading (0 = default)", TUNABLE_INTEGER,
+                 &gbl_debug_net_rd_max_kb, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("debug_net_resume_read_delay_ms",
+                 "Testing: delay resuming a paused read by this many ms, and trace it", TUNABLE_INTEGER,
+                 &gbl_debug_net_resume_read_delay_ms, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 
 REGISTER_TUNABLE("online_recovery",
                  "Don't get the bdb-writelock for recovery.  (Default: on)",

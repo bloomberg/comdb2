@@ -153,6 +153,8 @@ extern int gbl_osql_verify_retries_max;
 extern int gbl_dump_history_on_too_many_verify_errors;
 extern int gbl_page_latches;
 extern int gbl_pb_connectmsg;
+extern int gbl_debug_net_rd_max_kb;
+extern int gbl_debug_net_resume_read_delay_ms;
 extern int gbl_prefault_udp;
 extern int gbl_print_syntax_err;
 extern int gbl_lclpooled_buffers;
