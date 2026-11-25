@@ -386,7 +386,7 @@ struct osqlpf_tbl {
 };
 int osql_page_prefault(char *rpl, int rplen, struct osqlpf_tbl *tbl, int **iq_step_ix, unsigned long long rqid,
                        uuid_t uuid, unsigned long long seq);
-void osqlpf_bp_keys(struct dbtable *db, const void *oldrec, const void *newrec);
+void osqlpf_bp_keys(struct ireq *iq, const void *oldrec, const void *newrec);
 
 int osql_set_usedb(struct ireq *iq, const char *tablename, int tableversion,
                    int step, struct block_err *err);

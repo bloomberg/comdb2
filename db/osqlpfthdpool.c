@@ -607,6 +607,8 @@ static void osqlpfault_do_work_pp(struct thdpool *pool, void *work,
         osqlpfault_do_work(pool, work, thddata);
         break;
     }
+    if (req->i <= -2) /* a block processor request of slot -2 - i is done */
+        ATOMIC_ADD32(gbl_osqlpf_step[-2 - req->i].bp_pending, -1);
     free(req->record);
     free(req);
 }
@@ -632,6 +634,8 @@ int osql_page_prefault(char *rpl, int rplen, struct osqlpf_tbl *tbl, int **iq_st
         if (ii == NULL) /* all slots in use: no prefault for this transaction */
             return 0;
         XCHANGE32(gbl_osqlpf_step[*ii].step, 0);
+        XCHANGE32(gbl_osqlpf_step[*ii].bp_pending, 0);
+        gbl_osqlpf_step[*ii].bp_last = 0;
         comdb2uuidcpy(gbl_osqlpf_step[*ii].uuid, uuid);
         XCHANGE64(gbl_osqlpf_step[*ii].rqid, rqid); /* last: whoever sees this rqid sees this uuid */
         *iq_step_ix = ii;
@@ -696,15 +700,27 @@ int osql_page_prefault(char *rpl, int rplen, struct osqlpf_tbl *tbl, int **iq_st
  * so that their leaf pages are read in parallel.  Index 0 is left out: the
  * block processor works on it first. */
 int gbl_osqlpf_bp_keys = 1;
-void osqlpf_bp_keys(struct dbtable *db, const void *oldrec, const void *newrec)
+void osqlpf_bp_keys(struct ireq *iq, const void *oldrec, const void *newrec)
 {
     uuid_t nouuid = {0};
     char ko[MAXKEYLEN + 1], kn[MAXKEYLEN + 1];
-    int ix, ksz, o, n;
+    struct dbtable *db = iq->usedb;
+    int *slot = iq->osql_step_ix;
+    int ix, ksz, o, n, bpi, nq;
 
     if (!gbl_osqlpf_bp_keys || !gbl_osqlpfault_threads || !gbl_osqlpfault_thdpool || !db ||
         thdpool_get_status(gbl_osqlpfault_thdpool))
         return;
+    /* A lookup of a page this transaction already changed waits for its
+       commit. While lookups queued before the previous row still run, queue
+       no more (in a large transaction they would hold every worker until the
+       commit). Without a slot to count them, only the first row; schema
+       change rows are not counted as written rows, so they never qualify. */
+    if (slot ? ATOMIC_LOAD32(gbl_osqlpf_step[*slot].bp_pending) > gbl_osqlpf_step[*slot].bp_last
+             : iq->written_row_count != 1)
+        return;
+    bpi = slot ? -2 - *slot : -1; /* request index < 0: issued by the block processor */
+    nq = 0;
     /* only with spare capacity: behind a backlog the lookups would come after the block processor's own reads */
     if (thdpool_get_queue_depth(gbl_osqlpfault_thdpool) > 0)
         return;
@@ -716,9 +732,25 @@ void osqlpf_bp_keys(struct dbtable *db, const void *oldrec, const void *newrec)
             continue;
         o = oldrec && stag_ondisk_to_ix(db, ix, (char *)oldrec, ko) != -1;
         n = newrec && stag_ondisk_to_ix(db, ix, (char *)newrec, kn) != -1;
-        if (o)
-            enque_osqlpfault_oldkey(db, ko, ksz, ix, -1, 0, nouuid, 0);
-        if (n && !(o && memcmp(ko, kn, ksz) == 0))
-            enque_osqlpfault_newkey(db, kn, ksz, ix, -1, 0, nouuid, 0);
+        if (o) {
+            if (slot)
+                ATOMIC_ADD32(gbl_osqlpf_step[*slot].bp_pending, 1);
+            if (enque_osqlpfault_oldkey(db, ko, ksz, ix, bpi, 0, nouuid, 0) != 0) {
+                if (slot)
+                    ATOMIC_ADD32(gbl_osqlpf_step[*slot].bp_pending, -1);
+            } else
+                nq++;
+        }
+        if (n && !(o && memcmp(ko, kn, ksz) == 0)) {
+            if (slot)
+                ATOMIC_ADD32(gbl_osqlpf_step[*slot].bp_pending, 1);
+            if (enque_osqlpfault_newkey(db, kn, ksz, ix, bpi, 0, nouuid, 0) != 0) {
+                if (slot)
+                    ATOMIC_ADD32(gbl_osqlpf_step[*slot].bp_pending, -1);
+            } else
+                nq++;
+        }
     }
+    if (slot) /* the block processor's own field: only it reads it */
+        gbl_osqlpf_step[*slot].bp_last = nq;
 }

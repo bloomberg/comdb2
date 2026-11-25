@@ -419,6 +419,7 @@ void osql_bplog_close(blocksql_tran_t **ptran)
     if (tran->osql_step_ix) {
         XCHANGE64(gbl_osqlpf_step[*tran->osql_step_ix].rqid, 0);
         XCHANGE32(gbl_osqlpf_step[*tran->osql_step_ix].step, 0);
+        XCHANGE32(gbl_osqlpf_step[*tran->osql_step_ix].bp_pending, 0);
         Pthread_mutex_lock(&osqlpf_mutex);
         queue_add(gbl_osqlpf_stepq, tran->osql_step_ix);
         Pthread_mutex_unlock(&osqlpf_mutex);
