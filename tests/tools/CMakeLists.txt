@@ -149,6 +149,11 @@ if(HAVE_ASAN)
   target_link_options(cdb2api_unit_asan PRIVATE -fsanitize=address)
 endif()
 
+# cron_unit.c includes db/cron.c and db/comdb2uuid.c and stubs the server symbols it uses
+add_exe(cron_unit cron_unit.c)
+target_include_directories(cron_unit PRIVATE ${PROJECT_SOURCE_DIR}/db ${PROJECT_SOURCE_DIR}/berkdb)
+target_link_libraries(cron_unit ${UUID_LIBRARY})
+
 # Build the crc32c library with UBSAN. Compiling the test driver alone with
 # UBSAN and linking in a non-instrumented copy of the library is insufficient.
 # The instrumentation needs to exist in the library object code.

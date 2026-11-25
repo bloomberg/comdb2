@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+bash -n "$0" || exit 1
+
+set -e
+
+mkdir -p ${TMPDIR}
+
+if command -v valgrind >/dev/null; then
+    valgrind -q --error-exitcode=99 --leak-check=full --errors-for-leak-kinds=definite ${TESTSBUILDDIR}/cron_unit
+else
+    echo "valgrind not found, running without it"
+    ${TESTSBUILDDIR}/cron_unit
+fi

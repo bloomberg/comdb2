@@ -6492,6 +6492,7 @@ int comdb2_replicated_truncate(void *dbenv, void *inlsn, uint32_t flags)
 }
 
 int gbl_comdb2_reload_schemas = 0;
+int gbl_debug_sleep_in_reload_schemas = 0;
 
 /* Bumped by every comdb2_reload_schemas, which frees and reopens all tables */
 static int32_t reload_schemas_gen = 0;
@@ -6525,6 +6526,14 @@ int comdb2_reload_schemas(void *dbenv, void *inlsn)
 
     gbl_comdb2_reload_schemas = 1;
     logmsg(LOGMSG_INFO, "%s starting for [%d:%d]\n", __func__, *file, *offset);
+#ifdef COMDB2_TEST
+    if (gbl_debug_sleep_in_reload_schemas) {
+        logmsg(LOGMSG_USER, "%s: sleeping for %d seconds before clearing rollouts\n", __func__,
+               gbl_debug_sleep_in_reload_schemas);
+        sleep(gbl_debug_sleep_in_reload_schemas);
+        logmsg(LOGMSG_USER, "%s: clearing rollouts\n", __func__);
+    }
+#endif
     /* drop rollouts queued before the reload, but don't wait for a running one:
      * a truncate holds the bdb write lock it may be waiting for. Requeued after */
     views_cron_clear_queues(1);

@@ -30,13 +30,16 @@ struct cron_sched {
     pthread_mutex_t mtx;
     int running; /* marked under mtx lock, signaling a event processing if set
                   */
-    LISTC_T(struct cron_event) events; /* list of events */
-    LINKC_T(struct cron_sched) lnk;    /* link the cron schedulers */
+    cron_event_t *running_event; /* set with running, under mtx */
+    TAILQ_HEAD(, cron_event) events; /* list of events */
+    int nevents;
+    TAILQ_ENTRY(cron_sched) lnk; /* link the cron schedulers */
     sched_if_t impl;
 };
 
 typedef struct cron_scheds {
-    LISTC_T(struct cron_sched) scheds; /* all global schedulers */
+    TAILQ_HEAD(, cron_sched) scheds; /* all global schedulers */
+    int nscheds;
     pthread_rwlock_t rwlock;
 } cron_scheds_t;
 
@@ -50,7 +53,7 @@ static int _queue_event(cron_sched_t *sched, int epoch, FCRON func, void *arg1,
 
 void init_cron(void)
 {
-    listc_init(&crons.scheds, offsetof(struct cron_sched, lnk));
+    TAILQ_INIT(&crons.scheds);
     Pthread_rwlock_init(&crons.rwlock, NULL);
 }
 
@@ -77,7 +80,7 @@ cron_sched_t *cron_add_event(cron_sched_t *sched, const char *name, int epoch,
 
         Pthread_mutex_init(&sched->mtx, NULL);
         Pthread_cond_init(&sched->cond, NULL);
-        listc_init(&sched->events, offsetof(struct cron_event, lnk));
+        TAILQ_INIT(&sched->events);
         if (!impl) {
             /* default to a time based cron */
             time_cron_create(&sched->impl, NULL, NULL);
@@ -94,7 +97,8 @@ cron_sched_t *cron_add_event(cron_sched_t *sched, const char *name, int epoch,
         sched->impl.sched = sched;
 
         Pthread_rwlock_wrlock(&crons.rwlock);
-        listc_abl(&crons.scheds, sched);
+        TAILQ_INSERT_TAIL(&crons.scheds, sched, lnk);
+        crons.nscheds++;
         Pthread_rwlock_unlock(&crons.rwlock);
 
         Pthread_create(&sched->tid, &gbl_pthread_attr_detached,
@@ -144,38 +148,23 @@ static void _set_event(cron_event_t *event, int epoch, FCRON func, void *arg1,
 
 static void _insert_ordered_event(cron_sched_t *sched, cron_event_t *event)
 {
-    LISTC_T(struct cron_event) tmpsched;
     cron_event_t *crt;
 
-    listc_init(&tmpsched, offsetof(struct cron_event, lnk));
-
-    /* add all older records that preceed current event */
-    while ((crt = sched->events.top) != NULL) {
-        if (crt->epoch <= event->epoch) {
-            listc_rfl(&sched->events, crt);
-            listc_atl(&tmpsched, crt); /* ! reversed order */
-        } else {
+    /* after all events due at or before it */
+    TAILQ_FOREACH(crt, &sched->events, lnk)
+    {
+        if (crt->epoch > event->epoch)
             break;
-        }
     }
-
-    /* NOTE: make sure the event is unique, i.e. only one set
-       of parameters */
-    if (!sched->events.top ||
-        (memcmp(event, sched->events.top, sizeof(*event)) != 0)) {
-        /* add new event, anything left in sched queue follows new event */
-        listc_atl(&sched->events, event);
-    }
-
-    /* add all older events */
-    while ((crt = tmpsched.top) != NULL) {
-        listc_rfl(&tmpsched, crt);
-        listc_atl(&sched->events, crt); /* now order is proper again */
-    }
+    if (crt)
+        TAILQ_INSERT_BEFORE(crt, event, lnk);
+    else
+        TAILQ_INSERT_TAIL(&sched->events, event, lnk);
+    sched->nevents++;
 
     /* THIS MUST BE CALLED UNDER sched->mtx, guaranteed if called from callback
      */
-    if (sched->events.top == event) {
+    if (TAILQ_FIRST(&sched->events) == event) {
         /* new event at the top of the list,
            notify cron to pick up the event */
         Pthread_cond_signal(&sched->cond);
@@ -213,9 +202,15 @@ static int _queue_event(cron_sched_t *sched, int epoch, FCRON func, void *arg1,
     return err->errval = CRON_NOERR;
 }
 
+static void _remove_event(cron_sched_t *sched, cron_event_t *event)
+{
+    TAILQ_REMOVE(&sched->events, event, lnk);
+    sched->nevents--;
+}
+
 static void _destroy_event(cron_sched_t *sched, cron_event_t *event)
 {
-    listc_rfl(&sched->events, event);
+    _remove_event(sched, event);
     if (event->arg1)
         free(event->arg1);
     if (event->arg2)
@@ -252,7 +247,7 @@ static void *_cron_runner(void *arg)
         Pthread_mutex_lock(&sched->mtx);
         locked = 1;
 
-        while ((event = sched->events.top) != NULL) {
+        while ((event = TAILQ_FIRST(&sched->events)) != NULL) {
             if (sched->impl.is_exec_time(&sched->impl, event)) {
                 bzero(&xerr, sizeof(xerr));
 
@@ -268,10 +263,12 @@ static void *_cron_runner(void *arg)
                    event to any other thread !!!
                    */
                 sched->running = 1;
+                sched->running_event = event;
                 Pthread_mutex_unlock(&sched->mtx);
                 event->func(event, &xerr);
                 Pthread_mutex_lock(&sched->mtx);
                 sched->running = 0;
+                sched->running_event = NULL;
 
                 if (xerr.errval)
                     logmsg(LOGMSG_ERROR,
@@ -338,7 +335,7 @@ int cron_update_event(cron_sched_t *sched, int epoch, FCRON func, void *arg1,
 
     cron_lock(sched);
 
-    LISTC_FOR_EACH_SAFE(&sched->events, event, tmp, lnk)
+    TAILQ_FOREACH_SAFE(event, &sched->events, lnk, tmp)
     {
         if (comdb2uuidcmp(event->source_id, source_id) == 0) {
 
@@ -346,7 +343,7 @@ int cron_update_event(cron_sched_t *sched, int epoch, FCRON func, void *arg1,
             _set_event(event, epoch, func, arg1, arg2, arg3, arg4, sched);
 
             /* remote the event, and reinsert it in the new position */
-            listc_rfl(&sched->events, event);
+            _remove_event(sched, event);
             _insert_ordered_event(sched, event);
             found = 1;
         }
@@ -368,36 +365,41 @@ void cron_clear_queue(cron_sched_t *sched)
     cron_lock(sched);
 
     /* mop up */
-    while ((event = sched->events.top))
+    while ((event = TAILQ_FIRST(&sched->events)))
         _destroy_event(sched, event);
 
     cron_unlock(sched);
+}
+
+/* Clear the queued events without waiting for a running one, which is left.
+ * The running event need not be top: events with an earlier epoch can be
+ * queued ahead of it while it runs. */
+void cron_clear_queue_nowait(cron_sched_t *sched)
+{
+    cron_event_t *event, *tmp;
+
+    Pthread_mutex_lock(&sched->mtx);
+    TAILQ_FOREACH_SAFE(event, &sched->events, lnk, tmp)
+    {
+        if (event != sched->running_event)
+            _destroy_event(sched, event);
+    }
+    Pthread_mutex_unlock(&sched->mtx);
 }
 
 /**
  * Clear all events for a specific source_id
  *
  */
-/* Clear the queued events without waiting for a running one, which is left */
-void cron_clear_queue_nowait(cron_sched_t *sched)
-{
-    cron_event_t *event;
-
-    Pthread_mutex_lock(&sched->mtx);
-    cron_event_t *running = sched->running ? sched->events.top : NULL;
-    while ((event = running ? running->lnk.next : sched->events.top))
-        _destroy_event(sched, event);
-    Pthread_mutex_unlock(&sched->mtx);
-}
-
 void cron_clear_queue_for_sourceid(cron_sched_t *sched, uuid_t *source_id)
 {
-    cron_event_t *event;
+    cron_event_t *event, *tmp;
 
     cron_lock(sched);
 
     /* mop up */
-    for (event = sched->events.top; event; event = event->lnk.next) {
+    TAILQ_FOREACH_SAFE(event, &sched->events, lnk, tmp)
+    {
         if (comdb2uuidcmp(event->source_id, *source_id) == 0)
             _destroy_event(sched, event);
     }
@@ -461,7 +463,7 @@ int cron_systable_schedulers_collect(void **data, int *nrecords)
     int rc = 0;
 
     Pthread_rwlock_rdlock(&crons.rwlock);
-    LISTC_FOR_EACH(&crons.scheds, sched, lnk)
+    TAILQ_FOREACH(sched, &crons.scheds, lnk)
     {
         if (narr >= nsize) {
             nsize += 10;
@@ -481,7 +483,7 @@ int cron_systable_schedulers_collect(void **data, int *nrecords)
         arr[narr].name = sched->impl.name ? strdup(sched->impl.name) : strdup("");
         arr[narr].type = strdup(cron_type_to_name(sched->impl.type));
         arr[narr].running = sched->running;
-        arr[narr].nevents = sched->events.count;
+        arr[narr].nevents = sched->nevents;
         arr[narr].description = sched->impl.describe
                                     ? sched->impl.describe(&sched->impl)
                                     : strdup("");
@@ -523,10 +525,10 @@ int cron_systable_sched_events_collect(cron_sched_t *sched,
     uuidstr_t us;
 
     cron_lock(sched);
-    LISTC_FOR_EACH(&sched->events, event, lnk)
+    TAILQ_FOREACH(event, &sched->events, lnk)
     {
-        if ((narr + sched->events.count) >= nsize) {
-            nsize += sched->events.count;
+        if ((narr + sched->nevents) >= nsize) {
+            nsize += sched->nevents;
             temparr = realloc(arr, sizeof(systable_cron_events_t) * nsize);
             if (!temparr) {
                 logmsg(LOGMSG_ERROR, "%s OOM %zu!\n", __func__,
@@ -569,7 +571,7 @@ int cron_systable_events_collect(void **data, int *nrecords)
     int rc = 0;
 
     Pthread_rwlock_rdlock(&crons.rwlock);
-    LISTC_FOR_EACH(&crons.scheds, sched, lnk)
+    TAILQ_FOREACH(sched, &crons.scheds, lnk)
     {
         rc = cron_systable_sched_events_collect(sched, &arr, &narr, &nsize);
         if (rc)
@@ -657,7 +659,7 @@ cron_sched_t *cron_sched_byname(const char *name)
     cron_sched_t *sched = NULL;
 
     Pthread_rwlock_rdlock(&crons.rwlock);
-    LISTC_FOR_EACH(&crons.scheds, sched, lnk)
+    TAILQ_FOREACH(sched, &crons.scheds, lnk)
     {
         if (sched->impl.name &&
             !strncasecmp(sched->impl.name, name, strlen(name) + 1)) {
@@ -677,7 +679,7 @@ void cron_signal_all(void)
     cron_sched_t *sched = NULL;
 
     Pthread_rwlock_rdlock(&crons.rwlock);
-    LISTC_FOR_EACH(&crons.scheds, sched, lnk)
+    TAILQ_FOREACH(sched, &crons.scheds, lnk)
     {
         cron_signal_worker(sched);
     }
@@ -697,9 +699,9 @@ void cron_clear_queue_type(enum cron_type type, int nowait)
     /* clear without crons.rwlock: cron_lock waits on running events, which can
      * need the schema lock; schedulers are never removed from the list */
     Pthread_rwlock_rdlock(&crons.rwlock);
-    scheds = malloc(sizeof(cron_sched_t *) * (listc_size(&crons.scheds) + 1));
+    scheds = malloc(sizeof(cron_sched_t *) * (crons.nscheds + 1));
     if (scheds) {
-        LISTC_FOR_EACH(&crons.scheds, sched, lnk)
+        TAILQ_FOREACH(sched, &crons.scheds, lnk)
         {
             if (sched->impl.type == type)
                 scheds[n++] = sched;

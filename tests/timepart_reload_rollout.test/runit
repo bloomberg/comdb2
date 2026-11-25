@@ -1,0 +1,84 @@
+#!/usr/bin/env bash
+bash -n "$0" || exit 1
+
+# A schema reload clears the rollout queue without waiting for a running
+# rollout, then requeues from the reloaded partitions. Start a rollout while a
+# reload is in progress and check the partition still rolls once per period.
+
+. ${TESTSROOTDIR}/tools/runit_common.sh
+. ${TESTSROOTDIR}/tools/cluster_utils.sh
+
+VIEW=testview
+RELOAD_SLEEP=15
+ROLLOUT_SLEEP=20
+
+master=$(get_master)
+if [[ -z "$CLUSTER" ]]; then
+    log=${TESTDIR}/logs/${DBNAME}.db
+else
+    log=${TESTDIR}/logs/${DBNAME}.${master}.db
+fi
+
+sql() { cdb2sql -s --tabs ${CDB2_OPTIONS} $DBNAME default "$@"; }
+msql() { cdb2sql -s --tabs ${CDB2_OPTIONS} $DBNAME --host $master "$@"; }
+
+nshards() { sql "select count(*) from comdb2_timepartshards where name='${VIEW}'"; }
+distinct_shards() { sql "select count(distinct shardname) from comdb2_timepartshards where name='${VIEW}'"; }
+
+wait_until() {
+    local t=$1
+    while (( $(date +%s) < t )); do sleep 1; done
+}
+
+log_line() { grep -n "$1" $log | head -1 | cut -d: -f1; }
+log_epoch() { date -d "$(grep "$1" $log | head -1 | cut -c1-19)" +%s; }
+
+check_shards() {
+    local n=$1
+    [[ $(nshards) == $n ]] || { sql "select * from comdb2_timepartshards"; failexit "expected $n shards, got $(nshards)"; }
+    [[ $(distinct_shards) == $n ]] || { sql "select * from comdb2_timepartshards"; failexit "expected $n distinct shards"; }
+}
+
+sql "create time partition on t as ${VIEW} period 'test2min' retention 3 start '$(get_timestamp 60)'" ||
+    failexit "create partition"
+addshard=$(msql "select epoch from comdb2_cron_events where name='AddShard'")
+[[ -n "$addshard" ]] || failexit "no AddShard event queued"
+echo "AddShard at $addshard, now $(date +%s)"
+
+# truncating across a DDL undoes a schema change, which reloads the schemas
+lsn=$(msql "select lsn from comdb2_transaction_logs(NULL, NULL, 4) limit 1")
+sql "create table reload_trigger (a int)" || failexit "create reload_trigger"
+msql "put tunable 'debug_sleep_in_reload_schemas' ${RELOAD_SLEEP}" || failexit "set debug_sleep_in_reload_schemas"
+msql "put tunable 'debug_sleep_in_rollout' ${ROLLOUT_SLEEP}" || failexit "set debug_sleep_in_rollout"
+(( $(date +%s) < addshard - 5 )) || failexit "rollout due before the reload was set up"
+
+# the rollout comes due while the reload sleeps, and is still running when the
+# reload clears the queue
+wait_until $(( addshard - 5 ))
+msql "exec procedure sys.cmd.truncate_log(\"${lsn}\")" || failexit "truncate_log"
+msql "put tunable 'debug_sleep_in_reload_schemas' 0"
+msql "put tunable 'debug_sleep_in_rollout' 0"
+
+for (( i = 0; i < 60; i++ )); do
+    phase2_line=$(log_line "Adding phase 2 at")
+    [[ -n "$phase2_line" ]] && break
+    sleep 1
+done
+clear_line=$(log_line "comdb2_reload_schemas: clearing rollouts")
+[[ -n "$clear_line" && -n "$phase2_line" ]] || failexit "reload or rollout missing from $log"
+clear_time=$(log_epoch "comdb2_reload_schemas: clearing rollouts")
+(( clear_time > addshard && clear_line < phase2_line )) ||
+    failexit "rollout was not running when the reload cleared the queue ($addshard $clear_time $clear_line $phase2_line)"
+[[ $(sql "select count(*) from comdb2_tables where tablename='reload_trigger'") == 0 ]] ||
+    failexit "truncate did not undo the create"
+
+# the rollout completes at addshard + 30; the next one is a period later
+wait_until $(( addshard + 30 + ROLLOUT_SLEEP + 15 ))
+check_shards 2
+wait_until $(( addshard + 30 + 120 + 15 ))
+check_shards 3
+
+for node in ${CLUSTER:-$(hostname)}; do
+    [[ $(cdb2sql --tabs ${CDB2_OPTIONS} $DBNAME --host $node 'select 1') == 1 ]] || failexit "$node is down"
+done
+echo "Success"
