@@ -134,7 +134,8 @@ if (( cluster_size >= 4 )); then
         sleep 1
     done
     (( $(grep -c "reseting the master" $ulog) > resets )) || failexit "$unsanctioned did not reset its master"
-    for ((i = 0; i < 60; i++)); do
+    # The cut leaves its connections in distress-mode backoff: reconnecting can take a minute or more
+    for ((i = 0; i < 180; i++)); do
         grep -q "rejoining master $master" $ulog && break
         sleep 1
     done
