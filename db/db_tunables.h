@@ -1156,6 +1156,10 @@ REGISTER_TUNABLE("rep_process_txn_trace",
                  NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("rep_skip_recovery", "Skip recovery if truncate won't unwind a transaction.  (Default: off)",
                  TUNABLE_BOOLEAN, &gbl_rep_skip_recovery, 0, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("rep_skip_limbo",
+                 "Replicant log truncates and physical replicants skip recovery's limbo pass, which the source's "
+                 "log undoes.  (Default: on)",
+                 TUNABLE_BOOLEAN, &gbl_rep_skip_limbo, 0, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("emit_gen_commits", "Emit commit-records which include cluster generation.  (Default: on)",
                  TUNABLE_BOOLEAN, &gbl_emit_gen_commits, 0, NULL, NULL, NULL, NULL);
 /* 'retrieve_gen_from_ckp' / 'recovery_ckp' disabled under legacy_defaults until db moves */

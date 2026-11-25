@@ -904,6 +904,7 @@
 (name='rep_retry_backoff_max_us', description='Longest backoff, in microseconds, before retrying a kept replicated transaction; 0 disables the backoff.  (Default: 250)', type='INTEGER', value='250', read_only='N')
 (name='rep_retry_keep_collected', description='Keep a replicated transaction's collected log records across deadlock retries, instead of collecting it from the log again on every retry.  (Default: on)', type='BOOLEAN', value='ON', read_only='N')
 (name='rep_retry_trace', description='Trace each replicated transaction that lost a deadlock: retries, time, backoff, collect time and lock waits.  (Default: off)', type='BOOLEAN', value='OFF', read_only='N')
+(name='rep_skip_limbo', description='Replicant log truncates and physical replicants skip recovery's limbo pass, which the source's log undoes.  (Default: on)', type='BOOLEAN', value='ON', read_only='N')
 (name='rep_skip_phase_3', description='', type='BOOLEAN', value='OFF', read_only='N')
 (name='rep_skip_recovery', description='Skip recovery if truncate won't unwind a transaction.  (Default: off)', type='BOOLEAN', value='OFF', read_only='N')
 (name='rep_verify_limit_enabled', description='Enable aborting replicant if it doesn't make sufficient progress while rolling back logs to sync up to master.', type='BOOLEAN', value='ON', read_only='N')

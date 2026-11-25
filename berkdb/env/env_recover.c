@@ -66,6 +66,7 @@ extern int __txn_commit_map_enabled(void);
 
 #include <bdbglue.h>
 extern int gbl_is_physical_replicant;
+extern int gbl_rep_skip_limbo;
 int gbl_apprec_gen;
 
 #else
@@ -1489,7 +1490,12 @@ __db_apprec(dbenv, max_lsn, trunclsn, update, flags)
 	 * Process any pages that were on the limbo list and move them to
 	 * the free list.  Do this before checkpointing the database.
 	 */
-	if ((ret = __db_do_the_limbo(dbenv, NULL, NULL, txninfo,
+	/* Replicant truncates and physreps follow another node's log, which overwrites these unlogged
+	 * free-list changes */
+	if (gbl_rep_skip_limbo && (LF_ISSET(DB_RECOVER_NOLIMBO) || gbl_is_physical_replicant))
+		logmsg(LOGMSG_USER, "%s: skipping the limbo pass (%s)\n", __func__,
+		    gbl_is_physical_replicant ? "physical replicant" : "replicant truncate");
+	else if ((ret = __db_do_the_limbo(dbenv, NULL, NULL, txninfo,
 			dbenv->tx_timestamp !=
 			0 ? LIMBO_TIMESTAMP : LIMBO_RECOVER)) != 0)
 		 goto err;

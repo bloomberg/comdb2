@@ -1038,6 +1038,7 @@ __rep_enqueue_log(dbenv, rp, rec, gen)
 
 int gbl_rep_verify_will_recover_trace = 0;
 int gbl_rep_verify_always_grab_writelock = 0;
+int gbl_rep_skip_limbo = 1;
 
 /*
  * __rep_verify_will_recover --
@@ -8115,7 +8116,8 @@ restart:
 
 	logmsg(LOGMSG_INFO, "%s calling truncate with lsn [%d:%d]\n", __func__,
 			lsnp->file, lsnp->offset);
-	ret = __db_apprec(dbenv, lsnp, trunclsnp, undo, DB_RECOVER_NOCKP);
+	/* A replicant follows its master's log: its limbo pass would be undone and can take hours */
+	ret = __db_apprec(dbenv, lsnp, trunclsnp, undo, DB_RECOVER_NOCKP | (i_am_master ? 0 : DB_RECOVER_NOLIMBO));
 
 	/* Increase generation before releasing recovery lock */
 	if (i_am_master) {
