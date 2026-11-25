@@ -38,6 +38,8 @@ local function register(dbname, hostname, pfile, poffset, source_dbname, source_
     local not_requester = " AND NOT (p.dbname = '" .. dbname .. "' AND p.host = '" .. hostname .. "') "
     -- Bound the walk so a cycle elsewhere in the topology cannot make it run forever
     local depth_cap = " AND t.tier < " .. max_topology_depth .. " "
+    -- Within a tier, offer sources that have reached the requester first: one behind it would make it rewind
+    local behind = " (p.file < " .. pfile .. " OR (p.file = " .. pfile .. " AND p.offset < " .. poffset .. ")), "
 
     -- Two-tier selection when the metadb tracks firstfile (i.e. comdb2_physreps
     -- has a firstfile column): the primary pass is STRICT -- only sources whose
@@ -72,7 +74,7 @@ local function register(dbname, hostname, pfile, poffset, source_dbname, source_
                  "             GROUP BY t.dbname, t.host HAVING COUNT(*) < " .. physrep_fanout .. " ) " ..
                  "SELECT c.tier, c.dbname, c.host FROM child_count c, comdb2_physreps p " ..
                  "    WHERE c.dbname = p.dbname AND c.host = p.host AND (p.state IS NULL OR lower(p.state) NOT IN ('pending', 'inactive'))" ..
-                 "    ORDER BY tier, cnt, random() " ..
+                 "    ORDER BY tier, " .. behind .. "cnt, random() " ..
                  "    LIMIT " .. physrep_max_candidates)
     else
         cte = ("WITH RECURSIVE " ..
@@ -94,7 +96,7 @@ local function register(dbname, hostname, pfile, poffset, source_dbname, source_
                  "             GROUP BY t.dbname, t.host HAVING COUNT(*) < " .. physrep_fanout .. " ) " ..
                  "SELECT c.tier, c.dbname, c.host FROM child_count c, comdb2_physreps p " ..
                  "    WHERE c.dbname = p.dbname AND c.host = p.host AND (p.state IS NULL OR lower(p.state) NOT IN ('pending', 'inactive'))" ..
-                 "    ORDER BY tier, random() " ..
+                 "    ORDER BY tier, " .. behind .. "random() " ..
                  "    LIMIT " .. physrep_max_candidates)
     end
 
@@ -139,7 +141,7 @@ local function register(dbname, hostname, pfile, poffset, source_dbname, source_
                          "             GROUP BY t.dbname, t.host) " ..
                          "SELECT c.tier, c.dbname, c.host FROM child_count c, comdb2_physreps p " ..
                          "    WHERE c.dbname = p.dbname AND c.host = p.host AND (p.state IS NULL OR lower(p.state) NOT IN ('pending', 'inactive'))" ..
-                         "    ORDER BY tier, cnt, random() " ..
+                         "    ORDER BY tier, " .. behind .. "cnt, random() " ..
                          "    LIMIT " .. physrep_max_candidates)
             else
                 cte = ("WITH RECURSIVE " ..
@@ -159,7 +161,7 @@ local function register(dbname, hostname, pfile, poffset, source_dbname, source_
                          "             GROUP BY t.dbname, t.host ) " ..
                          "SELECT c.tier, c.dbname, c.host FROM child_count c, comdb2_physreps p " ..
                          "    WHERE c.dbname = p.dbname AND c.host = p.host AND (p.state IS NULL OR lower(p.state) NOT IN ('pending', 'inactive'))" ..
-                         "    ORDER BY tier, random() " ..
+                         "    ORDER BY tier, " .. behind .. "random() " ..
                          "    LIMIT " .. physrep_max_candidates)
             end
         

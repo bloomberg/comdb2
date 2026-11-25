@@ -1,0 +1,166 @@
+#!/usr/bin/env bash
+bash -n "$0" || exit 1
+
+# A physrep offered a source whose log agrees with its own but ends sooner
+# takes the next candidate that has reached it instead of rewinding, which
+# would make rows its readers saw vanish; offered only lagging sources it
+# rewinds to the furthest as before.  The lagging source is a second physrep
+# left without a source of its own.
+
+source ${TESTSROOTDIR}/tools/runit_common.sh
+
+export COPYCOMDB2_EXE=${BUILDDIR}/db/copycomdb2
+export DEST=${TESTCASE}dest${TESTID}
+export LAG=${TESTCASE}lag${TESTID}
+myhost=$(hostname)
+
+function failexit
+{
+    echo "Failed: $1"
+    for d in $DEST $LAG; do
+        cp ${DBDIR}/$d/$d.log ${TESTDIR}/logs/ 2>/dev/null
+        [[ -f ${DBDIR}/$d/$d.pid ]] && kill -9 $(cat ${DBDIR}/$d/$d.pid) 2>/dev/null
+    done
+    touch $DBDIR/stop
+    exit 1
+}
+
+function src_sql
+{
+    $CDB2SQL_EXE -s --tabs $CDB2_OPTIONS $DBNAME default "$1" 2>&1
+}
+
+function rep_sql
+{
+    $CDB2SQL_EXE -s --tabs $CDB2_OPTIONS $1 @localhost "$2" 2>&1
+}
+
+function start_physrep
+{
+    local d=$1
+    (timeout $TEST_TIMEOUT $COMDB2_EXE $d -lrl ${DBDIR}/$d/$d.lrl -pidfile ${DBDIR}/$d/$d.pid >>${DBDIR}/$d/$d.log 2>&1) &
+    for i in $(seq 1 60); do
+        rep_sql $d "select 1" >/dev/null 2>&1 && return 0
+        sleep 1
+    done
+    failexit "physrep $d did not come up"
+}
+
+function create_physrep
+{
+    local d=$1 cl="-y @localhost" rmt=""
+    mkdir -p ${DBDIR}/$d
+    if [[ -n "$CLUSTER" ]]; then
+        cl="-y @$(echo $CLUSTER | tr ' ' ',')"
+        [[ "$CLUSTER" =~ .*$myhost.* ]] || rmt="$(echo $CLUSTER | cut -d' ' -f1):"
+    fi
+    ${COPYCOMDB2_EXE} -x ${COMDB2_EXE} -H $d $cl $rmt${DBDIR}/${DBNAME}.lrl ${DBDIR}/$d ${DBDIR}/$d || failexit "copycomdb2 $d"
+    if [[ -n "$PMUXPORT" ]]; then
+        echo "portmux_port $PMUXPORT" >> ${DBDIR}/$d/$d.lrl
+        echo "portmux_bind_path $pmux_socket" >> ${DBDIR}/$d/$d.lrl
+    fi
+    echo "physrep_debug 1" >> ${DBDIR}/$d/$d.lrl
+    start_physrep $d
+}
+
+function override_physrep_sp
+{
+    local mnode=$(getmaster)
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME --host $mnode "create procedure 'sys.physrep.register_replicant' version '1' { $(cat ./register_replicant.lua) }" >/dev/null
+    for sp in reset_nodes update_registry keepalive keepalive_v2; do
+        $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME --host $mnode "create procedure 'sys.physrep.$sp' version '1' { local function main() end }" >/dev/null
+    done
+}
+
+function count_on
+{
+    rep_sql $1 "select count(*) from t"
+}
+
+function wait_for_sync
+{
+    local s d
+    for i in $(seq 1 120); do
+        s=$(src_sql "select count(*) from t")
+        d=$(count_on $1)
+        [[ "$s" == "$d" ]] && return 0
+        sleep 1
+    done
+    failexit "$1 never caught up: source=$s physrep=$d"
+}
+
+function force_registration
+{
+    $CDB2SQL_EXE --admin $CDB2_OPTIONS --host localhost $1 "exec procedure sys.cmd.send('physrep_force_registration')" >/dev/null
+}
+
+# Rows the physrep has shown must not vanish.
+function reader
+{
+    local last=0 cur
+    while [[ ! -f $DBDIR/stop ]]; do
+        cur=$(count_on $DEST)
+        if [[ "$cur" =~ ^[0-9]+$ ]]; then
+            [[ $cur -lt $last ]] && echo "count went from $last to $cur" >> $DBDIR/backwards
+            last=$cur
+        fi
+    done
+}
+
+src_sql "create table t(id int primary key)" >/dev/null || failexit "create t"
+src_sql "create table route(name cstring(64) primary key, src cstring(64), host cstring(64), also int default 0)" >/dev/null || failexit "create route"
+override_physrep_sp
+src_sql "insert into t select value from generate_series(1, 1000)" >/dev/null
+
+create_physrep $LAG
+create_physrep $DEST
+wait_for_sync $LAG
+wait_for_sync $DEST
+
+# Leave LAG without a source, then move the cluster on
+src_sql "insert into route values('$LAG', 'none', '', 0)" >/dev/null
+force_registration $LAG
+sleep 5
+src_sql "insert into t select value from generate_series(1001, 5000)" >/dev/null
+wait_for_sync $DEST
+[[ $(count_on $LAG) -lt 5000 ]] || failexit "$LAG did not stay behind"
+
+reader &
+rpid=$!
+# Offered the lagging source first, it takes the cluster
+src_sql "insert into route values('$DEST', '$LAG', '$myhost', 1)" >/dev/null
+force_registration $DEST
+sleep 10
+src_sql "insert into t select value from generate_series(5001, 5010)" >/dev/null
+wait_for_sync $DEST
+log=${DBDIR}/$DEST/$DEST.log
+grep -q "source $LAG@$myhost is behind me, skipping" $log || failexit "$DEST never passed up $LAG"
+grep -q "Attached to '$myhost' db '$LAG'" $log && failexit "$DEST attached to $LAG"
+
+touch $DBDIR/stop
+wait $rpid
+grep -E "Rewind to lsn|TRUNCATING" $log && failexit "$DEST rewound with a good source on offer"
+[[ -f $DBDIR/backwards ]] && failexit "$DEST reader: $(head -1 $DBDIR/backwards)"
+
+# Offered only the lagging source, it rewinds to it as before
+src_sql "update route set also = 0 where name = '$DEST'" >/dev/null
+force_registration $DEST
+for i in $(seq 1 30); do
+    grep -qE "Rewind to lsn|TRUNCATING" $log && break
+    sleep 1
+done
+grep -qE "Rewind to lsn|TRUNCATING" $log || failexit "$DEST never rewound to $LAG"
+grep -q "Attached to '$myhost' db '$LAG'" $log || failexit "$DEST never attached to $LAG"
+
+# Back on the cluster it carries on
+src_sql "delete from route where name = '$DEST'" >/dev/null
+force_registration $DEST
+src_sql "insert into t select value from generate_series(5011, 5100)" >/dev/null
+wait_for_sync $DEST
+
+for d in $DEST $LAG; do
+    cp ${DBDIR}/$d/$d.log ${TESTDIR}/logs/
+    kill -9 $(cat ${DBDIR}/$d/$d.pid)
+done
+echo "Success"
+exit 0
