@@ -1,0 +1,83 @@
+#!/usr/bin/env bash
+bash -n "$0" || exit 1
+
+# A statement reuses the authn from its start, so a table it first touches
+# after the identity expired is still allowed. The next statement, and any
+# statement started with an expired identity, is denied.
+
+source ${TESTSROOTDIR}/tools/runit_common.sh
+
+dbnm=$1
+
+if [ "x$dbnm" == "x" ] ; then
+    failexit "need a DB name"
+fi
+
+SA="${TESTSBUILDDIR}/simpleauth_test ${dbnm}"
+OP="bpi:procauth:cluster:test:user:op:bpkg:setup"
+USR="bpi:procauth:cluster:test:user:expiry:bpkg:myapp"
+
+$SA "$OP" "create table if not exists comdb2_simple_auth(cluster cstring(20) default '*', user cstring(20) default '*', bpkg cstring(50) default '*', verb cstring(20) default '*', resourcetype cstring(20) default '*', resourcename cstring(50) default '*')" \
+    "create unique index if not exists comdb2_simple_auth_ix on comdb2_simple_auth(cluster, user, bpkg, verb, resourcetype, resourcename)" \
+    "insert into comdb2_simple_auth(cluster, user, bpkg, verb, resourcetype, resourcename) values('*', '*', '*', '*', '*', '*') on conflict do nothing" \
+    "create table t1(a int)" "create table t2(a int)" "create table t3(a int)" \
+    "insert into t1 select value from generate_series(1, 10)" \
+    "insert into t2 select value from generate_series(1, 20)" "insert into t3 values(1)" \
+    || failexit "setup failed"
+
+# t1 is read at the start, t2 only after sleep(4), by which time the identity has expired
+LATE="select (select count(*) from t1) as a, sleep(4) as s, (select count(*) from t2) as b"
+
+# Set on every node: each simpleauth_test run may connect to a different one
+set_allow_old_authn() {
+    local node
+    for node in ${CLUSTER:-$(hostname)}; do
+        $CDB2SQL_EXE $CDB2_OPTIONS $dbnm --host $node "put tunable allow_old_authn $1" > /dev/null ||
+            failexit "cannot set allow_old_authn $1 on $node"
+    done
+}
+
+# The identity expires $1 seconds from now
+usr_expiring_in() {
+    echo "$USR:exp:$(( $(date +%s) + $1 ))"
+}
+
+echo "TEST 1: table first read after expiry, same statement"
+out=$($SA "$(usr_expiring_in 2)" "$LATE" 2>&1) || failexit "late read was denied: $out"
+[[ "$out" == *"b=20"* ]] || failexit "unexpected output: $out"
+
+echo "TEST 2: expired identity starts a new statement"
+out=$($SA "$(usr_expiring_in -1)" "select count(*) from t1" 2>&1) && failexit "expired identity was allowed: $out"
+[[ "$out" == *"isn't allowed to make request on this db"* ]] || failexit "wrong error for expired identity: $out"
+
+# t3 is new to this connection; tables already read pass from comdb2's per-connection authz cache
+echo "TEST 3: next statement on the same connection after expiry"
+out=$($SA "$(usr_expiring_in 2)" "$LATE" "select count(*) from t3" 2>&1) &&
+    failexit "statement after expiry was allowed: $out"
+[[ "$out" == *"b=20"* && "$out" == *"[select count(*) from t3] failed"* ]] ||
+    failexit "wrong statement failed: $out"
+
+echo "TEST 4: table first read after expiry, same transaction"
+out=$($SA "$(usr_expiring_in 2)" "begin" "select count(*) from t1" "select sleep(4)" \
+      "select count(*) from t2" "commit" 2>&1) || failexit "late read in transaction was denied: $out"
+
+# Arm 0 of a UNION ALL runs on the parent, the later arms on parallel shards.
+# The second arm (CROSS JOIN keeps t2 outer) reads t3 only after sleep(4), so its first t3
+# check is on a shard after expiry.
+PAR="select a from t1 union all select t3.a from t2 cross join t3 where t2.a = 1 and sleep(4) >= 0"
+
+echo "TEST 5: table first read after expiry, parallel shard of the same statement"
+out=$($SA "$(usr_expiring_in 2)" "$PAR" 2>&1) || failexit "late read on a shard was denied: $out"
+[[ $(echo "$out" | wc -l) -eq 11 ]] || failexit "unexpected output: $out"
+
+echo "TEST 6: table first read after expiry, parallel shard in the same transaction"
+out=$($SA "$(usr_expiring_in 2)" "begin" "select count(*) from t1" "select sleep(4)" \
+      "select a from t1 union all select a from t3" "commit" 2>&1) || failexit "late shard read in transaction was denied: $out"
+
+echo "TEST 7: with allow_old_authn off, the late read is denied"
+set_allow_old_authn 0
+out=$($SA "$(usr_expiring_in 2)" "$LATE" 2>&1) && failexit "late read allowed without reuse: $out"
+out=$($SA "$(usr_expiring_in 2)" "$PAR" 2>&1) && failexit "late read on a shard allowed without reuse: $out"
+set_allow_old_authn 1
+
+echo "Success"

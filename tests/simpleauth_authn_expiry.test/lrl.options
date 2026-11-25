@@ -1,0 +1,3 @@
+simpleauth
+allow_old_authn 1
+dohsql_disable 0
