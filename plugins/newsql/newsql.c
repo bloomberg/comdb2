@@ -1510,7 +1510,7 @@ static int newsql_has_parallel_sql(struct sqlclntstate *clnt)
 
 static void newsql_add_steps(struct sqlclntstate *clnt, double steps)
 {
-    gbl_nnewsql_steps += steps;
+    ATOMIC_ADD64(gbl_nnewsql_steps, (long long)steps);
 }
 
 static void newsql_setup_client_info(struct sqlclntstate *clnt,
