@@ -68,6 +68,21 @@ static void osqlpf_set_table_name(osqlpf_rq_t *req, const struct osqlpf_tbl *tbl
 
 /* osql request io prefault, code stolen from prefault.c */
 
+/* The key of an index on expressions is computed by an internal SQL query
+ * (indexes_expressions_data): far too costly for a prefetch, skip it */
+static int ix_has_expr(struct dbtable *db, int ix)
+{
+    struct schema *sc;
+    int i;
+
+    if (!db->ix_expr || !db->ixschema || !(sc = db->ixschema[ix]))
+        return 0;
+    for (i = 0; i < sc->nmembers; i++)
+        if (sc->member[i].isExpr)
+            return 1;
+    return 0;
+}
+
 int osqlpfthdpool_init(void)
 {
     int i = 0;
@@ -433,6 +448,8 @@ static void osqlpfault_do_work(struct thdpool *pool, void *work, void *thddata)
         for (ixnum = 0; ixnum < iq.usedb->nix; ixnum++) {
             char key[MAXKEYLEN + 1];
             int keysz = 0;
+            if (ix_has_expr(iq.usedb, ixnum))
+                continue;
             keysz = getkeysize(iq.usedb, ixnum);
             if (keysz < 0) {
                 logmsg(LOGMSG_ERROR,
@@ -464,6 +481,8 @@ static void osqlpfault_do_work(struct thdpool *pool, void *work, void *thddata)
         for (ixnum = 0; ixnum < iq.usedb->nix; ixnum++) {
             char key[MAXKEYLEN + 1];
             int keysz = 0;
+            if (ix_has_expr(iq.usedb, ixnum))
+                continue;
             keysz = getkeysize(iq.usedb, ixnum);
             if (keysz < 0) {
                 logmsg(LOGMSG_ERROR,
@@ -520,6 +539,8 @@ static void osqlpfault_do_work(struct thdpool *pool, void *work, void *thddata)
         for (ixnum = 0; ixnum < iq.usedb->nix; ixnum++) {
             char key[MAXKEYLEN + 1];
             int keysz = 0;
+            if (ix_has_expr(iq.usedb, ixnum))
+                continue;
             keysz = getkeysize(iq.usedb, ixnum);
             if (keysz < 0) {
                 logmsg(LOGMSG_ERROR,
@@ -546,6 +567,8 @@ static void osqlpfault_do_work(struct thdpool *pool, void *work, void *thddata)
         for (ixnum = 0; ixnum < iq.usedb->nix; ixnum++) {
             char key[MAXKEYLEN + 1];
             int keysz = 0;
+            if (ix_has_expr(iq.usedb, ixnum))
+                continue;
             keysz = getkeysize(iq.usedb, ixnum);
             if (keysz < 0) {
                 logmsg(LOGMSG_ERROR,
@@ -686,6 +709,8 @@ void osqlpf_bp_keys(struct dbtable *db, const void *oldrec, const void *newrec)
     if (thdpool_get_queue_depth(gbl_osqlpfault_thdpool) > 0)
         return;
     for (ix = 1; ix < db->nix; ix++) {
+        if (ix_has_expr(db, ix))
+            continue;
         ksz = getkeysize(db, ix);
         if (ksz <= 0 || ksz > MAXKEYLEN)
             continue;
