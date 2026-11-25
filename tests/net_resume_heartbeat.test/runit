@@ -1,0 +1,65 @@
+#!/usr/bin/env bash
+bash -n "$0" || exit 1
+
+# A connection that pauses reading because its peer is ahead (read buffer full) must not
+# time the peer out for silence when it resumes: the heartbeat clock restarts on resume.
+# A slow replicant with a small read limit pauses on the master's stream; resuming is
+# delayed past heartbeat_check_time so a stale clock is caught on every run.
+
+db=$1
+nodes=($CLUSTER)
+if [[ ${#nodes[@]} -lt 2 ]]; then
+    echo "needs a cluster, skipping"
+    exit 0
+fi
+
+function fail
+{
+    echo "FAILED: $*"
+    exit 1
+}
+
+function nsql
+{
+    local node=$1; shift
+    cdb2sql --tabs ${CDB2_OPTIONS} --host $node $db "$@"
+}
+
+master=$(cdb2sql --tabs ${CDB2_OPTIONS} $db default "select host from comdb2_cluster where is_master='Y'")
+for n in ${nodes[@]}; do [[ $n != $master ]] && rep=$n && break; done
+replog=${TESTDIR}/logs/${db}.${rep}.db
+mark=$(wc -l < $replog)
+
+function settunables
+{
+    nsql $rep "put tunable debug_net_rd_max_kb $1" > /dev/null
+    nsql $rep "put tunable debug_net_resume_read_delay_ms $2" > /dev/null
+    nsql $rep "put tunable slow_rep_process_txn_minms $3" > /dev/null
+    nsql $rep "put tunable slow_rep_process_txn_maxms $3" > /dev/null
+    nsql $rep "put tunable slow_rep_process_txn_freq $4" > /dev/null
+}
+
+# Slow apply plus a 256KB read limit pauses $rep's reads; resume 2.5s late (limit is 3s)
+nsql $master "create table t (a int, b blob)" > /dev/null
+settunables 256 2500 1500 1
+for i in $(seq 1 8); do
+    nsql $master "insert into t select value, randomblob(65536) from generate_series(1, 8)" > /dev/null || fail "insert $i"
+done
+
+# Wait for $rep to apply everything
+for ((i = 0; i < 180; i++)); do
+    out=$(nsql $master "exec procedure sys.cmd.send('bdb cluster')")
+    mlsn=$(echo "$out" | grep "$master" | grep -o 'lsn [0-9]*:[0-9]*')
+    rlsn=$(echo "$out" | grep "$rep" | grep -o 'lsn [0-9]*:[0-9]*')
+    [[ -n $mlsn && $mlsn == $rlsn ]] && break
+    sleep 1
+done
+settunables 0 0 0 0
+[[ -n $mlsn && $mlsn == $rlsn ]] || fail "$rep did not catch up ($rlsn vs $mlsn)"
+
+tail -n +$((mark + 1)) $replog | grep "\[rep $master" > rep.trace
+grep -q "RESUMING RD" rep.trace || fail "$rep never paused and resumed reading from $master"
+grep "no data in" rep.trace && fail "$rep timed out $master after resuming a paused read"
+
+echo "Testcase passed."
+exit 0
