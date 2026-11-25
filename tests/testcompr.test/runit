@@ -1,0 +1,44 @@
+#!/usr/bin/env bash
+bash -n "$0" || exit 1
+
+# testcompr's worker thread used to signal THR_EVENT_START on exit instead of
+# THR_EVENT_DONE, so its lock info was reclaimed by bdb_lock_destructor.
+
+[[ $debug == "1" ]] && set -x
+
+dbname=$1
+[[ -z "$dbname" ]] && { echo "dbname missing"; exit 1; }
+
+failexit()
+{
+    echo "Failed: $1"
+    exit 1
+}
+
+cdb2sql()
+{
+    $CDB2SQL_EXE ${CDB2_OPTIONS} --tabs $dbname default "$@"
+}
+
+log=${TESTDIR}/logs/${dbname}.db
+[[ -f $log ]] || failexit "no db log at $log"
+
+cdb2sql "create table t(a int, b cstring(64), c blob)" || failexit "create table"
+cdb2sql "insert into t select value, 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', randomblob(128) from generate_series(1, 2000)" ||
+    failexit "insert"
+
+for tbl in t -all; do
+    out=$(cdb2sql "exec procedure sys.cmd.send('testcompr table $tbl')") || failexit "testcompr $tbl"
+    echo "$out"
+    grep -q "Percentage of original size for: t" <<< "$out" || failexit "no stats for t ($tbl)"
+    grep -q "SUCCESS" <<< "$out" || failexit "testcompr $tbl did not succeed"
+done
+
+grep -q "Percentage of original size for: t" $log || failexit "testcompr output not in $log"
+
+if grep "bdb_lock_destructor" $log; then
+    failexit "testcompr thread exited without releasing its lock info"
+fi
+
+echo "Success"
+exit 0

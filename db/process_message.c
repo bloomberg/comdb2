@@ -4480,6 +4480,8 @@ clipper_usage:
             FILE *f = io_override_get_std();
             COMDB2BUF *sb = cdb2buf_open(fileno((f?f:stdout)), 0);
             handle_testcompr(sb, table);
+            cdb2buf_flush(sb);
+            cdb2buf_free(sb);
         } else {
             logmsg(LOGMSG_USER,
                    "testcompr table <tbl> - Test compression for table tbl\n"
