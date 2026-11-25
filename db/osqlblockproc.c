@@ -40,6 +40,7 @@
 #include <uuid/uuid.h>
 
 #include "comdb2.h"
+#include "comdb2_atomic.h"
 #include "osqlblockproc.h"
 #include "block_internal.h"
 #include "osqlsession.h"
@@ -416,8 +417,8 @@ void osql_bplog_close(blocksql_tran_t **ptran)
     Pthread_mutex_destroy(&tran->store_mtx);
 
     if (tran->osql_step_ix) {
-        gbl_osqlpf_step[*tran->osql_step_ix].rqid = 0;
-        gbl_osqlpf_step[*tran->osql_step_ix].step = 0;
+        XCHANGE64(gbl_osqlpf_step[*tran->osql_step_ix].rqid, 0);
+        XCHANGE32(gbl_osqlpf_step[*tran->osql_step_ix].step, 0);
         Pthread_mutex_lock(&osqlpf_mutex);
         queue_add(gbl_osqlpf_stepq, tran->osql_step_ix);
         Pthread_mutex_unlock(&osqlpf_mutex);
@@ -1049,7 +1050,7 @@ static int process_this_session(
        wait for its page locks until the commit; mark every step as done
        (half the range: the block processor still adds its own small steps) */
     if (iq->osql_step_ix)
-        gbl_osqlpf_step[*(iq->osql_step_ix)].step = UINT_MAX / 2;
+        XCHANGE32(gbl_osqlpf_step[*(iq->osql_step_ix)].step, UINT_MAX / 2);
 
     /* go through each record */
     rc = bdb_temp_table_first(thedb->bdb_env, dbc, bdberr);

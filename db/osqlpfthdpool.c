@@ -15,6 +15,7 @@
  */
 
 #include "comdb2.h"
+#include "comdb2_atomic.h"
 #include "sc_util.h"
 
 struct thdpool *gbl_osqlpfault_thdpool = NULL;
@@ -301,7 +302,9 @@ static void osqlpfault_do_work(struct thdpool *pool, void *work, void *thddata)
         goto done;
 
     /* i < 0: issued by the block processor itself (osqlpf_bp_keys), no session checks */
-    if (req->i >= 0 && req->rqid != gbl_osqlpf_step[req->i].rqid) {
+    /* the slot fields are read without a lock while their owner writes them (atomics); a request
+       that is stale by the time it runs only costs one lookup */
+    if (req->i >= 0 && req->rqid != ATOMIC_LOAD64(gbl_osqlpf_step[req->i].rqid)) {
         goto done;
     }
     if (req->i >= 0 && req->rqid == OSQL_RQID_USE_UUID && comdb2uuidcmp(req->uuid, gbl_osqlpf_step[req->i].uuid))
@@ -327,7 +330,7 @@ static void osqlpfault_do_work(struct thdpool *pool, void *work, void *thddata)
         iq.usedb = req->db;
 
         step += 1;
-        if (step <= gbl_osqlpf_step[req->i].step) {
+        if (step <= ATOMIC_LOAD32(gbl_osqlpf_step[req->i].step)) {
             if (fnddta)
                 free(fnddta);
             break;
@@ -352,7 +355,7 @@ static void osqlpfault_do_work(struct thdpool *pool, void *work, void *thddata)
         }
 
         step += ((1 + (unsigned long long)req->index) << 1);
-        if (req->i >= 0 && step <= gbl_osqlpf_step[req->i].step) {
+        if (req->i >= 0 && step <= ATOMIC_LOAD32(gbl_osqlpf_step[req->i].step)) {
             break;
         }
 
@@ -372,7 +375,7 @@ static void osqlpfault_do_work(struct thdpool *pool, void *work, void *thddata)
         }
 
         step += 1 + ((1 + (unsigned long long)req->index) << 1);
-        if (req->i >= 0 && step <= gbl_osqlpf_step[req->i].step) {
+        if (req->i >= 0 && step <= ATOMIC_LOAD32(gbl_osqlpf_step[req->i].step)) {
             break;
         }
 
@@ -398,7 +401,7 @@ static void osqlpfault_do_work(struct thdpool *pool, void *work, void *thddata)
         od_len = (size_t)od_len_int;
 
         step += 1;
-        if (step <= gbl_osqlpf_step[req->i].step) {
+        if (step <= ATOMIC_LOAD32(gbl_osqlpf_step[req->i].step)) {
             if (fnddta)
                 free(fnddta);
             break;
@@ -489,7 +492,7 @@ static void osqlpfault_do_work(struct thdpool *pool, void *work, void *thddata)
         od_len = (size_t)od_len_int;
 
         step += 1;
-        if (step <= gbl_osqlpf_step[req->i].step) {
+        if (step <= ATOMIC_LOAD32(gbl_osqlpf_step[req->i].step)) {
             free(fnddta);
             break;
         }
@@ -595,9 +598,9 @@ int osql_page_prefault(char *rpl, int rplen, struct dbtable **last_db,
         Pthread_mutex_unlock(&osqlpf_mutex);
         if (ii == NULL) /* all slots in use: no prefault for this transaction */
             return 0;
-        gbl_osqlpf_step[*ii].step = 0;
-        gbl_osqlpf_step[*ii].rqid = rqid;
+        XCHANGE32(gbl_osqlpf_step[*ii].step, 0);
         comdb2uuidcpy(gbl_osqlpf_step[*ii].uuid, uuid);
+        XCHANGE64(gbl_osqlpf_step[*ii].rqid, rqid); /* last: whoever sees this rqid sees this uuid */
         *iq_step_ix = ii;
     }
     last_step_idex = **iq_step_ix;
