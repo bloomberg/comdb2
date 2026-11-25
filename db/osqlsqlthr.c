@@ -1245,6 +1245,14 @@ retry:
                     }
                 }
                 /* transaction failed on the master, abort here as well */
+                if (osql->xerr.errval == ERR_TRAN_TOO_BIG) {
+                    /* Only the replicant knows the client; the master logs bytes and limit under the same tag */
+                    uuidstr_t us;
+                    char origin[1024];
+                    get_client_origin(origin, sizeof(origin), clnt);
+                    logmsg(LOGMSG_ERROR, "transaction-audit [%llu:%s] transaction too big: \"%s\" client %s\n",
+                           osql->rqid, comdb2uuidstr(osql->uuid, us), osql->xerr.errstr, origin);
+                }
                 if (rc != SQLITE_TOOBIG) {
                     if (osql->xerr.errval == -109 /* SQLHERR_MASTER_TIMEOUT */) {
                         sql_debug_logf(clnt, __func__, __LINE__,
