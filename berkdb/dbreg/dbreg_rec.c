@@ -449,9 +449,9 @@ __dbreg_open_file(dbenv, txn, argp, info)
 		 */
 		if (argp->id != TXN_INVALID &&
 			__db_txnlist_update(dbenv, info,
-			argp->id, TXN_EXPECTED, NULL) == TXN_NOTFOUND)
+			argp->id, 0, TXN_EXPECTED, NULL) == TXN_NOTFOUND)
 			(void)__db_txnlist_add(dbenv,
-				info, argp->id, TXN_EXPECTED, NULL);
+				info, argp->id, 0, TXN_EXPECTED, NULL);
 		return (0);
 	}
 

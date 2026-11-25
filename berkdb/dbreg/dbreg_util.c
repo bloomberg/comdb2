@@ -1299,9 +1299,9 @@ __dbreg_do_open(dbenv,
 		 */
 		if (id != TXN_INVALID) {
 			if ((ret = __db_txnlist_update(dbenv,
-			    info, id, cstat, NULL)) == TXN_NOTFOUND)
+			    info, id, 0, cstat, NULL)) == TXN_NOTFOUND)
 				ret = __db_txnlist_add(dbenv,
-				    info, id, cstat, NULL);
+				    info, id, 0, cstat, NULL);
 			else if (ret > 0)
 				ret = 0;
 		}
@@ -1314,9 +1314,9 @@ err:
 
 		/* Record that the open failed in the txnlist. */
 		if (id != TXN_INVALID && (ret = __db_txnlist_update(dbenv,
-		    info, id, TXN_UNEXPECTED, NULL)) == TXN_NOTFOUND)
+		    info, id, 0, TXN_UNEXPECTED, NULL)) == TXN_NOTFOUND)
 			ret = __db_txnlist_add(dbenv,
-			    info, id, TXN_UNEXPECTED, NULL);
+			    info, id, 0, TXN_UNEXPECTED, NULL);
 	}
 not_right:
 	(void)__db_close(dbp, NULL, 0);

@@ -1,0 +1,51 @@
+#!/usr/bin/env bash
+bash -n "$0" || exit 1
+
+# A log truncate must recover correctly when a txn reuses the previous txn's 32-bit txnid with no recycle
+# record between them (DRQS 187286498): keep the first txn, undo the second, and do not fail the backward pass.
+
+db=$1
+set -e
+
+function sql
+{
+    cdb2sql --tabs ${CDB2_OPTIONS} $db default "$@"
+}
+
+function fail
+{
+    echo "FAILED: $*"
+    exit 1
+}
+
+master=$(sql "select host from comdb2_cluster where is_master='Y'")
+
+function msql
+{
+    cdb2sql --tabs ${CDB2_OPTIONS} --host $master $db "$@"
+}
+
+sql "create table t (a int)"
+
+# txn A, then a second txn that commits after the point we truncate back to
+sql "insert into t values (1)"
+lsn=$(msql "select lsn from comdb2_transaction_logs(NULL, NULL, 4) limit 1")
+echo "truncate point $lsn"
+
+# txn B reuses A's txnid; it commits past the truncate point, so the rewind treats it as aborted
+msql "put tunable debug_reuse_txnid 1"
+msql "insert into t values (2)"
+
+msql "exec procedure sys.cmd.truncate_log(\"$lsn\")" || fail "truncate_log failed"
+
+# The master must survive the rewind (a failed backward pass now aborts it) and keep only txn A
+for i in $(seq 1 60); do
+    master=$(sql "select host from comdb2_cluster where is_master='Y'" 2>/dev/null) && [[ -n $master ]] && break
+    sleep 1
+done
+[[ -n $master ]] || fail "no master after truncate_log"
+rows=$(sql "select a from t order by a" | tr '\n' ' ')
+[[ $rows == "1 " ]] || fail "expected only txn A's row after the rewind, got: $rows"
+
+echo "Testcase passed."
+exit 0

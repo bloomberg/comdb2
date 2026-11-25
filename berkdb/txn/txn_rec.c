@@ -200,7 +200,7 @@ __txn_dist_commit_recover(dbenv, dbtp, lsnp, op, info)
 		 * might already have been removed from the list, and
 		 * that's OK.  Ignore the return code from remove.
 		 */
-		(void)__db_txnlist_remove(dbenv, info, argp->txnid->txnid);
+		(void)__db_txnlist_remove(dbenv, info, argp->txnid->txnid, argp->txnid->utxnid);
 		MUTEX_LOCK(dbenv, db_rep->rep_mutexp);
 		rep->committed_gen = argp->generation;
 		rep->committed_lsn = *lsnp;
@@ -242,7 +242,7 @@ __txn_dist_commit_recover(dbenv, dbtp, lsnp, op, info)
 		}
 
 		ret = __db_txnlist_update(dbenv,
-			info, argp->txnid->txnid, TXN_ABORT, NULL);
+			info, argp->txnid->txnid, argp->txnid->utxnid, TXN_ABORT, NULL);
 
 #if defined (DEBUG_PREPARE)
 		logmsg(LOGMSG_USER, "%s op %d updated %s to abort\n",
@@ -253,7 +253,7 @@ __txn_dist_commit_recover(dbenv, dbtp, lsnp, op, info)
 			ret = TXN_OK;
 		else if (ret == TXN_NOTFOUND) {
 			ret = __db_txnlist_add(dbenv,
-				info, argp->txnid->txnid, TXN_IGNORE, NULL);
+				info, argp->txnid->txnid, argp->txnid->utxnid, TXN_IGNORE, NULL);
 #if defined (DEBUG_PREPARE)
 			logmsg(LOGMSG_USER, "%s op %d updated %s to ignore\n",
 				__func__, op, dist_txnid);
@@ -273,7 +273,7 @@ __txn_dist_commit_recover(dbenv, dbtp, lsnp, op, info)
 		}
 
 		ret = __db_txnlist_update(dbenv,
-			info, argp->txnid->txnid, TXN_COMMIT, lsnp);
+			info, argp->txnid->txnid, argp->txnid->utxnid, TXN_COMMIT, lsnp);
 
 #if defined (DEBUG_PREPARE)
 		logmsg(LOGMSG_USER, "%s op %d updated %s to %d\n",
@@ -283,12 +283,12 @@ __txn_dist_commit_recover(dbenv, dbtp, lsnp, op, info)
 			ret = TXN_OK;
 		else if (ret == TXN_NOTFOUND) {
 			ret = __db_txnlist_add(dbenv,
-				info, argp->txnid->txnid,
+				info, argp->txnid->txnid, argp->txnid->utxnid,
 				TXN_COMMIT, lsnp);
 		}
 		else if (ret != TXN_OK) {
 			__db_txnlist_update(dbenv,
-					info, argp->txnid->txnid, TXN_COMMIT, lsnp);
+					info, argp->txnid->txnid, argp->txnid->utxnid, TXN_COMMIT, lsnp);
 			abort();
 			goto err;
 		}
@@ -376,7 +376,7 @@ __txn_dist_prepare_recover(dbenv, dbtp, lsnp, op, info)
 			logmsg(LOGMSG_DEBUG, "Ignoring truncated prepared txn\n");
 		} else {
 			if ((ret = __txn_is_dist_committed(dbenv, dist_txnid))) {
-				ret = __db_txnlist_add(dbenv, info, argp->txnid->txnid, TXN_COMMIT, NULL);
+				ret = __db_txnlist_add(dbenv, info, argp->txnid->txnid, argp->txnid->utxnid, TXN_COMMIT, NULL);
 			} else {
 				logmsg(LOGMSG_DEBUG, "%s Recovering prepared txn %s\n", __func__, dist_txnid);
 				/* Election has to include this */
@@ -477,7 +477,7 @@ __txn_regop_gen_recover(dbenv, dbtp, lsnp, op, info)
 		 * might already have been removed from the list, and
 		 * that's OK.  Ignore the return code from remove.
 		 */
-		(void)__db_txnlist_remove(dbenv, info, argp->txnid->txnid);
+		(void)__db_txnlist_remove(dbenv, info, argp->txnid->txnid, argp->txnid->utxnid);
 		MUTEX_LOCK(dbenv, db_rep->rep_mutexp);
 		rep->committed_gen = argp->generation;
 		rep->committed_lsn = *lsnp;
@@ -514,13 +514,13 @@ __txn_regop_gen_recover(dbenv, dbtp, lsnp, op, info)
 		 * so we treat this as an abort even if it was a commit record.
 		 */
 		ret = __db_txnlist_update(dbenv,
-		    info, argp->txnid->txnid, TXN_ABORT, NULL);
+		    info, argp->txnid->txnid, argp->txnid->utxnid, TXN_ABORT, NULL);
 
 		if (ret == TXN_IGNORE)
 			ret = TXN_OK;
 		else if (ret == TXN_NOTFOUND)
 			ret = __db_txnlist_add(dbenv,
-			    info, argp->txnid->txnid, TXN_IGNORE, NULL);
+			    info, argp->txnid->txnid, argp->txnid->utxnid, TXN_IGNORE, NULL);
 		else if (ret != TXN_OK)
 			goto err;
 		/* else ret = 0; Not necessary because TXN_OK == 0 */
@@ -537,13 +537,13 @@ __txn_regop_gen_recover(dbenv, dbtp, lsnp, op, info)
 		}
 
 		ret = __db_txnlist_update(dbenv,
-		    info, argp->txnid->txnid, argp->opcode, lsnp);
+		    info, argp->txnid->txnid, argp->txnid->utxnid, argp->opcode, lsnp);
 
 		if (ret == TXN_IGNORE)
 			ret = TXN_OK;
 		else if (ret == TXN_NOTFOUND)
 			ret = __db_txnlist_add(dbenv,
-			    info, argp->txnid->txnid,
+			    info, argp->txnid->txnid, argp->txnid->utxnid,
 			    argp->opcode == TXN_ABORT ?
 			    TXN_IGNORE : argp->opcode, lsnp);
 		else if (ret != TXN_OK) {
@@ -618,7 +618,7 @@ __txn_regop_recover(dbenv, dbtp, lsnp, op, info)
 		 * might already have been removed from the list, and
 		 * that's OK.  Ignore the return code from remove.
 		 */
-		(void)__db_txnlist_remove(dbenv, info, argp->txnid->txnid);
+		(void)__db_txnlist_remove(dbenv, info, argp->txnid->txnid, argp->txnid->utxnid);
 	} else if ((dbenv->tx_timestamp != 0 &&
 		argp->timestamp > (int32_t)dbenv->tx_timestamp) ||
 	    (!IS_ZERO_LSN(headp->trunc_lsn) &&
@@ -646,13 +646,13 @@ __txn_regop_recover(dbenv, dbtp, lsnp, op, info)
 		}
 
 		ret = __db_txnlist_update(dbenv,
-		    info, argp->txnid->txnid, TXN_ABORT, NULL);
+		    info, argp->txnid->txnid, argp->txnid->utxnid, TXN_ABORT, NULL);
 
 		if (ret == TXN_IGNORE)
 			ret = TXN_OK;
 		else if (ret == TXN_NOTFOUND)
 			ret = __db_txnlist_add(dbenv,
-			    info, argp->txnid->txnid, TXN_IGNORE, NULL);
+			    info, argp->txnid->txnid, argp->txnid->utxnid, TXN_IGNORE, NULL);
 		else if (ret != TXN_OK)
 			goto err;
 		/* else ret = 0; Not necessary because TXN_OK == 0 */
@@ -669,13 +669,13 @@ __txn_regop_recover(dbenv, dbtp, lsnp, op, info)
 		}
 
 		ret = __db_txnlist_update(dbenv,
-		    info, argp->txnid->txnid, argp->opcode, lsnp);
+		    info, argp->txnid->txnid, argp->txnid->utxnid, argp->opcode, lsnp);
 
 		if (ret == TXN_IGNORE)
 			ret = TXN_OK;
 		else if (ret == TXN_NOTFOUND)
 			ret = __db_txnlist_add(dbenv,
-			    info, argp->txnid->txnid,
+			    info, argp->txnid->txnid, argp->txnid->utxnid,
 			    argp->opcode == TXN_ABORT ?
 			    TXN_IGNORE : argp->opcode, lsnp);
 		else if (ret != TXN_OK)
@@ -828,7 +828,7 @@ __txn_regop_rowlocks_recover(dbenv, dbtp, lsnp, op, info)
 			__txn_deallocate_ltrans(dbenv, lt);
 		}
 
-		(void)__db_txnlist_remove(dbenv, info, argp->txnid->txnid);
+		(void)__db_txnlist_remove(dbenv, info, argp->txnid->txnid, argp->txnid->utxnid);
 		MUTEX_LOCK(dbenv, db_rep->rep_mutexp);
 		rep->committed_gen = argp->generation;
 		rep->committed_lsn = *lsnp;
@@ -893,13 +893,13 @@ __txn_regop_rowlocks_recover(dbenv, dbtp, lsnp, op, info)
 		 * so we treat this as an abort even if it was a commit record.
 		 */
 		ret = __db_txnlist_update(dbenv,
-					  info, argp->txnid->txnid, TXN_ABORT, NULL);
+					  info, argp->txnid->txnid, argp->txnid->utxnid, TXN_ABORT, NULL);
 
 		if (ret == TXN_IGNORE)
 			ret = TXN_OK;
 		else if (ret == TXN_NOTFOUND)
 			ret = __db_txnlist_add(dbenv,
-					       info, argp->txnid->txnid, TXN_IGNORE, NULL);
+					       info, argp->txnid->txnid, argp->txnid->utxnid, TXN_IGNORE, NULL);
 		else if (ret != TXN_OK)
 			goto err;
 		/* else ret = 0; Not necessary because TXN_OK == 0 */
@@ -944,13 +944,13 @@ __txn_regop_rowlocks_recover(dbenv, dbtp, lsnp, op, info)
 
 		/* This is a normal commit; mark it appropriately. */
 		ret = __db_txnlist_update(dbenv,
-					  info, argp->txnid->txnid, argp->opcode, lsnp);
+					  info, argp->txnid->txnid, argp->txnid->utxnid, argp->opcode, lsnp);
 
 		if (ret == TXN_IGNORE)
 			ret = TXN_OK;
 		else if (ret == TXN_NOTFOUND)
 			ret = __db_txnlist_add(dbenv,
-					       info, argp->txnid->txnid,
+					       info, argp->txnid->txnid, argp->txnid->utxnid,
 					       argp->opcode == TXN_ABORT ?
 					       TXN_IGNORE : argp->opcode, lsnp);
 		else if (ret != TXN_OK)
@@ -1009,7 +1009,7 @@ __txn_xa_regop_recover(dbenv, dbtp, lsnp, op, info)
 		goto err;
 	}
 
-	ret = __db_txnlist_find(dbenv, info, argp->txnid->txnid);
+	ret = __db_txnlist_find(dbenv, info, argp->txnid->txnid, argp->txnid->utxnid);
 
 	/*
 	 * If we are rolling forward, then an aborted prepare
@@ -1020,7 +1020,7 @@ __txn_xa_regop_recover(dbenv, dbtp, lsnp, op, info)
 
 	if (op == DB_TXN_FORWARD_ROLL) {
 		if ((ret = __db_txnlist_remove(dbenv,
-		    info, argp->txnid->txnid)) != TXN_OK)
+		    info, argp->txnid->txnid, argp->txnid->utxnid)) != TXN_OK)
 			goto txn_err;
 	} else if (op == DB_TXN_BACKWARD_ROLL && ret == TXN_PREPARE) {
 		/*
@@ -1036,7 +1036,7 @@ __txn_xa_regop_recover(dbenv, dbtp, lsnp, op, info)
 		 */
 		if (argp->opcode == TXN_ABORT) {
 			if ((ret = __db_txnlist_update(dbenv,
-			     info, argp->txnid->txnid,
+			     info, argp->txnid->txnid, argp->txnid->utxnid,
 			     TXN_ABORT, NULL)) != TXN_PREPARE)
 				goto txn_err;
 			ret = 0;
@@ -1049,12 +1049,12 @@ __txn_xa_regop_recover(dbenv, dbtp, lsnp, op, info)
 		 * after recovery (see txn_recover).
 		 */
 		else if ((ret = __db_txnlist_remove(dbenv,
-		   info, argp->txnid->txnid)) != TXN_OK) {
+		   info, argp->txnid->txnid, argp->txnid->utxnid)) != TXN_OK) {
 txn_err:		__db_err(dbenv,
 			    "Transaction not in list %x", argp->txnid->txnid);
 			ret = DB_NOTFOUND;
 		} else if ((ret = __db_txnlist_add(dbenv,
-		   info, argp->txnid->txnid, TXN_COMMIT, lsnp)) == 0)
+		   info, argp->txnid->txnid, argp->txnid->utxnid, TXN_COMMIT, lsnp)) == 0)
 			ret = __txn_restore_txn(dbenv, lsnp, argp);
 	} else
 		ret = 0;
@@ -1198,7 +1198,7 @@ __txn_child_recover(dbenv, dbtp, lsnp, op, info)
 		 * we are interested only in transactions for which
 		 * parent commits
 		 */
-		p_stat = __db_txnlist_find(dbenv, info, argp->txnid->txnid);
+		p_stat = __db_txnlist_find(dbenv, info, argp->txnid->txnid, argp->txnid->utxnid);
 		if (p_stet == TXN_OK) {
 			/* we are only interested in committed children */
 			fprintf(stderr,
@@ -1206,7 +1206,7 @@ __txn_child_recover(dbenv, dbtp, lsnp, op, info)
 			    __FILE__, __LINE__, argp->child,
 			    argp->prev_lsn.file, argp->prev_lsn.offset);
 			ret = __db_txnlist_add(dbenv, info, 
-			    argp->txnid->txnid, TXN_COMMIT, NULL);
+			    argp->txnid->txnid, argp->txnid->utxnid, TXN_COMMIT, NULL);
 			if (ret) {
 				fprintf(stderr, 
 "%s:%d failed to add transaction %x to list\n",
@@ -1255,8 +1255,8 @@ __txn_child_recover(dbenv, dbtp, lsnp, op, info)
 				goto err;
 			}
 		}
-		c_stat = __db_txnlist_find(dbenv, info, argp->child);
-		p_stat = __db_txnlist_find(dbenv, info, argp->txnid->txnid);
+		c_stat = __db_txnlist_find(dbenv, info, argp->child, argp->child_utxnid);
+		p_stat = __db_txnlist_find(dbenv, info, argp->txnid->txnid, argp->txnid->utxnid);
 		if (c_stat == TXN_EXPECTED) {
 			/*
 			 * The open after this create succeeded.  If the
@@ -1272,7 +1272,7 @@ __txn_child_recover(dbenv, dbtp, lsnp, op, info)
 				c_stat = TXN_ABORT;
 			}
 			ret = __db_txnlist_update(dbenv,
-				info, argp->child, c_stat, NULL);
+				info, argp->child, argp->child_utxnid, c_stat, NULL);
 			if (ret > 0)
 				ret = 0;
 		} else if (c_stat == TXN_UNEXPECTED) {
@@ -1283,7 +1283,7 @@ __txn_child_recover(dbenv, dbtp, lsnp, op, info)
 			 * (because the file may not be the one in which we
 			 * are interested).
 			 */
-			ret = __db_txnlist_update(dbenv, info, argp->child,
+			ret = __db_txnlist_update(dbenv, info, argp->child, argp->child_utxnid,
 				p_stat == TXN_COMMIT ? TXN_COMMIT : TXN_IGNORE,
 				NULL);
 			if (ret > 0)
@@ -1300,24 +1300,24 @@ __txn_child_recover(dbenv, dbtp, lsnp, op, info)
 				c_stat = TXN_ABORT;
 			}
 
-			ret = __db_txnlist_add(dbenv, info, argp->child, c_stat, NULL);
+			ret = __db_txnlist_add(dbenv, info, argp->child, argp->child_utxnid, c_stat, NULL);
 		}
 	} else if (op == DB_TXN_OPENFILES) {
 		/*
 		 * If we have a partial subtransaction, then the whole
 		 * transaction should be ignored.
 		 */
-		c_stat = __db_txnlist_find(dbenv, info, argp->child);
+		c_stat = __db_txnlist_find(dbenv, info, argp->child, argp->child_utxnid);
 		if (c_stat == TXN_NOTFOUND) {
 			p_stat =
-			     __db_txnlist_find(dbenv, info, argp->txnid->txnid);
+			     __db_txnlist_find(dbenv, info, argp->txnid->txnid, argp->txnid->utxnid);
 			if (p_stat == TXN_NOTFOUND) {
 				ret = __db_txnlist_add(dbenv, info,
-					 argp->txnid->txnid, TXN_IGNORE, NULL);
+					 argp->txnid->txnid, argp->txnid->utxnid, TXN_IGNORE, NULL);
 			}
 			else {
 				ret = __db_txnlist_update(dbenv, info,
-					 argp->txnid->txnid, TXN_IGNORE, NULL);
+					 argp->txnid->txnid, argp->txnid->utxnid, TXN_IGNORE, NULL);
 				if (ret > 0)
 					ret = 0;
 			}
@@ -1325,7 +1325,7 @@ __txn_child_recover(dbenv, dbtp, lsnp, op, info)
 	} else if (DB_REDO(op)) {
 		/* Forward Roll */
 		if ((ret =
-			__db_txnlist_remove(dbenv, info, argp->child)) != TXN_OK) {
+			__db_txnlist_remove(dbenv, info, argp->child, argp->child_utxnid)) != TXN_OK) {
 			__db_err(dbenv,
 				"Transaction not in list %x", argp->child);
 			ret = DB_NOTFOUND;

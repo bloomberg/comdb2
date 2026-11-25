@@ -76,7 +76,7 @@ static int __db_limbo_prepare __P((DB *, DB_TXN *, DB_TXNLIST *));
 static int __db_lock_move __P((DB_ENV *,
 	u_int8_t *, db_pgno_t, db_lockmode_t, DB_TXN *, DB_TXN *));
 static int __db_txnlist_find_internal __P((DB_ENV *, void *, db_txnlist_type,
-	u_int32_t, u_int8_t[DB_FILE_ID_LEN], DB_TXNLIST **, int));
+	u_int32_t, u_int64_t, u_int8_t[DB_FILE_ID_LEN], DB_TXNLIST **, int));
 static int __db_txnlist_pgnoadd __P((DB_ENV *, DB_TXNHEAD *,
 	int32_t, u_int8_t[DB_FILE_ID_LEN], char *, db_pgno_t));
 
@@ -467,15 +467,19 @@ __db_dispatch(dbenv, dtab, dtabsize, db, lsnp, redo, info)
 {
 	DB_LSN prev_lsn;
 	u_int32_t rectype, txnid;
-	u_int64_t utxnid;
+	u_int64_t utxnid = 0;
 	u_int64_t maxutxnid = 0;
 	int make_call, ret;
 
 	LOGCOPY_32(&rectype, db->data);
 	u_int32_t raw_rectype = rectype;
 
-	if (normalize_rectype(&rectype) && (redo == DB_TXN_OPENFILES)) {
+	/* Every pass needs the utxnid: the txnlist uses it to tell apart txns reusing a 32-bit txnid. */
+	int has_utxnid = normalize_rectype(&rectype);
+	if (has_utxnid)
 		LOGCOPY_64(&utxnid, &((char*)db->data)[DB_REC_OFF_UTXNID]);
+
+	if (has_utxnid && (redo == DB_TXN_OPENFILES)) {
 		if (rectype == DB___txn_ckp || rectype == DB___txn_ckp_recovery) {
 			/* ckp_lsn(8) + last_ckp(8) + timestamp(4) + rep_gen(4) */
 			LOGCOPY_64(&maxutxnid, &((char*)db->data)[
@@ -558,7 +562,7 @@ __db_dispatch(dbenv, dtab, dtabsize, db, lsnp, redo, info)
 		LOGCOPY_TOLSN(&prev_lsn, (u_int8_t *)db->data +
 			sizeof(rectype) + sizeof(txnid));
 		if (txnid != 0 && prev_lsn.file == 0) { 
-			if ((ret = __db_txnlist_add(dbenv, info, txnid, TXN_OK,
+			if ((ret = __db_txnlist_add(dbenv, info, txnid, utxnid, TXN_OK,
 				NULL)) != 0)
 			 return (ret);
 #if defined (UFID_HASH_DEBUG)
@@ -614,14 +618,14 @@ __db_dispatch(dbenv, dtab, dtabsize, db, lsnp, redo, info)
 		default:
 			if (txnid != 0 && (ret =
 				__db_txnlist_find(dbenv,
-				info, txnid)) != TXN_COMMIT && ret != TXN_IGNORE) {
+				info, txnid, utxnid)) != TXN_COMMIT && ret != TXN_IGNORE) {
 				/*
 				 * If not found then, this is an incomplete
 				 * abort.
 				 */
 				if (ret == TXN_NOTFOUND) {
 					ret = __db_txnlist_add(dbenv,
-						info, txnid, TXN_IGNORE, lsnp);
+						info, txnid, utxnid, TXN_IGNORE, lsnp);
 #if defined (UFID_HASH_DEBUG)
 					comdb2_cheapstack_sym(stderr, "db_txnlist_add line %d for "
 						"[%d:%d]:", __LINE__, lsnp->file, lsnp->offset);
@@ -636,7 +640,7 @@ __db_dispatch(dbenv, dtab, dtabsize, db, lsnp, redo, info)
 					if (rectype == DB___txn_dist_prepare || rectype == DB___txn_dist_prepare_endianize) {
 						redo = DB_TXN_DIST_ADD_TXNLIST;
 					} else {
-						ret = __db_txnlist_update(dbenv, info, txnid,
+						ret = __db_txnlist_update(dbenv, info, txnid, utxnid,
 								rectype == DB___txn_xa_regop ?
 								TXN_PREPARE : TXN_ABORT, NULL);
 #if defined (UFID_HASH_DEBUG)
@@ -670,7 +674,7 @@ __db_dispatch(dbenv, dtab, dtabsize, db, lsnp, redo, info)
 
 		default:
 			if (txnid != 0 && (ret = __db_txnlist_find(dbenv,
-			    info, txnid)) == TXN_COMMIT)
+			    info, txnid, utxnid)) == TXN_COMMIT)
 				make_call = 1;
 			else if (ret != TXN_IGNORE &&
 			    (rectype == DB___ham_metagroup ||
@@ -907,13 +911,14 @@ static int __txnlist_cmp(const void *key1, const void *key2, int len)
  *	Add an element to our transaction linked list.
  *
  * PUBLIC: int __db_txnlist_add __P((DB_ENV *,
- * PUBLIC:     void *, u_int32_t, int32_t, DB_LSN *));
+ * PUBLIC:     void *, u_int32_t, u_int64_t, int32_t, DB_LSN *));
  */
 int
-__db_txnlist_add(dbenv, listp, txnid, status, lsn)
+__db_txnlist_add(dbenv, listp, txnid, utxnid, status, lsn)
 	DB_ENV *dbenv;
 	void *listp;
 	u_int32_t txnid;
+	u_int64_t utxnid;
 	int32_t status;
 	DB_LSN *lsn;
 {
@@ -935,6 +940,7 @@ __db_txnlist_add(dbenv, listp, txnid, status, lsn)
 	elp->type = TXNLIST_TXNID;
 	elp->u.t.txnid = txnid;
 	elp->u.t.status = status;
+	elp->u.t.utxnid = utxnid;
 	elp->u.t.generation = hp->generation;
 	if (txnid > hp->maxid)
 		hp->maxid = txnid;
@@ -964,13 +970,14 @@ __db_txnlist_add(dbenv, listp, txnid, status, lsn)
  * __db_txnlist_remove --
  *	Remove an element from our transaction linked list.
  *
- * PUBLIC: int __db_txnlist_remove __P((DB_ENV *, void *, u_int32_t));
+ * PUBLIC: int __db_txnlist_remove __P((DB_ENV *, void *, u_int32_t, u_int64_t));
  */
 int
-__db_txnlist_remove(dbenv, listp, txnid)
+__db_txnlist_remove(dbenv, listp, txnid, utxnid)
 	DB_ENV *dbenv;
 	void *listp;
 	u_int32_t txnid;
+	u_int64_t utxnid;
 {
 	DB_TXNLIST *entry;
 
@@ -979,7 +986,7 @@ __db_txnlist_remove(dbenv, listp, txnid)
 #endif
 
 	return (__db_txnlist_find_internal(dbenv,
-	    listp, TXNLIST_TXNID, txnid,
+	    listp, TXNLIST_TXNID, txnid, utxnid,
 	    NULL, &entry, 1) == TXN_NOTFOUND ? TXN_NOTFOUND : TXN_OK);
 }
 
@@ -1105,20 +1112,21 @@ __db_txnlist_first(dbenv, listp, txnlistp, delete)
  *	the status of the transaction.  A txnid of 0 means the record
  *	was generated while not in a transaction.
  *
- * PUBLIC: int __db_txnlist_find __P((DB_ENV *, void *, u_int32_t));
+ * PUBLIC: int __db_txnlist_find __P((DB_ENV *, void *, u_int32_t, u_int64_t));
  */
 int
-__db_txnlist_find(dbenv, listp, txnid)
+__db_txnlist_find(dbenv, listp, txnid, utxnid)
 	DB_ENV *dbenv;
 	void *listp;
 	u_int32_t txnid;
+	u_int64_t utxnid;
 {
 	DB_TXNLIST *entry;
 
 	if (txnid == 0)
 		return (TXN_NOTFOUND);
 	return (__db_txnlist_find_internal(dbenv, listp,
-	    TXNLIST_TXNID, txnid, NULL, &entry, 0));
+	    TXNLIST_TXNID, txnid, utxnid, NULL, &entry, 0));
 }
 
 /*
@@ -1127,13 +1135,14 @@ __db_txnlist_find(dbenv, listp, txnid)
  *	Returns TXN_NOTFOUND if no such entry exists.
  *
  * PUBLIC: int __db_txnlist_update __P((DB_ENV *,
- * PUBLIC:     void *, u_int32_t, int32_t, DB_LSN *));
+ * PUBLIC:     void *, u_int32_t, u_int64_t, int32_t, DB_LSN *));
  */
 int
-__db_txnlist_update(dbenv, listp, txnid, status, lsn)
+__db_txnlist_update(dbenv, listp, txnid, utxnid, status, lsn)
 	DB_ENV *dbenv;
 	void *listp;
 	u_int32_t txnid;
+	u_int64_t utxnid;
 	int32_t status;
 	DB_LSN *lsn;
 {
@@ -1149,11 +1158,14 @@ __db_txnlist_update(dbenv, listp, txnid, status, lsn)
 		return (TXN_NOTFOUND);
 	hp = (DB_TXNHEAD *)listp;
 	ret = __db_txnlist_find_internal(dbenv,
-	    listp, TXNLIST_TXNID, txnid, NULL, &elp, 0);
+	    listp, TXNLIST_TXNID, txnid, utxnid, NULL, &elp, 0);
 
 	if (ret == TXN_NOTFOUND || ret == TXN_IGNORE)
 		return (ret);
 	elp->u.t.status = status;
+	/* A 32-bit-only note (fop/dbreg) now belongs to the txn that claimed it. */
+	if (utxnid && !elp->u.t.utxnid)
+		elp->u.t.utxnid = utxnid;
 
 #if defined (UFID_HASH_DEBUG)
 	comdb2_cheapstack_sym(stderr, "%s updating txnid 0x%x status %d [%d:%d], "
@@ -1175,18 +1187,19 @@ __db_txnlist_update(dbenv, listp, txnid, status, lsn)
  *	with an initialized list pointer but checking for NULL keeps it general.
  */
 static int
-__db_txnlist_find_internal(dbenv, listp, type, txnid, uid, txnlistp, delete)
+__db_txnlist_find_internal(dbenv, listp, type, txnid, utxnid, uid, txnlistp, delete)
 	DB_ENV *dbenv;
 	void *listp;
 	db_txnlist_type type;
 	u_int32_t  txnid;
+	u_int64_t utxnid;
 	u_int8_t uid[DB_FILE_ID_LEN];
 	DB_TXNLIST **txnlistp;
 	int delete;
 {
 	struct __db_headlink *head;
 	DB_TXNHEAD *hp;
-	DB_TXNLIST *p, *elp = NULL;
+	DB_TXNLIST *p, *elp = NULL, *chain = NULL;
 	u_int32_t generation, hash, i;
 	int ret;
 #if defined DEBUG_TXNLIST_PLHASH
@@ -1231,7 +1244,18 @@ __db_txnlist_find_internal(dbenv, listp, type, txnid, uid, txnlistp, delete)
 		fnd.type = type;
 		fnd.u.t.txnid = txnid;
 		fnd.u.t.generation = generation;
-		elp = hash_find(hp->h, &fnd);
+		chain = elp = hash_find(hp->h, &fnd);
+		/* Same txnid and generation: pick our utxnid, else an untagged entry, else none. */
+		if (elp != NULL && utxnid != 0) {
+			DB_TXNLIST *e, *untagged = NULL;
+			for (e = chain; e != NULL; e = e->next) {
+				if (e->u.t.utxnid == utxnid)
+					break;
+				if (e->u.t.utxnid == 0 && untagged == NULL)
+					untagged = e;
+			}
+			elp = e ? e : untagged;
+		}
 #if defined DEBUG_TXNLIST_PLHASH
 		chk = 1;
 #else
@@ -1249,6 +1273,8 @@ __db_txnlist_find_internal(dbenv, listp, type, txnid, uid, txnlistp, delete)
 		case TXNLIST_TXNID:
 			if (p->u.t.txnid != txnid ||
 				generation != p->u.t.generation)
+				continue;
+			if (utxnid && p->u.t.utxnid && p->u.t.utxnid != utxnid)
 				continue;
 			ret = p->u.t.status;
 			break;
@@ -1271,9 +1297,17 @@ __db_txnlist_find_internal(dbenv, listp, type, txnid, uid, txnlistp, delete)
 					abort();
 				}
 
-				hash_del(hp->h, p);
-				if (elp->next) {
-					hash_add(hp->h, elp->next);
+				if (p == chain) {
+					hash_del(hp->h, p);
+					if (p->next) {
+						hash_add(hp->h, p->next);
+					}
+				} else {
+					/* Picked by utxnid from the middle of the chain: unlink it. */
+					DB_TXNLIST *prev = chain;
+					while (prev->next != p)
+						prev = prev->next;
+					prev->next = p->next;
 				}
 			}
 			LIST_REMOVE(p, links);
@@ -2151,7 +2185,7 @@ __db_txnlist_pgnoadd(dbenv, hp, fileid, uid, fname, pgno)
 	elp = NULL;
 
 	if (__db_txnlist_find_internal(dbenv, hp,
-	    TXNLIST_PGNO, 0, uid, &elp, 0) != 0) {
+	    TXNLIST_PGNO, 0, 0, uid, &elp, 0) != 0) {
 		if ((ret =
 		    __os_malloc(dbenv, sizeof(DB_TXNLIST), &elp)) != 0)
 			goto err;
