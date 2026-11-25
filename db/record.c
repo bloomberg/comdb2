@@ -696,6 +696,7 @@ int add_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
         }
 
         if (!retrc && gbl_max_wr_logbytes_per_txn && (iq->written_logbytes_count > gbl_max_wr_logbytes_per_txn)) {
+            log_max_wr_logbytes_exceeded(iq);
             reqerrstr(iq, COMDB2_CSTRT_RC_TRN_TOO_BIG, "Transaction exceeds max log-bytes limit");
             retrc = ERR_TRAN_TOO_BIG;
             ERR("exceeds max log-bytes limit %llu", iq->written_logbytes_count);
@@ -1724,6 +1725,7 @@ int upd_record(struct ireq *iq, void *trans, void *primkey, int rrn,
 
     if (!retrc && !is_event_from_sc(flags) && gbl_max_wr_logbytes_per_txn &&
         (iq->written_logbytes_count > gbl_max_wr_logbytes_per_txn)) {
+        log_max_wr_logbytes_exceeded(iq);
         reqerrstr(iq, COMDB2_CSTRT_RC_TRN_TOO_BIG, "Transaction exceeds max log-bytes limit");
         retrc = ERR_TRAN_TOO_BIG;
         ERR("exceeds max log-bytes limit %llu", iq->written_logbytes_count);
@@ -2058,6 +2060,7 @@ int del_record(struct ireq *iq, void *trans, void *primkey, int rrn,
 
     if (!retrc && !is_event_from_sc(flags) && gbl_max_wr_logbytes_per_txn &&
         (iq->written_logbytes_count > gbl_max_wr_logbytes_per_txn)) {
+        log_max_wr_logbytes_exceeded(iq);
         reqerrstr(iq, COMDB2_CSTRT_RC_TRN_TOO_BIG, "Transaction exceeds max log-bytes limit");
         retrc = ERR_TRAN_TOO_BIG;
         goto err;

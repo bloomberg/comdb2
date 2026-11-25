@@ -1467,6 +1467,7 @@ int delayed_key_adds(struct ireq *iq, void *trans, int *blkpos, int *ixout,
             }
             if (rc == 0 && gbl_max_wr_logbytes_per_txn && (iq->written_logbytes_count >
                         gbl_max_wr_logbytes_per_txn)) {
+                log_max_wr_logbytes_exceeded(iq);
                 reqerrstr(iq, COMDB2_CSTRT_RC_TRN_TOO_BIG,
                         "Transaction exceeds max log-bytes limit");
                 rc = ERR_TRAN_TOO_BIG;

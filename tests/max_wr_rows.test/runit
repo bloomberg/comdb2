@@ -281,13 +281,29 @@ function runtest_max_ttl
 
 function runtest_max_logbytes
 {
+    local logfile=${TESTDIR}/logs/${db}.db
+    local trace="transaction-audit .* exceeded max log-bytes limit: wrote [0-9]* logbytes (limit 1) from "
+    local clnt_trace="transaction-audit .* transaction too big: \"Transaction exceeds max log-bytes limit.*\" client .*cdb2sql:origin:.*:pid:[0-9]*"
+    local ntrace=0
     cdb2sql ${CDB2_OPTIONS} $db $stage "insert into t4 (i) values (1)"
     cdb2sql ${CDB2_OPTIONS} $db $stage "put tunable max_wr_logbytes_per_txn 1"
-    local x=$(cdb2sql ${CDB2_OPTIONS} $db $stage "insert into t4 (i) values (2)" 2>&1)
-    if [[ "$x" != *"Transaction exceeds max log-bytes limit"* ]]; then
-        failexit "Expected: Transaction exceeds max log-bytes limit"
-    fi
-    local cnt=`cdb2sql ${CDB2_OPTIONS} --tabs $db $stage "select count(i) from t4"`
+    local sql
+    for sql in "insert into t4 (i) values (2)" "update t4 set i = 2" "delete from t4"; do
+        local x=$(cdb2sql ${CDB2_OPTIONS} $db $stage "$sql" 2>&1)
+        if [[ "$x" != *"Transaction exceeds max log-bytes limit"* ]]; then
+            failexit "Expected: Transaction exceeds max log-bytes limit for '$sql'"
+        fi
+        let ntrace=ntrace+1
+        local got=$(grep -c "$trace" $logfile)
+        if [[ "$got" -ne "$ntrace" ]]; then
+            failexit "Expected $ntrace log-bytes limit traces in $logfile after '$sql', got $got"
+        fi
+        got=$(grep -c "$clnt_trace" $logfile)
+        if [[ "$got" -ne "$ntrace" ]]; then
+            failexit "Expected $ntrace client traces in $logfile after '$sql', got $got"
+        fi
+    done
+    local cnt=`cdb2sql ${CDB2_OPTIONS} --tabs $db $stage "select count(i) from t4 where i = 1"`
     assertres $cnt 1
     cdb2sql ${CDB2_OPTIONS} $db $stage "put tunable max_wr_logbytes_per_txn 0"
 }

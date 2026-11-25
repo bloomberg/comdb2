@@ -805,6 +805,7 @@ int gbl_javasp_early_release = 1;
 int gbl_debug_add_replication_latency = 0;
 uint32_t gbl_written_rows_warn = 0;
 int64_t gbl_warn_wr_logbytes_per_txn = 1024 * 1024 * 1024;
+extern int64_t gbl_max_wr_logbytes_per_txn;
 extern int gbl_debug_disttxn_trace;
 
 static void make_tag(struct ireq *iq, char *tag, int taglen)
@@ -818,6 +819,16 @@ static void make_tag(struct ireq *iq, char *tag, int taglen)
         snprintf(tag, taglen, "[???]");
     }
     tag[taglen - 1] = '\0';
+}
+
+void log_max_wr_logbytes_exceeded(struct ireq *iq)
+{
+    char tag[1 + 200 + 1] = {0};
+    make_tag(iq, tag, sizeof(tag));
+    const char *from = (iq->sorese && iq->sorese->target_host) ? iq->sorese->target_host : "local";
+    logmsg(LOGMSG_ERROR,
+           "transaction-audit %s exceeded max log-bytes limit: wrote %" PRId64 " logbytes (limit %" PRId64 ") from %s\n",
+           tag, iq->written_logbytes_count, gbl_max_wr_logbytes_per_txn, from);
 }
 
 static int trans_commit_int(struct ireq *iq, void *trans, char *source_host, int timeoutms, int adaptive, int logical,
