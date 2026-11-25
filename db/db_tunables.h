@@ -400,6 +400,11 @@ REGISTER_TUNABLE(
     "debug_sleep_in_rollout",
     "Sleep after acquiring schema_lk in _view_cron_new_rollout for testing lock inversion (Default: 0 seconds)",
     TUNABLE_INTEGER, &gbl_debug_sleep_in_rollout, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("debug_sleep_in_reload_schemas",
+                 "Sleep before a schema reload clears the queued rollouts, for testing rollouts that run during a "
+                 "reload (Default: 0 seconds)",
+                 TUNABLE_INTEGER, &gbl_debug_sleep_in_reload_schemas, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL,
+                 NULL);
 #endif
 REGISTER_TUNABLE("debug_default_string_update",
                  "Test default string update handler. (Default: debug_default_string_update_value)", TUNABLE_STRING,

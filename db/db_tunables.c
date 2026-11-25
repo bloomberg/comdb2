@@ -172,6 +172,7 @@ extern int gbl_retrieve_gen_from_ckp;
 extern int gbl_emit_gen_commits;
 extern int gbl_debug_sleep_before_committed_lsn;
 extern int gbl_debug_sleep_before_sc_redo_add;
+extern int gbl_debug_sleep_in_reload_schemas;
 extern int gbl_recovery_ckp;
 extern int gbl_reproduce_ckp_bug;
 extern int gbl_sample_queries;
