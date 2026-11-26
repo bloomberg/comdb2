@@ -55,6 +55,7 @@
 #include "bdb_int.h"
 #include "bdb_cursor.h"
 #include "locks.h"
+#include "comdb2_atomic.h"
 #include "genid.h"
 #include "bdb_fetch.h"
 #include "logmsg.h"
@@ -2138,6 +2139,10 @@ static unsigned long long genid_from_dbt(int ixnum, DBT *dkey, DBT *ddta)
     return genid;
 }
 
+/* Prefault lookups that gave up on a lock another locker held, for
+ * `stat prefault` */
+unsigned long long gbl_prefault_lock_giveups;
+
 static int bdb_fetch_prefault_int(
     int return_dta, int direction, int lookahead, bdb_state_type *bdb_state,
     void *ix, int ixnum, int ixlen, void *lastix, int lastrrn,
@@ -2163,6 +2168,7 @@ static int bdb_fetch_prefault_int(
     rc = bdb_lock_table_read_fromlid(bdb_state, lockerid);
     if (rc != 0) {
         bdb_state->dbenv->lock_id_free(bdb_state->dbenv, lockerid);
+        ATOMIC_ADD64(gbl_prefault_lock_giveups, 1);
         *bdberr = BDBERR_MISC;
         return -1;
     }
@@ -2172,6 +2178,9 @@ static int bdb_fetch_prefault_int(
                             dtalen, reqdtalen, ixfound, rrn, recnum, genid,
                             numblobs, dtafilenums, blobsizes, bloboffs,
                             blobptrs, 1, NULL, NULL, args, lockerid, bdberr);
+    /* the locker never waits, so a deadlock return is a refused lock */
+    if (llrc != 0 && *bdberr == BDBERR_DEADLOCK)
+        ATOMIC_ADD64(gbl_prefault_lock_giveups, 1);
 
     memset(&request, 0, sizeof(request));
     request.op = DB_LOCK_PUT_ALL;

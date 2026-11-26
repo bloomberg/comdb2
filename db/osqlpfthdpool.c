@@ -48,6 +48,8 @@ typedef struct osqlpf_rq {
     unsigned long long tableversion;
 } osqlpf_rq_t;
 
+extern unsigned long long gbl_prefault_lock_giveups;
+
 /* Totals since start, printed by `stat prefault`, to tell whether osql
  * prefault does useful work or drops everything */
 static unsigned long long pf_slots, pf_noslot, pf_drop_txn, pf_drop_applied, pf_drop_sc, pf_lookups, pf_bpk_rows,
@@ -59,7 +61,8 @@ void osqlpf_stats(void)
            ATOMIC_LOAD64(pf_slots), ATOMIC_LOAD64(pf_noslot));
     logmsg(LOGMSG_USER, "osqlpf requests dropped: transaction gone %llu, already applied %llu, schema change %llu\n",
            ATOMIC_LOAD64(pf_drop_txn), ATOMIC_LOAD64(pf_drop_applied), ATOMIC_LOAD64(pf_drop_sc));
-    logmsg(LOGMSG_USER, "osqlpf lookups done %llu\n", ATOMIC_LOAD64(pf_lookups));
+    logmsg(LOGMSG_USER, "osqlpf lookups done %llu, given up on a lock in use %llu\n", ATOMIC_LOAD64(pf_lookups),
+           ATOMIC_LOAD64(gbl_prefault_lock_giveups));
     logmsg(LOGMSG_USER,
            "osqlpf block processor rows prefetched %llu, skipped: previous lookups running %llu, pool busy %llu, "
            "lookahead done %llu\n",
