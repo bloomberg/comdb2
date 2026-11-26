@@ -1,0 +1,13 @@
+Verifies that a physical replicant takes the skip-recovery path when a rewind
+unwinds no commit, and stays consistent afterwards.
+
+With log_cksum_prev off a physrep can only anchor on a commit, and with
+physrep_skip_noop_truncation off it always rewinds to that anchor.  Forcing
+re-registration while the source writes large transactions leaves the physrep
+mid-transaction, so it truncates the uncommitted tail back to its last applied
+commit: exactly the skip-recovery case.
+
+The test checks that every rewind took the skip path (no full recovery), that
+the physrep keeps applying and matches the source, that it recovers cleanly
+after kill -9, and that a comdb2ar copy of the physrep taken across rewinds
+succeeds and restores.

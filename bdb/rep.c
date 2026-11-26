@@ -2199,6 +2199,12 @@ int bdb_unlock_recovery(bdb_state_type *bdb_state)
     return bdb_state->dbenv->unlock_recovery_lock(bdb_state->dbenv, __func__, __LINE__);
 }
 
+int64_t bdb_destructive_recovery_gen(void)
+{
+    extern int64_t gbl_destructive_recovery_gen;
+    return ATOMIC_LOAD64(gbl_destructive_recovery_gen);
+}
+
 void send_newmaster(bdb_state_type *bdb_state, int online)
 {
     bdb_state->dbenv->rep_start(bdb_state->dbenv, NULL, 0, DB_REP_MASTER);
