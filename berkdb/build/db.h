@@ -438,6 +438,7 @@ struct txn_properties;
 #define DB_LOCK_ID_READONLY 0x004	/* Mark this as a read-only lockid */
 #define DB_LOCK_ID_SQL_READER 0x008	/* Locker belongs to a SQL read cursor */
 #define DB_LOCK_ID_SQL_WRITER 0x010	/* Locker belongs to a SQL write txn */
+#define DB_LOCK_ID_NOWAIT   0x020	/* Fail instead of waiting for a lock */
 
 /* Flag values for lock_abort_waiters */
 #define DB_LOCK_ABORT_LOGICAL   0x0001 /* Only abort logical waiters */

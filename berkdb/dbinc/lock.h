@@ -298,6 +298,7 @@ typedef struct __db_locker {
  * is also set for bdb_verify and other utility lockers. */
 #define DB_LOCKER_SQL_READER            0x0400
 #define DB_LOCKER_SQL_WRITER            0x1000
+#define DB_LOCKER_NOWAIT                0x2000	/* every request is NOWAIT */
 #define DB_LOCKER_TRACK_WRITELOCKS      0x8000
 	u_int8_t has_waiters;
 	/* Same signal as has_waiters, but split by what the waiter is blocked on,

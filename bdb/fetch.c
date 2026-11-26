@@ -2151,8 +2151,10 @@ static int bdb_fetch_prefault_int(
     int rc;
     int llrc;
 
-    rc = bdb_state->dbenv->lock_id_flags(bdb_state->dbenv, &lockerid,
-                                         DB_LOCK_ID_LOWPRI);
+    /* A prefault lookup is advisory: it gives up on a lock it would wait
+       for (the page is in use, so likely cached already) rather than join a
+       deadlock cycle with the block processors */
+    rc = bdb_state->dbenv->lock_id_flags(bdb_state->dbenv, &lockerid, DB_LOCK_ID_LOWPRI | DB_LOCK_ID_NOWAIT);
     if (rc != 0) {
         *bdberr = BDBERR_MISC;
         return -1;
@@ -2160,6 +2162,7 @@ static int bdb_fetch_prefault_int(
 
     rc = bdb_lock_table_read_fromlid(bdb_state, lockerid);
     if (rc != 0) {
+        bdb_state->dbenv->lock_id_free(bdb_state->dbenv, lockerid);
         *bdberr = BDBERR_MISC;
         return -1;
     }
