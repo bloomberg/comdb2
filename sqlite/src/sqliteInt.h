@@ -4292,6 +4292,16 @@ int sqlite3WhereOkOnePass(WhereInfo*, int*);
 #define ONEPASS_SINGLE   1        /* ONEPASS valid for a single row update */
 #define ONEPASS_MULTI    2        /* ONEPASS is valid for multiple rows */
 int sqlite3WhereUsesDeferredSeek(WhereInfo*);
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+/* Return the cursor of the index the outermost loop scans, or -1 (table scan,
+** OR optimization) */
+int comdb2WhereScanIdxCur(WhereInfo*);
+/* Replica write hints: a two-pass UPDATE or DELETE (isDelete) selects the row
+** with this rowid for writing; record the leaves the master will read for it
+** (db/sqlglue.c) */
+void comdb2_rwh_rowset_add(BtCursor *pTab, BtCursor *pScanIdx, int isDelete,
+                           i64 rowid);
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 void sqlite3ExprCodeLoadIndexColumn(Parse*, Index*, int, int, int);
 int sqlite3ExprCodeGetColumn(Parse*, Table*, int, int, int, u8);
 void sqlite3ExprCodeGetColumnOfTable(Vdbe*, Table*, int, int, int);

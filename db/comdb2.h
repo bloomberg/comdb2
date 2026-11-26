@@ -1673,6 +1673,10 @@ typedef struct {
     unsigned long long rqid;
     unsigned step;
     uuid_t uuid;
+    int bp_pending;        /* block processor key lookups queued or running */
+    int bp_last;           /* of which queued for the block processor's last row */
+    int lookahead_pending; /* lookahead requests queued or running */
+    int lookahead_state;   /* LA_STARTED, LA_INCOMPLETE (osqlpfthdpool.c) */
 } osqlpf_step;
 
 /* global settings */

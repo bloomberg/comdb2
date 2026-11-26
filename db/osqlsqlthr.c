@@ -60,6 +60,63 @@
 extern int gbl_partial_indexes;
 extern int gbl_expressions_indexes;
 extern int gbl_reorder_socksql_no_deadlock;
+void bdb_send_write_hints(bdb_state_type *bdb_state, int send);
+void bdb_rwh_begin(bdb_state_type *bdb_state, int on);
+void bdb_rwh_mark_row(bdb_state_type *bdb_state, bdb_cursor_ifn_t *cur, unsigned long long genid);
+extern int gbl_rep_write_hints;
+extern __thread int rwh_recording;
+
+/* The cursor that read the row written through pCur: pCur, or the table cursor of an index cursor */
+static bdb_cursor_ifn_t *rwh_dta_cursor(struct BtCursor *pCur)
+{
+    struct BtCursor *c = pCur->ixnum == -1 ? pCur : pCur->pCursorHintTableCursor;
+    return c ? c->bdbcur : NULL;
+}
+
+void bdb_rwh_mark_blobs(bdb_state_type *bdb_state, unsigned long long genid, unsigned int mask);
+void bdb_rwh_mark_ix_row(bdb_cursor_ifn_t *ixcur, unsigned long long genid);
+
+/* Whether upd_record (db/record.c) surely skips the old value of a blob an update leaves unchanged: inplace blobs and
+ * their optimization on (read-only settings, assumed the same as the master's), and an inplace update that keeps the
+ * genid (table with inplace updates); no check constraint or blob index, which read it.  It reads it anyway during a
+ * live schema change or for a trigger on a blob field, which a replica does not know. */
+static int rwh_master_skips_unchanged_blob(struct dbtable *db)
+{
+    return gbl_inplace_blobs && gbl_inplace_blob_optimization && bdb_have_ipu(db->handle) &&
+           db->n_check_constraints == 0 && !db->ix_blob && !db->schema->ix_blob;
+}
+
+/* The blobs in which (bit n: blob n) that updCols marks unchanged by an osql update */
+static unsigned int osql_unchanged_blobs(struct dbtable *db, int *updCols, unsigned int which)
+{
+    unsigned int mask = 0;
+    int i, idx;
+
+    for (i = 0; i < db->schema->numblobs; i++) {
+        if (!(which & (1U << i)))
+            continue;
+        idx = get_schema_blob_field_idx(db, ".ONDISK", i);
+        if (idx >= 0 && idx < updCols[0] && updCols[idx + 1] == -1)
+            mask |= 1U << i;
+    }
+    return mask;
+}
+
+/* Replica write hints: at the end of a statement (sqlite_done, lua_end_step), or before a commit ships, send the pages
+ * the statement recorded if it shipped an osql write (osql.rwh_wrote), and forget them */
+void osql_send_write_hints(struct sqlclntstate *clnt)
+{
+    bdb_send_write_hints(thedb->bdb_env, clnt->osql.rwh_wrote);
+    clnt->osql.rwh_wrote = 0;
+}
+
+/* Replica write hints: forget the recorded pages without sending them, at the start of a statement (stmt), which
+ * records its own if rep_write_hints is on and it can write, and on abort (stmt NULL), which records nothing more */
+void osql_reset_write_hints(struct sqlclntstate *clnt, sqlite3_stmt *stmt)
+{
+    bdb_rwh_begin(thedb->bdb_env, gbl_rep_write_hints && stmt != NULL && !sqlite3_stmt_readonly(stmt));
+    clnt->osql.rwh_wrote = 0;
+}
 
 int gbl_allow_bplog_restarts = 600;
 int gbl_not_durable_retries = 100;
@@ -73,9 +130,8 @@ static int osql_send_delidx_logic(struct BtCursor *pCur,
                                   struct sqlclntstate *clnt, int nettype);
 static int osql_send_insidx_logic(struct BtCursor *pCur,
                                   struct sqlclntstate *clnt, int nettype);
-static int osql_send_qblobs_logic(struct BtCursor *pCur, osqlstate_t *osql,
-                                  int *updCols, blob_buffer_t *blobs,
-                                  int nettype);
+static int osql_send_qblobs_logic(struct BtCursor *pCur, osqlstate_t *osql, unsigned int unused_blobs,
+                                  blob_buffer_t *blobs, int nettype);
 static int osql_send_recordgenid_logic(struct BtCursor *pCur,
                                        struct sql_thread *thd,
                                        unsigned long long genid, int nettype);
@@ -467,6 +523,15 @@ static int osql_send_del_logic(struct BtCursor *pCur, struct sql_thread *thd)
             return rc;
         }
     }
+    if (rwh_recording) {
+        bdb_rwh_mark_row(pCur->db->handle, rwh_dta_cursor(pCur), pCur->genid);
+        if (pCur->db->numblobs > 0)
+            bdb_rwh_mark_blobs(pCur->db->handle, pCur->genid, ~0U); /* a delete deletes every blob */
+        /* a one-pass DELETE shipped from an index cursor: its leaf */
+        if (pCur->ixnum != -1)
+            bdb_rwh_mark_ix_row(pCur->bdbcur, pCur->genid);
+    }
+    osql->rwh_wrote = 1;
     osql->replicant_numops++;
     DEBUG_PRINT_NUMOPS();
 
@@ -579,7 +644,7 @@ static int osql_send_ins_logic(struct BtCursor *pCur, struct sql_thread *thd,
         }
     }
 
-    rc = osql_send_qblobs_logic(pCur, osql, NULL, blobs, NET_OSQL_SOCK_RPL);
+    rc = osql_send_qblobs_logic(pCur, osql, 0, blobs, NET_OSQL_SOCK_RPL);
     if (rc != SQLITE_OK) {
         logmsg(LOGMSG_ERROR, "%s:%d %s - failed to send socksql row rc=%d\n",
                __FILE__, __LINE__, __func__, rc);
@@ -600,6 +665,7 @@ static int osql_send_ins_logic(struct BtCursor *pCur, struct sql_thread *thd,
             return rc;
         }
     }
+    /* an insert hints no page: the master chooses where the row goes */
     osql->replicant_numops++;
     DEBUG_PRINT_NUMOPS();
     return SQLITE_OK;
@@ -731,7 +797,20 @@ static int osql_send_upd_logic(struct BtCursor *pCur, struct sql_thread *thd,
         }
     }
 
-    rc = osql_send_qblobs_logic(pCur, osql, updCols, blobs, NET_OSQL_SOCK_RPL);
+    /* The blobs updCols marks unchanged, looked up once for both their users: blob filler tokens
+     * (osql_blob_optimization) for those sent, and the write hints, which skip them if the master does */
+    int rwh_skip_unchanged = rwh_recording && updCols && rwh_master_skips_unchanged_blob(pCur->db);
+    unsigned int need = rwh_skip_unchanged ? ~0U : 0, unchanged = 0;
+    if (updCols && gbl_osql_blob_optimization) {
+        for (int i = 0; i < pCur->db->schema->numblobs; i++) {
+            if (blobs[i].exists && blobs[i].length > 0)
+                need |= 1U << i;
+        }
+    }
+    if (need)
+        unchanged = osql_unchanged_blobs(pCur->db, updCols, need);
+
+    rc = osql_send_qblobs_logic(pCur, osql, gbl_osql_blob_optimization ? unchanged : 0, blobs, NET_OSQL_SOCK_RPL);
     if (rc != SQLITE_OK) {
         logmsg(LOGMSG_ERROR, "%s:%d %s - failed to send socksql row rc=%d\n",
                __FILE__, __LINE__, __func__, rc);
@@ -769,6 +848,14 @@ static int osql_send_upd_logic(struct BtCursor *pCur, struct sql_thread *thd,
         }
     }
 
+    if (rwh_recording) {
+        bdb_rwh_mark_row(pCur->db->handle, rwh_dta_cursor(pCur), pCur->genid);
+        /* the old blobs the master reads: those the update changes, and those it leaves unchanged unless the master
+         * skips them */
+        if (pCur->db->numblobs > 0)
+            bdb_rwh_mark_blobs(pCur->db->handle, pCur->genid, rwh_skip_unchanged ? ~unchanged : ~0U);
+    }
+    osql->rwh_wrote = 1;
     osql->replicant_numops++;
     DEBUG_PRINT_NUMOPS();
     return SQLITE_OK;
@@ -1047,6 +1134,10 @@ static inline int sock_restart_retryable_rcode(int restart_rc)
 extern int gbl_is_physical_replicant;
 int osql_sock_commit(struct sqlclntstate *clnt, int type, enum trans_clntcomm sideeffects)
 {
+    int rwh_rec = rwh_recording;
+    osql_send_write_hints(clnt); /* before the commit ships */
+    if (sideeffects == TRANS_CLNTCOMM_CHUNK)
+        rwh_recording = rwh_rec; /* a chunk commit: the statement goes on, record its next chunks */
     osqlstate_t *osql = &clnt->osql;
     int rc = 0, rc2;
     int rcout = 0;
@@ -1387,6 +1478,7 @@ done:
  */
 int osql_sock_abort(struct sqlclntstate *clnt, int type)
 {
+    osql_reset_write_hints(clnt, NULL); /* nothing to hint for an aborted transaction */
     int rcout = 0;
     int rc = 0;
     int bdberr = 0;
@@ -1633,9 +1725,8 @@ static int osql_send_delidx_logic(struct BtCursor *pCur,
     return rc;
 }
 
-static int osql_send_qblobs_logic(struct BtCursor *pCur, osqlstate_t *osql,
-                                  int *updCols, blob_buffer_t *blobs,
-                                  int nettype)
+static int osql_send_qblobs_logic(struct BtCursor *pCur, osqlstate_t *osql, unsigned int unused_blobs,
+                                  blob_buffer_t *blobs, int nettype)
 {
     int rc = 0;
 
@@ -1649,24 +1740,18 @@ static int osql_send_qblobs_logic(struct BtCursor *pCur, osqlstate_t *osql,
         if (!blobs[i].exists)
             continue;
 
-        /* Send length of -2 if this isn't being used in this update. */
-        if (updCols && gbl_osql_blob_optimization && blobs[i].length > 0) {
-            int idx =
-                get_schema_blob_field_idx(pCur->db, ".ONDISK", i);
-            /* AZ: is pCur->db->schema not set to ondisk so we can instead call
-             * get_schema_blob_field_idx_sc(pCur->db,i); ?? */
-            int ncols = updCols[0];
-            if (idx >= 0 && idx < ncols && -1 == updCols[idx + 1]) {
-                /* Put a token on the network if this isn't going to be used */
-                rc = osql_send_qblob(osql->target_host, osql->rqid, osql->uuid, i,
-                                     pCur->genid, nettype, NULL, OSQL_BLOB_FILLER_LENGTH);
-                if (rc)
-                    break; /* break out from while loop so we can return rc */
-                osql->replicant_numops++;
-                DEBUG_PRINT_NUMOPS();
+        /* Send length of -2 if this isn't being used in this update
+         * (unused_blobs: osql_blob_optimization, see osql_send_upd_logic). */
+        if ((unused_blobs & (1U << i)) && blobs[i].length > 0) {
+            /* Put a token on the network if this isn't going to be used */
+            rc = osql_send_qblob(osql->target_host, osql->rqid, osql->uuid, i, pCur->genid, nettype, NULL,
+                                 OSQL_BLOB_FILLER_LENGTH);
+            if (rc)
+                break; /* break out from while loop so we can return rc */
+            osql->replicant_numops++;
+            DEBUG_PRINT_NUMOPS();
 
-                continue;
-            }
+            continue;
         }
 
         (void)odhfy_blob_buffer(pCur->db, blobs + i, i);

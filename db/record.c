@@ -624,6 +624,7 @@ int add_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
 
         if (!has_constraint(flags) || (flags & RECFLAGS_INLINE_CONSTRAINTS) || (rec_flags & OSQL_IGNORE_FAILURE) ||
             reorder) {
+            osqlpf_bp_keys(iq, NULL, od_dta); /* prefetch the keys' leaves in parallel */
             retrc = add_record_indices(iq, trans, blobs, maxblobs, opfailcode, ixfailnum, rrn, genid, vgenid, ins_keys,
                                        opcode, blkpos, od_dta, od_len, flags, reorder);
             if (retrc)
@@ -1083,7 +1084,7 @@ int upd_record(struct ireq *iq, void *trans, void *primkey, int rrn,
     /* light the prefault kill bit for this subop - olddta */
     prefault_kill_bits(iq, -1, PFRQ_OLDDATA);
     if (iq->osql_step_ix)
-        gbl_osqlpf_step[*(iq->osql_step_ix)].step += 1;
+        ATOMIC_ADD32(gbl_osqlpf_step[*(iq->osql_step_ix)].step, 1);
 
     /*
      * Find the old record using either rrn+genid or primkey.  The old record
@@ -1461,6 +1462,8 @@ int upd_record(struct ireq *iq, void *trans, void *primkey, int rrn,
     int deferredAdd = 0;
     int same_genid_with_upd =
         bdb_inplace_cmp_genids(iq->usedb->handle, *genid, vgenid) == 0;
+
+    osqlpf_bp_keys(iq, old_dta, od_dta); /* prefetch the keys' leaves in parallel */
 
     /* update the indexes as required */
     retrc = upd_record_indices(
@@ -1861,7 +1864,7 @@ int del_record(struct ireq *iq, void *trans, void *primkey, int rrn,
     /* light the prefault kill bit for this subop - olddta */
     prefault_kill_bits(iq, -1, PFRQ_OLDDATA);
     if (iq->osql_step_ix)
-        gbl_osqlpf_step[*(iq->osql_step_ix)].step += 1;
+        ATOMIC_ADD32(gbl_osqlpf_step[*(iq->osql_step_ix)].step, 1);
 
     if (!(flags & RECFLAGS_DONT_LOCK_TBL)) {
         assert(!iq->sorese); // sorese codepaths will have locked it already
@@ -2007,6 +2010,8 @@ int del_record(struct ireq *iq, void *trans, void *primkey, int rrn,
         }
         goto err;
     }
+
+    osqlpf_bp_keys(iq, od_dta, NULL); /* prefetch the keys' leaves in parallel */
 
     /* Form and delete all keys. */
     retrc = del_record_indices(iq, trans, opfailcode, ixfailnum, rrn, genid, od_dta, del_keys, flags, del_idx_blobs);

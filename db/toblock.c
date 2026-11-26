@@ -5262,14 +5262,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle, stru
         }
         send_prefault_udp = 0;
 
-        if (iq->osql_step_ix) {
-            gbl_osqlpf_step[*(iq->osql_step_ix)].rqid = 0;
-            gbl_osqlpf_step[*(iq->osql_step_ix)].step = 0;
-            Pthread_mutex_lock(&osqlpf_mutex);
-            queue_add(gbl_osqlpf_stepq, iq->osql_step_ix);
-            Pthread_mutex_unlock(&osqlpf_mutex);
-            iq->osql_step_ix = NULL;
-        }
+        iq->osql_step_ix = NULL; /* slot is returned when the bplog is closed */
 
         delayed = iq->sorese->is_delayed ? 1 : 0;
 
@@ -5298,7 +5291,13 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle, stru
         if (osql_is_index_reorder_on(iq->osql_flags)) {
             if (iq->debug)
                 reqpushprefixf(iq, "%p process_defered_table: ", trans);
+            /* The reordered index writes are replicated: send UDP prefault
+               hints for the pages they read, as for the writes above */
+            int saved_prefault_udp = send_prefault_udp;
+            if (gbl_prefault_udp)
+                send_prefault_udp = 1;
             rc = process_defered_table(iq, trans, &blkpos, &ixout, &errout);
+            send_prefault_udp = saved_prefault_udp;
             if (iq->debug)
                 reqpopprefixes(iq, 1);
 
@@ -5317,7 +5316,13 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle, stru
             reqpushprefixf(iq, "%p delayed_key_adds: ", trans);
 
         int verror = 0;
+        /* The delayed index writes are replicated: send UDP prefault hints
+           for the pages they read, as for the writes above */
+        int saved_prefault_udp = send_prefault_udp;
+        if (gbl_prefault_udp)
+            send_prefault_udp = 1;
         rc = delayed_key_adds(iq, trans, &blkpos, &ixout, &errout);
+        send_prefault_udp = saved_prefault_udp;
 
         if (iq->debug)
             reqpopprefixes(iq, 1);

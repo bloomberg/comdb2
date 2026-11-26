@@ -341,7 +341,8 @@ __lock_id_flags(dbenv, idp, flags)
 
 	if (!ret) {
 		F_CLR(lk, DB_LOCK_ID_TRACK | DB_LOCKER_READONLY | DB_LOCKER_KILLME |
-		    DB_LOCKER_SQL_READER | DB_LOCKER_SQL_WRITER);
+		    DB_LOCKER_SQL_READER | DB_LOCKER_SQL_WRITER |
+		    DB_LOCKER_NOWAIT);
 
 		if (LF_ISSET(DB_LOCK_ID_LOWPRI) || pthread_getspecific(lockmgr_key))
 			F_SET(lk, DB_LOCKER_KILLME);
@@ -357,6 +358,9 @@ __lock_id_flags(dbenv, idp, flags)
 
 		if (LF_ISSET(DB_LOCK_ID_SQL_WRITER))
 			F_SET(lk, DB_LOCKER_SQL_WRITER);
+
+		if (LF_ISSET(DB_LOCK_ID_NOWAIT))
+			F_SET(lk, DB_LOCKER_NOWAIT);
 	}
 
 	UNLOCKREGION(dbenv, lt);
@@ -2427,6 +2431,8 @@ __lock_get_internal_int(lt, locker, in_locker, flags, obj, lock_mode, timeout,
 		lock_locker_partition(region, sh_locker->partition);
 	}
 	lpartition = sh_locker->partition;
+	if (F_ISSET(sh_locker, DB_LOCKER_NOWAIT))
+		LF_SET(DB_LOCK_NOWAIT);
 
     extern __thread int track_thread_locks;
     if (track_thread_locks) {

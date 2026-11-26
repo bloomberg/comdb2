@@ -1,0 +1,258 @@
+#!/usr/bin/env bash
+bash -n "$0" || exit 1
+
+# Which master reads send UDP prefault hints (enable_prefault_udp).
+#
+# While the master applies a transaction, a btree leaf page it reads from disk
+# is hinted to the replicants only if the page is read for a write the
+# replicants will replay.  Pages read only to validate the transaction on the
+# master are not hinted.  Cases:
+#   selectv     the genid check of a SELECTV row (OSQL_RECGENID)  -> no hint
+#   insert      a plain insert                                    -> hint
+#   fk_add      the parent lookup of a foreign key on insert      -> no hint
+#   fk_del      the child lookup when a parent row is deleted     -> no hint
+#   cascade     the child rows an ON DELETE CASCADE deletes       -> hint
+#   delayed_key the index key an update adds after the record     -> hint
+#               (delayed_key_adds)
+#   reorder     the same, with reorder_idx_writes on              -> hint
+#               (process_defered_table)
+#
+# Each case first scans a filler table several times larger than the cache, so
+# the pages of the tables under test are no longer cached, then reads back the
+# pages that must stay cached for the case, then runs one transaction on the
+# master.  It asserts from the master's counters:
+#   - "bdb cachestatall": the file the case is about had pages read from disk
+#     (st_page_in grew), so there was a page to hint or not;
+#   - "udp stat": the hints the master queued ("udp prefault async hints
+#     queued" + "dropped (queue full)") grew for a hint case, and did not grow
+#     for a no-hint case.
+# All SQL runs on the master, so that the SQL engine's reads are the master's.
+# Every check is "grew" or "did not grow": no timing.
+
+DBNAME=$1
+[[ -z "$DBNAME" ]] && { echo "Usage: $0 <dbname>"; exit 1; }
+
+source ${TESTSROOTDIR}/tools/cluster_utils.sh
+
+NFILLER=60000   # filler rows of ~1 KB: several times the 8 MB cache
+NROWS=20000     # rows in sv, par and chc: ~1000 leaf pages each
+NKEYS=10        # rows each case works on, spread over the table
+
+function fail
+{
+    echo "FAIL: $*"
+    exit 1
+}
+
+if [[ -n "$CLUSTER" ]]; then
+    master=$(get_master)
+    [[ -n "$master" ]] || fail "no master"
+    TARGET="--host $master"
+else
+    master=$(hostname)
+    TARGET="default"
+fi
+
+function sql
+{
+    ${CDB2SQL_EXE} ${CDB2_OPTIONS} --tabs ${DBNAME} ${TARGET} "$@"
+}
+
+function send
+{
+    sql "exec procedure sys.cmd.send('$1')" < /dev/null
+}
+
+# hints : UDP prefault hints the master has queued for its replicants so far
+function hints
+{
+    send "udp stat" | awk '/udp prefault async hints queued:/ { q = $NF }
+                           /udp prefault async hints dropped \(queue full\):/ { f = $NF }
+                           END { print q + f }'
+}
+
+# files : "<file> <st_page_in>" for every bufferpool file
+function files
+{
+    send "bdb cachestatall" | awk '
+        /^Pool file \[/ { f = $3; sub(/^\[/, "", f); sub(/\]:-$/, "", f); next }
+        f != "" && $1 == "st_page_in" { print f, $3 }'
+}
+
+function datafiles { echo "(^|[/.])$1_[0-9a-f]+[.](datas[0-9]+|dta)\$"; }
+function indexfiles { echo "(^|[/.])$1_[0-9a-f]+[.]index\$"; }
+function tablefiles { echo "(^|[/.])$1_[0-9a-f]+[.](datas[0-9]+|dta|index)\$"; }
+
+# evict : scan the filler table, which is much larger than the cache
+function evict
+{
+    sql "select sum(length(pad)) from filler" > /dev/null || fail "filler scan failed"
+    sql "select sum(length(pad)) from filler" > /dev/null || fail "filler scan failed"
+}
+
+# spread <first> <step> : NKEYS values first, first+step, ...
+function spread
+{
+    local i out=""
+    for ((i = 0; i < NKEYS; i++)); do
+        out="${out}${out:+,}$(($1 + i * $2))"
+    done
+    echo "$out"
+}
+
+# check <case> <files regex> <hint|nohint> <sql...> : run the case's transaction
+# and check that the files had pages read from disk, and that hints were (not) sent
+function check
+{
+    local c=$1 re=$2 want=$3 h0 h1 dp dh
+    shift 3
+    files > $TMPDIR/$c.files0
+    h0=$(hints)
+    sql "$@" > $TMPDIR/$c.out 2>&1 || { cat $TMPDIR/$c.out; fail "$c: transaction failed"; }
+    files > $TMPDIR/$c.files1
+    h1=$(hints)
+    # files that had pages read from disk during the transaction
+    awk 'NR == FNR { b[$1] = $2; next } $2 - b[$1] > 0 { print $1, $2 - b[$1] }' \
+        $TMPDIR/$c.files0 $TMPDIR/$c.files1 | sed "s/^/$c: page_in /"
+    dp=$(awk -v re="$re" 'NR == FNR { b[$1] = $2; next } $1 ~ re { s += $2 - b[$1] } END { print s + 0 }' \
+        $TMPDIR/$c.files0 $TMPDIR/$c.files1)
+    dh=$((h1 - h0))
+    echo "$c: page_in($re)=$dp hints=$dh (expect $want)"
+    # a wrong hint count is reported at the end, so that every case is printed
+    if [[ $dp -le 0 ]]; then
+        failures="${failures}$c: no page of $re was read from disk, so the case proves nothing\n"
+    elif [[ $want == hint && $dh -le 0 ]]; then
+        failures="${failures}$c: the master read $dp pages from disk for a write and sent no hint\n"
+    elif [[ $want == nohint && $dh -ne 0 ]]; then
+        failures="${failures}$c: the master sent $dh hints for pages it only read to validate\n"
+    fi
+}
+
+failures=""
+echo "master: $master"
+
+# Tables
+sql "create table filler { schema { int id cstring pad[1000] } keys { \"PK\" = id } }" || fail "create filler"
+sql "create table w { schema { int id int v } keys { \"PK\" = id } }" || fail "create w"
+sql "create table sv { schema { int id int k cstring pad[200] } keys { \"PK\" = id \"K\" = k } }" || fail "create sv"
+sql "create table par { schema { int id cstring pad[200] } keys { \"PK\" = id } }" || fail "create par"
+# chc: one child per parent, deleted with it
+sql "create table chc { schema { int id int pid cstring pad[200] } keys { \"PK\" = id dup \"PID\" = pid }
+     constraints { \"PID\" -> <\"par\":\"PK\"> on delete cascade } }" || fail "create chc"
+# chv: a few children, which block the delete of their parent
+sql "create table chv { schema { int id int pid } keys { \"PK\" = id dup \"PID\" = pid }
+     constraints { \"PID\" -> <\"par\":\"PK\"> } }" || fail "create chv"
+
+# Data, in chunks under maxosqltransfer
+for ((i = 0; i < NFILLER; i += 10000)); do
+    sql "insert into filler select value, hex(randomblob(480)) from generate_series($((i + 1)), $((i + 10000)))" > /dev/null || fail "load filler"
+done
+for ((i = 0; i < NROWS; i += 10000)); do
+    # sv.k = 2 * id: even keys, so an odd key lands next to a known row
+    sql "insert into sv select value, 2 * value, hex(randomblob(90)) from generate_series($((i + 1)), $((i + 10000)))" > /dev/null || fail "load sv"
+    sql "insert into par select value, hex(randomblob(90)) from generate_series($((i + 1)), $((i + 10000)))" > /dev/null || fail "load par"
+    sql "insert into chc select value, value, hex(randomblob(90)) from generate_series($((i + 1)), $((i + 10000)))" > /dev/null || fail "load chc"
+done
+sql "insert into w values (1, 0)" > /dev/null || fail "load w"
+# chv references par ids above NROWS - 100, which no case deletes
+sql "insert into chv select value, $NROWS - value from generate_series(1, 5)" > /dev/null || fail "load chv"
+# fk_del deletes par rows without children: remove their chc rows now, so that
+# the pages this dirties are written and evicted long before that case
+dels=$(spread 1200 1700)
+sql "delete from chc where pid in ($dels)" > /dev/null || fail "fk_del: setup"
+
+# selectv: the genid check reads sv's data pages.  The SELECTV reads only
+# index K (covering), so sv's data pages are cold when the master checks the
+# genids; w is warm, so the update of w reads nothing from disk.
+evict
+sql "select * from w" > /dev/null
+keys=$(spread 1000 1700)   # sv ids; k = 2 * id
+kk=$(for k in ${keys//,/ }; do echo -n "$((2 * k)),"; done)
+check selectv "$(datafiles sv)" nohint - <<EOF
+begin
+selectv k from sv where k in (${kk%,})
+update w set v = v + 1 where id = 1
+commit
+EOF
+[[ $(sql "select v from w where id = 1") == 1 ]] || fail "selectv: the update of w was lost"
+
+# insert: a plain insert adds keys to cold leaf pages of index K -> hints
+evict
+ins=$(for k in ${keys//,/ }; do echo -n "($((NROWS + k)), $((2 * k + 1)), 'x'),"; done)
+check insert "$(indexfiles sv)" hint "insert into sv(id, k, pad) values ${ins%,}"
+[[ $(sql "select count(*) from sv where k % 2 = 1") == $NKEYS ]] || fail "insert: rows missing"
+
+# fk_add: inserting into chv looks up par's primary key (cold); chv is small
+# and warm
+evict
+sql "select * from chv" > /dev/null
+sql "select pid from chv where pid >= 0" > /dev/null
+sql "select id from chv where id >= 0" > /dev/null
+pids=$(spread 1100 1700)
+vals=$(n=100; for p in ${pids//,/ }; do echo -n "($((n++)), $p),"; done)
+check fk_add "$(tablefiles par)" nohint "insert into chv(id, pid) values ${vals%,}"
+[[ $(sql "select count(*) from chv where id >= 100") == $NKEYS ]] || fail "fk_add: rows missing"
+# the foreign key is still enforced
+sql "insert into chv(id, pid) values (999, $((NROWS + 12345)))" > /dev/null 2>&1 && fail "fk_add: insert without parent succeeded"
+
+# fk_del: deleting par rows that have no child: the master looks the keys up
+# in chc's index PID (cold).  The SQL engine already read the par rows.
+sql "delete from chv where id >= 100" > /dev/null || fail "fk_del: setup"
+evict
+sql "select * from chv" > /dev/null
+sql "select pid from chv where pid >= 0" > /dev/null
+check fk_del "$(indexfiles chc)" nohint "delete from par where id in ($dels)"
+[[ $(sql "select count(*) from par where id in ($dels)") == 0 ]] || fail "fk_del: rows not deleted"
+# a parent with a child that does not cascade still cannot be deleted
+sql "delete from par where id = $((NROWS - 1))" > /dev/null 2>&1 && fail "fk_del: delete of a referenced parent succeeded"
+
+# cascade: deleting par rows deletes their chc rows, on cold chc pages -> hints
+evict
+sql "select * from chv" > /dev/null
+sql "select pid from chv where pid >= 0" > /dev/null
+cas=$(spread 1300 1700)
+check cascade "$(datafiles chc)" hint "delete from par where id in ($cas)"
+[[ $(sql "select count(*) from chc where pid in ($cas)") == 0 ]] || fail "cascade: child rows left"
+
+# delayed_key: an update that moves k to a far away value: the old K leaf page
+# is warm (read below), the new key's leaf page is cold.  K is unique, so the
+# update adds the new key in delayed_key_adds, after all the records -> hints
+upd=$(spread 1400 1700)
+for id in ${upd//,/ }; do
+    sql "select k from sv where k = $((2 * id))" > /dev/null
+done
+evict
+for id in ${upd//,/ }; do
+    sql "select k from sv where k = $((2 * id))" > /dev/null
+    sql "select * from sv where id = $id" > /dev/null
+done
+setk=$(for id in ${upd//,/ }; do echo -n "when $id then $((2 * ((id + NROWS / 2) % NROWS) + 1)) "; done)
+check delayed_key "$(indexfiles sv)" hint "update sv set k = case id ${setk}end where id in ($upd)"
+for id in ${upd//,/ }; do
+    [[ $(sql "select id from sv where k = $((2 * ((id + NROWS / 2) % NROWS) + 1))") == $id ]] || fail "delayed_key: id $id not found through its new key"
+done
+
+# reorder: with reorder_idx_writes on, a transaction of several rows queues its
+# index writes and adds the new keys in process_defered_table, after all the
+# records.  Same update as delayed_key, on other rows -> hints
+sql "put tunable reorder_idx_writes 1" > /dev/null || fail "reorder: cannot set reorder_idx_writes"
+[[ $(sql "select value from comdb2_tunables where name = 'reorder_idx_writes'") == ON ]] || fail "reorder: reorder_idx_writes is not on"
+upd=$(spread 1500 1700)
+evict
+for id in ${upd//,/ }; do
+    sql "select k from sv where k = $((2 * id))" > /dev/null
+    sql "select * from sv where id = $id" > /dev/null
+done
+setk=$(for id in ${upd//,/ }; do echo -n "when $id then $((2 * ((id + NROWS / 2) % NROWS) + 1)) "; done)
+check reorder "$(indexfiles sv)" hint "update sv set k = case id ${setk}end where id in ($upd)"
+sql "put tunable reorder_idx_writes 0" > /dev/null || fail "reorder: cannot reset reorder_idx_writes"
+for id in ${upd//,/ }; do
+    [[ $(sql "select id from sv where k = $((2 * ((id + NROWS / 2) % NROWS) + 1))") == $id ]] || fail "reorder: id $id not found through its new key"
+done
+
+if [[ -n "$failures" ]]; then
+    echo -ne "$failures" | sed 's/^/FAIL: /'
+    exit 1
+fi
+echo "Testcase passed."
+exit 0

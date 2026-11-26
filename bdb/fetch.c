@@ -55,6 +55,7 @@
 #include "bdb_int.h"
 #include "bdb_cursor.h"
 #include "locks.h"
+#include "comdb2_atomic.h"
 #include "genid.h"
 #include "bdb_fetch.h"
 #include "logmsg.h"
@@ -91,6 +92,9 @@ static DB_TXN *resolve_db_txn(bdb_state_type *bdb_state, tran_type *tran)
 
 /* This function is called in two ways: one wants it to fetch all of the blobs.
  * Another wants to fetch only a single blob. */
+extern __thread int rwh_recording;
+void bdb_rwh_blob_save(bdb_state_type *bdb_state, unsigned int pgno, unsigned long long genid, int blobno, int stripe);
+
 static int bdb_fetch_blobs_by_rrn_and_genid_int_int(
     bdb_state_type *bdb_state, tran_type *tran, int rrn,
     unsigned long long ingenid, int numblobs, int *dtafilenums,
@@ -153,12 +157,13 @@ static int bdb_fetch_blobs_by_rrn_and_genid_int_int(
         DB_TXN *tid;
         int rc2 = 0;
         int rc = 0;
+        int stripe;
 
         /* Could have changed in get_unpack_blob. */
         genid = ingenid;
         genid_t = ingenid;
 
-        dbp = get_dbp_from_genid(bdb_state, dtafilenums[blobn], genid, NULL);
+        dbp = get_dbp_from_genid(bdb_state, dtafilenums[blobn], genid, &stripe);
 
         tid = resolve_db_txn(bdb_state, tran);
 
@@ -316,6 +321,12 @@ static int bdb_fetch_blobs_by_rrn_and_genid_int_int(
 
                 rc = bdb_cget_unpack_blob(bdb_state, dbcp, &dbt_key, &dbt_data, &args->ver, DB_SET, args->fn_malloc,
                                           args->fn_free);
+                if (rc == 0 && rwh_recording) {
+                    int pg, ix;
+                    if (dbcp->c_get_pageindex(dbcp, &pg, &ix) == 0 && pg > 0)
+                        bdb_rwh_blob_save(bdb_state, pg, get_search_genid(bdb_state, ingenid), dtafilenums[blobn] - 1,
+                                          stripe);
+                }
 
                 if ((rc2 = dbcp->c_close(dbcp)) != 0) {
                     logmsg(LOGMSG_ERROR, "%s: error closing a temporary cursor %d\n", __func__, rc2);
@@ -2128,6 +2139,10 @@ static unsigned long long genid_from_dbt(int ixnum, DBT *dkey, DBT *ddta)
     return genid;
 }
 
+/* Prefault lookups that gave up on a lock another locker held, for
+ * `stat prefault` */
+unsigned long long gbl_prefault_lock_giveups;
+
 static int bdb_fetch_prefault_int(
     int return_dta, int direction, int lookahead, bdb_state_type *bdb_state,
     void *ix, int ixnum, int ixlen, void *lastix, int lastrrn,
@@ -2141,8 +2156,10 @@ static int bdb_fetch_prefault_int(
     int rc;
     int llrc;
 
-    rc = bdb_state->dbenv->lock_id_flags(bdb_state->dbenv, &lockerid,
-                                         DB_LOCK_ID_LOWPRI);
+    /* A prefault lookup is advisory: it gives up on a lock it would wait
+       for (the page is in use, so likely cached already) rather than join a
+       deadlock cycle with the block processors */
+    rc = bdb_state->dbenv->lock_id_flags(bdb_state->dbenv, &lockerid, DB_LOCK_ID_LOWPRI | DB_LOCK_ID_NOWAIT);
     if (rc != 0) {
         *bdberr = BDBERR_MISC;
         return -1;
@@ -2150,6 +2167,8 @@ static int bdb_fetch_prefault_int(
 
     rc = bdb_lock_table_read_fromlid(bdb_state, lockerid);
     if (rc != 0) {
+        bdb_state->dbenv->lock_id_free(bdb_state->dbenv, lockerid);
+        ATOMIC_ADD64(gbl_prefault_lock_giveups, 1);
         *bdberr = BDBERR_MISC;
         return -1;
     }
@@ -2159,6 +2178,9 @@ static int bdb_fetch_prefault_int(
                             dtalen, reqdtalen, ixfound, rrn, recnum, genid,
                             numblobs, dtafilenums, blobsizes, bloboffs,
                             blobptrs, 1, NULL, NULL, args, lockerid, bdberr);
+    /* the locker never waits, so a deadlock return is a refused lock */
+    if (llrc != 0 && *bdberr == BDBERR_DEADLOCK)
+        ATOMIC_ADD64(gbl_prefault_lock_giveups, 1);
 
     memset(&request, 0, sizeof(request));
     request.op = DB_LOCK_PUT_ALL;

@@ -12995,6 +12995,42 @@ void sqlite3BtreeCursorHint(BtCursor *pCur, int eHintType, ...)
     va_end(ap);
 }
 
+extern __thread int rwh_recording;
+void bdb_rwh_mark_blobs(bdb_state_type *bdb_state, unsigned long long genid, unsigned int mask);
+void bdb_rwh_mark_ix_row(bdb_cursor_ifn_t *ixcur, unsigned long long genid);
+
+/* Replica write hints: hint the leaves of the target table's index cursors whose real berkdb cursor is on the entry
+ * of the row with this rowid (bdb_rwh_mark_ix_row checks the genid).  pTab (NULL while unopened, e.g. in a
+ * covering-index scan) or else pScanIdx identifies the target table: the code generator passes only cursors on it. */
+static void rwh_rowset_add_ix(BtCursor *pTab, BtCursor *pScanIdx, i64 rowid)
+{
+    BtCursor *ref = pTab ? pTab : pScanIdx, *cur;
+
+    if (ref == NULL || (ref->cursor_class != CURSORCLASS_TABLE && ref->cursor_class != CURSORCLASS_INDEX))
+        return;
+    LISTC_FOR_EACH(&ref->bt->cursors, cur, lnk)
+    {
+        if (cur->cursor_class == CURSORCLASS_INDEX && cur->db == ref->db && cur->bdbcur && !cur->is_sampled_idx)
+            bdb_rwh_mark_ix_row(cur->bdbcur, (unsigned long long)rowid);
+    }
+}
+
+/* Replica write hints: OP_RowSetAdd of a two-pass UPDATE or DELETE (isDelete) selects the row with this rowid (its
+ * genid) for writing, before the pass that writes it.  pTab is the statement's cursor on the target table, pScanIdx
+ * the scan's cursor on one of its indexes.  Hint now:
+ * - the row's index leaves: the scan's cursors are closed before the writes;
+ * - for a DELETE only, the saved leaves of the row's blobs: the first pass can fetch the blobs of many more rows
+ *   before the second pass deletes this one.  An UPDATE's second pass fetches them again right before the write,
+ *   which hints those the master reads (db/osqlsqlthr.c). */
+void comdb2_rwh_rowset_add(BtCursor *pTab, BtCursor *pScanIdx, int isDelete, i64 rowid)
+{
+    if (!rwh_recording)
+        return;
+    rwh_rowset_add_ix(pTab, pScanIdx, rowid);
+    if (isDelete && pTab && pTab->cursor_class == CURSORCLASS_TABLE && pTab->db->numblobs > 0)
+        bdb_rwh_mark_blobs(pTab->db->handle, (unsigned long long)rowid, ~0U);
+}
+
 BtCursor *sqlite3BtreeCursorHintTblCsr(BtCursor *pCsr)
 {
     return pCsr->pCursorHintTableCursor;

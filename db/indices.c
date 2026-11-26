@@ -23,7 +23,7 @@
 #include "sqloffload.h"
 #include "eventlog.h"
 #include "tohex.h"
-
+#include "comdb2_atomic.h"
 
 extern int gbl_partial_indexes;
 extern int gbl_tolerate_missing_keys_on_delete;
@@ -423,7 +423,7 @@ int add_record_indices(struct ireq *iq, void *trans, blob_buffer_t *blobs,
     int od_tail_len;
     int ixnum = -1;
     if (iq->osql_step_ix)
-        gbl_osqlpf_step[*(iq->osql_step_ix)].step += 1;
+        ATOMIC_ADD32(gbl_osqlpf_step[*(iq->osql_step_ix)].step, 1);
 
     void *cur = NULL;
     dtikey_t ditk = {0};
@@ -497,7 +497,7 @@ int add_record_indices(struct ireq *iq, void *trans, blob_buffer_t *blobs,
         /* light the prefault kill bit for this subop - newkeys */
         prefault_kill_bits(iq, ixnum, PFRQ_NEWKEY);
         if (iq->osql_step_ix)
-            gbl_osqlpf_step[*(iq->osql_step_ix)].step += 2;
+            ATOMIC_ADD32(gbl_osqlpf_step[*(iq->osql_step_ix)].step, 2);
 
         if (reorder) {
             // if not datacopy, no need to save od_dta_tail
@@ -702,7 +702,7 @@ int upd_record_indices(struct ireq *iq, void *trans, int *opfailcode,
         /* light the prefault kill bit for this subop - oldkeys */
         prefault_kill_bits(iq, ixnum, PFRQ_OLDKEY);
         if (iq->osql_step_ix)
-            gbl_osqlpf_step[*(iq->osql_step_ix)].step += 1;
+            ATOMIC_ADD32(gbl_osqlpf_step[*(iq->osql_step_ix)].step, 1);
 
         if (iq->idxDelete) {
             /* only create key if we need it */
@@ -760,7 +760,7 @@ int upd_record_indices(struct ireq *iq, void *trans, int *opfailcode,
             updateid portion) didnt change, ie if an in place dta update
             happened here. */
         if (iq->osql_step_ix)
-            gbl_osqlpf_step[*(iq->osql_step_ix)].step += 1;
+            ATOMIC_ADD32(gbl_osqlpf_step[*(iq->osql_step_ix)].step, 1);
 
         int key_unique = (iq->usedb->ix_dupes[ixnum] == 0);
         int same_key = (memcmp(newkey, oldkey, keysize) == 0);
@@ -1002,7 +1002,7 @@ int del_record_indices(struct ireq *iq, void *trans, int *opfailcode, int *ixfai
         /* light the prefault kill bit for this subop - oldkeys */
         prefault_kill_bits(iq, ixnum, PFRQ_OLDKEY);
         if (iq->osql_step_ix)
-            gbl_osqlpf_step[*(iq->osql_step_ix)].step += 2;
+            ATOMIC_ADD32(gbl_osqlpf_step[*(iq->osql_step_ix)].step, 2);
 
         if (reorder) {
             // if not datacopy, no need to save od_dta_tail

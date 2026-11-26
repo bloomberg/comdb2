@@ -40,6 +40,7 @@
 #include <uuid/uuid.h>
 
 #include "comdb2.h"
+#include "comdb2_atomic.h"
 #include "osqlblockproc.h"
 #include "block_internal.h"
 #include "osqlsession.h"
@@ -60,6 +61,7 @@
 #include "memory_sync.h"
 
 extern int gbl_reorder_idx_writes;
+extern pthread_mutex_t osqlpf_mutex;
 extern uint32_t gbl_max_time_per_txn_ms;
 
 struct blocksql_tran {
@@ -87,7 +89,8 @@ struct blocksql_tran {
     int last_is_ins; /* 1 if processing INSERT, 0 for any other oql type */
 
     /* prefetch */
-    struct dbtable *last_db;
+    struct osqlpf_tbl pf_tbl; /* osql prefault: table of the last USEDB */
+    int *osql_step_ix; /* osql prefault step slot, returned in osql_bplog_close */
 };
 
 typedef struct oplog_key {
@@ -345,6 +348,8 @@ int osql_bplog_commit(struct ireq *iq, void *iq_trans, int *nops,
     ckgenid_state_t cgstate = {.iq = iq, .trans = iq_trans, .err = err};
     int rc;
 
+    iq->osql_step_ix = tran->osql_step_ix;
+
     /* Pre-process selectv's, getting a writelock on rows that are later updated
      */
     if ((rc = osql_process_selectv(tran, pselectv_callback, &cgstate)) != 0) {
@@ -411,6 +416,18 @@ void osql_bplog_close(blocksql_tran_t **ptran)
     }
 
     Pthread_mutex_destroy(&tran->store_mtx);
+
+    if (tran->osql_step_ix) {
+        XCHANGE64(gbl_osqlpf_step[*tran->osql_step_ix].rqid, 0);
+        XCHANGE32(gbl_osqlpf_step[*tran->osql_step_ix].step, 0);
+        XCHANGE32(gbl_osqlpf_step[*tran->osql_step_ix].bp_pending, 0);
+        XCHANGE32(gbl_osqlpf_step[*tran->osql_step_ix].lookahead_pending, 0);
+        XCHANGE32(gbl_osqlpf_step[*tran->osql_step_ix].lookahead_state, 0);
+        Pthread_mutex_lock(&osqlpf_mutex);
+        queue_add(gbl_osqlpf_stepq, tran->osql_step_ix);
+        Pthread_mutex_unlock(&osqlpf_mutex);
+        tran->osql_step_ix = NULL;
+    }
 
     rc = bdb_temp_table_close(thedb->bdb_env, tran->db, &bdberr);
     if (rc != 0) {
@@ -716,9 +733,7 @@ int osql_bplog_saveop(osql_sess_t *sess, blocksql_tran_t *tran, char *rpl,
     } else {
         tran->seq++;
         if (gbl_osqlpfault_threads) {
-            osql_page_prefault(rpl, rplen, &(tran->last_db),
-                               &sess->iq->osql_step_ix, sess->rqid, sess->uuid,
-                               tran->seq);
+            osql_page_prefault(rpl, rplen, &tran->pf_tbl, &tran->osql_step_ix, sess->rqid, sess->uuid, tran->seq);
         }
     }
 
@@ -1034,6 +1049,13 @@ static int process_this_session(
     }
 #endif
 
+    /* osql prefault work for this transaction is useless from now on: the
+       block processor reads the pages itself, and a prefault lookup would
+       wait for its page locks until the commit; mark every step as done
+       (half the range: the block processor still adds its own small steps) */
+    if (iq->osql_step_ix)
+        XCHANGE32(gbl_osqlpf_step[*(iq->osql_step_ix)].step, UINT_MAX / 2);
+
     /* go through each record */
     rc = bdb_temp_table_first(thedb->bdb_env, dbc, bdberr);
     if (rc && rc != IX_EMPTY && rc != IX_NOTFND) {
@@ -1114,9 +1136,6 @@ static int process_this_session(
         rc = get_next_merge_tmps(dbc, dbc_ins, &opkey, &opkey_ins, &drain_adds,
                                  bdberr, add_stripe);
     }
-
-    if (iq->osql_step_ix)
-        gbl_osqlpf_step[*(iq->osql_step_ix)].step = opkey->seq << 7;
 
     /* if for some reason the session has not completed correctly,
        this will free the eventually allocated buffers */

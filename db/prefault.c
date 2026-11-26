@@ -962,6 +962,7 @@ fprintf(stderr, "opnum %d btst(%x, %d)\n",
 
 void prefault_stats(struct dbenv *dbenv)
 {
+    osqlpf_stats();
     logmsg(LOGMSG_USER, "num_add_record %d\n",
             dbenv->prefault_stats.num_add_record);
     logmsg(LOGMSG_USER, "num_del_record %d\n",

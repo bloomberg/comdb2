@@ -211,6 +211,7 @@ int readaheadpf(struct ireq *iq, struct dbtable *db, int ixnum, unsigned char *k
                 int keylen, int num);
 
 void prefault_stats(struct dbenv *dbenv);
+void osqlpf_stats(void);
 
 void prefault_free(pfrq_t *pflt);
 
