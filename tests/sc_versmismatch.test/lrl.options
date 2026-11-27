@@ -2,3 +2,9 @@ setattr MIN_KEEP_LOGS 2
 setattr MIN_KEEP_LOGS_AGE 10
 setattr PRIVATE_BLKSEQ_MAXAGE 20
 
+# The test slows every record write (DELAY_WRITES_IN_RECORD_C) so its schema
+# changes overlap with concurrent writes.  That delay also applies to the stats
+# rows written when the schema change analyzes the table, which stretches each
+# alter past the test timeout.  Keep the old behavior here; sc_analyze.test
+# covers the feature.
+analyze_new_indexes off

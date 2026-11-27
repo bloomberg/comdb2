@@ -270,9 +270,8 @@ int sampler_close(sampler_t *sampler)
 }
 
 int gbl_debug_sleep_in_summarize = 0;
-int bdb_summarize_table(bdb_state_type *bdb_state, int ixnum, int comp_pct,
-                        sampler_t **samplerp, unsigned long long *outrecs,
-                        unsigned long long *cmprecs, int *bdberr)
+int bdb_summarize_table(bdb_state_type *bdb_state, int ixnum, int comp_pct, sampler_t **samplerp,
+                        unsigned long long *outrecs, unsigned long long *cmprecs, int sc_analyze, int *bdberr)
 {
     DB_ENV *dbenv = bdb_state->dbenv;
     int is_hmac = CRYPTO_ON(dbenv);
@@ -400,9 +399,11 @@ int bdb_summarize_table(bdb_state_type *bdb_state, int ixnum, int comp_pct,
             }
         }
 
-        int inprogress;
-        if ((inprogress = get_schema_change_in_progress(__func__, __LINE__)) || get_analyze_abort_requested() ||
-            db_is_exiting()) {
+        /* A schema change doing its own analyze is scanning the table it just
+         * built, so the schema_change_in_progress guard does not apply to it. */
+        int inprogress = 0;
+        if ((!sc_analyze && (inprogress = get_schema_change_in_progress(__func__, __LINE__))) ||
+            get_analyze_abort_requested() || db_is_exiting()) {
             if (inprogress)
                 logmsg(LOGMSG_ERROR,
                        "%s: Aborting Analyze because "

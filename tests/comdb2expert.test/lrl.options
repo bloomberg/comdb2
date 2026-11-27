@@ -1,3 +1,9 @@
 table   dummy   dummy.csc2
 
 allow_user_schema
+
+# Expert's recommended-index stat1 depends on whether any statistics already
+# exist in the database (a plain ANALYZE of another table changes it too).
+# The expected output was generated with none, and earlier steps here create
+# indexes, which would otherwise now get statistics.
+analyze_new_indexes off
