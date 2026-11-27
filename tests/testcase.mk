@@ -30,6 +30,29 @@ include $(TESTSROOTDIR)/Makefile.common
 
 $(shell [ ! -f ${TESTDIR} ] &&  mkdir -p ${TESTDIR}/ )
 
+# A test opts into the UBSan comdb2, from a separate build configured with
+# -DCOMDB2_UBSAN=1, by setting COMDB2_UBSAN=1 in its Makefile, or a whole run
+# with 'make COMDB2_UBSAN=1'; 'make <test> COMDB2_UBSAN=0' overrides. Every
+# other binary still comes from the regular build. On a cluster,
+# tests/Makefile copies it to the nodes once, before any test.
+UBSAN_CHECK:=
+ifeq ($(COMDB2_UBSAN),1)
+  # Fail from a recipe rather than $(error) so it is logged as a test failure
+  ifeq ($(wildcard $(COMDB2_UBSAN_BUILDDIR)/db/comdb2),)
+    UBSAN_CHECK:=ubsan_missing
+  else
+    override COMDB2_EXE:=$(COMDB2_UBSAN_BUILDDIR)/db/comdb2
+    export COMDB2_EXE
+    ifeq ($(INSETUP),)
+      ifneq ($(CLUSTER),)
+        ifeq ($(wildcard $(UBSAN_CLUSTER_STAMP)),)
+          UBSAN_CHECK:=ubsan_missing
+        endif
+      endif
+    endif
+  endif
+endif
+
 export CURRDIR:=$(shell pwd)
 export TESTCASE:=$(patsubst %.test,%,$(shell basename $(CURRDIR)))
 
@@ -86,7 +109,7 @@ ifneq ($(INSETUP),)
   $(shell TESTDIR="${TESTDIR}" CLUSTER="${CLUSTER}" TESTSROOTDIR="${TESTSROOTDIR}" COMDB2_EXE=${COMDB2_EXE} CDB2SQL_EXE=${CDB2SQL_EXE} COMDB2AR_EXE=${COMDB2AR_EXE} COPYCOMDB2_EXE=${COPYCOMDB2_EXE} PMUX_EXE=${PMUX_EXE} PMUXPORT=${PMUXPORT} SKIP_COPY_EXE="${SKIP_COPY_EXE}" ${TESTSROOTDIR}/tools/copy_files_to_cluster.sh > ${TESTDIR}/copy_files_to_cluster.log 2>&1 )
 endif
 
-test:: tool unit
+test:: $(UBSAN_CHECK) tool unit
 	echo "Working from dir `pwd`" >> $(TESTDIR)/test.log
 	$(TESTSROOTDIR)/runtestcase
 	$(MAKE) stop
@@ -94,7 +117,7 @@ test:: tool unit
 clean::
 	rm -f *.res
 
-setup: tool
+setup: $(UBSAN_CHECK) tool
 	@mkdir -p ${TESTDIR}/logs/
 	@$(TESTSROOTDIR)/setup -debug
 	@echo Ready to run
@@ -104,3 +127,6 @@ stop:
 tool:
 
 unit:
+
+ubsan_missing:
+	@$(TESTSROOTDIR)/tools/ubsan_missing.sh

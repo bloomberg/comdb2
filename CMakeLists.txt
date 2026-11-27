@@ -15,7 +15,12 @@ if(COMDB2_BUILD_STATIC)
   SET(CMAKE_FIND_LIBRARY_SUFFIXES .a ${CMAKE_FIND_LIBRARY_SUFFIXES})
 endif()
 
+option(COMDB2_UBSAN "Build with UndefinedBehaviorSanitizer (recoverable)" OFF)
 option(COMDB2_TEST "Turn ON to compile with testing features" OFF)
+if(COMDB2_UBSAN)
+  # A UBSan build exists only to run the test suite.
+  set(COMDB2_TEST ON CACHE BOOL "Turn ON to compile with testing features" FORCE)
+endif()
 if(COMDB2_TEST)
   add_definitions(-DCOMDB2_TEST)
   add_definitions(-DCDB2API_TEST)
@@ -173,6 +178,17 @@ option(UFID_HASH_DEBUG "Enable ufid-hash debug trace" OFF)
 mark_as_advanced(UFID_HASH_DEBUG)
 if(UFID_HASH_DEBUG)
   add_definitions(-DUFID_HASH_DEBUG)
+endif()
+
+if(COMDB2_UBSAN)
+  # Recoverable: a report is logged and the server keeps running, so one run
+  # shows every finding. No alignment check: x86-64 allows unaligned access,
+  # and berkdb's log record (de)serialization and sqlite's serialget rely on
+  # it; those reports would otherwise flag every test.
+  add_definitions(-DCOMDB2_UBSAN)
+  add_compile_options(-fsanitize=undefined -fsanitize-recover=undefined
+                      -fno-sanitize=alignment -fno-omit-frame-pointer)
+  add_link_options(-fsanitize=undefined)
 endif()
 
 option(COMDB2_PER_THREAD_MALLOC "Turn OFF to run under Valgrind" ON)

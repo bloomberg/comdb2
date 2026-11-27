@@ -5814,6 +5814,17 @@ void exec_tool(int argc, char *argv[])
     }
 }
 
+#ifdef COMDB2_UBSAN
+/* Compiled in so that every launch path, including ssh to cluster nodes, gets
+   them; UBSAN_OPTIONS still overrides. The build is recoverable
+   (-fsanitize-recover=undefined): each report is logged with its stack and
+   the server keeps going. */
+const char *__ubsan_default_options(void)
+{
+    return "print_stacktrace=1:halt_on_error=0";
+}
+#endif
+
 int main(int argc, char **argv)
 {
     int rc;
