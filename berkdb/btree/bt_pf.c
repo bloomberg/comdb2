@@ -14,6 +14,7 @@
 
 #include "dbinc/btree.h"
 #include "dbinc/mp.h"
+#include "dbinc/log.h"
 #include <btree/bt_pf.h>
 
 #include "dbinc/btree.h"
@@ -37,7 +38,20 @@ void start_loading_async_pp(struct thdpool *pool, void *work, void *thddata,
 void start_loading_async_cb(btpf_job * job);
 static inline int advance_on_tree(DBC *dbc);
 
-#define LOAD(mpf,x) enqueue_touch_page(mpf, x);
+#define LOAD(dbp,x) load_page(dbp, x);
+
+static inline void
+load_page(DB *dbp, db_pgno_t pgno)
+{
+	PAGE *h;
+
+	/* already cached: nothing to read */
+	if (__memp_fget(dbp->mpf, &pgno, DB_MPOOL_PROBE, &h) == 0) {
+		(void)__memp_fput(dbp->mpf, h, 0);
+		return;
+	}
+	enqueue_touch_page(dbp->dbenv, dbp->log_filename->id, dbp->fileid, pgno);
+}
 
 #define LOAD_SYNC(mpf,x,page) {                                                     \
     PAGEGET(dbc, mpf, &x, DB_MPOOL_PFGET, &page);                                    \
@@ -98,6 +112,8 @@ btpf_job_init(void)
 	if (x) {
 		memset(x, 0, sizeof(btpf_job));
 		x->pf = pf;
+	} else {
+		btpf_free(&pf);
 	}
 	return x;
 }
@@ -112,6 +128,7 @@ btpf_free_job(btpf_job ** x)
 			free((*x)->rkey->data);
 		free((*x)->rkey);
 	}
+	btpf_free(&(*x)->pf);
 	free(*x);
 	*x = NULL;
 }
@@ -297,6 +314,9 @@ chk_forward(DBC *dbc)
 
 	if (f->status == LOADED_ALL)
 		return rst;
+	/* not before the scan has shown it is more than a few pages long */
+	if (f->status == INIT && f->rdr_pg_cnt < START_AFTER(dbc))
+		return rst;
 
 	th = f->wndw - f->rdr_pg_cnt - CU_GAP(dbc);  
 	fetch = (th <= 0);
@@ -328,6 +348,8 @@ chk_backward(DBC *dbc)
 
 	if (f->status == LOADED_ALL)
 		return rst;    
+	if (f->status == INIT && f->rdr_pg_cnt < START_AFTER(dbc))
+		return rst;
         
 	th = f->wndw - f->rdr_pg_cnt - CU_GAP(dbc);
 	fetch = (th <= 0);
@@ -409,22 +431,64 @@ read_key(DBC *dbc, btpf_job * job)
  
 	ASSIGN_ALIGN_DIFF(u_int32_t, job->rkey->size, db_indx_t, bk->len);
 	job->rkey->data = malloc(job->rkey->size);
+	if (job->rkey->data == NULL)
+		return 1;
 
 	memcpy(job->rkey->data, bk->data, job->rkey->size);
 	return 0;
+}
+
+/*
+ * A replicant's own handles have no dbreg id: find the id the file is
+ * registered under while the master's log is applied.
+ */
+static int
+registered_id(DB *dbp)
+{
+	DB_ENV *dbenv = dbp->dbenv;
+	DB_LOG *dblp = dbenv->lg_handle;
+	LOG *lp = dblp->reginfo.primary;
+	FNAME *fnp;
+	int32_t id = DB_LOGFILEID_INVALID;
+
+	MUTEX_LOCK(dbenv, &lp->fq_mutex);
+	for (fnp = SH_TAILQ_FIRST(&lp->fq, __fname); fnp != NULL;
+	    fnp = SH_TAILQ_NEXT(fnp, q, __fname)) {
+		if (fnp->id != DB_LOGFILEID_INVALID &&
+		    memcmp(fnp->ufid, dbp->fileid, DB_FILE_ID_LEN) == 0) {
+			id = fnp->id;
+			break;
+		}
+	}
+	MUTEX_UNLOCK(dbenv, &lp->fq_mutex);
+	return (id);
 }
 
 static inline int
 start_loading(DBC *dbc)
 {
 	int rc = 0;
-	btpf_job *job = btpf_job_init();
+	DB *dbp = dbc->dbp;
+	btpf_job *job;
+	int32_t id;
 
+	/* the worker finds the file by its dbreg id */
+	if (dbp->log_filename == NULL)
+		return 0;
+	if ((id = dbp->log_filename->id) == DB_LOGFILEID_INVALID &&
+	    (id = registered_id(dbp)) == DB_LOGFILEID_INVALID)
+		return 0;
+	if ((job = btpf_job_init()) == NULL)
+		return ENOMEM;
 	btpf_copy(PFX(dbc), PFX(job));
-	read_key(dbc, job);
+	if (read_key(dbc, job) != 0) {
+		btpf_free_job(&job);
+		return ENOMEM;
+	}
 	job->npages = PFX(dbc)->wndw;
-	job->mpf = dbc->dbp->mpf;
-	job->db = dbc->dbp;
+	job->dbenv = dbp->dbenv;
+	job->fileid = id;
+	memcpy(job->ufid, dbp->fileid, DB_FILE_ID_LEN);
 	job->dirty = PFX(dbc)->status == PF || PFX(dbc)->status == LOADED_ALL;	// TODO it cannot be on LOADED_ALL when it runs asynchronously
 	job->lid = dbc->lid;
 	job->locker = dbc->locker;
@@ -433,6 +497,8 @@ start_loading(DBC *dbc)
 #else
 	rc = thdpool_enqueue(gbl_udppfault_thdpool, start_loading_async_pp, job,
 	    0, NULL, 0);
+	if (rc != 0)
+		btpf_free_job(&job);
 #endif
 	return rc;
 }
@@ -457,22 +523,29 @@ start_loading_async_cb(btpf_job * job)
 {
 	int rc = 0;
 	DBC *dbc;
-	DB *db = job->db;
+	DB *db;
+
+	/* holding a prefault reference, so that the file is not closed under us */
+	if (__dbreg_id_to_db_prefault(job->dbenv, NULL, &db, job->fileid, 1) != 0)
+		return;
+	if (memcmp(db->fileid, job->ufid, DB_FILE_ID_LEN) != 0)
+		goto done;	/* the dbreg id was reused by another file */
 
 #if BTPF_SAME_THREAD
-	if ((rc =
-		job->db->paired_cursor_from_lid(job->db, job->locker, &dbc,
+	if ((rc = db->paired_cursor_from_lid(db, job->locker, &dbc,
 		    DB_PAUSIBLE)) != 0)
-		return;
+		goto done;
 #else
 	if ((rc = db->cursor(db, NULL, &dbc, 0)) != 0)
-		 return;
+		goto done;
 #endif
 
 	dbc->rkey = job->rkey;
 	if (job->dirty) {
-		if ((rc = tree_walk(dbc, SRCH_CUR, 1, RMBR_LVL)) != 0)
-			return;
+		if ((rc = tree_walk(dbc, SRCH_CUR, 1, RMBR_LVL)) != 0) {
+			(void)__db_c_close(dbc);
+			goto done;
+		}
 	} else {
 		btpf_copy(PFX(job), PFX(dbc));
 	}
@@ -488,7 +561,9 @@ start_loading_async_cb(btpf_job * job)
 		page_load_f(PFX(dbc), dbc);
 	else
 		page_load_b(PFX(dbc), dbc);
-
+	/* page_load_f/b close the cursor */
+done:
+	__dbreg_prefault_complete(job->dbenv, job->fileid);
 }
 
 static inline int
@@ -645,7 +720,11 @@ page_load_f(btpf * pf, DBC *dbc)
 			goto end;
 
         
-		if ((ret = PAGEGET(dbc, mpf, &pgno, 0, &h)) != 0 || memcmp(&h->lsn, &pf->lsn[1], sizeof(DB_LSN)) != 0)
+		if ((ret = PAGEGET(dbc, mpf, &pgno, 0, &h)) != 0) {
+			(void)__LPUT(dbc, lock);
+			goto end;
+		}
+		if (memcmp(&h->lsn, &pf->lsn[1], sizeof(DB_LSN)) != 0)
 		{
 			PAGEPUT(dbc, mpf, h, 0);
 			(void)__LPUT(dbc, lock);
@@ -662,7 +741,7 @@ page_load_f(btpf * pf, DBC *dbc)
 #if BTPF_DEBUG  
 			fprintf(stderr, "LOADING: %u from:%u indx:%d of:%d real:%d\n", t_pgno, pgno, pf->curindx[1] + i, pf->maxindx[1], h->entries );
 #endif
-			LOAD(mpf, t_pgno);
+			LOAD(dbp, t_pgno);
 
 		}
 
@@ -723,19 +802,21 @@ page_load_b(btpf * pf, DBC *dbc)
 			goto end;
 
 		pgno = pf->curlf[1];
-		if ((ret = __db_lget(dbc, 0, pgno, lock_mode, 0, &lock)) != 0) {
+		if ((ret = __db_lget(dbc, 0, pgno, lock_mode, 0, &lock)) != 0)
+			goto end;
+		if ((ret = PAGEGET(dbc, mpf, &pgno, 0, &h)) != 0) {
 			(void)__LPUT(dbc, lock);
 			goto end;
 		}
-		if ((ret = PAGEGET(dbc, mpf, &pgno, 0, &h)) != 0 ||
-		    memcmp(&h->lsn, &pf->lsn[1], sizeof(DB_LSN)) != 0) {
+		if (memcmp(&h->lsn, &pf->lsn[1], sizeof(DB_LSN)) != 0) {
 			PAGEPUT(dbc, mpf, h, 0);
 			(void)__LPUT(dbc, lock);
 			ret = DIFF_LSN;
 			goto end;
 		}
 
-		p_cnt = pf->curindx[1] > pf->wndw - c ? pf->curindx[1] - pf->wndw - c : 0;
+		/* p_cnt is the lowest entry loaded, the loop includes it */
+		p_cnt = pf->curindx[1] >= pf->wndw - c ? pf->curindx[1] - (pf->wndw - c) + 1 : 0;
 		for (i = pf->curindx[1] ; i >= p_cnt ; i--) {
 			if (pf->maxindx[1] == 0)
 				break;
@@ -745,13 +826,13 @@ page_load_b(btpf * pf, DBC *dbc)
 #if BTPF_DEBUG  
 			fprintf(stderr, "LOADING: %u from:%u indx:%d of:%d real:%d\n", t_pgno, pgno, i, pf->maxindx[1], h->entries );
 #endif            
-			LOAD(mpf,t_pgno);
+			LOAD(dbp, t_pgno);
 
 			if (i == 0)
 				break; // it's an unsigned type it overflows and loop forever otherwise
 		}
 		pf->tr_page = t_pgno;
-		c += (pf->curindx[1] - p_cnt);
+		c += (pf->curindx[1] - p_cnt + 1);
 		pf->curindx[1] = p_cnt;
 
 		PAGEPUT(dbc, mpf, h, 0);
