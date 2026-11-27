@@ -54,7 +54,7 @@ extern __thread int send_prefault_udp;
 extern __thread DB *prefault_dbp;
 
 extern int db_is_exiting(void);
-void udp_prefault_all(bdb_state_type * bdb_state, unsigned int fileid,
+void udp_prefault_all(bdb_state_type * bdb_state, const unsigned char *ufid,
     unsigned int pgno);
 int send_pg_compact_req(bdb_state_type *bdb_state, int32_t fileid,
 	uint32_t size, void *data);
@@ -409,8 +409,10 @@ retry:	st_hsearch = 0;
 
 		++mfp->stat.st_cache_hit;
 
-        if (LF_ISSET(DB_MPOOL_PFGET))
+        if (LF_ISSET(DB_MPOOL_PFGET)) {
             ++c_mp->stat.st_page_pf_in_late;
+            ++mfp->stat.st_page_pf_in_late;
+        }
 
 		break;
 	}
@@ -733,6 +735,7 @@ alloc:		/*
 			++mfp->stat.st_cache_miss;
 			if (LF_ISSET(DB_MPOOL_PFGET)) {
 				++c_mp->stat.st_page_pf_in;
+				++mfp->stat.st_page_pf_in;
                 
                 
 				F_SET(bhp, BH_PREFAULT);
@@ -1208,8 +1211,7 @@ __memp_fget(dbmfp, pgnoaddr, flags, addrp)
 
 	if(send_prefault_udp) {
 		udp_prefault_all((bdb_state_type *) dbmfp->dbenv->app_private,
-				(u_int32_t)prefault_dbp->log_filename->id,
-				(u_int32_t)*pgnoaddr);
+				prefault_dbp->fileid, (u_int32_t)*pgnoaddr);
 	}
 
 	int pgcomp_enabled = (gbl_pg_compact_thresh > 0)
