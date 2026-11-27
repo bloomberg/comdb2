@@ -54,7 +54,65 @@ extern __thread int send_prefault_udp;
 extern __thread DB *prefault_dbp;
 
 extern int db_is_exiting(void);
-void udp_prefault_all(bdb_state_type * bdb_state, unsigned int fileid,
+
+/*
+ * Replica write hints (tunable rep_write_hints, off by default): while a SQL
+ * statement runs on a replica, remember the distinct B-tree leaf pages the
+ * master will read to apply its writes (at most RWH_MAX, the rest are not
+ * hinted), so that the statement can tell the master to prefetch them
+ * (bdb/bdb_net.c bdb_send_write_hints).  Reset at every statement start and end.
+ *
+ * Pages are remembered only for the rows an osql update or delete writes
+ * (__memp_rwh_mark_op, called from bdb/bdb_net.c): the data page the row's
+ * cursor read it from, the index leaves a real index cursor of the table is on
+ * for the row, and the blob leaves the master reads for it.  An insert
+ * remembers none: the master chooses where the new row goes.  Pages a statement
+ * only scanned, e.g. those of rows its WHERE clause rejected, or of other tables
+ * a subquery read, are not hinted.
+ */
+#define	RWH_MAX	DB_RWH_MAX
+static __thread struct {
+	u_int8_t ufid[DB_FILE_ID_LEN];
+	u_int32_t pgno;
+} rwh_pg[RWH_MAX];
+static __thread int rwh_n;
+
+/* Remember page pgno of the file with this UFID */
+void
+__memp_rwh_mark_op(const u_int8_t *ufid, u_int32_t pgno)
+{
+	int i;
+
+	if (rwh_n >= RWH_MAX)
+		return;
+	for (i = 0; i < rwh_n; i++)
+		if (rwh_pg[i].pgno == pgno &&
+		    memcmp(rwh_pg[i].ufid, ufid, DB_FILE_ID_LEN) == 0)
+			return;
+	memcpy(rwh_pg[rwh_n].ufid, ufid, DB_FILE_ID_LEN);
+	rwh_pg[rwh_n++].pgno = pgno;
+}
+
+/* Copy up to max of this thread's pages as (UFID, pgno in network order) and forget all of them */
+int
+__memp_rwh_take(u_int8_t *buf, int max)
+{
+	int i, n;
+
+	n = rwh_n < max ? rwh_n : max;
+	for (i = 0; i < n; i++) {
+		memcpy(buf, rwh_pg[i].ufid, DB_FILE_ID_LEN);
+		buf[DB_FILE_ID_LEN] = rwh_pg[i].pgno >> 24;
+		buf[DB_FILE_ID_LEN + 1] = rwh_pg[i].pgno >> 16;
+		buf[DB_FILE_ID_LEN + 2] = rwh_pg[i].pgno >> 8;
+		buf[DB_FILE_ID_LEN + 3] = rwh_pg[i].pgno;
+		buf += DB_RWH_PAIR_LEN;
+	}
+	rwh_n = 0;
+	return (n);
+}
+
+void udp_prefault_all(bdb_state_type * bdb_state, const unsigned char *ufid,
     unsigned int pgno);
 int send_pg_compact_req(bdb_state_type *bdb_state, int32_t fileid,
 	uint32_t size, void *data);
@@ -409,8 +467,10 @@ retry:	st_hsearch = 0;
 
 		++mfp->stat.st_cache_hit;
 
-        if (LF_ISSET(DB_MPOOL_PFGET))
+        if (LF_ISSET(DB_MPOOL_PFGET)) {
             ++c_mp->stat.st_page_pf_in_late;
+            ++mfp->stat.st_page_pf_in_late;
+        }
 
 		break;
 	}
@@ -733,6 +793,7 @@ alloc:		/*
 			++mfp->stat.st_cache_miss;
 			if (LF_ISSET(DB_MPOOL_PFGET)) {
 				++c_mp->stat.st_page_pf_in;
+				++mfp->stat.st_page_pf_in;
                 
                 
 				F_SET(bhp, BH_PREFAULT);
@@ -1208,8 +1269,7 @@ __memp_fget(dbmfp, pgnoaddr, flags, addrp)
 
 	if(send_prefault_udp) {
 		udp_prefault_all((bdb_state_type *) dbmfp->dbenv->app_private,
-				(u_int32_t)prefault_dbp->log_filename->id,
-				(u_int32_t)*pgnoaddr);
+				prefault_dbp->fileid, (u_int32_t)*pgnoaddr);
 	}
 
 	int pgcomp_enabled = (gbl_pg_compact_thresh > 0)

@@ -661,7 +661,6 @@ statement.
     } else if (tokcmp(tok, ltok, "get_osql_prefault_status") == 0) {
     } else if (tokcmp(tok, ltok, "enable_prefault_udp") == 0) {
     } else if (tokcmp(tok, ltok, "disable_prefault_udp") == 0) {
-    } else if (tokcmp(tok, ltok, "set_udp_prefault_latency") == 0) {
     } else if (tokcmp(tok, ltok, "get_udp_prefault_status") == 0) {
 
 ### delfiles

@@ -45,6 +45,8 @@ extern void free_cached_idx(uint8_t **cached_idx);
 extern int gbl_partial_indexes;
 extern int gbl_debug_skip_constraintscheck_on_insert;
 extern int64_t gbl_max_wr_logbytes_per_txn;
+extern int gbl_prefault_udp;
+extern __thread int send_prefault_udp;
 
 static void generate_fkconstraint_error(struct ireq *iq, struct dbtable *child, const char *fkey,
                                         struct dbtable *parent, const char *rkey, const char *reason)
@@ -864,6 +866,11 @@ int verify_del_constraints(struct ireq *iq, void *trans, int *errout)
             osql_unset_index_reorder_bit(&iq->osql_flags);
 
             if (iq->usedb) {
+                /* The cascaded delete is replicated: send UDP prefault hints
+                   for the pages it reads, unlike the lookups above */
+                int saved_prefault_udp = send_prefault_udp;
+                if (gbl_prefault_udp)
+                    send_prefault_udp = 1;
                 rc = del_record(iq, trans, NULL, rrn, genid,
                                 /* Partial index bitmap:
                                    -1ULL implies that at this point we don't know
@@ -872,6 +879,7 @@ int verify_del_constraints(struct ireq *iq, void *trans, int *errout)
                                 -1ULL, /* del_keys */
                                 &err, &idx, BLOCK2_DELKL,
                                 RECFLAGS_DONT_LOCK_TBL | RECFLAGS_IN_CASCADE);
+                send_prefault_udp = saved_prefault_udp;
             } else {
                 rc = ERR_NO_SUCH_TABLE;
             }
@@ -932,6 +940,11 @@ int verify_del_constraints(struct ireq *iq, void *trans, int *errout)
                 goto delnullerr;
 
             if (iq->usedb) {
+                /* The ON DELETE SET NULL update is replicated: send UDP prefault hints
+                   for the pages it reads, unlike the lookups above */
+                int saved_prefault_udp = send_prefault_udp;
+                if (gbl_prefault_udp)
+                    send_prefault_udp = 1;
                 rc = upd_record(iq,
                                 trans,
                                 NULL, /* primkey */
@@ -959,6 +972,7 @@ int verify_del_constraints(struct ireq *iq, void *trans, int *errout)
                                 BLOCK2_UPDKL,
                                 0, /*blkpos*/
                                 RECFLAGS_UPD_CASCADE | RECFLAGS_DONT_LOCK_TBL | RECFLAGS_IN_CASCADE);
+                send_prefault_udp = saved_prefault_udp;
             } else {
                 rc = ERR_NO_SUCH_TABLE;
             }
@@ -1021,6 +1035,11 @@ int verify_del_constraints(struct ireq *iq, void *trans, int *errout)
             osql_unset_index_reorder_bit(&iq->osql_flags);
 
             if (iq->usedb) {
+                /* The cascaded update is replicated: send UDP prefault hints
+                   for the pages it reads, unlike the lookups above */
+                int saved_prefault_udp = send_prefault_udp;
+                if (gbl_prefault_udp)
+                    send_prefault_udp = 1;
                 rc = upd_record(iq,
                                 trans,
                                 NULL, /* primkey */
@@ -1048,6 +1067,7 @@ int verify_del_constraints(struct ireq *iq, void *trans, int *errout)
                                 BLOCK2_UPDKL,
                                 0, /*blkpos*/
                                 RECFLAGS_UPD_CASCADE | RECFLAGS_DONT_LOCK_TBL | RECFLAGS_IN_CASCADE);
+                send_prefault_udp = saved_prefault_udp;
             } else {
                 rc = ERR_NO_SUCH_TABLE;
             }

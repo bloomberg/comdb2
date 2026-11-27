@@ -48,6 +48,7 @@ enum thrtype {
     THRTYPE_WATCHDOG = 24,
     THRTYPE_CLEANEXIT = 25,
     THRTYPE_GENERIC = 26,
+    THRTYPE_UDPPFAULT = 27, /* udppfaultpool threads: UDP prefault hints */
     THRTYPE_MAX
 };
 

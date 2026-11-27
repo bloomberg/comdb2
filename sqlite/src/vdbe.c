@@ -7105,6 +7105,19 @@ case OP_RowSetAdd: {       /* in1, in2 */
     if( sqlite3VdbeMemSetRowSet(pIn1) ) goto no_mem;
   }
   assert( sqlite3VdbeMemIsRowSet(pIn1) );
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+  /* comdb2: in a two-pass UPDATE or DELETE, P3 / P5 = the target table
+  ** cursor + 1 / the scan's index cursor + 1 (0 = none), P4 = the integer 1
+  ** for a DELETE: replica write hints, see comdb2_rwh_rowset_add() */
+  if( pOp->p3>0 || pOp->p5>0 ){
+    VdbeCursor *pT = pOp->p3>0 && pOp->p3<=p->nCursor ? p->apCsr[pOp->p3-1] : 0;
+    VdbeCursor *pI = pOp->p5>0 && pOp->p5<=p->nCursor ? p->apCsr[pOp->p5-1] : 0;
+    comdb2_rwh_rowset_add(pT && pT->eCurType==CURTYPE_BTREE ? pT->uc.pCursor : 0,
+                          pI && pI->eCurType==CURTYPE_BTREE ? pI->uc.pCursor : 0,
+                          pOp->p4type==P4_INT32 && pOp->p4.i==1,
+                          pIn2->u.i);
+  }
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   sqlite3RowSetInsert((RowSet*)pIn1->z, pIn2->u.i);
   break;
 }

@@ -90,7 +90,6 @@ extern int gbl_early;
 extern int gbl_reallyearly;
 extern int gbl_udp;
 extern int gbl_prefault_udp;
-extern int gbl_prefault_latency;
 extern int gbl_force_incoherent;
 extern int gbl_force_incoherent_master;
 extern int gbl_utxnid_log;
@@ -1077,15 +1076,6 @@ clipper_usage:
            logmsg(LOGMSG_USER, "Osql io prefault is DISABLED\n");
         }
         thdpool_print_stats(stdout, gbl_osqlpfault_thdpool);
-    } else if (tokcmp(tok, ltok, "set_udp_prefault_latency") == 0) {
-        tok = segtok(line, lline, &st, &ltok);
-        if (ltok) {
-            gbl_prefault_latency = toknum(tok, ltok);
-           logmsg(LOGMSG_USER, "set prefault latency to %d seconds\n",
-                   gbl_prefault_latency);
-        } else {
-           logmsg(LOGMSG_USER, "set_udp_prefault_latency requires a number argument\n");
-        }
     } else if (tokcmp(tok, ltok, "get_udp_prefault_status") == 0) {
         if (gbl_prefault_udp) {
            logmsg(LOGMSG_USER, "prefault upd was enabled on this node\n");
