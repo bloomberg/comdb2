@@ -27,7 +27,7 @@ function change_lrl_tunable {
     sleep 5
 
     # add tunable and restart replicant
-    echo "nohup $COMDB2_EXE $db --lrl $DBDIR/$db.lrl --tunable '$tunable' --pidfile $DBDIR/$db.pid $db > $DBDIR/$db.$node.db_new 2>&1 < /dev/null &" >> commands.sh
+    echo "nohup ${DEBUG_PREFIX} $COMDB2_EXE $db --lrl $DBDIR/$db.lrl --tunable '$tunable' --pidfile $DBDIR/$db.pid $db > $DBDIR/$db.$node.db_new 2>&1 < /dev/null &" >> commands.sh
 
     ssh $node < commands.sh >/dev/null
     rm commands.sh

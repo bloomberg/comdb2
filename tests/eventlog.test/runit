@@ -30,7 +30,7 @@ function waitfordb {
 mkdir $DBDIR
 touch $DBDIR/${DBNAME}.lrl
 df $DBDIR | awk '{print $1 }' | grep "tmpfs\|nfs" && echo "setattr directio 0" > $DBDIR/${DBNAME}.lrl 
-${COMDB2_EXE} ${DBNAME} --create --dir $DBDIR --lrl $DBDIR/${DBNAME}.lrl &> out
+${MEMORY_TOOL_VARIANT:+$DEBUG_PREFIX} ${COMDB2_EXE} ${DBNAME} --create --dir $DBDIR --lrl $DBDIR/${DBNAME}.lrl &> out
 grep "Created database" out || failexit "expected 'Created database'"
 
 echo "name    $DBNAME" >> $DBDIR/${DBNAME}.lrl
@@ -40,7 +40,7 @@ mkdir -p $TMPDIR
 
 
 echo "comdb2_config:default_type=local" >> $CDB2_CONFIG
-$DEBUGGER ${COMDB2_EXE} $DBNAME --no-global-lrl --lrl $DBDIR/${DBNAME}.lrl --pidfile ${TMPDIR}/${DBNAME}.pid &> $TESTDIR/logs/${DBNAME}.db &
+$DEBUGGER ${MEMORY_TOOL_VARIANT:+$DEBUG_PREFIX} ${COMDB2_EXE} $DBNAME --no-global-lrl --lrl $DBDIR/${DBNAME}.lrl --pidfile ${TMPDIR}/${DBNAME}.pid &> $TESTDIR/logs/${DBNAME}.db &
 
 waitfordb $DBNAME
 
@@ -165,7 +165,7 @@ NKEEP=5
 IFS=$SAVIFS
 
 echo "start db again, make sure that we keep only $NKEEP event log files of size 1 MB"
-$DEBUGGER ${COMDB2_EXE} $DBNAME --no-global-lrl --lrl $DBDIR/${DBNAME}.lrl --pidfile ${TMPDIR}/${DBNAME}.pid &> $TESTDIR/logs/${DBNAME}.db &
+$DEBUGGER ${MEMORY_TOOL_VARIANT:+$DEBUG_PREFIX} ${COMDB2_EXE} $DBNAME --no-global-lrl --lrl $DBDIR/${DBNAME}.lrl --pidfile ${TMPDIR}/${DBNAME}.pid &> $TESTDIR/logs/${DBNAME}.db &
 
 waitfordb $DBNAME
 

@@ -31,14 +31,14 @@ rm -rf $DBDIR
 mkdir -p $DBDIR
 
 # Create the source db.
-$COMDB2_EXE $db --create --dir $DBDIR > $TESTDIR/$db.create.log 2>&1
+${MEMORY_TOOL_VARIANT:+$DEBUG_PREFIX} $COMDB2_EXE $db --create --dir $DBDIR > $TESTDIR/$db.create.log 2>&1
 
 cat <<-EOF >> $DBDIR/$db.lrl
 	queue testq 1024
 EOF
 
 # --- bring up with the queue only, create the tables -------------
-$COMDB2_EXE $db --lrl $DBDIR/$db.lrl > $TESTDIR/$db.start.log 2>&1 &
+${DEBUG_PREFIX} $COMDB2_EXE $db --lrl $DBDIR/$db.lrl > $TESTDIR/$db.start.log 2>&1 &
 pids="$pids $!"
 sleep 10
 
@@ -65,7 +65,7 @@ cat <<-EOF >> $DBDIR/$db.lrl
 resource testq $TESTDIR/$db.testq.cfg
 EOF
 
-$COMDB2_EXE $db --lrl $DBDIR/$db.lrl >> $TESTDIR/$db.start.log 2>&1 &
+${DEBUG_PREFIX} $COMDB2_EXE $db --lrl $DBDIR/$db.lrl >> $TESTDIR/$db.start.log 2>&1 &
 pids="$pids $!"
 sleep 10
 
@@ -83,12 +83,12 @@ stop_db
 repopdir=$TESTDIR/$db.repop
 rm -rf $repopdir
 mkdir -p $repopdir
-$COMDB2_EXE $db --repopnewlrl $repopdir/$db.lrl --lrl $DBDIR/$db.lrl
+${MEMORY_TOOL_VARIANT:+$DEBUG_PREFIX} $COMDB2_EXE $db --repopnewlrl $repopdir/$db.lrl --lrl $DBDIR/$db.lrl
 
 # Reinit the same db directory from the repop'd lrl (which points back at $DBDIR).
 rm -rf $DBDIR
 mkdir -p $DBDIR
-$COMDB2_EXE $db --create --lrl $repopdir/$db.lrl > $TESTDIR/$db.repop.create.log 2>&1
+${MEMORY_TOOL_VARIANT:+$DEBUG_PREFIX} $COMDB2_EXE $db --create --lrl $repopdir/$db.lrl > $TESTDIR/$db.repop.create.log 2>&1
 
 # create should have copied the queue cfg into the db dir and repointed the
 # lrl's "resource" line at that local copy (dump_qresources + rewrite_lrl).
@@ -107,7 +107,7 @@ fi
 cp $repopdir/$db.lrl $DBDIR/$db.lrl
 rm -rf $repopdir
 
-$COMDB2_EXE $db --lrl $DBDIR/$db.lrl > $TESTDIR/$db.repop.start.log 2>&1 &
+${DEBUG_PREFIX} $COMDB2_EXE $db --lrl $DBDIR/$db.lrl > $TESTDIR/$db.repop.start.log 2>&1 &
 pids="$pids $!"
 sleep 10
 

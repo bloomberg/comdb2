@@ -73,15 +73,15 @@ foreign_db_resolve_local 1"
 
     if [[ -n "$CLUSTER" ]]; then
         ssh $tmpdb_host "mkdir -p $dir" < /dev/null
-        check_rc "ssh $tmpdb_host '$COMDB2_EXE --create $name -dir $dir' < /dev/null"
+        check_rc "ssh $tmpdb_host '${MEMORY_TOOL_VARIANT:+$DEBUG_PREFIX} $COMDB2_EXE --create $name -dir $dir' < /dev/null"
         ssh $tmpdb_host "echo '$lrl_extras' >> $dir/${name}.lrl" < /dev/null
-        ssh $tmpdb_host "source ${REP_ENV_VARS} ; $COMDB2_EXE $name --lrl $dir/${name}.lrl --pidfile $dir/${name}.pid" >> $TESTDIR/logs/${name}.log 2>&1 < /dev/null &
+        ssh $tmpdb_host "source ${REP_ENV_VARS} ; ${DEBUG_PREFIX} $COMDB2_EXE $name --lrl $dir/${name}.lrl --pidfile $dir/${name}.pid" >> $TESTDIR/logs/${name}.log 2>&1 < /dev/null &
     else
         mkdir -p "$dir"
-        check_rc "$COMDB2_EXE --create $name -dir $dir"
+        check_rc "${MEMORY_TOOL_VARIANT:+$DEBUG_PREFIX} $COMDB2_EXE --create $name -dir $dir"
         echo "$lrl_extras" >> "$dir/${name}.lrl"
         COMDB2_CONFIG_PORTMUXPORT=$PMUXPORT COMDB2_CONFIG_ALLOW_PMUX_ROUTE=1 \
-            $COMDB2_EXE $name --lrl $dir/${name}.lrl --pidfile $dir/${name}.pid \
+            ${DEBUG_PREFIX} $COMDB2_EXE $name --lrl $dir/${name}.lrl --pidfile $dir/${name}.pid \
             >"$TESTDIR/logs/${name}.log" 2>&1 &
     fi
     cp_cdb2cfg "$dir"
