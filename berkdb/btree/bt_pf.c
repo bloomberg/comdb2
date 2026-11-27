@@ -44,6 +44,8 @@ static inline int advance_on_tree(DBC *dbc);
     PAGEPUT(dbc, mpf,page, 0);                                                       \
 }                                                                                   \
 
+extern __thread int btpf_leaf_io;
+
 #define BTPF_DEBUG 0
 #define BTPF_SAME_THREAD 0
 
@@ -280,8 +282,9 @@ crsr_jump(DBC *dbc)
 {
 	if (!PFX(dbc))
 		return 0;
-	TEST_STOP(dbc)
-	    btpf_rst(PFX(dbc));
+	TEST_STOP(dbc);
+	btpf_rst(PFX(dbc));
+	PFX(dbc)->leaf_miss = btpf_leaf_io;
 
 	return (0);
 }
@@ -296,6 +299,10 @@ chk_forward(DBC *dbc)
 	int32_t th;
 
 	if (f->status == LOADED_ALL)
+		return rst;
+
+	f->leaf_miss |= btpf_leaf_io;
+	if (f->status == INIT && !f->leaf_miss && BTPF_ON_LEAF_MISS(dbc))
 		return rst;
 
 	th = f->wndw - f->rdr_pg_cnt - CU_GAP(dbc);  

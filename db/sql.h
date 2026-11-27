@@ -1404,6 +1404,9 @@ struct BtCursor {
 
     int permissions; /* permissions for read/write access to table */
     BtCursor *pCursorHintTableCursor;
+    /* table cursor fed by a range index scan: try the next row before a seek */
+    uint8_t dta_probe;
+    int dta_probe_hits, dta_probe_misses;
     /* sync_dta_generation of the pre-release sync that captured this cursor's
        row, or 0 if none did.  Cleared by the skip that consumes it. */
     int synced_at_generation;

@@ -10,6 +10,7 @@
 
 #define PFX(x) ((btpf*)x->pf)
 #define BTPF_ENABLED(dbc) dbc->dbp->dbenv->attr.btpf_enabled
+#define BTPF_ON_LEAF_MISS(dbc) dbc->dbp->dbenv->attr.btpf_on_leaf_miss
 
 #define PG_GAP(dbc)   dbc->dbp->dbenv->attr.btpf_pg_gap
 #define CU_GAP(dbc)   dbc->dbp->dbenv->attr.btpf_cu_gap;
@@ -56,6 +57,7 @@ typedef struct {
 	u_int32_t   rdr_pg_cnt; // pages read by the cursor to catch up
 	u_int32_t   wndw;
 	u_int32_t   on; // pre-faulting is on/off
+	int leaf_miss; // boolean: has there been a leaf level page miss
    
 	db_pgno_t curlf[RMBR_LVL];	// the chain of pages to reach the cursor 
 	db_indx_t curindx[RMBR_LVL];	// current entry per level
